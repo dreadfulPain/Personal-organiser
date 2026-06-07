@@ -1,0 +1,20 @@
+{
+  "name": "personal-organiser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A calm, neurodivergent-friendly organiser: dump messy thoughts, it understands and sorts them into calm zones.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}

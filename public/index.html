@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Organiser</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="top">
+        <h1>What's on your mind?</h1>
+        <p class="sub">Type it however it comes out — messy is fine, spelling doesn't matter. I'll sort it.</p>
+      </header>
+
+      <!-- gentle setup hint, only shown when no API key is configured -->
+      <div id="setup" class="setup" hidden>
+        <strong>Almost ready.</strong> Add your Anthropic API key to turn on sorting —
+        copy <code>.env.example</code> to <code>.env</code>, paste your key, and restart.
+        You can still see and tick things off without it.
+      </div>
+
+      <!-- THE DUMP: one box, no fields -->
+      <section class="dumpbox">
+        <textarea id="dump" rows="3" placeholder="e.g. tysday call the dentist and mums bday is coming up"></textarea>
+        <div class="dumprow">
+          <button id="sortBtn" class="btn">Sort it</button>
+          <span class="hint">or press ⌘/Ctrl + Enter</span>
+        </div>
+      </section>
+
+      <p id="status" class="status" hidden></p>
+
+      <!-- THE CHECK-BACK: a glance and a tap before anything is filed -->
+      <section id="checkback" class="checkback" hidden>
+        <h2>Here's what I understood — look right?</h2>
+        <div id="checkbackList"></div>
+        <div class="cb-actions">
+          <button id="addBtn" class="btn">Add to my list</button>
+          <button id="cancelBtn" class="btn ghost">Cancel</button>
+        </div>
+      </section>
+
+      <!-- WAITING TO BE SORTED: offline dumps kept safe (§0.1) -->
+      <section id="waiting" class="waiting" hidden>
+        <h2>Waiting to be sorted</h2>
+        <p class="muted">Saved while you were offline. Sort them when you're back online.</p>
+        <div id="waitingList"></div>
+      </section>
+
+      <!-- THE VIEW: calm zones, not one long list -->
+      <section class="zones">
+        <div class="zone">
+          <h2>Today <span id="todayCount" class="count"></span></h2>
+          <div id="todayItems" class="items"></div>
+        </div>
+        <div class="zone">
+          <h2>Coming up <span id="comingCount" class="count"></span></h2>
+          <div id="comingItems" class="items"></div>
+        </div>
+        <div class="zone">
+          <h2>Someday <span id="somedayCount" class="count"></span></h2>
+          <div id="somedayItems" class="items"></div>
+        </div>
+      </section>
+
+      <!-- THE MIRROR: a quiet record of finished things, not a scoreboard -->
+      <section class="lookback">
+        <button id="lookbackToggle" class="lookback-toggle" aria-expanded="false">
+          Looking back <span id="lookbackCount" class="count"></span>
+        </button>
+        <div id="lookback" class="lookback-body" hidden>
+          <div id="lookbackList"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

@@ -1,36 +1,149 @@
-import "dotenv/config";
-import express from "express";
-import Anthropic from "@anthropic-ai/sdk";
+// Personal Organiser — local server (zero dependencies)
+//
+// This file uses ONLY Node's built-in modules, so the core app (seeing your
+// zones + trustworthy saving) needs no `npm install` and no internet. Just Node.
+//
+// THE TWO HALVES (design tracker §0.1):
+//   SEEING + SAVING  = static files in /public + the /api/data store below.
+//                      Fully offline, no AI, never pauses. This is the
+//                      trustworthy half this build is about.
+//   PUTTING IN (AI)  = the optional /api/understand endpoint. It loads the
+//                      Anthropic SDK lazily, so it only matters once you choose
+//                      to set up AI later (a separate hill). The app works
+//                      completely without it.
+
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { spawn } from "node:child_process";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname = dirname(fileURLToPathSafe(import.meta.url));
 
-// ---------------------------------------------------------------------------
-// THE TWO HALVES (see the design tracker, §0.1)
-//
-//   SEEING    = the static files in /public. Reads from the browser's local
-//               storage, renders the zones, ticks things off. No network, no
-//               AI, never pauses. This server just hands those files over.
-//
-//   PUTTING IN = the /api/understand endpoint below. This is the one online,
-//               AI-powered job: take a messy, misspelled dump and turn it into
-//               clean, sorted items. This is the "magic" that fixes the exact
-//               entry-friction that made every other app unusable.
-// ---------------------------------------------------------------------------
+function fileURLToPathSafe(u) {
+  return fileURLToPath(u);
+}
+function dirname(p) {
+  return path.dirname(p);
+}
 
-const app = express();
-app.use(express.json({ limit: "32kb" }));
-app.use(express.static(join(__dirname, "public")));
+// --- where things live -----------------------------------------------------
+const PUBLIC_DIR = path.join(__dirname, "public");
+const DATA_DIR = path.join(__dirname, "data");
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
+const DATA_FILE = path.join(DATA_DIR, "organiser-data.json");
+const PREV_FILE = path.join(BACKUP_DIR, "previous.json");
 
-// The model that does the understanding. The latest, most capable Claude model
-// reads messy / vague / misspelled input best — and getting it right is what
-// builds trust. If you'd rather have faster, cheaper sorting, change this one
-// line to a smaller model id (e.g. "claude-haiku-4-5").
-const MODEL = "claude-opus-4-8";
+const PORT = process.env.PORT || 3000;
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-// What we ask the model to return for every dump. Empty strings (not nulls)
-// mean "none" — it keeps the shape simple and predictable.
+// Read a simple .env file (so you can paste a key without installing dotenv).
+loadEnvFile();
+function loadEnvFile() {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, ".env"), "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*?)\s*$/);
+      if (!m) continue;
+      const key = m[1];
+      const val = m[2].replace(/^["']|["']$/g, "");
+      if (!(key in process.env)) process.env[key] = val;
+    }
+  } catch {
+    /* no .env — that's fine */
+  }
+}
+
+// --- the store: a real file the user owns, saved safely --------------------
+
+function ensureDirs() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
+function readData() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const d = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+      return normaliseDoc(d);
+    }
+  } catch (e) {
+    console.warn("[data] main file unreadable, trying the previous copy:", e.message);
+    try {
+      const d = JSON.parse(fs.readFileSync(PREV_FILE, "utf8"));
+      return { ...normaliseDoc(d), recovered: true };
+    } catch {
+      /* fall through to empty */
+    }
+  }
+  return { version: 1, items: [], waiting: [], savedAt: null };
+}
+
+function normaliseDoc(d) {
+  return {
+    version: 1,
+    items: Array.isArray(d.items) ? d.items : [],
+    waiting: Array.isArray(d.waiting) ? d.waiting : [],
+    savedAt: d.savedAt || null,
+  };
+}
+
+function todayStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function writeData(input) {
+  ensureDirs();
+  const doc = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    items: Array.isArray(input.items) ? input.items : [],
+    waiting: Array.isArray(input.waiting) ? input.waiting : [],
+  };
+  const json = JSON.stringify(doc, null, 2);
+
+  // Keep safety copies BEFORE overwriting: the previous version (undo a bad
+  // change) and one snapshot per day (point-in-time recovery).
+  if (fs.existsSync(DATA_FILE)) {
+    try {
+      const current = fs.readFileSync(DATA_FILE);
+      fs.writeFileSync(PREV_FILE, current);
+      const daily = path.join(BACKUP_DIR, `organiser-${todayStamp()}.json`);
+      if (!fs.existsSync(daily)) fs.writeFileSync(daily, current);
+      pruneBackups();
+    } catch (e) {
+      console.warn("[data] backup warning:", e.message);
+    }
+  }
+
+  // Atomic write: write to a temp file, then rename over the real one. A crash
+  // mid-write can never leave the real file half-written.
+  const tmp = DATA_FILE + ".tmp";
+  fs.writeFileSync(tmp, json);
+  fs.renameSync(tmp, DATA_FILE);
+  return doc.savedAt;
+}
+
+function pruneBackups() {
+  try {
+    const files = fs
+      .readdirSync(BACKUP_DIR)
+      .filter((f) => /^organiser-\d{4}-\d{2}-\d{2}\.json$/.test(f))
+      .sort();
+    const keep = 60;
+    for (const f of files.slice(0, Math.max(0, files.length - keep))) {
+      fs.unlinkSync(path.join(BACKUP_DIR, f));
+    }
+  } catch {
+    /* pruning is best-effort */
+  }
+}
+
+// --- optional AI (loaded only if/when you set it up) -----------------------
+
+const MODEL = "claude-opus-4-8"; // swap to a smaller model id for faster/cheaper sorting
+
 const SCHEMA = {
   type: "object",
   properties: {
@@ -41,8 +154,8 @@ const SCHEMA = {
         properties: {
           title: { type: "string" },
           type: { type: "string", enum: ["task", "appointment", "reminder", "note"] },
-          date: { type: "string" }, // "YYYY-MM-DD" when a day can be pinned, else ""
-          when_text: { type: "string" }, // the user's own time phrase, else ""
+          date: { type: "string" },
+          when_text: { type: "string" },
         },
         required: ["title", "type", "date", "when_text"],
         additionalProperties: false,
@@ -82,16 +195,6 @@ you return:
   {"title":"Mum's birthday","type":"appointment","date":"","when_text":"coming up"}
 ]}`;
 
-// Construct the Anthropic client lazily, so the server still boots and serves
-// the (offline) seeing half even when no API key is set.
-let client;
-function getClient() {
-  if (!client) client = new Anthropic(); // reads ANTHROPIC_API_KEY from the environment
-  return client;
-}
-
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
-
 function weekdayName(iso) {
   try {
     return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", {
@@ -103,30 +206,29 @@ function weekdayName(iso) {
   }
 }
 
-// Lets the front-end show a gentle setup hint when no key is configured yet.
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, hasKey: !!process.env.ANTHROPIC_API_KEY });
-});
-
-// The magic: messy dump in -> clean, sorted items out.
-app.post("/api/understand", async (req, res) => {
-  const text = (req.body?.text || "").toString().trim();
-  if (!text) {
-    return res.status(400).json({ error: "empty", message: "There was nothing to sort." });
+async function handleUnderstand(res, body) {
+  const text = (body?.text || "").toString().trim();
+  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return sendJson(res, 503, { error: "no_key", message: "AI sorting isn't set up yet." });
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(503).json({
-      error: "no_key",
-      message: "No API key is set, so sorting is off right now.",
+  let Anthropic;
+  try {
+    ({ default: Anthropic } = await import("@anthropic-ai/sdk"));
+  } catch {
+    return sendJson(res, 503, {
+      error: "no_sdk",
+      message: "AI sorting needs a one-time setup (npm install).",
     });
   }
 
-  const today = ISO.test(req.body?.today) ? req.body.today : new Date().toISOString().slice(0, 10);
+  const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
   const todayLabel = `${weekdayName(today)}, ${today}`;
 
   try {
-    const response = await getClient().messages.create({
+    const client = new Anthropic();
+    const response = await client.messages.create({
       model: MODEL,
       max_tokens: 2000,
       system: SYSTEM_PROMPT,
@@ -136,30 +238,134 @@ app.post("/api/understand", async (req, res) => {
           content: `Today is ${todayLabel}.\n\nHere is what I dumped. Sort it:\n"""\n${text}\n"""`,
         },
       ],
-      // Structured outputs: the first text block is guaranteed to be valid JSON
-      // matching SCHEMA, so we can parse it without guesswork.
       output_config: { format: { type: "json_schema", schema: SCHEMA } },
     });
-
     const block = response.content.find((b) => b.type === "text");
     if (!block) throw new Error("No content returned from the model.");
     const data = JSON.parse(block.text);
-    const items = Array.isArray(data.items) ? data.items : [];
-    res.json({ items });
-  } catch (err) {
-    console.error("[understand] failed:", err?.message || err);
-    res.status(502).json({
-      error: "sort_failed",
-      message: "I couldn't sort that just now.",
+    sendJson(res, 200, { items: Array.isArray(data.items) ? data.items : [] });
+  } catch (e) {
+    console.error("[understand] failed:", e?.message || e);
+    sendJson(res, 502, { error: "sort_failed", message: "I couldn't sort that just now." });
+  }
+}
+
+// --- tiny static file server ----------------------------------------------
+
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+};
+
+function serveStatic(pathname, res) {
+  const rel = pathname === "/" ? "/index.html" : pathname;
+  const filePath = path.normalize(path.join(PUBLIC_DIR, decodeURIComponent(rel)));
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
+    res.writeHead(403);
+    return res.end("Forbidden");
+  }
+  fs.readFile(filePath, (err, buf) => {
+    if (err) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      return res.end("Not found");
+    }
+    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream" });
+    res.end(buf);
+  });
+}
+
+function sendJson(res, code, obj) {
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(obj));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > 8 * 1024 * 1024) {
+        reject(new Error("too large"));
+        req.destroy();
+        return;
+      }
+      data += c;
     });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
+// --- routing ---------------------------------------------------------------
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const pathname = new URL(req.url, `http://localhost:${PORT}`).pathname;
+
+    if (req.method === "GET" && pathname === "/api/health") {
+      return sendJson(res, 200, { ok: true, hasKey: !!process.env.ANTHROPIC_API_KEY, dataFile: DATA_FILE });
+    }
+
+    if (pathname === "/api/data") {
+      if (req.method === "GET") return sendJson(res, 200, readData());
+      if (req.method === "PUT" || req.method === "POST") {
+        const body = await readBody(req);
+        let parsed;
+        try {
+          parsed = JSON.parse(body || "{}");
+        } catch {
+          return sendJson(res, 400, { error: "bad_json", message: "Could not read the data." });
+        }
+        const savedAt = writeData(parsed);
+        return sendJson(res, 200, { ok: true, savedAt });
+      }
+      return sendJson(res, 405, { error: "method_not_allowed" });
+    }
+
+    if (pathname === "/api/understand" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleUnderstand(res, parsed);
+    }
+
+    if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);
+    return sendJson(res, 404, { error: "not_found" });
+  } catch (e) {
+    console.error("[server] error:", e?.message || e);
+    sendJson(res, 500, { error: "server", message: "Something went wrong." });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`\n  Personal Organiser is running:  http://localhost:${PORT}\n`);
+ensureDirs();
+server.listen(PORT, () => {
+  const url = `http://localhost:${PORT}`;
+  console.log(`\n  Your organiser is running:  ${url}`);
+  console.log(`  Your data is saved to:      ${DATA_FILE}`);
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.log("  Note: ANTHROPIC_API_KEY is not set, so sorting is off.");
-    console.log("  Copy .env.example to .env and add your key, then restart.\n");
+    console.log("\n  (AI sorting is off — that's expected for now. You can add things by hand.)");
   }
+  console.log("\n  Keep this window open while you use the organiser. Close it to stop.\n");
+  openBrowser(url);
 });
+
+function openBrowser(url) {
+  if (process.env.NO_OPEN) return;
+  try {
+    if (process.platform === "win32") spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
+    else if (process.platform === "darwin") spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
+    else spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+  } catch {
+    /* opening the browser is best-effort; the URL is printed above */
+  }
+}

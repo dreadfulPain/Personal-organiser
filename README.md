@@ -6,76 +6,94 @@ places, and shows you your life in a way that feels manageable.
 
 > Say it messily → it understands → it organises → you feel oriented.
 
-This is the **first build**: the one loop that proves the idea works.
+This build is about **trustworthy storage**: a place to keep your life that you
+own and can't easily lose. AI sorting is a separate later step — you can use the
+organiser fully by hand right now.
 
 ---
 
-## What it does right now
+## Start here
 
-1. **The dump** — one box. Type anything, however it comes out. Spelling
-   doesn't matter, and you never have to say what *kind* of thing it is.
-2. **The understanding** — Claude reads your messy line, splits it into separate
-   items, fixes spelling silently, works out whether each is a task / event /
-   reminder / note, and turns vague time words ("tuesday", "soon") into real
-   dates.
-3. **The check-back** — it shows you what it understood so you can glance, fix a
-   word or a date, remove anything wrong, and confirm — before anything is filed.
-4. **The view** — your items live in three calm zones: **Today**, **Coming up**,
-   and **Someday**. Big text, generous spacing — glance and feel oriented.
-5. **Completing things** — tick something off and it's **gone** from the active
-   view (clean slate), but kept in a quiet **Looking back** list — a mirror, not
-   a scoreboard.
+You need [Node.js](https://nodejs.org/) (the free "LTS" download). Nothing else
+to install — the app uses no third-party packages to run.
 
-### The two halves
+- **Windows:** double-click **`Start Organiser.bat`**
+- **Mac:** double-click **`start.command`** (first time: right-click → Open; you
+  may need to run `chmod +x start.command` once)
+- **Linux:** `chmod +x start.sh` then `./start.sh`
 
-The app is split exactly along the line that matters:
+A browser tab opens at `http://localhost:3000`. Keep the little black window open
+while you use it — closing it stops the app. That's it.
 
-- **Seeing** (the zones, ticking off, all your data) is **fully offline**. It
-  reads from your browser and never pauses — internet down doesn't stop you
-  looking at your life or ticking things off.
-- **Putting in** (understanding a messy dump) is the one **online** step. If
-  you're offline or no key is set, your dump is **saved to sort later** instead
-  of being lost.
+To add things: type one thing and press **Add** (or ⌘/Ctrl + Enter), check it
+looks right, and it lands in a zone. Tick something off and it's gone from the
+active view, kept in **Looking back**.
 
 ---
 
-## Running it
+## Where your data is saved (plain English)
 
-You need [Node.js](https://nodejs.org/) 18 or newer.
+When you start it with **Start Organiser**, everything is saved **automatically**
+to a real file on your computer:
 
-```bash
-# 1. install dependencies
-npm install
-
-# 2. add your Anthropic API key
-cp .env.example .env
-#    then open .env and paste your key (get one at https://console.anthropic.com/)
-
-# 3. start it
-npm start
+```
+<this folder>/data/organiser-data.json
 ```
 
-Then open **http://localhost:3000**.
+- It saves the moment you change anything. No "save" button to remember.
+- It's a plain file **you own** — no account, no cloud of ours, works offline.
+- It's written safely: a half-finished save can never corrupt it, and the app
+  keeps automatic backups in `data/backups/` (the version before your last
+  change, plus one snapshot per day).
 
-You can open and use the app (see your zones, tick things off) without a key —
-you just can't sort new dumps until a key is set.
+### How to back up
+
+- Click **Back up now** in the app to download a dated copy, **or**
+- just copy `data/organiser-data.json` somewhere safe (a USB stick, another
+  folder).
+- **Restore** a backup any time with the **Restore from a backup** button.
+
+### Getting it on more than one device (optional, free, still yours)
+
+Put this whole folder inside your **OneDrive / Dropbox / Google Drive** folder.
+Your data file then syncs across your devices automatically — and it's still a
+file you own, with no separate service to depend on. (A more seamless built-in
+sync can come later; the storage is built so that can be added without a
+rewrite.)
 
 ---
 
-## Notes & limits (on purpose, for now)
+## Two ways to open it (and why one is "preview")
 
-- **Your data lives in this browser.** It's stored locally on this computer.
-  Clearing your browser data would clear it. Proper saving/syncing is a later
-  step.
-- **Typing only** for now (voice is next).
-- Deliberately **not** in this build yet: editing filed items, recurring items,
-  reminders/notifications, search, the "insights" mirror, and goal-breakdown
-  (taking a big goal and handing back just the first step) — that last one is
-  the next big feature.
+- **Start Organiser (recommended):** runs the little local server, saves to your
+  real data file. Trustworthy.
+- **Double-clicking `public/index.html` directly:** opens in *preview mode* —
+  you can look around and add things, but changes are kept only in that browser,
+  **not** saved to your data file. The app says so clearly at the top so you're
+  never caught out. Use **Start Organiser** for anything you want to keep.
 
-## Changing the model
+---
 
-The understanding is done by Claude. The model is set in one place near the top
-of `server.js` (the `MODEL` constant). It defaults to the most capable model for
-the best understanding of messy input; switch it to a smaller model id there if
-you'd prefer faster, cheaper sorting.
+## What's here on purpose — and what's not yet
+
+**Working now:** add by hand, the check-back, calm **Today / Coming up /
+Someday** zones, tick-to-complete (done = gone, kept in **Looking back**),
+trustworthy file storage with backups, and import/export.
+
+**Later, separate steps:**
+
+- **AI sorting** — type one messy line and have it split, spell-fixed, and
+  date-resolved automatically. It's already wired up but switched off until you
+  set it up (it's the next hill, kept separate on purpose). When you're ready,
+  this needs one optional package (`npm install`) and a key or local model.
+- Built-in cross-device sync, goal-breakdown, reminders, voice.
+
+## For the curious: how it's built
+
+- `server.js` — a tiny local web server using only Node's built-in modules. It
+  serves the page and saves/loads your data file. No internet needed.
+- `public/` — the screen you see (`index.html`, `style.css`, `app.js`) plus
+  `store.js`, the one place that knows *where* data lives (the seam that lets
+  sync be added later).
+- The AI step, when turned on, lives behind `/api/understand` and is completely
+  optional.

@@ -10,30 +10,31 @@
     <main class="wrap">
       <header class="top">
         <h1>What's on your mind?</h1>
-        <p class="sub">Type it however it comes out — messy is fine, spelling doesn't matter. I'll sort it.</p>
+        <p class="sub">Type it however it comes out — spelling never matters here.</p>
       </header>
 
-      <!-- gentle setup hint, only shown when no API key is configured -->
-      <div id="setup" class="setup" hidden>
-        <strong>Almost ready.</strong> Add your Anthropic API key to turn on sorting —
-        copy <code>.env.example</code> to <code>.env</code>, paste your key, and restart.
-        You can still see and tick things off without it.
+      <!-- shown only in preview mode (opened by double-clicking the page) -->
+      <div id="previewBanner" class="preview-banner" hidden>
+        <strong>Preview mode.</strong> You opened this by double-clicking the page, so changes are
+        kept only in this browser — <em>not</em> saved to your data file. To save properly, open with
+        <strong>Start Organiser</strong>. You can still use <strong>Back up now</strong> below.
       </div>
 
       <!-- THE DUMP: one box, no fields -->
       <section class="dumpbox">
-        <textarea id="dump" rows="3" placeholder="e.g. tysday call the dentist and mums bday is coming up"></textarea>
+        <textarea id="dump" rows="3" placeholder="e.g. call the dentist on tuesday"></textarea>
         <div class="dumprow">
-          <button id="sortBtn" class="btn">Sort it</button>
-          <span class="hint">or press ⌘/Ctrl + Enter</span>
+          <button id="sortBtn" class="btn">Add</button>
+          <span id="dumpHint" class="hint">Type one thing and add it.</span>
         </div>
       </section>
 
       <p id="status" class="status" hidden></p>
+      <p id="storageStatus" class="storage-status"></p>
 
       <!-- THE CHECK-BACK: a glance and a tap before anything is filed -->
       <section id="checkback" class="checkback" hidden>
-        <h2>Here's what I understood — look right?</h2>
+        <h2 id="checkbackHeading">Here's what I understood — look right?</h2>
         <div id="checkbackList"></div>
         <div class="cb-actions">
           <button id="addBtn" class="btn">Add to my list</button>
@@ -41,10 +42,10 @@
         </div>
       </section>
 
-      <!-- WAITING TO BE SORTED: offline dumps kept safe (§0.1) -->
+      <!-- WAITING TO BE SORTED: dumps saved while the AI sorter was unreachable -->
       <section id="waiting" class="waiting" hidden>
         <h2>Waiting to be sorted</h2>
-        <p class="muted">Saved while you were offline. Sort them when you're back online.</p>
+        <p class="muted">Saved while the sorter was unreachable. Sort them when it's back.</p>
         <div id="waitingList"></div>
       </section>
 
@@ -73,8 +74,20 @@
           <div id="lookbackList"></div>
         </div>
       </section>
+
+      <!-- YOUR DATA: where it lives + how to back it up -->
+      <footer class="data-footer">
+        <h2>Your data</h2>
+        <p id="dataWhere" class="muted">Checking where your data is saved…</p>
+        <div class="data-actions">
+          <button id="backupBtn" class="btn ghost">Back up now</button>
+          <button id="restoreBtn" class="btn ghost">Restore from a backup</button>
+          <input id="restoreInput" type="file" accept="application/json,.json" hidden />
+        </div>
+      </footer>
     </main>
 
+    <script src="store.js" defer></script>
     <script src="app.js" defer></script>
   </body>
 </html>

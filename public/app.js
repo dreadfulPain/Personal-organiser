@@ -1,51 +1,24 @@
-/* The SEEING half. Everything here runs in the browser, reads and writes the
-   browser's own local storage, and works with no internet. The only time we
-   reach the network is to ask the server to understand a fresh dump. */
+// The SEEING half. Renders the zones, ticks things off, and adds things.
+// All storage goes through OrganiserStore (store.js) — this file never touches
+// localStorage or the network directly for data.
 
 (() => {
   "use strict";
 
-  const LS_ITEMS = "organiser.items.v1";
-  const LS_WAITING = "organiser.waiting.v1";
-
-  const TYPE_LABEL = {
-    task: "To do",
-    appointment: "Event",
-    reminder: "Reminder",
-    note: "Note",
-  };
+  const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
   const TYPES = ["task", "appointment", "reminder", "note"];
 
-  // ---------- storage ----------
-  function load(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-  function save(key, val) {
-    localStorage.setItem(key, JSON.stringify(val));
-  }
-
-  let items = load(LS_ITEMS, []); // everything filed
-  let waiting = load(LS_WAITING, []); // dumps saved while offline
+  let items = []; // everything filed
+  let waiting = []; // dumps saved while the AI sorter was unreachable
   let pending = null; // the batch currently shown in the check-back
-
-  function persist() {
-    save(LS_ITEMS, items);
-    save(LS_WAITING, waiting);
-  }
+  let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   function isoOf(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
   const todayISO = () => isoOf(new Date());
   function addDaysISO(iso, n) {
@@ -76,8 +49,7 @@
     return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   }
   function friendlyDateFromStamp(stamp) {
-    const d = new Date(stamp);
-    return friendlyDate(isoOf(d));
+    return friendlyDate(isoOf(new Date(stamp)));
   }
 
   function setStatus(msg) {
@@ -88,12 +60,16 @@
   function setBusy(b) {
     const btn = $("#sortBtn");
     btn.disabled = b;
-    btn.textContent = b ? "Sorting…" : "Sort it";
+    btn.textContent = b ? (aiAvailable ? "Sorting…" : "Adding…") : aiAvailable ? "Sort it" : "Add";
     $("#dump").disabled = b;
   }
 
-  // ---------- the online step: ask the server to understand a dump ----------
-  async function understand(text) {
+  function persist() {
+    OrganiserStore.save({ items, waiting });
+  }
+
+  // ---------- adding things ----------
+  async function understandViaAI(text) {
     const res = await fetch("/api/understand", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -125,27 +101,37 @@
   async function onSort() {
     const text = $("#dump").value.trim();
     if (!text) return;
+
+    // No AI yet (the storage phase): hand-entry. Take the line as one item and
+    // let the user set the kind/date in the check-back. Still no fields to fill
+    // before typing — you just type the thing.
+    if (!aiAvailable) {
+      pending = [{ title: text, type: "task", date: "", whenText: "" }];
+      $("#dump").value = "";
+      $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
+      renderCheckback();
+      setStatus("");
+      return;
+    }
+
     setBusy(true);
     setStatus("Reading what you wrote…");
     try {
-      const understood = await understand(text);
+      const understood = await understandViaAI(text);
       if (!understood.length) {
         setStatus("I couldn't find anything to add there — try a few more words?");
         return;
       }
       pending = understood.map(normalise);
+      $("#checkbackHeading").textContent = "Here's what I understood — look right?";
       renderCheckback();
       setStatus("");
     } catch (err) {
-      // Offline / no key / failure: keep the dump safe to sort later (§0.1).
+      // AI is set up but unreachable: keep the dump safe to sort later (§0.1).
       waiting.unshift({ id: uid(), text, createdAt: new Date().toISOString() });
       persist();
       $("#dump").value = "";
-      if (err.code === "no_key") {
-        setStatus("Sorting is off (no API key yet) — I saved your note below to sort later.");
-      } else {
-        setStatus("I can't reach the sorter right now (offline?). Your note is saved below — sort it when you're back.");
-      }
+      setStatus("I can't reach the sorter right now. Your note is saved below — sort it when it's back.");
       renderWaiting();
     } finally {
       setBusy(false);
@@ -183,11 +169,8 @@
       list.appendChild(card);
     });
 
-    if (pending.length === 0) {
-      cancelCheckback();
-    } else {
-      $("#checkback").hidden = false;
-    }
+    if (pending.length === 0) cancelCheckback();
+    else $("#checkback").hidden = false;
   }
 
   function confirmCheckback() {
@@ -349,7 +332,7 @@
         persist();
         renderWaiting();
         $("#dump").focus();
-        setStatus('Loaded it back up — press "Sort it".');
+        setStatus('Loaded it back up — press the button to add it.');
       });
       row.querySelector(".discard").addEventListener("click", () => {
         waiting = waiting.filter((x) => x.id !== w.id);
@@ -360,19 +343,92 @@
     });
   }
 
-  // ---------- setup hint ----------
-  async function checkHealth() {
-    try {
-      const r = await fetch("/api/health");
-      const j = await r.json();
-      $("#setup").hidden = !!j.hasKey;
-    } catch {
-      // server unreachable: leave the hint hidden, seeing still works
+  // ---------- storage status + "your data" footer ----------
+  function renderStorageStatus(s) {
+    const el = $("#storageStatus");
+    if (!el) return;
+    el.className = "storage-status";
+    if (s.mode === "preview") {
+      el.textContent = "";
+      return;
+    }
+    if (s.state === "saving") {
+      el.classList.add("saving");
+      el.textContent = "Saving…";
+    } else if (s.state === "saved") {
+      el.classList.add("saved");
+      const t = s.at ? new Date(s.at) : new Date();
+      el.textContent = `Saved ✓ ${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+    } else if (s.state === "error") {
+      el.classList.add("error");
+      el.textContent = "Couldn't save — will keep trying. Make sure the app window is still open.";
     }
   }
 
+  function applyMode() {
+    const btn = $("#sortBtn");
+    btn.textContent = aiAvailable ? "Sort it" : "Add";
+    $("#dumpHint").textContent = aiAvailable
+      ? "or press ⌘/Ctrl + Enter"
+      : "Type one thing and add it — smart sorting is a later step.";
+  }
+
+  async function checkHealth() {
+    if (OrganiserStore.mode !== "file") {
+      aiAvailable = false;
+      $("#previewBanner").hidden = false;
+      $("#dataWhere").textContent =
+        "Preview mode: changes stay only in this browser and are not saved to your data file. " +
+        "Open with “Start Organiser” to save properly. You can still use “Back up now” to download a copy.";
+      applyMode();
+      return;
+    }
+    $("#previewBanner").hidden = true;
+    try {
+      const r = await fetch("/api/health");
+      const j = await r.json();
+      aiAvailable = !!j.hasKey;
+      const where = j.dataFile || "your data file";
+      $("#dataWhere").textContent =
+        `Saved automatically to: ${where}. ` +
+        "To back up, copy that file anywhere — or click “Back up now”. " +
+        "Tip: keep the whole app folder inside OneDrive / Dropbox / Google Drive and your data " +
+        "syncs across your devices, still fully owned by you.";
+    } catch {
+      aiAvailable = false;
+    }
+    applyMode();
+  }
+
+  async function onRestore(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!confirm("Restoring replaces what's here now with the backup file. Continue?")) {
+      e.target.value = "";
+      return;
+    }
+    try {
+      const data = await OrganiserStore.importFile(file);
+      items = data.items || [];
+      waiting = data.waiting || [];
+      persist();
+      renderZones();
+      renderWaiting();
+      setStatus("Restored from your backup. ✓");
+    } catch (err) {
+      setStatus(err.message || "Couldn't read that backup.");
+    }
+    e.target.value = "";
+  }
+
   // ---------- wire up ----------
-  function init() {
+  async function init() {
+    OrganiserStore.onStatus(renderStorageStatus);
+
+    const data = await OrganiserStore.load();
+    items = data.items || [];
+    waiting = data.waiting || [];
+
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -390,10 +446,18 @@
       lb.hidden = !lb.hidden;
       $("#lookbackToggle").setAttribute("aria-expanded", String(!lb.hidden));
     });
+    $("#backupBtn").addEventListener("click", () => {
+      OrganiserStore.exportNow({ items, waiting });
+      setStatus("Saved a backup copy to your Downloads.");
+    });
+    $("#restoreBtn").addEventListener("click", () => $("#restoreInput").click());
+    $("#restoreInput").addEventListener("change", onRestore);
+    window.addEventListener("pagehide", () => OrganiserStore.flushBeacon());
 
     renderZones();
     renderWaiting();
-    checkHealth();
+    if (data.migratedNote) setStatus(data.migratedNote);
+    await checkHealth();
   }
 
   init();

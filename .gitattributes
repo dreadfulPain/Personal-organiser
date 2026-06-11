@@ -1,0 +1,3 @@
+# Windows batch files must keep CRLF line endings, exactly as committed —
+# never converted by git on commit, checkout, or archive/ZIP download.
+*.bat -text

@@ -347,6 +347,17 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.log("\n  It looks like your organiser is already running.");
+    console.log(`  Look for it in your browser at http://localhost:${PORT}`);
+    console.log("  (or close the other black window first, then try again).\n");
+  } else {
+    console.log("\n  The organiser couldn't start: " + (err.message || err) + "\n");
+  }
+  process.exitCode = 1;
+});
+
 ensureDirs();
 server.listen(PORT, () => {
   const url = `http://localhost:${PORT}`;

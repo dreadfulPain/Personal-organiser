@@ -386,27 +386,30 @@ body {
   color: var(--ink);
 }
 
-/* looking back (the mirror) */
-.lookback {
-  margin-top: 44px;
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
+/* the mirror — now its own page, reached by one quiet link */
+.lookback-link {
+  margin: 40px 0 0;
+  text-align: center;
 }
-.lookback-toggle {
-  border: none;
-  background: transparent;
+.lookback-link a {
   color: var(--ink-soft);
-  font: inherit;
-  cursor: pointer;
-  padding: 4px 0;
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
 }
-.lookback-toggle:hover {
+.lookback-link a:hover {
+  color: var(--accent-dark);
+  border-bottom-color: var(--accent);
+}
+.backlink {
+  margin: 0 0 18px;
+}
+.backlink a {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.backlink a:hover {
   color: var(--ink);
-}
-.lookback-body {
-  margin-top: 14px;
-  display: grid;
-  gap: 10px;
 }
 .item.done .item-title {
   color: var(--ink-soft);

@@ -48,10 +48,6 @@
     const d = new Date(iso + "T12:00:00");
     return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   }
-  function friendlyDateFromStamp(stamp) {
-    return friendlyDate(isoOf(new Date(stamp)));
-  }
-
   function setStatus(msg) {
     const s = $("#status");
     s.textContent = msg || "";
@@ -257,8 +253,6 @@
     $("#todayCount").textContent = groups.today.length ? groups.today.length : "";
     $("#comingCount").textContent = groups.coming.length ? groups.coming.length : "";
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
-
-    renderLookback();
   }
 
   // done = gone from the active view, kept in the mirror
@@ -270,48 +264,6 @@
     persist();
     renderZones();
   }
-  function uncomplete(id) {
-    const it = items.find((x) => x.id === id);
-    if (!it) return;
-    it.done = false;
-    it.completedAt = null;
-    persist();
-    renderZones();
-  }
-
-  // ---------- looking back (the mirror, not a scoreboard) ----------
-  function renderLookback() {
-    const done = items
-      .filter((i) => i.done)
-      .sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""));
-
-    $("#lookbackCount").textContent = done.length ? `(${done.length})` : "";
-
-    const el = $("#lookbackList");
-    el.innerHTML = "";
-    if (!done.length) {
-      el.innerHTML = `<p class="empty">Things you finish gather here — a quiet record, not a scoreboard.</p>`;
-      return;
-    }
-    done.forEach((it) => {
-      const row = document.createElement("div");
-      row.className = "item done";
-      const when = it.completedAt ? friendlyDateFromStamp(it.completedAt) : "";
-      row.innerHTML = `
-        <span class="tick done" aria-hidden="true"></span>
-        <div class="item-main">
-          <div class="item-title">${escapeHtml(it.title)}</div>
-          <div class="item-meta">
-            <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
-            ${when ? `<span class="when">done ${escapeHtml(when)}</span>` : ""}
-          </div>
-        </div>
-        <button class="putback" type="button">put back</button>`;
-      row.querySelector(".putback").addEventListener("click", () => uncomplete(it.id));
-      el.appendChild(row);
-    });
-  }
-
   // ---------- waiting to be sorted ----------
   function renderWaiting() {
     const el = $("#waitingList");
@@ -440,11 +392,6 @@
     $("#cancelBtn").addEventListener("click", () => {
       cancelCheckback();
       setStatus("");
-    });
-    $("#lookbackToggle").addEventListener("click", () => {
-      const lb = $("#lookback");
-      lb.hidden = !lb.hidden;
-      $("#lookbackToggle").setAttribute("aria-expanded", String(!lb.hidden));
     });
     $("#backupBtn").addEventListener("click", () => {
       OrganiserStore.exportNow({ items, waiting });

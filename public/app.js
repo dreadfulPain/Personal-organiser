@@ -69,7 +69,19 @@
     const res = await fetch("/api/understand", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, today: todayISO() }),
+      body: JSON.stringify({
+        text,
+        today: todayISO(),
+        // Prompt rule 1: tell the model the real date AND time (it has no clock).
+        now: new Date().toLocaleString(undefined, {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      }),
     });
     if (!res.ok) {
       let info = {};
@@ -127,7 +139,8 @@
       waiting.unshift({ id: uid(), text, createdAt: new Date().toISOString() });
       persist();
       $("#dump").value = "";
-      setStatus("I can't reach the sorter right now. Your note is saved below — sort it when it's back.");
+      const msg = err && err.code ? err.message : "I can't reach the app right now.";
+      setStatus(msg + " Saved below to sort later.");
       renderWaiting();
     } finally {
       setBusy(false);
@@ -339,7 +352,7 @@
     try {
       const r = await fetch("/api/health");
       const j = await r.json();
-      aiAvailable = !!j.hasKey;
+      aiAvailable = !!j.hasAI;
       const where = j.dataFile || "your data file";
       $("#dataWhere").textContent =
         `Saved automatically to: ${where}. ` +

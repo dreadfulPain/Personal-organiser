@@ -206,47 +206,194 @@ function weekdayName(iso) {
   }
 }
 
-async function handleUnderstand(res, body) {
-  const text = (body?.text || "").toString().trim();
-  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return sendJson(res, 503, { error: "no_key", message: "AI sorting isn't set up yet." });
+// Which AI engine to use, read from .env. Returns null when AI is switched off
+// (the app then works by hand). The engine is a SWAPPABLE box: the rest of the
+// app just asks it to turn a messy line into clean items and never cares which
+// engine answers — a local model (Ollama / LM Studio), a free cloud tier, or
+// Anthropic.
+function aiConfig() {
+  const engine = (process.env.AI_ENGINE || "").toLowerCase().trim();
+  if (engine === "anthropic") {
+    return process.env.ANTHROPIC_API_KEY ? { engine: "anthropic", model: process.env.AI_MODEL || MODEL } : null;
   }
+  if (engine === "ollama") {
+    return {
+      engine: "ollama",
+      baseUrl: process.env.AI_BASE_URL || "http://localhost:11434",
+      model: process.env.AI_MODEL || "qwen3:14b",
+    };
+  }
+  if (["local", "lmstudio", "openai", "openai-compatible"].includes(engine)) {
+    return {
+      engine: "openai",
+      baseUrl: process.env.AI_BASE_URL || "http://localhost:1234/v1",
+      model: process.env.AI_MODEL || "local-model",
+      apiKey: process.env.AI_API_KEY || "",
+    };
+  }
+  // Back-compat: a bare Anthropic key (no AI_ENGINE) still turns AI on.
+  if (process.env.ANTHROPIC_API_KEY) return { engine: "anthropic", model: process.env.AI_MODEL || MODEL };
+  return null;
+}
 
+// Prompt rule 1 (§0.3): the model has no clock and no memory, so every request
+// states the date and time. Rule 2 (fixed JSON shape) and rule 3 (no
+// think-aloud) are handled per engine below.
+function userTurn(nowLabel, today, text) {
+  return `Right now it is ${nowLabel} (today's date is ${today}).\n\nHere is what I dumped. Sort it:\n"""\n${text}\n"""`;
+}
+
+// Some local models "think out loud" in <think>…</think> before answering.
+// Strip that so only the answer remains (prompt rule 3, belt-and-braces).
+function stripThink(s) {
+  return String(s || "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .trim();
+}
+
+// Pull JSON out of a model reply even if it's wrapped in prose or ``` fences.
+function extractJson(text) {
+  let t = stripThink(text);
+  if (!t) throw new Error("empty reply");
+  t = t.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```$/, "").trim();
+  try {
+    return JSON.parse(t);
+  } catch {
+    const s = t.indexOf("{");
+    const e = t.lastIndexOf("}");
+    if (s >= 0 && e > s) return JSON.parse(t.slice(s, e + 1));
+    throw new Error("no JSON in reply");
+  }
+}
+
+// Engine: Ollama on this machine (the chosen setup). Its native /api/chat lets
+// us turn thinking OFF cleanly and ask for a fixed JSON shape. Built-in fetch
+// only — nothing leaves the machine.
+async function understandWithOllama(cfg, nowLabel, today, text) {
+  const url = cfg.baseUrl.replace(/\/+$/, "") + "/api/chat";
+  const headers = { "Content-Type": "application/json" };
+  const base = {
+    model: cfg.model,
+    stream: false,
+    options: { temperature: 0.2 },
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userTurn(nowLabel, today, text) },
+    ],
+  };
+  // Strongest first (schema-constrained + thinking off), then degrade for older
+  // Ollama versions that lack one of those knobs.
+  const variants = [
+    { ...base, think: false, format: SCHEMA },
+    { ...base, think: false, format: "json" },
+    { ...base, format: "json" },
+  ];
+  let resp = null;
+  for (const body of variants) {
+    resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    if (resp.ok) break;
+  }
+  if (!resp || !resp.ok) {
+    const detail = resp ? await resp.text().catch(() => "") : "";
+    throw new Error(`Ollama responded ${resp ? resp.status : "?"} ${detail.slice(0, 150)}`);
+  }
+  const data = await resp.json();
+  const parsed = extractJson(data?.message?.content ?? "");
+  return Array.isArray(parsed.items) ? parsed.items : [];
+}
+
+// Engine: any OpenAI-compatible server (LM Studio, a free cloud tier, or
+// Ollama's /v1 socket). Kept so the box stays swappable.
+async function understandWithOpenAI(cfg, nowLabel, today, text) {
+  const url = cfg.baseUrl.replace(/\/+$/, "") + "/chat/completions";
+  const headers = { "Content-Type": "application/json" };
+  if (cfg.apiKey) headers["Authorization"] = "Bearer " + cfg.apiKey;
+  const base = {
+    model: cfg.model,
+    temperature: 0.2,
+    max_tokens: 1000,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userTurn(nowLabel, today, text) },
+    ],
+  };
+  let resp = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      ...base,
+      response_format: { type: "json_schema", json_schema: { name: "organiser_items", strict: true, schema: SCHEMA } },
+    }),
+  });
+  if (resp.status === 400) {
+    resp = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...base, response_format: { type: "json_object" } }),
+    });
+  }
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`AI server responded ${resp.status} ${detail.slice(0, 150)}`);
+  }
+  const data = await resp.json();
+  const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
+  const parsed = extractJson(content);
+  return Array.isArray(parsed.items) ? parsed.items : [];
+}
+
+// Engine: Anthropic cloud (uses the official SDK, loaded only if needed).
+async function understandWithAnthropic(cfg, nowLabel, today, text) {
   let Anthropic;
   try {
     ({ default: Anthropic } = await import("@anthropic-ai/sdk"));
   } catch {
-    return sendJson(res, 503, {
-      error: "no_sdk",
-      message: "AI sorting needs a one-time setup (npm install).",
-    });
+    const err = new Error("AI sorting via Anthropic needs a one-time setup (npm install).");
+    err.friendly = err.message;
+    throw err;
   }
+  const client = new Anthropic();
+  const response = await client.messages.create({
+    model: cfg.model,
+    max_tokens: 2000,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userTurn(nowLabel, today, text) }],
+    output_config: { format: { type: "json_schema", schema: SCHEMA } },
+  });
+  const block = response.content.find((b) => b.type === "text");
+  if (!block) throw new Error("No content returned from the model.");
+  const parsed = JSON.parse(block.text);
+  return Array.isArray(parsed.items) ? parsed.items : [];
+}
+
+async function handleUnderstand(res, body) {
+  const text = (body?.text || "").toString().trim();
+  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
+
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
 
   const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
-  const todayLabel = `${weekdayName(today)}, ${today}`;
+  const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
 
   try {
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Today is ${todayLabel}.\n\nHere is what I dumped. Sort it:\n"""\n${text}\n"""`,
-        },
-      ],
-      output_config: { format: { type: "json_schema", schema: SCHEMA } },
-    });
-    const block = response.content.find((b) => b.type === "text");
-    if (!block) throw new Error("No content returned from the model.");
-    const data = JSON.parse(block.text);
-    sendJson(res, 200, { items: Array.isArray(data.items) ? data.items : [] });
+    let items;
+    if (cfg.engine === "anthropic") items = await understandWithAnthropic(cfg, nowLabel, today, text);
+    else if (cfg.engine === "ollama") items = await understandWithOllama(cfg, nowLabel, today, text);
+    else items = await understandWithOpenAI(cfg, nowLabel, today, text);
+    sendJson(res, 200, { items });
   } catch (e) {
-    console.error("[understand] failed:", e?.message || e);
-    sendJson(res, 502, { error: "sort_failed", message: "I couldn't sort that just now." });
+    const detail = e?.message || String(e);
+    console.error("[understand] failed:", detail);
+    let friendly = e?.friendly;
+    if (!friendly) {
+      if (cfg.engine === "ollama")
+        friendly = "Can't reach your local AI. Make sure Ollama is running and the model is installed, then try again.";
+      else if (cfg.engine === "anthropic") friendly = "I couldn't sort that just now.";
+      else friendly = "Can't reach your local AI. In LM Studio, load your model and click Start Server, then try again.";
+    }
+    sendJson(res, 502, { error: "sort_failed", message: friendly });
   }
 }
 
@@ -309,7 +456,8 @@ const server = http.createServer(async (req, res) => {
     const pathname = new URL(req.url, `http://localhost:${PORT}`).pathname;
 
     if (req.method === "GET" && pathname === "/api/health") {
-      return sendJson(res, 200, { ok: true, hasKey: !!process.env.ANTHROPIC_API_KEY, dataFile: DATA_FILE });
+      const cfg = aiConfig();
+      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, dataFile: DATA_FILE });
     }
 
     if (pathname === "/api/data") {
@@ -363,8 +511,14 @@ server.listen(PORT, () => {
   const url = `http://localhost:${PORT}`;
   console.log(`\n  Your organiser is running:  ${url}`);
   console.log(`  Your data is saved to:      ${DATA_FILE}`);
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log("\n  (AI sorting is off — that's expected for now. You can add things by hand.)");
+  const aiCfg = aiConfig();
+  if (!aiCfg) {
+    console.log("\n  (AI sorting is off — add things by hand. See .env.example to switch it on.)");
+  } else if (aiCfg.engine === "anthropic") {
+    console.log("\n  AI sorting: Anthropic cloud.");
+  } else {
+    const keep = aiCfg.engine === "ollama" ? "keep Ollama running" : "keep your local AI running";
+    console.log(`\n  AI sorting: local at ${aiCfg.baseUrl} (${keep}).`);
   }
   console.log("\n  Keep this window open while you use the organiser. Close it to stop.\n");
   openBrowser(url);

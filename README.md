@@ -74,6 +74,40 @@ rewrite.)
 
 ---
 
+## Smart sorting (optional — local, private, free)
+
+By default you add things by hand. When you want it, switch on **smart
+sorting**: type one messy line like "tysday call dentist and bins tonight" and
+the app splits it into clean, dated items and drops them into the right zones.
+
+The AI runs **on your own computer** — nothing is sent to anyone, no account, no
+bill. You've already set this up (Ollama + the `qwen3:14b` model). To switch it
+on in the app:
+
+1. Make sure **Ollama** is running (it usually starts with Windows). Check by
+   opening http://localhost:11434 — it should say "Ollama is running".
+2. In this app's folder, copy `.env.example` to **`.env`** (it's already set to
+   Ollama + `qwen3:14b`).
+3. Restart the organiser (close the window, double-click **Start Organiser**
+   again). The button changes from **Add** to **Sort it** — you're live.
+
+If Ollama isn't running when you try to sort, your dump is saved under "Waiting
+to be sorted" so nothing is lost — sort it once Ollama is back.
+
+Behind the scenes the app follows three rules so the model behaves: it tells the
+model the current **date and time** every time (it has no clock), it demands a
+**fixed JSON shape** (not prose), and it **silences the model's think-aloud**.
+
+**Swappable by design:** the app just talks to a standard local "AI socket," so
+you can later point it at a different model or service by editing `.env` — no app
+changes. See `.env.example` for the alternatives (LM Studio / a cloud option).
+
+**Using it on another device:** the model thinks on this desktop's graphics
+card, so either install Ollama on each capable computer, or have other devices on
+your home wi-fi point at this desktop (set `AI_BASE_URL` to
+`http://YOUR-DESKTOP:11434` in that device's `.env`). Don't put the big model
+file in OneDrive — only the small app + data file belong there.
+
 ## What's here on purpose — and what's not yet
 
 **Working now:** add by hand, the check-back, calm **Today / Coming up /
@@ -82,10 +116,8 @@ trustworthy file storage with backups, and import/export.
 
 **Later, separate steps:**
 
-- **AI sorting** — type one messy line and have it split, spell-fixed, and
-  date-resolved automatically. It's already wired up but switched off until you
-  set it up (it's the next hill, kept separate on purpose). When you're ready,
-  this needs one optional package (`npm install`) and a key or local model.
+- **AI sorting is built in** — see **Smart sorting** above to switch it on. It
+  stays optional and off until you do.
 - Built-in cross-device sync, goal-breakdown, reminders, voice.
 
 ## For the curious: how it's built

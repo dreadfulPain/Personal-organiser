@@ -193,7 +193,8 @@ body {
   flex-wrap: wrap;
 }
 .cb-type,
-.cb-date {
+.cb-date,
+.cb-time {
   font: inherit;
   padding: 6px 8px;
   border: 1px solid var(--line);
@@ -472,6 +473,70 @@ body {
   gap: 10px;
   margin-top: 12px;
   flex-wrap: wrap;
+}
+
+/* today's timeline */
+.timeline-link {
+  margin: 0 0 4px;
+}
+.timeline-link a {
+  color: var(--accent-dark);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+  padding-bottom: 2px;
+}
+.timeline-link a:hover {
+  border-bottom-color: var(--accent);
+}
+.tl-item {
+  align-items: center;
+}
+.tl-time {
+  flex: none;
+  width: 76px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  font-variant-numeric: tabular-nums;
+}
+.tl-gap {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 6px 0;
+}
+.tl-section-title {
+  font-size: 1.05rem;
+  margin: 28px 0 12px;
+}
+.tl-settime-wrap,
+.tl-timeedit {
+  flex: none;
+  align-self: center;
+}
+.tl-timeedit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tl-settime {
+  border: none;
+  background: transparent;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+.tl-settime:hover {
+  color: var(--ink);
+}
+.tl-timeedit input {
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
 }
 
 @media (max-width: 480px) {

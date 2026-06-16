@@ -111,8 +111,9 @@ file in OneDrive — only the small app + data file belong there.
 ## What's here on purpose — and what's not yet
 
 **Working now:** add by hand, the check-back, calm **Today / Coming up /
-Someday** zones, tick-to-complete (done = gone, kept in **Looking back**),
-trustworthy file storage with backups, and import/export.
+Someday** zones, tick-to-complete (done = gone, kept in **Looking back**), a
+**Today timeline** (lay the day out by time, see the gaps, give floating tasks a
+time), trustworthy file storage with backups, and import/export.
 
 **Later, separate steps:**
 

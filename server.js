@@ -155,9 +155,10 @@ const SCHEMA = {
           title: { type: "string" },
           type: { type: "string", enum: ["task", "appointment", "reminder", "note"] },
           date: { type: "string" },
+          time: { type: "string" },
           when_text: { type: "string" },
         },
-        required: ["title", "type", "date", "when_text"],
+        required: ["title", "type", "date", "time", "when_text"],
         additionalProperties: false,
       },
     },
@@ -185,14 +186,19 @@ For each item resolve the timing into "date" and "when_text":
 - "when_text": the human time phrase as the user meant it ("Tuesday", "soon", "coming up", "next week"), or an empty string "" if there was none. Keep this even when you also set a date, so the user recognises their own words.
 - Do not invent dates the user did not imply. Vague timing ("soon", "next week", "coming up", "sometime") means date "" with the phrase kept in when_text.
 
+Also set "time":
+- "time": a 24-hour clock time "HH:MM" ONLY when a specific time is given or clearly implied ("3pm" -> "15:00", "at 9" -> "09:00", "half seven" -> "19:30").
+- Vague parts of the day ("tonight", "this morning", "this afternoon") are NOT specific times -> leave time "" and keep the phrase in when_text.
+- No time mentioned -> "".
+
 Return only the structured result.
 
 Example — if today is Sunday, 2026-06-07, and the user dumps:
-"tysday i gotta call the denist and also mums bday is comin up"
+"tysday i gotta call the denist at 3pm and also mums bday is comin up"
 you return:
 {"items":[
-  {"title":"Call dentist","type":"task","date":"2026-06-09","when_text":"Tuesday"},
-  {"title":"Mum's birthday","type":"appointment","date":"","when_text":"coming up"}
+  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","when_text":"Tuesday 3pm"},
+  {"title":"Mum's birthday","type":"appointment","date":"","time":"","when_text":"coming up"}
 ]}`;
 
 function weekdayName(iso) {

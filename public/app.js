@@ -26,6 +26,20 @@
     d.setDate(d.getDate() + n);
     return isoOf(d);
   }
+  function normaliseTime(t) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec((t || "").toString().trim());
+    if (!m) return "";
+    const h = Math.min(23, parseInt(m[1], 10));
+    const mm = Math.min(59, parseInt(m[2], 10));
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+  function fmtTime(t) {
+    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
+    if (!m) return "";
+    const d = new Date();
+    d.setHours(+m[1], +m[2], 0, 0);
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
 
   function escapeHtml(s) {
     return (s || "").replace(/[&<>"']/g, (c) => ({
@@ -102,6 +116,7 @@
       title: (it.title || "").toString().trim() || "Untitled",
       type,
       date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
+      time: normaliseTime(it.time),
       whenText: (it.when_text || "").toString().trim(),
     };
   }
@@ -114,7 +129,7 @@
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
-      pending = [{ title: text, type: "task", date: "", whenText: "" }];
+      pending = [{ title: text, type: "task", date: "", time: "", whenText: "" }];
       $("#dump").value = "";
       $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
       renderCheckback();
@@ -164,6 +179,7 @@
             ).join("")}
           </select>
           <input class="cb-date" type="date" value="${it.date}" aria-label="Date (optional)" />
+          <input class="cb-time" type="time" value="${it.time || ""}" aria-label="Time (optional)" />
           <button class="cb-remove" type="button" aria-label="Remove this">remove</button>
         </div>
         ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
@@ -171,6 +187,7 @@
       card.querySelector(".cb-title").addEventListener("input", (e) => (pending[i].title = e.target.value));
       card.querySelector(".cb-type").addEventListener("change", (e) => (pending[i].type = e.target.value));
       card.querySelector(".cb-date").addEventListener("change", (e) => (pending[i].date = e.target.value));
+      card.querySelector(".cb-time").addEventListener("change", (e) => (pending[i].time = e.target.value));
       card.querySelector(".cb-remove").addEventListener("click", () => {
         pending.splice(i, 1);
         renderCheckback();
@@ -194,6 +211,7 @@
         title,
         type: TYPES.includes(it.type) ? it.type : "task",
         date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
+        time: normaliseTime(it.time),
         whenText: it.whenText || "",
         done: false,
         createdAt: now,
@@ -226,7 +244,9 @@
     const row = document.createElement("div");
     row.className = "item";
     const overdue = it.date && it.date < todayISO();
-    const label = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
+    let label = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
+    const tlabel = fmtTime(it.time);
+    if (tlabel) label = label ? `${label} · ${tlabel}` : tlabel;
     row.innerHTML = `
       <button class="tick" aria-label="Mark done" title="Mark done"></button>
       <div class="item-main">

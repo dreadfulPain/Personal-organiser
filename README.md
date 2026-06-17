@@ -113,7 +113,10 @@ file in OneDrive — only the small app + data file belong there.
 **Working now:** add by hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**), a
 **Today timeline** (lay the day out by time, see the gaps, give floating tasks a
-time), trustworthy file storage with backups, and import/export.
+time), trustworthy file storage with backups, and import/export. The AI also
+flags each item's **importance** (you can change it — it's only a starting
+guess), **category tags**, and whether a date is a **deadline** — shown lightly
+in the zones.
 
 **Later, separate steps:**
 

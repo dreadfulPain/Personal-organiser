@@ -194,7 +194,9 @@ body {
 }
 .cb-type,
 .cb-date,
-.cb-time {
+.cb-time,
+.cb-importance,
+.cb-tags {
   font: inherit;
   padding: 6px 8px;
   border: 1px solid var(--line);
@@ -537,6 +539,59 @@ body {
   border-radius: 8px;
   background: #fff;
   color: var(--ink);
+}
+
+/* importance + tags + deadline */
+.imp-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.item.imp-low .item-title {
+  color: var(--ink-soft);
+}
+.when.due {
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.tag {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  background: #f0ebe2;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* second check-back row: importance / tags / deadline (lighter, secondary) */
+.cb-row2 {
+  align-items: flex-end;
+}
+.cb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cb-tags-field {
+  flex: 1;
+  min-width: 140px;
+}
+.cb-tags-field .cb-tags {
+  width: 100%;
+}
+.cb-lbl {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.cb-due {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
 }
 
 @media (max-width: 480px) {

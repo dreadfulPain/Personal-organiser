@@ -156,9 +156,12 @@ const SCHEMA = {
           type: { type: "string", enum: ["task", "appointment", "reminder", "note"] },
           date: { type: "string" },
           time: { type: "string" },
+          due: { type: "boolean" },
+          importance: { type: "string", enum: ["high", "normal", "low"] },
+          tags: { type: "array", items: { type: "string" } },
           when_text: { type: "string" },
         },
-        required: ["title", "type", "date", "time", "when_text"],
+        required: ["title", "type", "date", "time", "due", "importance", "tags", "when_text"],
         additionalProperties: false,
       },
     },
@@ -191,14 +194,21 @@ Also set "time":
 - Vague parts of the day ("tonight", "this morning", "this afternoon") are NOT specific times -> leave time "" and keep the phrase in when_text.
 - No time mentioned -> "".
 
+Also set "due", "importance" and "tags":
+- "due": true ONLY when the date is a real deadline — the thing must be done BY then ("by Friday", "due Monday", "before the 5th"). For a scheduled time or appointment ("on Friday", "at 3pm", "dentist Tuesday") or no date, "due" is false.
+- "importance": your best STARTING GUESS of how much this matters to the user — "high", "normal", or "low" — judged from their words (e.g. "really need to", "important", or a big consequence -> high; a routine errand -> low). When unsure use "normal". It is only a suggestion the user can change.
+- "tags": 0-3 short lower-case CATEGORY labels for the life-area or kind of thing (e.g. "work", "family", "health", "home", "money", "social", "admin", "fun"). Use whatever fits; you are not limited to that list.
+- CRUCIAL: a tag is a CATEGORY, never an importance level. Do NOT raise importance just because something is "work", nor lower it because it is "fun". Importance and category are judged separately.
+
 Return only the structured result.
 
 Example — if today is Sunday, 2026-06-07, and the user dumps:
-"tysday i gotta call the denist at 3pm and also mums bday is comin up"
+"tysday i gotta call the denist at 3pm and also mums bday is comin up and rly need to send the rent by friday"
 you return:
 {"items":[
-  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","when_text":"Tuesday 3pm"},
-  {"title":"Mum's birthday","type":"appointment","date":"","time":"","when_text":"coming up"}
+  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","due":false,"importance":"normal","tags":["health"],"when_text":"Tuesday 3pm"},
+  {"title":"Mum's birthday","type":"appointment","date":"","time":"","due":false,"importance":"normal","tags":["family"],"when_text":"coming up"},
+  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","due":true,"importance":"high","tags":["money","home"],"when_text":"by Friday"}
 ]}`;
 
 function weekdayName(iso) {

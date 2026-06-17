@@ -110,7 +110,8 @@
 
   function row(it, withTimeColumn) {
     const el = document.createElement("div");
-    el.className = "item tl-item";
+    const imp = ["high", "normal", "low"].includes(it.importance) ? it.importance : "normal";
+    el.className = "item tl-item imp-" + imp;
     const tick = document.createElement("button");
     tick.className = "tick";
     tick.setAttribute("aria-label", "Mark done");
@@ -127,9 +128,10 @@
 
     const main = document.createElement("div");
     main.className = "item-main";
+    const tags = Array.isArray(it.tags) ? it.tags : [];
     main.innerHTML = `
-      <div class="item-title">${escapeHtml(it.title)}</div>
-      <div class="item-meta"><span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span></div>`;
+      <div class="item-title">${imp === "high" ? '<span class="imp-dot" aria-label="Matters a lot" title="Matters a lot"></span>' : ""}${escapeHtml(it.title)}</div>
+      <div class="item-meta"><span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span>${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>`;
     el.appendChild(main);
 
     el.appendChild(timeControl(it));

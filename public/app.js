@@ -7,6 +7,7 @@
 
   const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
   const TYPES = ["task", "appointment", "reminder", "note"];
+  const IMPORTANCE = ["high", "normal", "low"];
 
   let items = []; // everything filed
   let waiting = []; // dumps saved while the AI sorter was unreachable
@@ -39,6 +40,13 @@
     const d = new Date();
     d.setHours(+m[1], +m[2], 0, 0);
     return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  function normaliseTags(t) {
+    if (!Array.isArray(t)) return [];
+    return t.map((x) => String(x).trim().toLowerCase()).filter(Boolean).slice(0, 4);
+  }
+  function importanceOf(it) {
+    return IMPORTANCE.includes(it.importance) ? it.importance : "normal";
   }
 
   function escapeHtml(s) {
@@ -117,6 +125,9 @@
       type,
       date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
       time: normaliseTime(it.time),
+      due: it.due === true,
+      importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
+      tags: normaliseTags(it.tags),
       whenText: (it.when_text || "").toString().trim(),
     };
   }
@@ -129,7 +140,7 @@
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
-      pending = [{ title: text, type: "task", date: "", time: "", whenText: "" }];
+      pending = [{ title: text, type: "task", date: "", time: "", due: false, importance: "normal", tags: [], whenText: "" }];
       $("#dump").value = "";
       $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
       renderCheckback();
@@ -182,12 +193,28 @@
           <input class="cb-time" type="time" value="${it.time || ""}" aria-label="Time (optional)" />
           <button class="cb-remove" type="button" aria-label="Remove this">remove</button>
         </div>
+        <div class="cb-row cb-row2">
+          <label class="cb-field"><span class="cb-lbl">Importance</span>
+            <select class="cb-importance" aria-label="Importance">
+              <option value="high" ${it.importance === "high" ? "selected" : ""}>Matters a lot</option>
+              <option value="normal" ${!it.importance || it.importance === "normal" ? "selected" : ""}>Normal</option>
+              <option value="low" ${it.importance === "low" ? "selected" : ""}>Minor</option>
+            </select>
+          </label>
+          <label class="cb-field cb-tags-field"><span class="cb-lbl">Tags</span>
+            <input class="cb-tags" type="text" value="${escapeHtml((it.tags || []).join(", "))}" placeholder="e.g. work, family" aria-label="Tags (categories)" />
+          </label>
+          <label class="cb-due"><input class="cb-duebox" type="checkbox" ${it.due ? "checked" : ""} /> deadline</label>
+        </div>
         ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
       `;
       card.querySelector(".cb-title").addEventListener("input", (e) => (pending[i].title = e.target.value));
       card.querySelector(".cb-type").addEventListener("change", (e) => (pending[i].type = e.target.value));
       card.querySelector(".cb-date").addEventListener("change", (e) => (pending[i].date = e.target.value));
       card.querySelector(".cb-time").addEventListener("change", (e) => (pending[i].time = e.target.value));
+      card.querySelector(".cb-importance").addEventListener("change", (e) => (pending[i].importance = e.target.value));
+      card.querySelector(".cb-tags").addEventListener("input", (e) => (pending[i].tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4)));
+      card.querySelector(".cb-duebox").addEventListener("change", (e) => (pending[i].due = e.target.checked));
       card.querySelector(".cb-remove").addEventListener("click", () => {
         pending.splice(i, 1);
         renderCheckback();
@@ -212,6 +239,9 @@
         type: TYPES.includes(it.type) ? it.type : "task",
         date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
         time: normaliseTime(it.time),
+        due: it.due === true,
+        importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
+        tags: normaliseTags(it.tags),
         whenText: it.whenText || "",
         done: false,
         createdAt: now,
@@ -242,18 +272,22 @@
 
   function itemRow(it) {
     const row = document.createElement("div");
-    row.className = "item";
+    const imp = importanceOf(it);
+    row.className = `item imp-${imp}`;
     const overdue = it.date && it.date < todayISO();
     let label = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
     const tlabel = fmtTime(it.time);
     if (tlabel) label = label ? `${label} · ${tlabel}` : tlabel;
+    const showDue = it.due && it.date;
+    const tags = Array.isArray(it.tags) ? it.tags : [];
     row.innerHTML = `
       <button class="tick" aria-label="Mark done" title="Mark done"></button>
       <div class="item-main">
-        <div class="item-title">${escapeHtml(it.title)}</div>
+        <div class="item-title">${imp === "high" ? '<span class="imp-dot" aria-label="Matters a lot" title="Matters a lot"></span>' : ""}${escapeHtml(it.title)}</div>
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
-          ${label ? `<span class="when ${overdue ? "overdue" : ""}">${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
+          ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
+          ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
         </div>
       </div>`;
     row.querySelector(".tick").addEventListener("click", () => complete(it.id));

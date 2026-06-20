@@ -8,6 +8,7 @@
   const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
   const TYPES = ["task", "appointment", "reminder", "note"];
   const IMPORTANCE = ["high", "normal", "low"];
+  const SHORTLIST_CAP = 5; // "what matters today": keep it short — change here
 
   let items = []; // everything filed
   let waiting = []; // dumps saved while the AI sorter was unreachable
@@ -327,6 +328,69 @@
     $("#todayCount").textContent = groups.today.length ? groups.today.length : "";
     $("#comingCount").textContent = groups.coming.length ? groups.coming.length : "";
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
+
+    renderShortlist();
+  }
+
+  // ---------- "what matters today" shortlist ----------
+  // A read-only highlight computed from the stored signals. No AI, instant,
+  // offline. It never changes, reorders, or completes the stored items — the
+  // full zones below are the source of truth and one glance away.
+  function shortlistEligible(it) {
+    const t = todayISO();
+    const dueNow = it.date && it.date <= t;
+    if (it.deadlineType === "hard" && dueNow) return true; // hard deadline, can't wait
+    if (importanceOf(it) === "high") return true; // you said it matters
+    if (it.date) return true; // dated → can fill a slot by nearest date
+    return false; // floaty and not important → not a "today" thing
+  }
+  function shortlistRank(it) {
+    const t = todayISO();
+    const dueNow = it.date && it.date <= t;
+    if (it.deadlineType === "hard" && dueNow) return 0; // always first
+    if (importanceOf(it) === "high") return 1; // then importance (high first)
+    if (dueNow) return 2; // then anything else due today/overdue
+    return 3; // then upcoming, by nearest date
+  }
+  function shortlistReason(it) {
+    const t = todayISO();
+    if (it.date && it.date < t) return "overdue";
+    if (it.date && it.date === t) return "due today";
+    if (importanceOf(it) === "high") return "matters a lot";
+    if (it.date) return friendlyDate(it.date);
+    return "";
+  }
+  function renderShortlist() {
+    const listEl = $("#shortlistItems");
+    const msgEl = $("#shortlistMsg");
+    if (!listEl) return;
+    // filter + sort work on a fresh array — the stored items are never touched
+    const eligible = items.filter((i) => !i.done && shortlistEligible(i));
+    eligible.sort(
+      (a, b) =>
+        shortlistRank(a) - shortlistRank(b) ||
+        (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99")
+    );
+    const picks = eligible.slice(0, SHORTLIST_CAP);
+
+    listEl.innerHTML = "";
+    if (!picks.length) {
+      msgEl.textContent = "";
+      listEl.innerHTML = `<p class="empty">Nothing pressing today. Enjoy the quiet.</p>`;
+      return;
+    }
+    // "name the load, not the person": gentle when there's more than fits
+    msgEl.textContent =
+      eligible.length > SHORTLIST_CAP ? "Today's looking full — here are the few that matter most." : "";
+    picks.forEach((it) => {
+      const reason = shortlistReason(it);
+      const row = document.createElement("div");
+      row.className = "sl-item";
+      row.innerHTML = `
+        <span class="sl-title">${escapeHtml(it.title)}</span>
+        ${reason ? `<span class="sl-reason">${escapeHtml(reason)}</span>` : ""}`;
+      listEl.appendChild(row);
+    });
   }
 
   // done = gone from the active view, kept in the mirror

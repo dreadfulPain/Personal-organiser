@@ -116,7 +116,9 @@ Someday** zones, tick-to-complete (done = gone, kept in **Looking back**), a
 time), trustworthy file storage with backups, and import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
 guess), **category tags**, and whether a date is a **deadline** — shown lightly
-in the zones.
+in the zones. At the top, a **What matters today** shortlist surfaces a few
+must-dos and important items (each with a one-word reason) — it only *suggests*,
+nothing moves on its own.
 
 **Later, separate steps:**
 

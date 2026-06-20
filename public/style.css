@@ -587,6 +587,56 @@ body {
   font-size: 0.72rem;
   color: var(--ink-soft);
 }
+/* "what matters today" shortlist */
+.shortlist {
+  margin: 0 0 30px;
+  background: var(--accent-soft);
+  border: 1px solid #d4e3dc;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.shortlist h2 {
+  font-size: 1.1rem;
+  margin: 0 0 4px;
+}
+.sl-msg {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+.sl-msg:empty {
+  display: none;
+}
+.sl-list {
+  display: grid;
+  gap: 8px;
+}
+.sl-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.sl-title {
+  font-weight: 600;
+}
+.sl-reason {
+  flex: none;
+  font-size: 0.78rem;
+  color: var(--accent-dark);
+  background: #fff;
+  border: 1px solid #d4e3dc;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.shortlist .empty {
+  margin: 2px 0;
+}
+
 @media (max-width: 480px) {
   body {
     font-size: 17px;

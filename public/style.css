@@ -196,6 +196,7 @@ body {
 .cb-date,
 .cb-time,
 .cb-importance,
+.cb-deadline,
 .cb-tags {
   font: inherit;
   padding: 6px 8px;
@@ -542,14 +543,14 @@ body {
 }
 
 /* importance + tags + deadline */
-.imp-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-right: 8px;
-  vertical-align: middle;
+.imp-word {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+.imp-word.imp-low {
+  font-weight: 400;
+  color: var(--ink-soft);
 }
 .item.imp-low .item-title {
   color: var(--ink-soft);
@@ -586,14 +587,6 @@ body {
   font-size: 0.72rem;
   color: var(--ink-soft);
 }
-.cb-due {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-}
-
 @media (max-width: 480px) {
   body {
     font-size: 17px;

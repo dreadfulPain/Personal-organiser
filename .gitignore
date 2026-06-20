@@ -5,3 +5,6 @@ node_modules/
 
 # your own saved data — never committed to the repo
 data/
+
+# design tracker is kept by you (uploaded each session), not committed here
+Organiser_App_Tracker.md

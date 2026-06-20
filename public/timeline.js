@@ -129,9 +129,10 @@
     const main = document.createElement("div");
     main.className = "item-main";
     const tags = Array.isArray(it.tags) ? it.tags : [];
+    const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
     main.innerHTML = `
-      <div class="item-title">${imp === "high" ? '<span class="imp-dot" aria-label="Matters a lot" title="Matters a lot"></span>' : ""}${escapeHtml(it.title)}</div>
-      <div class="item-meta"><span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span>${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>`;
+      <div class="item-title">${escapeHtml(it.title)}</div>
+      <div class="item-meta"><span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span>${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>`;
     el.appendChild(main);
 
     el.appendChild(timeControl(it));

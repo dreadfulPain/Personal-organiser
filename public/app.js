@@ -125,7 +125,7 @@
       type,
       date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
       time: normaliseTime(it.time),
-      due: it.due === true,
+      deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
       importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
       tags: normaliseTags(it.tags),
       whenText: (it.when_text || "").toString().trim(),
@@ -140,7 +140,7 @@
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
-      pending = [{ title: text, type: "task", date: "", time: "", due: false, importance: "normal", tags: [], whenText: "" }];
+      pending = [{ title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", tags: [], whenText: "" }];
       $("#dump").value = "";
       $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
       renderCheckback();
@@ -204,7 +204,12 @@
           <label class="cb-field cb-tags-field"><span class="cb-lbl">Tags</span>
             <input class="cb-tags" type="text" value="${escapeHtml((it.tags || []).join(", "))}" placeholder="e.g. work, family" aria-label="Tags (categories)" />
           </label>
-          <label class="cb-due"><input class="cb-duebox" type="checkbox" ${it.due ? "checked" : ""} /> deadline</label>
+          <label class="cb-field"><span class="cb-lbl">Deadline</span>
+            <select class="cb-deadline" aria-label="Deadline type">
+              <option value="soft" ${it.deadlineType !== "hard" ? "selected" : ""}>Soft / flexible</option>
+              <option value="hard" ${it.deadlineType === "hard" ? "selected" : ""}>Hard (real)</option>
+            </select>
+          </label>
         </div>
         ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
       `;
@@ -214,7 +219,7 @@
       card.querySelector(".cb-time").addEventListener("change", (e) => (pending[i].time = e.target.value));
       card.querySelector(".cb-importance").addEventListener("change", (e) => (pending[i].importance = e.target.value));
       card.querySelector(".cb-tags").addEventListener("input", (e) => (pending[i].tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4)));
-      card.querySelector(".cb-duebox").addEventListener("change", (e) => (pending[i].due = e.target.checked));
+      card.querySelector(".cb-deadline").addEventListener("change", (e) => (pending[i].deadlineType = e.target.value));
       card.querySelector(".cb-remove").addEventListener("click", () => {
         pending.splice(i, 1);
         renderCheckback();
@@ -239,7 +244,7 @@
         type: TYPES.includes(it.type) ? it.type : "task",
         date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
         time: normaliseTime(it.time),
-        due: it.due === true,
+        deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
         importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
         tags: normaliseTags(it.tags),
         whenText: it.whenText || "",
@@ -278,14 +283,16 @@
     let label = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
     const tlabel = fmtTime(it.time);
     if (tlabel) label = label ? `${label} · ${tlabel}` : tlabel;
-    const showDue = it.due && it.date;
+    const showDue = it.deadlineType === "hard" && it.date;
     const tags = Array.isArray(it.tags) ? it.tags : [];
+    const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
     row.innerHTML = `
       <button class="tick" aria-label="Mark done" title="Mark done"></button>
       <div class="item-main">
-        <div class="item-title">${imp === "high" ? '<span class="imp-dot" aria-label="Matters a lot" title="Matters a lot"></span>' : ""}${escapeHtml(it.title)}</div>
+        <div class="item-title">${escapeHtml(it.title)}</div>
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
+          ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
           ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
         </div>

@@ -501,7 +501,7 @@
       const data = await OrganiserStore.importFile(file);
       items = data.items || [];
       waiting = data.waiting || [];
-      persist();
+      OrganiserStore.save({ items, waiting, goals: data.goals || [] });
       renderZones();
       renderWaiting();
       setStatus("Restored from your backup. ✓");
@@ -532,7 +532,7 @@
       setStatus("");
     });
     $("#backupBtn").addEventListener("click", () => {
-      OrganiserStore.exportNow({ items, waiting });
+      OrganiserStore.exportNow();
       setStatus("Saved a backup copy to your Downloads.");
     });
     $("#restoreBtn").addEventListener("click", () => $("#restoreInput").click());

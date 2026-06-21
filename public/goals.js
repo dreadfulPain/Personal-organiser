@@ -1,0 +1,318 @@
+// Goals & milestones (slice 1: the motivational core).
+//
+// A goal you name in a sentence → milestones → a bar that fills toward the
+// NEXT milestone (never the whole goal). Tick a milestone's steps; when they're
+// all done the milestone auto-completes and a small, upside-only celebration
+// fires (with a one-tap "not done yet" undo). Pure offline; no AI yet.
+//
+// Plain script (works under file://). Reads/writes goals through OrganiserStore;
+// it only saves { goals } so it can never touch your tasks.
+
+(() => {
+  "use strict";
+
+  let goals = [];
+  let celebrateTimer = null;
+
+  const $ = (sel) => document.querySelector(sel);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const now = () => new Date().toISOString();
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  function persist() {
+    OrganiserStore.save({ goals });
+  }
+
+  // ----- model helpers -----
+  function currentIndex(goal) {
+    return goal.milestones.findIndex((m) => !m.done);
+  }
+  function progress(ms) {
+    const total = ms.steps.length;
+    const done = ms.steps.filter((s) => s.done).length;
+    return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+  }
+  // Returns "milestone" | "goal" | null if a completion just happened.
+  function recompute(goal, ms) {
+    const allDone = ms.steps.length > 0 && ms.steps.every((s) => s.done);
+    let ev = null;
+    if (allDone && !ms.done) {
+      ms.done = true;
+      ms.completedAt = now();
+      ev = "milestone";
+    } else if (!allDone && ms.done) {
+      ms.done = false;
+      ms.completedAt = null;
+    }
+    if (ev === "milestone" && goal.milestones.length && goal.milestones.every((m) => m.done)) ev = "goal";
+    return ev;
+  }
+
+  // ----- mutations -----
+  function addGoal(title) {
+    title = (title || "").trim();
+    if (!title) return;
+    goals.unshift({ id: uid(), title, createdAt: now(), milestones: [] });
+    persist();
+    render();
+  }
+  function deleteGoal(id) {
+    if (!confirm("Delete this whole goal and its milestones?")) return;
+    goals = goals.filter((g) => g.id !== id);
+    persist();
+    render();
+  }
+  function addMilestone(goal, title) {
+    title = (title || "").trim();
+    if (!title) return;
+    goal.milestones.push({ id: uid(), title, done: false, completedAt: null, steps: [] });
+    persist();
+    render();
+  }
+  function deleteMilestone(goal, mId) {
+    goal.milestones = goal.milestones.filter((m) => m.id !== mId);
+    persist();
+    render();
+  }
+  function addStep(goal, ms, title) {
+    title = (title || "").trim();
+    if (!title) return;
+    ms.steps.push({ id: uid(), title, done: false, completedAt: null });
+    recompute(goal, ms); // adding an undone step can reopen a milestone
+    persist();
+    render();
+  }
+  function deleteStep(goal, ms, stepId) {
+    ms.steps = ms.steps.filter((s) => s.id !== stepId);
+    const ev = recompute(goal, ms); // deleting the last undone step can complete it
+    persist();
+    render();
+    if (ev) celebrate(ev, ev === "goal" ? goal.title : ms.title, { goalId: goal.id, msId: ms.id });
+  }
+  function toggleStep(goal, ms, step) {
+    step.done = !step.done;
+    step.completedAt = step.done ? now() : null;
+    const ev = recompute(goal, ms);
+    persist();
+    render();
+    if (ev) celebrate(ev, ev === "goal" ? goal.title : ms.title, { goalId: goal.id, msId: ms.id, stepId: step.id });
+  }
+  function setTitle(obj, value) {
+    obj.title = value;
+    persist(); // no re-render: don't yank focus mid-type
+  }
+
+  // ----- celebration (visual, upside-only, scaled, with undo) -----
+  function celebrate(kind, title, ref) {
+    const el = $("#celebrate");
+    el.className = "celebrate " + kind;
+    el.hidden = false;
+    const msg =
+      kind === "goal"
+        ? `Goal complete — ${escapeHtml(title)}! Every milestone done. 🎉`
+        : `Milestone done — ${escapeHtml(title)} 🎉`;
+    el.innerHTML = `<span class="celebrate-msg">${msg}</span>
+      <button class="celebrate-undo" type="button">not done yet</button>`;
+    el.querySelector(".celebrate-undo").addEventListener("click", () => undoCompletion(ref));
+    clearTimeout(celebrateTimer);
+    celebrateTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 6000);
+  }
+  function undoCompletion(ref) {
+    const goal = goals.find((g) => g.id === ref.goalId);
+    if (!goal) return;
+    const ms = goal.milestones.find((m) => m.id === ref.msId);
+    if (!ms) return;
+    // un-tick the step that triggered it (or the most recently completed one)
+    let step = ref.stepId && ms.steps.find((s) => s.id === ref.stepId);
+    if (!step) {
+      step = ms.steps.filter((s) => s.done).sort((a, b) => (b.completedAt || "").localeCompare(a.completedAt || ""))[0];
+    }
+    if (step) {
+      step.done = false;
+      step.completedAt = null;
+    }
+    if (ms.done) {
+      ms.done = false;
+      ms.completedAt = null;
+    }
+    $("#celebrate").hidden = true;
+    persist();
+    render();
+  }
+
+  // ----- render -----
+  function stepRow(goal, ms, step) {
+    const row = document.createElement("div");
+    row.className = "step";
+    const tick = document.createElement("button");
+    tick.className = "tick";
+    tick.setAttribute("aria-label", "Mark step done");
+    tick.title = "Mark done";
+    tick.addEventListener("click", () => toggleStep(goal, ms, step));
+    const input = document.createElement("input");
+    input.className = "step-title";
+    input.value = step.title;
+    input.setAttribute("aria-label", "Step");
+    input.addEventListener("change", (e) => setTitle(step, e.target.value));
+    const del = document.createElement("button");
+    del.className = "x-del";
+    del.type = "button";
+    del.title = "Remove step";
+    del.textContent = "×";
+    del.addEventListener("click", () => deleteStep(goal, ms, step.id));
+    row.append(tick, input, del);
+    return row;
+  }
+
+  function addLine(placeholder, onAdd) {
+    const wrap = document.createElement("div");
+    wrap.className = "add-line";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = placeholder;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        onAdd(input.value);
+        input.value = "";
+      }
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function titleInput(obj, className, aria) {
+    const input = document.createElement("input");
+    input.className = className;
+    input.value = obj.title;
+    input.setAttribute("aria-label", aria);
+    input.addEventListener("change", (e) => setTitle(obj, e.target.value));
+    return input;
+  }
+
+  function renderGoal(goal) {
+    const card = document.createElement("section");
+    card.className = "goal-card";
+
+    const head = document.createElement("div");
+    head.className = "g-head";
+    head.appendChild(titleInput(goal, "g-title", "Goal name"));
+    const gdel = document.createElement("button");
+    gdel.className = "x-del";
+    gdel.type = "button";
+    gdel.title = "Delete goal";
+    gdel.textContent = "×";
+    gdel.addEventListener("click", () => deleteGoal(goal.id));
+    head.appendChild(gdel);
+    card.appendChild(head);
+
+    const ci = currentIndex(goal);
+
+    if (goal.milestones.length === 0) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "Add the first milestone — a small finish you'd be glad to reach.";
+      card.appendChild(p);
+    } else if (ci === -1) {
+      const done = document.createElement("p");
+      done.className = "goal-done";
+      done.textContent = "✓ Goal complete — every milestone done.";
+      card.appendChild(done);
+    }
+
+    goal.milestones.forEach((ms, idx) => {
+      if (ms.done) {
+        const row = document.createElement("div");
+        row.className = "ms done";
+        row.innerHTML = `<span class="ms-mark">✓</span><span class="ms-done-title">${escapeHtml(ms.title)}</span>`;
+        card.appendChild(row);
+        return;
+      }
+      if (idx === ci) {
+        // the current milestone — the focus: title, bar, its steps, add-step
+        const block = document.createElement("div");
+        block.className = "ms current";
+        const mhead = document.createElement("div");
+        mhead.className = "ms-head";
+        mhead.innerHTML = `<span class="ms-mark">●</span>`;
+        mhead.appendChild(titleInput(ms, "ms-title", "Milestone name"));
+        const mdel = document.createElement("button");
+        mdel.className = "x-del";
+        mdel.type = "button";
+        mdel.title = "Remove milestone";
+        mdel.textContent = "×";
+        mdel.addEventListener("click", () => deleteMilestone(goal, ms.id));
+        mhead.appendChild(mdel);
+        block.appendChild(mhead);
+
+        const pr = progress(ms);
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.innerHTML = `<div class="bar-fill" style="width:${pr.pct}%"></div>`;
+        block.appendChild(bar);
+        const label = document.createElement("div");
+        label.className = "bar-label";
+        label.textContent = pr.total ? `${pr.done} of ${pr.total} steps` : "no steps yet";
+        block.appendChild(label);
+
+        const steps = document.createElement("div");
+        steps.className = "steps";
+        ms.steps.filter((s) => !s.done).forEach((s) => steps.appendChild(stepRow(goal, ms, s)));
+        block.appendChild(steps);
+        block.appendChild(addLine("+ add a step", (v) => addStep(goal, ms, v)));
+        card.appendChild(block);
+        return;
+      }
+      // upcoming milestone — just a queued title
+      const row = document.createElement("div");
+      row.className = "ms upcoming";
+      row.innerHTML = `<span class="ms-mark">○</span>`;
+      row.appendChild(titleInput(ms, "ms-title", "Milestone name"));
+      const mdel = document.createElement("button");
+      mdel.className = "x-del";
+      mdel.type = "button";
+      mdel.title = "Remove milestone";
+      mdel.textContent = "×";
+      mdel.addEventListener("click", () => deleteMilestone(goal, ms.id));
+      row.appendChild(mdel);
+      card.appendChild(row);
+    });
+
+    card.appendChild(addLine("+ add a milestone", (v) => addMilestone(goal, v)));
+    return card;
+  }
+
+  function render() {
+    const list = $("#goalsList");
+    list.innerHTML = "";
+    if (!goals.length) {
+      list.innerHTML = `<p class="empty">No goals yet. Name one above — just a few words.</p>`;
+      return;
+    }
+    goals.forEach((g) => list.appendChild(renderGoal(g)));
+  }
+
+  async function init() {
+    const data = await OrganiserStore.load();
+    goals = Array.isArray(data.goals) ? data.goals : [];
+    $("#goalAddBtn").addEventListener("click", () => {
+      const input = $("#goalInput");
+      addGoal(input.value);
+      input.value = "";
+    });
+    $("#goalInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        addGoal(e.target.value);
+        e.target.value = "";
+      }
+    });
+    render();
+  }
+
+  init();
+})();

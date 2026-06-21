@@ -76,7 +76,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -84,6 +84,7 @@ function normaliseDoc(d) {
     version: 1,
     items: Array.isArray(d.items) ? d.items : [],
     waiting: Array.isArray(d.waiting) ? d.waiting : [],
+    goals: Array.isArray(d.goals) ? d.goals : [],
     savedAt: d.savedAt || null,
   };
 }
@@ -95,11 +96,23 @@ function todayStamp() {
 
 function writeData(input) {
   ensureDirs();
+  // Preserve goals if a save didn't include them — never let one page wipe the
+  // half it doesn't own.
+  let goals;
+  if (Array.isArray(input.goals)) goals = input.goals;
+  else {
+    try {
+      goals = readData().goals;
+    } catch {
+      goals = [];
+    }
+  }
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
     items: Array.isArray(input.items) ? input.items : [],
     waiting: Array.isArray(input.waiting) ? input.waiting : [],
+    goals,
   };
   const json = JSON.stringify(doc, null, 2);
 

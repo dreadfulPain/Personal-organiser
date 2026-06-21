@@ -118,7 +118,9 @@ flags each item's **importance** (you can change it — it's only a starting
 guess), **category tags**, and whether a date is a **deadline** — shown lightly
 in the zones. At the top, a **What matters today** shortlist surfaces a few
 must-dos and important items (each with a one-word reason) — it only *suggests*,
-nothing moves on its own.
+nothing moves on its own. A separate **Goals & milestones** page lets you carve a
+big goal into small milestones, fill a bar toward the *next* one, and get a small
+celebration when it's done.
 
 **Later, separate steps:**
 

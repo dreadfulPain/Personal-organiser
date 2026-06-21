@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Goals &amp; milestones</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="backlink"><a href="index.html">← Back to my organiser</a></p>
+      <header class="top">
+        <h1>Goals &amp; milestones</h1>
+        <p class="sub">Carve a big thing into small finishes. Each goal fills a bar toward its
+          <em>next</em> milestone — short, reachable, and worth a little celebration.</p>
+      </header>
+
+      <div id="celebrate" class="celebrate" hidden></div>
+
+      <section class="goal-add">
+        <input id="goalInput" type="text" placeholder="Name a goal in a few words (e.g. get a new teaching job)" aria-label="New goal" />
+        <button id="goalAddBtn" class="btn">New goal</button>
+      </section>
+
+      <div id="goalsList"></div>
+    </main>
+
+    <script src="store.js" defer></script>
+    <script src="goals.js" defer></script>
+  </body>
+</html>

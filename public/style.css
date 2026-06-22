@@ -698,6 +698,80 @@ body {
   margin: 2px 0;
 }
 
+/* the mirror — what you've finished, by area (describes, never judges) */
+.mirror {
+  margin: 0 0 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.mirror h2 {
+  font-size: 1.1rem;
+  margin: 0 0 4px;
+}
+.mr-sub {
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.mr-ranges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.mr-range {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.mr-range:hover {
+  color: var(--ink);
+}
+.mr-range.active {
+  background: var(--accent-soft);
+  border-color: #d4e3dc;
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.mr-intro {
+  margin: 0 0 12px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.mr-row {
+  display: grid;
+  grid-template-columns: 116px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.mr-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mr-bar {
+  margin: 0;
+}
+.mr-count {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.lb-list-title {
+  font-size: 1.05rem;
+  margin: 24px 0 12px;
+}
+
 /* past a deadline — a calm one-decision recovery, never a red graveyard */
 .overdue {
   margin: 0 0 30px;

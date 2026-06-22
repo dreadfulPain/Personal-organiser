@@ -129,7 +129,10 @@ change or clear in the check-back. Your active goals also show on the home page
 with a small progress bar, and if a few loose tasks clearly belong together the
 app may gently offer to **make them a goal**. If a hard deadline slips by, it
 surfaces **once, calmly** with a simple choice — give it a new date, make it soft,
-or mark it handled — then it clears (never a red pile of guilt).
+or mark it handled — then it clears (never a red pile of guilt). **Looking back**
+also shows a quiet **mirror** — what you've finished, broken down by area
+(category) over a stretch you choose — so you can *see* where your effort's been
+going. It describes, never scores; it's for your own steering, no one else's.
 
 **Later, separate steps:**
 

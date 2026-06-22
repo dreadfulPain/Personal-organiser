@@ -13,6 +13,21 @@
         <h1>Looking back</h1>
         <p class="sub">A quiet record of things you've finished — a mirror, not a scoreboard.</p>
       </header>
+
+      <!-- THE MIRROR: where your effort's been going, by area. Describes, never
+           judges — no targets, no score, shown only here when you choose to look. -->
+      <section id="mirror" class="mirror" hidden>
+        <h2>What you've finished, by area</h2>
+        <p class="mr-sub">A picture of where your effort's been going — just so you can see it. Not a score, not a target.</p>
+        <div class="mr-ranges">
+          <button class="mr-range" type="button" data-range="month">Past month</button>
+          <button class="mr-range" type="button" data-range="season">Past few months</button>
+          <button class="mr-range" type="button" data-range="all">All time</button>
+        </div>
+        <div id="mirrorBody" class="mr-body"></div>
+      </section>
+
+      <h2 id="finishedTitle" class="lb-list-title" hidden>Finished things</h2>
       <div id="lookbackList" class="items"></div>
     </main>
 

@@ -117,8 +117,9 @@ things in order with the gaps between them, an "anytime today" group, and you ca
 give any task a time on the spot. Trustworthy file storage with backups, and
 import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
-guess), **category tags**, and whether a date is a **deadline** — shown lightly
-in the zones. At the top, a **What matters today** shortlist surfaces a few
+guess), a rough **effort** (quick / draining — handy for picking light things on a
+low-energy day), **category tags**, and whether a date is a **deadline** — shown
+lightly in the zones. At the top, a **What matters today** shortlist surfaces a few
 must-dos and important items (each with a one-word reason) — it only *suggests*,
 nothing moves on its own. A separate **Goals & milestones** page lets you name a
 big goal in a sentence and — with smart sorting on — the app **suggests small

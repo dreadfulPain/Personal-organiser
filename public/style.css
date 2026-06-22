@@ -597,6 +597,18 @@ body {
   font-weight: 400;
   color: var(--ink-soft);
 }
+/* effort: how draining, shown lightly (medium says nothing) */
+.effort-word {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.effort-word.eff-quick {
+  color: var(--accent-dark);
+}
+.effort-word.eff-draining {
+  color: #876734;
+}
 .item.imp-low .item-title {
   color: var(--ink-soft);
 }

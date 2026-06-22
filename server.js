@@ -171,11 +171,12 @@ const SCHEMA = {
           time: { type: "string" },
           deadlineType: { type: "string", enum: ["hard", "soft"] },
           importance: { type: "string", enum: ["high", "normal", "low"] },
+          effort: { type: "string", enum: ["quick", "medium", "draining"] },
           tags: { type: "array", items: { type: "string" } },
           when_text: { type: "string" },
           goal: { type: "string" },
         },
-        required: ["title", "type", "date", "time", "deadlineType", "importance", "tags", "when_text", "goal"],
+        required: ["title", "type", "date", "time", "deadlineType", "importance", "effort", "tags", "when_text", "goal"],
         additionalProperties: false,
       },
     },
@@ -242,9 +243,10 @@ Also set "time":
 - Vague parts of the day ("tonight", "this morning", "this afternoon") are NOT specific times -> leave time "" and keep the phrase in when_text.
 - No time mentioned -> "".
 
-Also set "deadlineType", "importance" and "tags":
+Also set "deadlineType", "importance", "effort" and "tags":
 - "deadlineType": "hard" when the date is a REAL deadline with consequences ("by Friday", "due Monday", "before the 5th"). "soft" for a preferred or vague date, a scheduled time or appointment ("on Friday", "at 3pm", "dentist Tuesday"), or no date at all. When unsure use "soft".
 - "importance": your best STARTING GUESS of how much this matters to the user — "high", "normal", or "low" — judged from their words (e.g. "really need to", "important", or a big consequence -> high; a routine errand -> low). When unsure use "normal". It is only a suggestion the user can change.
+- "effort": your best STARTING GUESS of how much energy the task takes — "quick" (a couple of minutes, light: a short email, a quick call), "medium" (normal), or "draining" (long or heavy: a big report, a hard conversation). Judge it from the task SIZE; you cannot know what personally tires the user, so this is only a starting guess they can change. When unsure use "medium".
 - "tags": 0-3 short lower-case CATEGORY labels for the life-area or kind of thing (e.g. "work", "family", "health", "home", "money", "social", "admin", "fun"). Use whatever fits; you are not limited to that list.
 - CRUCIAL: a tag is a CATEGORY, never an importance level. Do NOT raise importance just because something is "work", nor lower it because it is "fun". Importance and category are judged separately.
 
@@ -259,9 +261,9 @@ Example — if today is Sunday, 2026-06-07, and the user dumps:
 "tysday i gotta call the denist at 3pm and also mums bday is comin up and rly need to send the rent by friday"
 you return:
 {"items":[
-  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","tags":["health"],"when_text":"Tuesday 3pm","goal":""},
-  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","tags":["family"],"when_text":"coming up","goal":""},
-  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","tags":["money","home"],"when_text":"by Friday","goal":""}
+  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday 3pm","goal":""},
+  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","effort":"medium","tags":["family"],"when_text":"coming up","goal":""},
+  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","effort":"quick","tags":["money","home"],"when_text":"by Friday","goal":""}
 ]}`;
 
 // Goal breakdown prompt (§9 slice 2). Carves a goal into SMALL, soon-reachable

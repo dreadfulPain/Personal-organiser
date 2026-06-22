@@ -8,6 +8,7 @@
   const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
   const TYPES = ["task", "appointment", "reminder", "note"];
   const IMPORTANCE = ["high", "normal", "low"];
+  const EFFORT = ["quick", "medium", "draining"]; // §s21: how draining, not how important
   const SHORTLIST_CAP = 5; // "what matters today": keep it short — change here
 
   let items = []; // everything filed
@@ -52,6 +53,9 @@
   }
   function importanceOf(it) {
     return IMPORTANCE.includes(it.importance) ? it.importance : "normal";
+  }
+  function effortOf(it) {
+    return EFFORT.includes(it.effort) ? it.effort : "medium";
   }
   // Resolve a stored goalId to its current title. Returns "" if the goal was
   // deleted or never linked — so a stale link just shows nothing, never breaks.
@@ -141,6 +145,7 @@
       time: normaliseTime(it.time),
       deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
       importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
+      effort: EFFORT.includes(it.effort) ? it.effort : "medium",
       tags: normaliseTags(it.tags),
       whenText: (it.when_text || "").toString().trim(),
       // Only keep a link the AI was confident about AND that still exists.
@@ -208,6 +213,9 @@
     const imp = importanceOf(it);
     if (imp === "high") parts.push("matters a lot");
     else if (imp === "low") parts.push("minor");
+    const eff = effortOf(it);
+    if (eff === "quick") parts.push("quick");
+    else if (eff === "draining") parts.push("draining");
     const tags = Array.isArray(it.tags) ? it.tags : [];
     if (tags.length) parts.push(tags.join(", "));
     const gTitle = goalTitleById(it.goalId);
@@ -245,6 +253,13 @@
                 <option value="high" ${it.importance === "high" ? "selected" : ""}>Matters a lot</option>
                 <option value="normal" ${!it.importance || it.importance === "normal" ? "selected" : ""}>Normal</option>
                 <option value="low" ${it.importance === "low" ? "selected" : ""}>Minor</option>
+              </select>
+            </label>
+            <label class="cb-field"><span class="cb-lbl">Effort</span>
+              <select class="cb-effort" aria-label="Effort">
+                <option value="quick" ${it.effort === "quick" ? "selected" : ""}>Quick</option>
+                <option value="medium" ${!it.effort || it.effort === "medium" ? "selected" : ""}>Medium</option>
+                <option value="draining" ${it.effort === "draining" ? "selected" : ""}>Draining</option>
               </select>
             </label>
             <label class="cb-field cb-tags-field"><span class="cb-lbl">Tags</span>
@@ -295,6 +310,10 @@
         pending[i].importance = e.target.value;
         refreshSummary();
       });
+      card.querySelector(".cb-effort").addEventListener("change", (e) => {
+        pending[i].effort = e.target.value;
+        refreshSummary();
+      });
       card.querySelector(".cb-tags").addEventListener("input", (e) => {
         pending[i].tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4);
         refreshSummary();
@@ -343,6 +362,7 @@
         time: normaliseTime(it.time),
         deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
         importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
+        effort: EFFORT.includes(it.effort) ? it.effort : "medium",
         tags: normaliseTags(it.tags),
         whenText: it.whenText || "",
         goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
@@ -385,6 +405,8 @@
     const showDue = it.deadlineType === "hard" && it.date;
     const tags = Array.isArray(it.tags) ? it.tags : [];
     const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
+    const eff = effortOf(it);
+    const effWord = eff === "quick" ? "quick" : eff === "draining" ? "draining" : "";
     const part = goalTitleById(it.goalId);
     row.innerHTML = `
       <button class="tick" aria-label="Mark done" title="Mark done"></button>
@@ -393,6 +415,7 @@
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
           ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
+          ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
           ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
@@ -489,6 +512,8 @@
     const overdue = it.date && it.date < todayISO();
     const tags = Array.isArray(it.tags) ? it.tags : [];
     const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
+    const eff = effortOf(it);
+    const effWord = eff === "quick" ? "quick" : eff === "draining" ? "draining" : "";
     const part = goalTitleById(it.goalId);
     const main = document.createElement("div");
     main.className = "item-main";
@@ -497,6 +522,7 @@
       <div class="item-meta">
         <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
         ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
+        ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
         ${overdue ? `<span class="when overdue">overdue</span>` : ""}
         ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
         ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}

@@ -545,6 +545,17 @@ body {
   font-size: 1.05rem;
   margin: 28px 0 12px;
 }
+.tl-anytime-title {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.zone-hint {
+  margin: -6px 0 12px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
 .tl-settime-wrap,
 .tl-timeedit {
   flex: none;

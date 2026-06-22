@@ -17,6 +17,7 @@
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
   const LS_DISMISSED_CLUSTERS = "organiser.dismissedClusters.v1"; // UI-only: don't re-nag
+  let editingTimeId = null; // which Today item's time is being set right now (inline timeline)
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);
@@ -411,6 +412,131 @@
     list.forEach((it) => el.appendChild(itemRow(it)));
   }
 
+  // ---------- Today as a timeline (folded onto the home, §s23 unified home) ----------
+  // Today's section lays the day out: timed items in order with the gaps between
+  // them called out, then an "anytime today" group — and you can give any task a
+  // time right here. Pure seeing + you-decide; nothing auto-moves. (Coming up /
+  // Someday stay simple lists.)
+  function toMin(t) {
+    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
+    return m ? +m[1] * 60 + +m[2] : 0;
+  }
+  function gapLabel(a, b) {
+    const mins = toMin(b) - toMin(a);
+    if (mins <= 0) return "";
+    if (mins < 60) return `~${mins} min until the next thing`;
+    const h = Math.round(mins / 60);
+    return `~${h} hour${h > 1 ? "s" : ""} until the next thing`;
+  }
+  function setItemTime(id, value) {
+    const it = items.find((x) => x.id === id);
+    if (!it) return;
+    it.time = normaliseTime(value);
+    editingTimeId = null;
+    persist();
+    renderZones();
+  }
+  function timeControl(it) {
+    const wrap = document.createElement("div");
+    if (editingTimeId === it.id) {
+      wrap.className = "tl-timeedit";
+      wrap.innerHTML = `
+        <input type="time" value="${it.time || ""}" aria-label="Time" />
+        <button class="link tl-save" type="button">save</button>
+        ${it.time ? '<button class="link tl-clear" type="button">clear</button>' : ""}`;
+      const input = wrap.querySelector("input");
+      setTimeout(() => input.focus(), 0);
+      wrap.querySelector(".tl-save").addEventListener("click", () => setItemTime(it.id, input.value));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") setItemTime(it.id, input.value);
+        if (e.key === "Escape") {
+          editingTimeId = null;
+          renderZones();
+        }
+      });
+      const clear = wrap.querySelector(".tl-clear");
+      if (clear) clear.addEventListener("click", () => setItemTime(it.id, ""));
+    } else {
+      wrap.className = "tl-settime-wrap";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tl-settime";
+      btn.textContent = it.time ? "change time" : "set a time";
+      btn.addEventListener("click", () => {
+        editingTimeId = it.id;
+        renderZones();
+      });
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+  function timelineRow(it, withTimeColumn) {
+    const row = document.createElement("div");
+    const imp = importanceOf(it);
+    row.className = `item tl-item imp-${imp}`;
+    const tick = document.createElement("button");
+    tick.className = "tick";
+    tick.setAttribute("aria-label", "Mark done");
+    tick.title = "Mark done";
+    tick.addEventListener("click", () => complete(it.id));
+    row.appendChild(tick);
+    if (withTimeColumn) {
+      const time = document.createElement("div");
+      time.className = "tl-time";
+      time.textContent = fmtTime(it.time);
+      row.appendChild(time);
+    }
+    const overdue = it.date && it.date < todayISO();
+    const tags = Array.isArray(it.tags) ? it.tags : [];
+    const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
+    const part = goalTitleById(it.goalId);
+    const main = document.createElement("div");
+    main.className = "item-main";
+    main.innerHTML = `
+      <div class="item-title">${escapeHtml(it.title)}</div>
+      <div class="item-meta">
+        <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
+        ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
+        ${overdue ? `<span class="when overdue">overdue</span>` : ""}
+        ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
+        ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
+      </div>`;
+    row.appendChild(main);
+    row.appendChild(timeControl(it));
+    return row;
+  }
+  function renderTodayTimeline(list) {
+    const el = $("#todayItems");
+    el.innerHTML = "";
+    if (!list.length) {
+      el.innerHTML = `<p class="empty">Nothing for today. Enjoy the quiet.</p>`;
+      return;
+    }
+    const timed = list.filter((i) => i.time).sort((a, b) => a.time.localeCompare(b.time));
+    const anytime = list.filter((i) => !i.time);
+    timed.forEach((it, idx) => {
+      el.appendChild(timelineRow(it, true));
+      if (idx < timed.length - 1) {
+        const g = gapLabel(it.time, timed[idx + 1].time);
+        if (g) {
+          const gap = document.createElement("div");
+          gap.className = "tl-gap";
+          gap.textContent = g;
+          el.appendChild(gap);
+        }
+      }
+    });
+    if (anytime.length) {
+      if (timed.length) {
+        const h = document.createElement("p");
+        h.className = "tl-anytime-title";
+        h.textContent = "Anytime today";
+        el.appendChild(h);
+      }
+      anytime.forEach((it) => el.appendChild(timelineRow(it, false)));
+    }
+  }
+
   function renderZones() {
     const active = items.filter((i) => !i.done);
     const groups = { today: [], coming: [], someday: [] };
@@ -420,7 +546,7 @@
     groups.coming.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     groups.someday.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 
-    fillZone("#todayItems", groups.today, "Nothing for today. Enjoy the quiet.");
+    renderTodayTimeline(groups.today);
     fillZone("#comingItems", groups.coming, "Nothing coming up yet.");
     fillZone("#somedayItems", groups.someday, "No parked ideas right now.");
 

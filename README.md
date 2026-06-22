@@ -111,9 +111,11 @@ file in OneDrive — only the small app + data file belong there.
 ## What's here on purpose — and what's not yet
 
 **Working now:** add by hand, the check-back, calm **Today / Coming up /
-Someday** zones, tick-to-complete (done = gone, kept in **Looking back**), a
-**Today timeline** (lay the day out by time, see the gaps, give floating tasks a
-time), trustworthy file storage with backups, and import/export. The AI also
+Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
+**Today** section is laid out as a timeline right on the home page — your timed
+things in order with the gaps between them, an "anytime today" group, and you can
+give any task a time on the spot. Trustworthy file storage with backups, and
+import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
 guess), **category tags**, and whether a date is a **deadline** — shown lightly
 in the zones. At the top, a **What matters today** shortlist surfaces a few

@@ -687,6 +687,47 @@ body {
   margin: 2px 0;
 }
 
+/* "goals in motion" panel on the home page (read-only window onto goals) */
+.goals-panel {
+  margin: 0 0 30px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.goals-panel h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+.gp-list {
+  display: grid;
+  gap: 16px;
+}
+.gp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.gp-title {
+  font-weight: 600;
+}
+.gp-ms {
+  flex: none;
+  font-size: 0.82rem;
+  color: var(--accent-dark);
+}
+.gp-label {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.gp-more {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
 /* goals & milestones */
 .celebrate {
   margin: 0 0 18px;

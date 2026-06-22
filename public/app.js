@@ -426,33 +426,44 @@
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
 
     renderShortlist();
+    renderGoalsPanel();
   }
 
   // ---------- "what matters today" shortlist ----------
   // A read-only highlight computed from the stored signals. No AI, instant,
   // offline. It never changes, reorders, or completes the stored items — the
   // full zones below are the source of truth and one glance away.
+  //
+  // Three signals feed it (§0.2): urgency (hard deadline due), importance (your
+  // own "matters a lot"), and milestone-pull (§9 slice 3) — a task linked to a
+  // goal you chose to finish. Milestone-pull is the ungameable one (your goals
+  // can't be faked by others); it's a weighted boost, NEVER an override — it
+  // can't jump ahead of a hard deadline due today.
   function shortlistEligible(it) {
     const t = todayISO();
     const dueNow = it.date && it.date <= t;
     if (it.deadlineType === "hard" && dueNow) return true; // hard deadline, can't wait
     if (importanceOf(it) === "high") return true; // you said it matters
+    if (goalTitleById(it.goalId)) return true; // moves you toward a chosen goal
     if (it.date) return true; // dated → can fill a slot by nearest date
-    return false; // floaty and not important → not a "today" thing
+    return false; // floaty, not important, not toward a goal → not a "today" thing
   }
   function shortlistRank(it) {
     const t = todayISO();
     const dueNow = it.date && it.date <= t;
-    if (it.deadlineType === "hard" && dueNow) return 0; // always first
+    if (it.deadlineType === "hard" && dueNow) return 0; // always first — the guard
     if (importanceOf(it) === "high") return 1; // then importance (high first)
-    if (dueNow) return 2; // then anything else due today/overdue
-    return 3; // then upcoming, by nearest date
+    if (goalTitleById(it.goalId)) return 2; // then milestone-pull (toward a goal)
+    if (dueNow) return 3; // then anything else due today/overdue
+    return 4; // then upcoming, by nearest date
   }
   function shortlistReason(it) {
     const t = todayISO();
     if (it.date && it.date < t) return "overdue";
     if (it.date && it.date === t) return "due today";
     if (importanceOf(it) === "high") return "matters a lot";
+    const g = goalTitleById(it.goalId);
+    if (g) return "toward " + g;
     if (it.date) return friendlyDate(it.date);
     return "";
   }
@@ -487,6 +498,55 @@
         ${reason ? `<span class="sl-reason">${escapeHtml(reason)}</span>` : ""}`;
       listEl.appendChild(row);
     });
+  }
+
+  // ---------- "goals in motion" panel (read-only) ----------
+  // Surfaces a few active goals with their current-milestone bar, so goals stay
+  // in sight (§s23: "if I have to go to it, I don't see it"). The Goals page is
+  // where you actually act; this is just a calm window onto it. Mirrors the bar
+  // logic there: the bar fills toward the NEXT milestone, never the whole goal.
+  function goalCurrentIndex(goal) {
+    return (goal.milestones || []).findIndex((m) => !m.done);
+  }
+  function milestoneProgress(ms) {
+    const steps = (ms && ms.steps) || [];
+    const total = steps.length;
+    const done = steps.filter((s) => s.done).length;
+    return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+  }
+  function renderGoalsPanel() {
+    const panel = $("#goalsPanel");
+    const listEl = $("#goalsPanelList");
+    if (!panel || !listEl) return;
+    const active = goals.filter((g) => g.milestones && g.milestones.length && goalCurrentIndex(g) !== -1);
+    if (!active.length) {
+      panel.hidden = true;
+      listEl.innerHTML = "";
+      return;
+    }
+    panel.hidden = false;
+    const picks = active.slice(0, 3); // the important few — keep it calm
+    listEl.innerHTML = "";
+    picks.forEach((g) => {
+      const ms = g.milestones[goalCurrentIndex(g)];
+      const pr = milestoneProgress(ms);
+      const row = document.createElement("div");
+      row.className = "gp-item";
+      row.innerHTML = `
+        <div class="gp-head">
+          <span class="gp-title">${escapeHtml(g.title)}</span>
+          <span class="gp-ms">${escapeHtml(ms.title)}</span>
+        </div>
+        <div class="bar"><div class="bar-fill" style="width:${pr.pct}%"></div></div>
+        <div class="gp-label">${pr.total ? `${pr.done} of ${pr.total} steps toward this milestone` : "no steps yet"}</div>`;
+      listEl.appendChild(row);
+    });
+    if (active.length > picks.length) {
+      const more = document.createElement("p");
+      more.className = "gp-more";
+      more.textContent = `+${active.length - picks.length} more on the goals page`;
+      listEl.appendChild(more);
+    }
   }
 
   // done = gone from the active view, kept in the mirror

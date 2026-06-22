@@ -428,6 +428,7 @@
     $("#comingCount").textContent = groups.coming.length ? groups.coming.length : "";
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
 
+    renderOverdue();
     renderShortlist();
     renderGoalsPanel();
   }
@@ -650,6 +651,59 @@
     if (clusterSuggestion) rememberDismissedCluster(clusterSignature(clusterSuggestion.taskIds));
     clusterSuggestion = null;
     $("#clusterOffer").hidden = true;
+  }
+
+  // ---------- past a deadline: recover gently (§s21 safety net) ----------
+  // A rigid (hard-deadline) task whose date has passed. Silently dropping it
+  // loses something real; pinning it red forever is a guilt monument (§0 forbids).
+  // So: surface it ONCE, framed about the task, with release valves — then it
+  // clears the moment the user makes any one choice (reschedule / soften / done).
+  function isOverdueHard(it) {
+    return !it.done && it.deadlineType === "hard" && it.date && it.date < todayISO();
+  }
+  function renderOverdue() {
+    const section = $("#overdue");
+    const listEl = $("#overdueList");
+    if (!section || !listEl) return;
+    const due = items.filter(isOverdueHard).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    if (!due.length) {
+      section.hidden = true;
+      listEl.innerHTML = "";
+      return;
+    }
+    section.hidden = false;
+    listEl.innerHTML = "";
+    const today = todayISO();
+    due.forEach((it) => {
+      const card = document.createElement("div");
+      card.className = "od-card";
+      card.innerHTML = `
+        <div class="od-main">
+          <div class="od-title">${escapeHtml(it.title)}</div>
+          <div class="od-meta">was due ${escapeHtml(friendlyDate(it.date))} · past its deadline</div>
+        </div>
+        <div class="od-actions">
+          <label class="od-redate">new date <input type="date" class="od-date" min="${today}" aria-label="Give it a new date" /></label>
+          <button class="link od-soft" type="button">make it soft</button>
+          <button class="link od-done" type="button">I’ve handled it</button>
+        </div>`;
+      card.querySelector(".od-date").addEventListener("change", (e) => {
+        const v = e.target.value;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+        it.date = v; // a fresh date — no longer overdue, so it clears from here
+        persist();
+        renderZones();
+        setStatus(`Gave “${it.title}” a new date. ✓`);
+      });
+      card.querySelector(".od-soft").addEventListener("click", () => {
+        it.deadlineType = "soft"; // not a hard deadline anymore → stops being flagged
+        persist();
+        renderZones();
+        setStatus(`“${it.title}” is a soft deadline now — no rush. ✓`);
+      });
+      card.querySelector(".od-done").addEventListener("click", () => complete(it.id));
+      listEl.appendChild(card);
+    });
   }
 
   // done = gone from the active view, kept in the mirror

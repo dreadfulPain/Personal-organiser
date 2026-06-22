@@ -687,6 +687,63 @@ body {
   margin: 2px 0;
 }
 
+/* past a deadline — a calm one-decision recovery, never a red graveyard */
+.overdue {
+  margin: 0 0 30px;
+  background: #fdf6ec;
+  border: 1px solid #efe2cc;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.overdue h2 {
+  font-size: 1.05rem;
+  margin: 0 0 4px;
+}
+#overdueList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.od-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px 18px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 8px;
+}
+.od-card + .od-card {
+  border-top: 1px solid #efe2cc;
+}
+.od-title {
+  font-weight: 600;
+}
+.od-meta {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.od-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.od-redate {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.od-date {
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
 /* a gentle, rare "make this a goal?" offer */
 .cluster-offer {
   margin: 0 0 30px;

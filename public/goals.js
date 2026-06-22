@@ -13,6 +13,8 @@
 
   let goals = [];
   let celebrateTimer = null;
+  let aiAvailable = false; // can the app propose milestones? (off in preview / no AI)
+  const busyGoals = new Set(); // goals the AI is breaking down right now (transient)
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -56,9 +58,56 @@
   function addGoal(title) {
     title = (title || "").trim();
     if (!title) return;
-    goals.unshift({ id: uid(), title, createdAt: now(), milestones: [] });
+    const goal = { id: uid(), title, createdAt: now(), milestones: [] };
+    goals.unshift(goal);
     persist();
     render();
+    if (aiAvailable) proposeMilestones(goal);
+  }
+
+  // §9 slice 2: the AI carves a freshly-named goal into small milestones — the
+  // usable way in (manual add was only scaffolding). Best-effort: if the AI is
+  // off or unreachable the goal just stays empty for hand-entry, and we never
+  // clobber milestones the user started adding while the AI was thinking.
+  async function proposeMilestones(goal) {
+    busyGoals.add(goal.id);
+    render();
+    try {
+      // Granularity signal: how big the user keeps their existing goals (§9 — the
+      // AI learns preferred milestone size from what they keep after editing).
+      const priorCounts = goals
+        .filter((g) => g.id !== goal.id && g.milestones.length)
+        .map((g) => g.milestones.length);
+      const r = await fetch("/api/breakdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: goal.title, priorCounts }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const ms = (Array.isArray(d.milestones) ? d.milestones : []).map((m) => ({
+          id: uid(),
+          title: m.title,
+          done: false,
+          completedAt: null,
+          steps: (Array.isArray(m.steps) ? m.steps : []).map((s) => ({
+            id: uid(),
+            title: s,
+            done: false,
+            completedAt: null,
+          })),
+        }));
+        if (ms.length && goal.milestones.length === 0) {
+          goal.milestones = ms;
+          persist();
+        }
+      }
+    } catch {
+      /* unreachable — leave it empty, hand-entry still works */
+    } finally {
+      busyGoals.delete(goal.id);
+      render();
+    }
   }
   function deleteGoal(id) {
     if (!confirm("Delete this whole goal and its milestones?")) return;
@@ -216,7 +265,9 @@
     if (goal.milestones.length === 0) {
       const p = document.createElement("p");
       p.className = "empty";
-      p.textContent = "Add the first milestone — a small finish you'd be glad to reach.";
+      p.textContent = busyGoals.has(goal.id)
+        ? "Thinking up small milestones…"
+        : "Add the first milestone — a small finish you'd be glad to reach.";
       card.appendChild(p);
     } else if (ci === -1) {
       const done = document.createElement("p");
@@ -300,6 +351,18 @@
   async function init() {
     const data = await OrganiserStore.load();
     goals = Array.isArray(data.goals) ? data.goals : [];
+    // Find out if the AI can propose milestones, and wake it so the first goal
+    // isn't slow. Silent + best-effort; preview mode (file://) has no server.
+    if (OrganiserStore.mode === "file") {
+      try {
+        const r = await fetch("/api/health");
+        const j = await r.json();
+        aiAvailable = !!j.hasAI;
+        if (aiAvailable) fetch("/api/warm", { method: "POST" }).catch(() => {});
+      } catch {
+        aiAvailable = false;
+      }
+    }
     $("#goalAddBtn").addEventListener("click", () => {
       const input = $("#goalInput");
       addGoal(input.value);

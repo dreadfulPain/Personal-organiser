@@ -173,13 +173,36 @@ const SCHEMA = {
           importance: { type: "string", enum: ["high", "normal", "low"] },
           tags: { type: "array", items: { type: "string" } },
           when_text: { type: "string" },
+          goal: { type: "string" },
         },
-        required: ["title", "type", "date", "time", "deadlineType", "importance", "tags", "when_text"],
+        required: ["title", "type", "date", "time", "deadlineType", "importance", "tags", "when_text", "goal"],
         additionalProperties: false,
       },
     },
   },
   required: ["items"],
+  additionalProperties: false,
+};
+
+// Goal breakdown (§9 milestones slice 2): a goal title → a few SMALL milestones,
+// each with a couple of concrete first steps. Same strict-shape discipline.
+const BREAKDOWN_SCHEMA = {
+  type: "object",
+  properties: {
+    milestones: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          steps: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "steps"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["milestones"],
   additionalProperties: false,
 };
 
@@ -213,15 +236,42 @@ Also set "deadlineType", "importance" and "tags":
 - "tags": 0-3 short lower-case CATEGORY labels for the life-area or kind of thing (e.g. "work", "family", "health", "home", "money", "social", "admin", "fun"). Use whatever fits; you are not limited to that list.
 - CRUCIAL: a tag is a CATEGORY, never an importance level. Do NOT raise importance just because something is "work", nor lower it because it is "fun". Importance and category are judged separately.
 
+Also set "goal":
+- A list of the user's existing goals may be given at the end of their message. If an item CLEARLY and confidently belongs to one of those goals, set "goal" to that goal's EXACT title (copied character-for-character).
+- Otherwise — if you are not sure, or no goals are listed — use an empty string "". Most items belong to no goal; only link an obvious, confident match.
+- NEVER invent a goal title that is not in the list. A wrong link is worse than no link.
+
 Return only the structured result.
 
 Example — if today is Sunday, 2026-06-07, and the user dumps:
 "tysday i gotta call the denist at 3pm and also mums bday is comin up and rly need to send the rent by friday"
 you return:
 {"items":[
-  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","tags":["health"],"when_text":"Tuesday 3pm"},
-  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","tags":["family"],"when_text":"coming up"},
-  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","tags":["money","home"],"when_text":"by Friday"}
+  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","tags":["health"],"when_text":"Tuesday 3pm","goal":""},
+  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","tags":["family"],"when_text":"coming up","goal":""},
+  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","tags":["money","home"],"when_text":"by Friday","goal":""}
+]}`;
+
+// Goal breakdown prompt (§9 slice 2). Carves a goal into SMALL, soon-reachable
+// milestones — the opposite of the overwhelm reflex. Domain-agnostic (§0.2): it
+// must work for any goal without knowing what the goal is "about".
+const BREAKDOWN_PROMPT = `You break a big goal into small milestones for a calm organiser built for someone with dyslexia and dyscalculia who is easily overwhelmed by the scale of a plan.
+
+Your whole job: take one goal, written in plain words, and carve it into a few SMALL, reachable milestones — each one a real checkpoint the person could finish and feel a little proud of, even though the whole goal continues.
+
+Follow these rules without exception:
+- Lean SMALL and soon-reachable. A milestone the user can reach in days, not months. A distant milestone is demotivating — it becomes a bar that never fills. Small wins that arrive soon are the entire point.
+- Propose about 3 to 5 milestones, in a sensible order (earliest first).
+- Give each milestone 2 to 4 concrete first steps — short, plain, each starting with a verb ("Draft", "Email", "List", "Book"). The FIRST milestone's steps must be especially tiny and obvious, so starting is easy.
+- Keep every title short and plain. Fix spelling silently. Never mention spelling.
+- Stay practical and general. Do not assume facts the user did not give. If the goal is vague, choose sensible, common-sense milestones anyone with that goal would recognise.
+- No preamble, no commentary. Return only the structured result.
+
+Example — goal "learn to bake bread" might become:
+{"milestones":[
+  {"title":"Bake one basic loaf","steps":["Buy flour and yeast","Pick one simple recipe","Bake it once"]},
+  {"title":"Get a reliable everyday loaf","steps":["Bake the same recipe twice more","Note what to change each time"]},
+  {"title":"Try a second kind of bread","steps":["Choose a new recipe","Bake it once"]}
 ]}`;
 
 function weekdayName(iso) {
@@ -272,8 +322,30 @@ function aiConfig() {
 // Prompt rule 1 (§0.3): the model has no clock and no memory, so every request
 // states the date and time. Rule 2 (fixed JSON shape) and rule 3 (no
 // think-aloud) are handled per engine below.
-function userTurn(nowLabel, today, text) {
-  return `Right now it is ${nowLabel} (today's date is ${today}).\n\nHere is what I dumped. Sort it:\n"""\n${text}\n"""`;
+function userTurn(nowLabel, today, text, goals) {
+  let s = `Right now it is ${nowLabel} (today's date is ${today}).\n\nHere is what I dumped. Sort it:\n"""\n${text}\n"""`;
+  const titles = Array.isArray(goals)
+    ? goals.map((g) => (g && g.title ? String(g.title).trim() : "")).filter(Boolean)
+    : [];
+  if (titles.length) {
+    s +=
+      `\n\nMy existing goals (only set an item's "goal" to one of these EXACT titles if it clearly belongs, otherwise ""):\n` +
+      titles.map((t) => `- ${t}`).join("\n");
+  }
+  return s;
+}
+
+// Build the user turn for a goal breakdown, with a learned granularity nudge
+// (§9: the AI learns the user's preferred milestone size from how they edit).
+function breakdownTurn(title, priorCounts) {
+  const counts = Array.isArray(priorCounts) ? priorCounts.filter((n) => Number.isFinite(n) && n > 0) : [];
+  let hint = "";
+  if (counts.length >= 2) {
+    const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+    if (avg >= 5) hint = "\n\nThis user tends to keep MANY small milestones — lean smaller and split a little more than usual.";
+    else if (avg <= 2.5) hint = "\n\nThis user tends to keep FEWER, larger milestones — lean a little bigger than usual.";
+  }
+  return `Break this goal into small milestones.\n\nGoal:\n"""\n${title}\n"""${hint}`;
 }
 
 // Some local models "think out loud" in <think>…</think> before answering.
@@ -300,27 +372,32 @@ function extractJson(text) {
   }
 }
 
+// The AI box is asked for ONE thing: turn a system+user prompt into a JSON
+// object matching a given schema. Both jobs — sorting a dump (§2) and breaking a
+// goal into milestones (§9) — go through the same swappable engines below; only
+// the prompt and schema differ. Each caller returns the parsed object.
+
 // Engine: Ollama on this machine (the chosen setup). Its native /api/chat lets
 // us turn thinking OFF cleanly and ask for a fixed JSON shape. Built-in fetch
 // only — nothing leaves the machine.
-async function understandWithOllama(cfg, nowLabel, today, text) {
+async function callOllama(cfg, system, user, schema) {
   const url = cfg.baseUrl.replace(/\/+$/, "") + "/api/chat";
   const headers = { "Content-Type": "application/json" };
   const base = {
     model: cfg.model,
     stream: false,
-    // Keep the model resident between sorts so only the first one pays cold-start.
+    // Keep the model resident between calls so only the first one pays cold-start.
     keep_alive: cfg.keepAlive,
     options: { temperature: 0.2 },
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userTurn(nowLabel, today, text) },
+      { role: "system", content: system },
+      { role: "user", content: user },
     ],
   };
   // Strongest first (schema-constrained + thinking off), then degrade for older
   // Ollama versions that lack one of those knobs.
   const variants = [
-    { ...base, think: false, format: SCHEMA },
+    { ...base, think: false, format: schema },
     { ...base, think: false, format: "json" },
     { ...base, format: "json" },
   ];
@@ -334,13 +411,12 @@ async function understandWithOllama(cfg, nowLabel, today, text) {
     throw new Error(`Ollama responded ${resp ? resp.status : "?"} ${detail.slice(0, 150)}`);
   }
   const data = await resp.json();
-  const parsed = extractJson(data?.message?.content ?? "");
-  return Array.isArray(parsed.items) ? parsed.items : [];
+  return extractJson(data?.message?.content ?? "");
 }
 
 // Engine: any OpenAI-compatible server (LM Studio, a free cloud tier, or
 // Ollama's /v1 socket). Kept so the box stays swappable.
-async function understandWithOpenAI(cfg, nowLabel, today, text) {
+async function callOpenAI(cfg, system, user, schema) {
   const url = cfg.baseUrl.replace(/\/+$/, "") + "/chat/completions";
   const headers = { "Content-Type": "application/json" };
   if (cfg.apiKey) headers["Authorization"] = "Bearer " + cfg.apiKey;
@@ -349,8 +425,8 @@ async function understandWithOpenAI(cfg, nowLabel, today, text) {
     temperature: 0.2,
     max_tokens: 1000,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userTurn(nowLabel, today, text) },
+      { role: "system", content: system },
+      { role: "user", content: user },
     ],
   };
   let resp = await fetch(url, {
@@ -358,7 +434,7 @@ async function understandWithOpenAI(cfg, nowLabel, today, text) {
     headers,
     body: JSON.stringify({
       ...base,
-      response_format: { type: "json_schema", json_schema: { name: "organiser_items", strict: true, schema: SCHEMA } },
+      response_format: { type: "json_schema", json_schema: { name: "structured_output", strict: true, schema } },
     }),
   });
   if (resp.status === 400) {
@@ -374,12 +450,11 @@ async function understandWithOpenAI(cfg, nowLabel, today, text) {
   }
   const data = await resp.json();
   const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
-  const parsed = extractJson(content);
-  return Array.isArray(parsed.items) ? parsed.items : [];
+  return extractJson(content);
 }
 
 // Engine: Anthropic cloud (uses the official SDK, loaded only if needed).
-async function understandWithAnthropic(cfg, nowLabel, today, text) {
+async function callAnthropic(cfg, system, user, schema) {
   let Anthropic;
   try {
     ({ default: Anthropic } = await import("@anthropic-ai/sdk"));
@@ -392,14 +467,54 @@ async function understandWithAnthropic(cfg, nowLabel, today, text) {
   const response = await client.messages.create({
     model: cfg.model,
     max_tokens: 2000,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userTurn(nowLabel, today, text) }],
-    output_config: { format: { type: "json_schema", schema: SCHEMA } },
+    system,
+    messages: [{ role: "user", content: user }],
+    output_config: { format: { type: "json_schema", schema } },
   });
   const block = response.content.find((b) => b.type === "text");
   if (!block) throw new Error("No content returned from the model.");
-  const parsed = JSON.parse(block.text);
-  return Array.isArray(parsed.items) ? parsed.items : [];
+  return JSON.parse(block.text);
+}
+
+// Dispatch to whichever engine is configured. The rest of the app never cares.
+function runEngine(cfg, system, user, schema) {
+  if (cfg.engine === "anthropic") return callAnthropic(cfg, system, user, schema);
+  if (cfg.engine === "ollama") return callOllama(cfg, system, user, schema);
+  return callOpenAI(cfg, system, user, schema);
+}
+
+// Map the AI's free-text "goal" (a copied title) to a real goal id — but only on
+// an EXACT title match against the goals the client sent (§9: confident-only
+// auto-linking). Anything else becomes no link, so a hallucinated title can't
+// mis-file a task. The transient "goal" field is dropped; the item carries goalId.
+function linkGoal(it, goals) {
+  const wanted = (it && typeof it.goal === "string" ? it.goal : "").trim().toLowerCase();
+  let goalId = "";
+  if (wanted) {
+    const match = goals.find(
+      (g) => g && typeof g.title === "string" && g.title.trim().toLowerCase() === wanted && g.id
+    );
+    if (match) goalId = String(match.id);
+  }
+  const out = { ...it, goalId };
+  delete out.goal;
+  return out;
+}
+
+// Tidy AI-proposed milestones: trim, drop blanks, cap counts (defensive — the
+// schema asks for a few small ones, but never trust the model to obey exactly).
+function normaliseMilestones(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((m) => ({
+      title: (m && m.title ? String(m.title) : "").trim(),
+      steps: (Array.isArray(m && m.steps) ? m.steps : [])
+        .map((s) => String(s || "").trim())
+        .filter(Boolean)
+        .slice(0, 6),
+    }))
+    .filter((m) => m.title)
+    .slice(0, 6);
 }
 
 async function handleUnderstand(res, body) {
@@ -411,12 +526,11 @@ async function handleUnderstand(res, body) {
 
   const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
   const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
+  const goals = Array.isArray(body?.goals) ? body.goals : [];
 
   try {
-    let items;
-    if (cfg.engine === "anthropic") items = await understandWithAnthropic(cfg, nowLabel, today, text);
-    else if (cfg.engine === "ollama") items = await understandWithOllama(cfg, nowLabel, today, text);
-    else items = await understandWithOpenAI(cfg, nowLabel, today, text);
+    const parsed = await runEngine(cfg, SYSTEM_PROMPT, userTurn(nowLabel, today, text, goals), SCHEMA);
+    const items = (Array.isArray(parsed.items) ? parsed.items : []).map((it) => linkGoal(it, goals));
     sendJson(res, 200, { items });
   } catch (e) {
     const detail = e?.message || String(e);
@@ -429,6 +543,26 @@ async function handleUnderstand(res, body) {
       else friendly = "Can't reach your local AI. In LM Studio, load your model and click Start Server, then try again.";
     }
     sendJson(res, 502, { error: "sort_failed", message: friendly });
+  }
+}
+
+// Goal breakdown (§9 slice 2): a typed goal → a few small AI-proposed milestones.
+// This is the goals usability unlock — the user names a goal in a sentence and the
+// app does the carving (manual entry was only scaffolding). Graceful: 503 when AI
+// is off / 502 when it fails, so the page just keeps the goal empty for hand-entry.
+async function handleBreakdown(res, body) {
+  const title = (body?.title || "").toString().trim();
+  if (!title) return sendJson(res, 400, { error: "empty", message: "There was no goal to break down." });
+
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI breakdown isn't switched on yet." });
+
+  try {
+    const parsed = await runEngine(cfg, BREAKDOWN_PROMPT, breakdownTurn(title, body?.priorCounts), BREAKDOWN_SCHEMA);
+    sendJson(res, 200, { milestones: normaliseMilestones(parsed.milestones) });
+  } catch (e) {
+    console.error("[breakdown] failed:", e?.message || e);
+    sendJson(res, 502, { error: "breakdown_failed", message: "I couldn't break that goal down just now." });
   }
 }
 
@@ -545,6 +679,17 @@ const server = http.createServer(async (req, res) => {
         /* leave empty */
       }
       return handleUnderstand(res, parsed);
+    }
+
+    if (pathname === "/api/breakdown" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleBreakdown(res, parsed);
     }
 
     if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);

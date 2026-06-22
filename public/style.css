@@ -230,7 +230,8 @@ body {
 .cb-time,
 .cb-importance,
 .cb-deadline,
-.cb-tags {
+.cb-tags,
+.cb-goal {
   font: inherit;
   padding: 6px 8px;
   border: 1px solid var(--line);
@@ -599,6 +600,15 @@ body {
   border-radius: 999px;
   padding: 1px 8px;
 }
+/* "part of: <goal>" — a light link from a task to the goal it belongs to */
+.part-of {
+  font-size: 0.72rem;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border: 1px solid #d4e3dc;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
 
 /* second check-back row: importance / tags / deadline (lighter, secondary) */
 .cb-row2 {
@@ -614,6 +624,13 @@ body {
   min-width: 140px;
 }
 .cb-tags-field .cb-tags {
+  width: 100%;
+}
+.cb-goal-field {
+  flex: 1;
+  min-width: 160px;
+}
+.cb-goal-field .cb-goal {
   width: 100%;
 }
 .cb-lbl {

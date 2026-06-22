@@ -12,6 +12,7 @@
 
   let items = []; // everything filed
   let waiting = []; // dumps saved while the AI sorter was unreachable
+  let goals = []; // read-only here: the Goals page owns these; we only link/show them
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
 
@@ -48,6 +49,13 @@
   }
   function importanceOf(it) {
     return IMPORTANCE.includes(it.importance) ? it.importance : "normal";
+  }
+  // Resolve a stored goalId to its current title. Returns "" if the goal was
+  // deleted or never linked — so a stale link just shows nothing, never breaks.
+  function goalTitleById(id) {
+    if (!id) return "";
+    const g = goals.find((x) => x && x.id === id);
+    return g ? g.title || "" : "";
   }
 
   function escapeHtml(s) {
@@ -104,6 +112,8 @@
           hour: "2-digit",
           minute: "2-digit",
         }),
+        // §9 slice 2: let the AI confidently link a new item to an existing goal.
+        goals: goals.map((g) => ({ id: g.id, title: g.title })),
       }),
     });
     if (!res.ok) {
@@ -130,6 +140,8 @@
       importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
       tags: normaliseTags(it.tags),
       whenText: (it.when_text || "").toString().trim(),
+      // Only keep a link the AI was confident about AND that still exists.
+      goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
     };
   }
 
@@ -195,6 +207,8 @@
     else if (imp === "low") parts.push("minor");
     const tags = Array.isArray(it.tags) ? it.tags : [];
     if (tags.length) parts.push(tags.join(", "));
+    const gTitle = goalTitleById(it.goalId);
+    if (gTitle) parts.push("part of " + gTitle);
     return parts.join(" · ");
   }
 
@@ -240,6 +254,21 @@
               </select>
             </label>
           </div>
+          ${
+            goals.length
+              ? `<div class="cb-row"><label class="cb-field cb-goal-field"><span class="cb-lbl">Part of a goal</span>
+            <select class="cb-goal" aria-label="Part of a goal">
+              <option value="">— none —</option>
+              ${goals
+                .map(
+                  (g) =>
+                    `<option value="${escapeHtml(g.id)}" ${g.id === it.goalId ? "selected" : ""}>${escapeHtml(g.title)}</option>`
+                )
+                .join("")}
+            </select>
+          </label></div>`
+              : ""
+          }
           ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
         </div>
       `;
@@ -271,6 +300,12 @@
         pending[i].deadlineType = e.target.value;
         refreshSummary();
       });
+      const goalSel = card.querySelector(".cb-goal");
+      if (goalSel)
+        goalSel.addEventListener("change", (e) => {
+          pending[i].goalId = e.target.value;
+          refreshSummary();
+        });
       card.querySelector(".cb-remove").addEventListener("click", () => {
         pending.splice(i, 1);
         renderCheckback();
@@ -307,6 +342,7 @@
         importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
         tags: normaliseTags(it.tags),
         whenText: it.whenText || "",
+        goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
         done: false,
         createdAt: now,
         completedAt: null,
@@ -345,6 +381,7 @@
     const showDue = it.deadlineType === "hard" && it.date;
     const tags = Array.isArray(it.tags) ? it.tags : [];
     const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
+    const part = goalTitleById(it.goalId);
     row.innerHTML = `
       <button class="tick" aria-label="Mark done" title="Mark done"></button>
       <div class="item-main">
@@ -354,6 +391,7 @@
           ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
           ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
+          ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
         </div>
       </div>`;
     row.querySelector(".tick").addEventListener("click", () => complete(it.id));
@@ -561,7 +599,8 @@
       const data = await OrganiserStore.importFile(file);
       items = data.items || [];
       waiting = data.waiting || [];
-      OrganiserStore.save({ items, waiting, goals: data.goals || [] });
+      goals = data.goals || [];
+      OrganiserStore.save({ items, waiting, goals });
       renderZones();
       renderWaiting();
       setStatus("Restored from your backup. ✓");
@@ -578,6 +617,7 @@
     const data = await OrganiserStore.load();
     items = data.items || [];
     waiting = data.waiting || [];
+    goals = data.goals || [];
 
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {

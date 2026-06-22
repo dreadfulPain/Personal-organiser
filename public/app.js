@@ -15,6 +15,8 @@
   let goals = []; // read-only here: the Goals page owns these; we only link/show them
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
+  let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
+  const LS_DISMISSED_CLUSTERS = "organiser.dismissedClusters.v1"; // UI-only: don't re-nag
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);
@@ -356,6 +358,7 @@
     $("#checkbackList").innerHTML = "";
     renderZones();
     setStatus(added === 1 ? "Added. ✓" : `Added ${added} things. ✓`);
+    checkForClusterGoal(); // the new items might complete a cluster worth offering
   }
 
   function cancelCheckback() {
@@ -549,6 +552,106 @@
     }
   }
 
+  // ---------- "make this a goal?" — the AI spots a cluster (§9 slice 2c) ----------
+  // Rare + gentle + conservative (don't over-goal). We ask the AI only when there
+  // is a real pile of goal-less tasks, surface at most one suggestion, and never
+  // re-offer one the user waved away (remembered in localStorage — a UI nicety,
+  // not core data: if it's lost, the worst case is the suggestion shows once more).
+  function clusterSignature(ids) {
+    return ids.slice().sort().join(",");
+  }
+  function loadDismissedClusters() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_DISMISSED_CLUSTERS) || "[]");
+    } catch {
+      return [];
+    }
+  }
+  function rememberDismissedCluster(sig) {
+    try {
+      const a = loadDismissedClusters();
+      if (!a.includes(sig)) localStorage.setItem(LS_DISMISSED_CLUSTERS, JSON.stringify(a.concat(sig).slice(-50)));
+    } catch {
+      /* best-effort */
+    }
+  }
+  async function checkForClusterGoal() {
+    if (!aiAvailable || clusterSuggestion) return;
+    const linkless = items.filter((i) => !i.done && !goalTitleById(i.goalId));
+    if (linkless.length < 4) return; // need a plausible pile before bothering
+    try {
+      const r = await fetch("/api/cluster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tasks: linkless.map((i) => ({ id: i.id, title: i.title })) }),
+      });
+      if (!r.ok) return;
+      const sug = (await r.json()).suggestion;
+      if (!sug || !sug.title || !Array.isArray(sug.taskIds) || sug.taskIds.length < 3) return;
+      if (loadDismissedClusters().includes(clusterSignature(sug.taskIds))) return;
+      clusterSuggestion = sug;
+      showClusterOffer(sug);
+    } catch {
+      /* a suggestion is optional — stay quiet on failure */
+    }
+  }
+  function showClusterOffer(sug) {
+    const el = $("#clusterOffer");
+    if (!el) return;
+    el.querySelector(".co-msg").textContent =
+      `A few of your tasks look like parts of one thing. Make a goal called “${sug.title}” and group ${sug.taskIds.length} of them under it?`;
+    el.hidden = false;
+  }
+  async function acceptClusterGoal() {
+    if (!clusterSuggestion) return;
+    const { title, taskIds } = clusterSuggestion;
+    const goal = { id: uid(), title, createdAt: new Date().toISOString(), milestones: [] };
+    goals.unshift(goal);
+    let linked = 0;
+    taskIds.forEach((id) => {
+      const it = items.find((x) => x.id === id);
+      if (it) {
+        it.goalId = goal.id;
+        linked++;
+      }
+    });
+    OrganiserStore.save({ items, goals });
+    clusterSuggestion = null;
+    $("#clusterOffer").hidden = true;
+    renderZones();
+    setStatus(`Made the goal “${title}” and grouped ${linked} task${linked === 1 ? "" : "s"} under it.`);
+    // best-effort: let the AI propose milestones for the brand-new goal
+    try {
+      const priorCounts = goals.filter((g) => g.id !== goal.id && g.milestones.length).map((g) => g.milestones.length);
+      const r = await fetch("/api/breakdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, priorCounts }),
+      });
+      if (r.ok) {
+        const ms = ((await r.json()).milestones || []).map((m) => ({
+          id: uid(),
+          title: m.title,
+          done: false,
+          completedAt: null,
+          steps: (m.steps || []).map((s) => ({ id: uid(), title: s, done: false, completedAt: null })),
+        }));
+        if (ms.length && goal.milestones.length === 0) {
+          goal.milestones = ms;
+          OrganiserStore.save({ items, goals });
+          renderZones();
+        }
+      }
+    } catch {
+      /* the goal exists either way; milestones can be added by hand */
+    }
+  }
+  function dismissClusterGoal() {
+    if (clusterSuggestion) rememberDismissedCluster(clusterSignature(clusterSuggestion.taskIds));
+    clusterSuggestion = null;
+    $("#clusterOffer").hidden = true;
+  }
+
   // done = gone from the active view, kept in the mirror
   function complete(id) {
     const it = items.find((x) => x.id === id);
@@ -697,12 +800,15 @@
     });
     $("#restoreBtn").addEventListener("click", () => $("#restoreInput").click());
     $("#restoreInput").addEventListener("change", onRestore);
+    $("#clusterMake").addEventListener("click", acceptClusterGoal);
+    $("#clusterDismiss").addEventListener("click", dismissClusterGoal);
     window.addEventListener("pagehide", () => OrganiserStore.flushBeacon());
 
     renderZones();
     renderWaiting();
     if (data.migratedNote) setStatus(data.migratedNote);
     await checkHealth();
+    checkForClusterGoal(); // gentle, only if there's a real pile of loose tasks
   }
 
   init();

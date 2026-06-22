@@ -206,6 +206,18 @@ const BREAKDOWN_SCHEMA = {
   additionalProperties: false,
 };
 
+// Cluster detection (§9 slice 2c): spot when several loose tasks are really parts
+// of one goal. Returns a proposed title + the NUMBERS of the tasks that belong.
+const CLUSTER_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    tasks: { type: "array", items: { type: "integer" } },
+  },
+  required: ["title", "tasks"],
+  additionalProperties: false,
+};
+
 const SYSTEM_PROMPT = `You are the "understanding" engine inside a calm personal organiser. It was built for someone with dyslexia and dyscalculia. Your whole job is to take one messy, possibly misspelled line — which may contain several different things jumbled together — and turn it into clean, sorted entries.
 
 Follow these rules without exception:
@@ -273,6 +285,32 @@ Example — goal "learn to bake bread" might become:
   {"title":"Get a reliable everyday loaf","steps":["Bake the same recipe twice more","Note what to change each time"]},
   {"title":"Try a second kind of bread","steps":["Choose a new recipe","Bake it once"]}
 ]}`;
+
+// Cluster prompt (§9 slice 2c). Conservative by design: the app must NEVER
+// over-goal. Most of the time the right answer is "no cluster". Domain-agnostic.
+const CLUSTER_PROMPT = `You spot when several of a person's loose to-do items are really parts of ONE bigger goal, in a calm organiser for someone who is easily overwhelmed.
+
+You are shown a numbered list of tasks that do not belong to any goal yet. Your job is to notice a GENUINE cluster — three or more tasks that clearly work toward the same larger goal — and propose that goal.
+
+Rules, without exception:
+- Be CONSERVATIVE. Most of the time there is NO cluster. If you are not clearly confident, return {"title":"","tasks":[]}. A wrong guess is worse than none.
+- Only group tasks that genuinely serve one shared goal. Never force unrelated tasks together just to make a group.
+- Require at least three tasks. Fewer than three clearly-related tasks → no suggestion.
+- Propose a short, plain goal title (a few words, not a sentence). Fix spelling silently.
+- "tasks" is the list of NUMBERS (exactly as shown) of the tasks that belong to the proposed goal.
+- Propose at most one goal — the single clearest cluster. Return only the structured result.
+
+Example — given:
+1. Email Vanke HR
+2. Buy milk
+3. Update my CV
+4. Practice interview answers
+5. Call the plumber
+you return:
+{"title":"Find a new job","tasks":[1,3,4]}
+
+Example — given unrelated errands with no common goal, you return:
+{"title":"","tasks":[]}`;
 
 function weekdayName(iso) {
   try {
@@ -346,6 +384,12 @@ function breakdownTurn(title, priorCounts) {
     else if (avg <= 2.5) hint = "\n\nThis user tends to keep FEWER, larger milestones — lean a little bigger than usual.";
   }
   return `Break this goal into small milestones.\n\nGoal:\n"""\n${title}\n"""${hint}`;
+}
+
+// Build the user turn for cluster detection: a numbered list of the loose tasks.
+function clusterTurn(tasks) {
+  const list = tasks.map((t, i) => `${i + 1}. ${String(t.title).trim()}`).join("\n");
+  return `Here are some loose tasks that aren't part of any goal yet:\n${list}\n\nIf — and only if — at least three of them are clearly parts of one bigger goal, propose that goal. Otherwise return an empty title and no tasks.`;
 }
 
 // Some local models "think out loud" in <think>…</think> before answering.
@@ -566,6 +610,41 @@ async function handleBreakdown(res, body) {
   }
 }
 
+// Cluster detection (§9 slice 2c): given the user's goal-less tasks, the AI may
+// gently spot one real cluster and propose making it a goal. Conservative and
+// non-essential — any failure or thin result returns { suggestion: null } with a
+// 200, so a missing suggestion never disrupts the page (it's a nudge, not an
+// action the user asked for).
+async function handleCluster(res, body) {
+  const tasks = Array.isArray(body?.tasks)
+    ? body.tasks.filter((t) => t && t.id != null && t.title).slice(0, 60)
+    : [];
+  if (tasks.length < 3) return sendJson(res, 200, { suggestion: null });
+
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI isn't switched on yet." });
+
+  try {
+    const parsed = await runEngine(cfg, CLUSTER_PROMPT, clusterTurn(tasks), CLUSTER_SCHEMA);
+    const title = (parsed && parsed.title ? String(parsed.title) : "").trim();
+    const idxs = Array.isArray(parsed && parsed.tasks) ? parsed.tasks : [];
+    const ids = [];
+    idxs.forEach((n) => {
+      const i = Math.floor(Number(n)) - 1; // the model uses 1-based numbers
+      if (i >= 0 && i < tasks.length) {
+        const id = String(tasks[i].id);
+        if (!ids.includes(id)) ids.push(id);
+      }
+    });
+    // Only surface a real cluster: a title AND at least three distinct tasks.
+    if (!title || ids.length < 3) return sendJson(res, 200, { suggestion: null });
+    sendJson(res, 200, { suggestion: { title, taskIds: ids } });
+  } catch (e) {
+    console.error("[cluster] failed:", e?.message || e);
+    sendJson(res, 200, { suggestion: null });
+  }
+}
+
 // Pre-warm: load the local model into memory BEFORE the first real sort, so the
 // daily-sort step (touched every day) doesn't pay the cold-start wait. Ollama
 // loads a model when /api/generate is called with an empty prompt; keep_alive
@@ -690,6 +769,17 @@ const server = http.createServer(async (req, res) => {
         /* leave empty */
       }
       return handleBreakdown(res, parsed);
+    }
+
+    if (pathname === "/api/cluster" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleCluster(res, parsed);
     }
 
     if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);

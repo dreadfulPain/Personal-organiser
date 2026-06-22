@@ -687,6 +687,23 @@ body {
   margin: 2px 0;
 }
 
+/* a gentle, rare "make this a goal?" offer */
+.cluster-offer {
+  margin: 0 0 30px;
+  background: var(--accent-soft);
+  border: 1px solid #d4e3dc;
+  border-radius: var(--radius);
+  padding: 14px 18px;
+}
+.co-msg {
+  margin: 0 0 12px;
+}
+.co-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* "goals in motion" panel on the home page (read-only window onto goals) */
 .goals-panel {
   margin: 0 0 30px;

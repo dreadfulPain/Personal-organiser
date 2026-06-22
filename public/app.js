@@ -174,7 +174,30 @@
     }
   }
 
-  // ---------- the check-back: confirm or fix before filing ----------
+  // ---------- the check-back: a glance, not a form ----------
+  // Each card shows what was understood as one plain line. Everything is already
+  // filled in, so the default is just: read it, add it. The controls live behind
+  // a quiet "Adjust details" toggle — nothing is ever a required field (§ s23:
+  // the confirm step must never feel like a form).
+  function checkbackSummary(it) {
+    const parts = [];
+    parts.push(TYPE_LABEL[TYPES.includes(it.type) ? it.type : "task"]);
+    let when = it.date ? friendlyDate(it.date) : "";
+    const tl = fmtTime(it.time);
+    if (tl) when = when ? `${when} · ${tl}` : tl;
+    if (!when && it.whenText) when = capitalize(it.whenText);
+    if (when) {
+      const hard = it.deadlineType === "hard" && it.date;
+      parts.push((hard ? "due " : "") + when);
+    }
+    const imp = importanceOf(it);
+    if (imp === "high") parts.push("matters a lot");
+    else if (imp === "low") parts.push("minor");
+    const tags = Array.isArray(it.tags) ? it.tags : [];
+    if (tags.length) parts.push(tags.join(", "));
+    return parts.join(" · ");
+  }
+
   function renderCheckback() {
     const list = $("#checkbackList");
     list.innerHTML = "";
@@ -183,47 +206,82 @@
       const card = document.createElement("div");
       card.className = "cb-card";
       card.innerHTML = `
-        <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
-        <div class="cb-row">
-          <select class="cb-type" aria-label="Kind">
-            ${TYPES.map(
-              (t) => `<option value="${t}" ${t === it.type ? "selected" : ""}>${TYPE_LABEL[t]}</option>`
-            ).join("")}
-          </select>
-          <input class="cb-date" type="date" value="${it.date}" aria-label="Date (optional)" />
-          <input class="cb-time" type="time" value="${it.time || ""}" aria-label="Time (optional)" />
+        <div class="cb-head">
+          <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
           <button class="cb-remove" type="button" aria-label="Remove this">remove</button>
         </div>
-        <div class="cb-row cb-row2">
-          <label class="cb-field"><span class="cb-lbl">Importance</span>
-            <select class="cb-importance" aria-label="Importance">
-              <option value="high" ${it.importance === "high" ? "selected" : ""}>Matters a lot</option>
-              <option value="normal" ${!it.importance || it.importance === "normal" ? "selected" : ""}>Normal</option>
-              <option value="low" ${it.importance === "low" ? "selected" : ""}>Minor</option>
+        <div class="cb-summary">${escapeHtml(checkbackSummary(it))}</div>
+        <button class="cb-adjust" type="button" aria-expanded="false">Adjust details</button>
+        <div class="cb-controls" hidden>
+          <div class="cb-row">
+            <select class="cb-type" aria-label="Kind">
+              ${TYPES.map(
+                (t) => `<option value="${t}" ${t === it.type ? "selected" : ""}>${TYPE_LABEL[t]}</option>`
+              ).join("")}
             </select>
-          </label>
-          <label class="cb-field cb-tags-field"><span class="cb-lbl">Tags</span>
-            <input class="cb-tags" type="text" value="${escapeHtml((it.tags || []).join(", "))}" placeholder="e.g. work, family" aria-label="Tags (categories)" />
-          </label>
-          <label class="cb-field"><span class="cb-lbl">Deadline</span>
-            <select class="cb-deadline" aria-label="Deadline type">
-              <option value="soft" ${it.deadlineType !== "hard" ? "selected" : ""}>Soft / flexible</option>
-              <option value="hard" ${it.deadlineType === "hard" ? "selected" : ""}>Hard (real)</option>
-            </select>
-          </label>
+            <input class="cb-date" type="date" value="${it.date}" aria-label="Date (optional)" />
+            <input class="cb-time" type="time" value="${it.time || ""}" aria-label="Time (optional)" />
+          </div>
+          <div class="cb-row cb-row2">
+            <label class="cb-field"><span class="cb-lbl">Importance</span>
+              <select class="cb-importance" aria-label="Importance">
+                <option value="high" ${it.importance === "high" ? "selected" : ""}>Matters a lot</option>
+                <option value="normal" ${!it.importance || it.importance === "normal" ? "selected" : ""}>Normal</option>
+                <option value="low" ${it.importance === "low" ? "selected" : ""}>Minor</option>
+              </select>
+            </label>
+            <label class="cb-field cb-tags-field"><span class="cb-lbl">Tags</span>
+              <input class="cb-tags" type="text" value="${escapeHtml((it.tags || []).join(", "))}" placeholder="e.g. work, family" aria-label="Tags (categories)" />
+            </label>
+            <label class="cb-field"><span class="cb-lbl">Deadline</span>
+              <select class="cb-deadline" aria-label="Deadline type">
+                <option value="soft" ${it.deadlineType !== "hard" ? "selected" : ""}>Soft / flexible</option>
+                <option value="hard" ${it.deadlineType === "hard" ? "selected" : ""}>Hard (real)</option>
+              </select>
+            </label>
+          </div>
+          ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
         </div>
-        ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
       `;
+      const refreshSummary = () => {
+        card.querySelector(".cb-summary").textContent = checkbackSummary(pending[i]);
+      };
       card.querySelector(".cb-title").addEventListener("input", (e) => (pending[i].title = e.target.value));
-      card.querySelector(".cb-type").addEventListener("change", (e) => (pending[i].type = e.target.value));
-      card.querySelector(".cb-date").addEventListener("change", (e) => (pending[i].date = e.target.value));
-      card.querySelector(".cb-time").addEventListener("change", (e) => (pending[i].time = e.target.value));
-      card.querySelector(".cb-importance").addEventListener("change", (e) => (pending[i].importance = e.target.value));
-      card.querySelector(".cb-tags").addEventListener("input", (e) => (pending[i].tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4)));
-      card.querySelector(".cb-deadline").addEventListener("change", (e) => (pending[i].deadlineType = e.target.value));
+      card.querySelector(".cb-type").addEventListener("change", (e) => {
+        pending[i].type = e.target.value;
+        refreshSummary();
+      });
+      card.querySelector(".cb-date").addEventListener("change", (e) => {
+        pending[i].date = e.target.value;
+        refreshSummary();
+      });
+      card.querySelector(".cb-time").addEventListener("change", (e) => {
+        pending[i].time = e.target.value;
+        refreshSummary();
+      });
+      card.querySelector(".cb-importance").addEventListener("change", (e) => {
+        pending[i].importance = e.target.value;
+        refreshSummary();
+      });
+      card.querySelector(".cb-tags").addEventListener("input", (e) => {
+        pending[i].tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+        refreshSummary();
+      });
+      card.querySelector(".cb-deadline").addEventListener("change", (e) => {
+        pending[i].deadlineType = e.target.value;
+        refreshSummary();
+      });
       card.querySelector(".cb-remove").addEventListener("click", () => {
         pending.splice(i, 1);
         renderCheckback();
+      });
+      const adjustBtn = card.querySelector(".cb-adjust");
+      const controls = card.querySelector(".cb-controls");
+      adjustBtn.addEventListener("click", () => {
+        const opening = controls.hidden;
+        controls.hidden = !opening;
+        adjustBtn.setAttribute("aria-expanded", String(opening));
+        adjustBtn.textContent = opening ? "Hide details" : "Adjust details";
       });
       list.appendChild(card);
     });
@@ -478,6 +536,8 @@
       const r = await fetch("/api/health");
       const j = await r.json();
       aiAvailable = !!j.hasAI;
+      // Wake the local model now (fire-and-forget) so the first sort isn't slow.
+      if (aiAvailable) fetch("/api/warm", { method: "POST" }).catch(() => {});
       const where = j.dataFile || "your data file";
       $("#dataWhere").textContent =
         `Saved automatically to: ${where}. ` +

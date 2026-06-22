@@ -171,19 +171,52 @@ body {
   margin-bottom: 12px;
   background: #fffefb;
 }
+/* the glance: title reads as a heading (not an obvious field) — but click to fix */
+.cb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .cb-title {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font: inherit;
+  font-size: 1.05rem;
   font-weight: 600;
   border: none;
-  border-bottom: 1px solid var(--line);
-  padding: 4px 2px 8px;
+  border-bottom: 1px solid transparent;
+  padding: 2px 2px 4px;
   background: transparent;
   color: var(--ink);
 }
 .cb-title:focus {
   outline: none;
   border-bottom-color: var(--accent);
+}
+.cb-summary {
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.cb-summary:empty {
+  display: none;
+}
+.cb-adjust {
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  padding: 0;
+}
+.cb-adjust:hover {
+  color: var(--ink);
+}
+.cb-controls {
+  margin-top: 4px;
 }
 .cb-row {
   display: flex;

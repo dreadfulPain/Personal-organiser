@@ -250,6 +250,10 @@ function aiConfig() {
       engine: "ollama",
       baseUrl: process.env.AI_BASE_URL || "http://localhost:11434",
       model: process.env.AI_MODEL || "qwen3:14b",
+      // How long Ollama keeps the model loaded in memory after a request. The
+      // first sort of the day pays a cold-start; keeping it warm makes every
+      // sort after that feel instant. "30m" by default, "-1" to never unload.
+      keepAlive: process.env.AI_KEEP_ALIVE || "30m",
     };
   }
   if (["local", "lmstudio", "openai", "openai-compatible"].includes(engine)) {
@@ -305,6 +309,8 @@ async function understandWithOllama(cfg, nowLabel, today, text) {
   const base = {
     model: cfg.model,
     stream: false,
+    // Keep the model resident between sorts so only the first one pays cold-start.
+    keep_alive: cfg.keepAlive,
     options: { temperature: 0.2 },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -426,6 +432,27 @@ async function handleUnderstand(res, body) {
   }
 }
 
+// Pre-warm: load the local model into memory BEFORE the first real sort, so the
+// daily-sort step (touched every day) doesn't pay the cold-start wait. Ollama
+// loads a model when /api/generate is called with an empty prompt; keep_alive
+// then holds it resident. Best-effort and silent — if it can't warm, the real
+// sort still works, just slower the first time. Only meaningful for Ollama.
+async function handleWarm(res) {
+  const cfg = aiConfig();
+  if (!cfg || cfg.engine !== "ollama") return sendJson(res, 200, { ok: true, warmed: false });
+  try {
+    const url = cfg.baseUrl.replace(/\/+$/, "") + "/api/generate";
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: cfg.model, keep_alive: cfg.keepAlive }),
+    });
+    return sendJson(res, 200, { ok: true, warmed: r.ok });
+  } catch {
+    return sendJson(res, 200, { ok: true, warmed: false });
+  }
+}
+
 // --- tiny static file server ----------------------------------------------
 
 const MIME = {
@@ -503,6 +530,10 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 200, { ok: true, savedAt });
       }
       return sendJson(res, 405, { error: "method_not_allowed" });
+    }
+
+    if (pathname === "/api/warm" && req.method === "POST") {
+      return handleWarm(res);
     }
 
     if (pathname === "/api/understand" && req.method === "POST") {

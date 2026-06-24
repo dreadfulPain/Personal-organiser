@@ -656,11 +656,11 @@
     });
   }
 
-  // ---------- "goals in motion" panel (read-only) ----------
-  // Surfaces a few active goals with their current-milestone bar, so goals stay
-  // in sight (§s23: "if I have to go to it, I don't see it"). The Goals page is
-  // where you actually act; this is just a calm window onto it. Mirrors the bar
-  // logic there: the bar fills toward the NEXT milestone, never the whole goal.
+  // ---------- "goals in motion" — the by-day window onto goals (§s26) ----------
+  // Each active goal shows its current milestone, the bar toward it, and its NEXT
+  // step(s) — tickable right here, so a goal's live steps live in your day (§6:
+  // the next step, not the whole tree). Ticking advances the milestone and, when
+  // one completes, fires the same upside-only celebration as the Goals page.
   function goalCurrentIndex(goal) {
     return (goal.milestones || []).findIndex((m) => !m.done);
   }
@@ -670,6 +670,76 @@
     const done = steps.filter((s) => s.done).length;
     return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
   }
+  // Mirrors the Goals page: returns "milestone" | "goal" | null on a completion.
+  function recomputeMilestone(goal, ms) {
+    const steps = ms.steps || [];
+    const allDone = steps.length > 0 && steps.every((s) => s.done);
+    let ev = null;
+    if (allDone && !ms.done) {
+      ms.done = true;
+      ms.completedAt = new Date().toISOString();
+      ev = "milestone";
+    } else if (!allDone && ms.done) {
+      ms.done = false;
+      ms.completedAt = null;
+    }
+    if (ev === "milestone" && goal.milestones.length && goal.milestones.every((m) => m.done)) ev = "goal";
+    return ev;
+  }
+  function toggleGoalStep(goalId, msId, stepId) {
+    const goal = goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    const ms = (goal.milestones || []).find((m) => m.id === msId);
+    if (!ms) return;
+    const step = (ms.steps || []).find((s) => s.id === stepId);
+    if (!step) return;
+    step.done = true; // from the home you only ever tick the next undone step
+    step.completedAt = new Date().toISOString();
+    const ev = recomputeMilestone(goal, ms);
+    OrganiserStore.save({ goals });
+    renderZones();
+    if (ev) celebrateGoal(ev, ev === "goal" ? goal.title : ms.title, { goalId, msId, stepId });
+  }
+
+  // Compact upside-only celebration on the home, with the §9 one-tap undo. The
+  // Goals page has its own; both share the .celebrate styles.
+  let celebrateTimer = null;
+  function celebrateGoal(kind, title, ref) {
+    const el = $("#celebrate");
+    if (!el) return;
+    el.className = "celebrate " + kind;
+    el.hidden = false;
+    const msg =
+      kind === "goal"
+        ? `Goal complete — ${escapeHtml(title)}! Every milestone done. 🎉`
+        : `Milestone done — ${escapeHtml(title)} 🎉`;
+    el.innerHTML = `<span class="celebrate-msg">${msg}</span><button class="celebrate-undo" type="button">not done yet</button>`;
+    el.querySelector(".celebrate-undo").addEventListener("click", () => undoGoalStep(ref));
+    clearTimeout(celebrateTimer);
+    celebrateTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 6000);
+  }
+  function undoGoalStep(ref) {
+    const goal = goals.find((g) => g.id === ref.goalId);
+    if (!goal) return;
+    const ms = (goal.milestones || []).find((m) => m.id === ref.msId);
+    if (!ms) return;
+    const step = (ms.steps || []).find((s) => s.id === ref.stepId);
+    if (step) {
+      step.done = false;
+      step.completedAt = null;
+    }
+    if (ms.done) {
+      ms.done = false;
+      ms.completedAt = null;
+    }
+    const el = $("#celebrate");
+    if (el) el.hidden = true;
+    OrganiserStore.save({ goals });
+    renderZones();
+  }
+
   function renderGoalsPanel() {
     const panel = $("#goalsPanel");
     const listEl = $("#goalsPanelList");
@@ -686,16 +756,37 @@
     picks.forEach((g) => {
       const ms = g.milestones[goalCurrentIndex(g)];
       const pr = milestoneProgress(ms);
-      const row = document.createElement("div");
-      row.className = "gp-item";
-      row.innerHTML = `
+      const item = document.createElement("div");
+      item.className = "gp-item";
+      item.innerHTML = `
         <div class="gp-head">
           <span class="gp-title">${escapeHtml(g.title)}</span>
           <span class="gp-ms">${escapeHtml(ms.title)}</span>
         </div>
         <div class="bar"><div class="bar-fill" style="width:${pr.pct}%"></div></div>
         <div class="gp-label">${pr.total ? `${pr.done} of ${pr.total} steps toward this milestone` : "no steps yet"}</div>`;
-      listEl.appendChild(row);
+      // §6: surface only the next 1–2 undone steps, tickable — never the whole tree.
+      const nextSteps = (ms.steps || []).filter((s) => !s.done).slice(0, 2);
+      if (nextSteps.length) {
+        const steps = document.createElement("div");
+        steps.className = "gp-steps";
+        nextSteps.forEach((s) => {
+          const row = document.createElement("div");
+          row.className = "gp-step";
+          const tick = document.createElement("button");
+          tick.className = "tick";
+          tick.setAttribute("aria-label", "Mark step done");
+          tick.title = "Mark done";
+          tick.addEventListener("click", () => toggleGoalStep(g.id, ms.id, s.id));
+          const t = document.createElement("span");
+          t.className = "gp-step-title";
+          t.textContent = s.title;
+          row.append(tick, t);
+          steps.appendChild(row);
+        });
+        item.appendChild(steps);
+      }
+      listEl.appendChild(item);
     });
     if (active.length > picks.length) {
       const more = document.createElement("p");

@@ -126,9 +126,12 @@ big goal in a sentence and — with smart sorting on — the app **suggests smal
 milestones** for you to tweak; you fill a bar toward the *next* one and get a
 small celebration when it's done. When you add a task that clearly belongs to one
 of your goals, it's quietly **linked** to it (shown as *part of:*), which you can
-change or clear in the check-back. Your active goals also show on the home page
-with a small progress bar, and if a few loose tasks clearly belong together the
-app may gently offer to **make them a goal**. If a hard deadline slips by, it
+change or clear in the check-back. Goals and tasks are **one pool seen two ways**:
+on the home, **Goals in motion** shows each active goal's *next step* to tick
+right there (do your goal's work inside your day); on the Goals page, the daily
+tasks you linked to a goal appear **under that goal**, also tickable. The same
+thing, wherever you look. If a few loose tasks clearly belong together the app may
+gently offer to **make them a goal**. If a hard deadline slips by, it
 surfaces **once, calmly** with a simple choice — give it a new date, make it soft,
 or mark it handled — then it clears (never a red pile of guilt). **Looking back**
 also shows a quiet **mirror** — what you've finished, broken down by area

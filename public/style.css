@@ -898,6 +898,19 @@ body {
   font-size: 0.82rem;
   color: var(--ink-soft);
 }
+.gp-steps {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.gp-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gp-step-title {
+  min-width: 0;
+}
 
 /* goals & milestones */
 .celebrate {
@@ -1073,6 +1086,36 @@ body {
   color: var(--accent-dark);
   font-weight: 600;
   margin: 6px 0;
+}
+/* daily tasks linked to a goal, shown under it (the shared pool, by-goal view) */
+.goal-tasks-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 16px 0 6px;
+}
+.goal-tasks {
+  display: grid;
+  gap: 8px;
+}
+.gt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gt-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.gt-title {
+  font-weight: 600;
+}
+.gt-when {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
 }
 
 @media (max-width: 480px) {

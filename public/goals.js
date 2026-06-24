@@ -1,17 +1,24 @@
-// Goals & milestones (slice 1: the motivational core).
+// Goals & milestones.
 //
 // A goal you name in a sentence → milestones → a bar that fills toward the
 // NEXT milestone (never the whole goal). Tick a milestone's steps; when they're
 // all done the milestone auto-completes and a small, upside-only celebration
-// fires (with a one-tap "not done yet" undo). Pure offline; no AI yet.
+// fires (with a one-tap "not done yet" undo).
 //
-// Plain script (works under file://). Reads/writes goals through OrganiserStore;
-// it only saves { goals } so it can never touch your tasks.
+// This is the BY-GOAL view of one shared pool (§s26): a goal also shows the
+// daily tasks you've linked to it ("part of:"), tickable right here. It saves
+// only the half it changed (goals, or items) via the merge-save, so the two
+// views can't wipe each other.
+//
+// Plain script (works under file://). Reads/writes through OrganiserStore.
 
 (() => {
   "use strict";
 
+  const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
+
   let goals = [];
+  let items = []; // the shared pool: tasks linked to a goal show under it here
   let celebrateTimer = null;
   let aiAvailable = false; // can the app propose milestones? (off in preview / no AI)
   const busyGoals = new Set(); // goals the AI is breaking down right now (transient)
@@ -154,6 +161,19 @@
     obj.title = value;
     persist(); // no re-render: don't yank focus mid-type
   }
+  // Linked daily tasks live in the items pool; completing one here saves { items }
+  // (the merge-save keeps goals intact). done = gone from active, kept in Looking back.
+  function completeItem(id) {
+    const it = items.find((x) => x.id === id);
+    if (!it) return;
+    it.done = true;
+    it.completedAt = now();
+    OrganiserStore.save({ items });
+    render();
+  }
+  function goalTasks(goalId) {
+    return items.filter((i) => !i.done && i.goalId === goalId);
+  }
 
   // ----- celebration (visual, upside-only, scaled, with undo) -----
   function celebrate(kind, title, ref) {
@@ -242,6 +262,29 @@
     input.setAttribute("aria-label", aria);
     input.addEventListener("change", (e) => setTitle(obj, e.target.value));
     return input;
+  }
+
+  function shortDate(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
+    const d = new Date(iso + "T12:00:00");
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  }
+  // A daily task that's linked to this goal — shown here, tickable, but it lives
+  // in the shared items pool (the same task also appears in Today).
+  function taskRow(it) {
+    const row = document.createElement("div");
+    row.className = "gt-row";
+    const tick = document.createElement("button");
+    tick.className = "tick";
+    tick.setAttribute("aria-label", "Mark done");
+    tick.title = "Mark done";
+    tick.addEventListener("click", () => completeItem(it.id));
+    const main = document.createElement("div");
+    main.className = "gt-main";
+    const dt = shortDate(it.date);
+    main.innerHTML = `<span class="gt-title">${escapeHtml(it.title)}</span><span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span>${dt ? `<span class="gt-when">${escapeHtml(dt)}</span>` : ""}`;
+    row.append(tick, main);
+    return row;
   }
 
   function renderGoal(goal) {
@@ -335,6 +378,20 @@
     });
 
     card.appendChild(addLine("+ add a milestone", (v) => addMilestone(goal, v)));
+
+    // The shared pool, by-goal: daily tasks you've linked to this goal show here too.
+    const linked = goalTasks(goal.id);
+    if (linked.length) {
+      const h = document.createElement("p");
+      h.className = "goal-tasks-title";
+      h.textContent = "Tasks linked here";
+      card.appendChild(h);
+      const wrap = document.createElement("div");
+      wrap.className = "goal-tasks";
+      linked.forEach((it) => wrap.appendChild(taskRow(it)));
+      card.appendChild(wrap);
+    }
+
     return card;
   }
 
@@ -351,6 +408,7 @@
   async function init() {
     const data = await OrganiserStore.load();
     goals = Array.isArray(data.goals) ? data.goals : [];
+    items = Array.isArray(data.items) ? data.items : []; // shared pool, for tasks-under-goal
     // Find out if the AI can propose milestones, and wake it so the first goal
     // isn't slow. Silent + best-effort; preview mode (file://) has no server.
     if (OrganiserStore.mode === "file") {

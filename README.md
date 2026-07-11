@@ -131,9 +131,13 @@ on the home, **Goals in motion** shows each active goal's *next step* to tick
 right there (do your goal's work inside your day); on the Goals page, the daily
 tasks you linked to a goal appear **under that goal**, also tickable. The same
 thing, wherever you look. If a few loose tasks clearly belong together the app may
-gently offer to **make them a goal**. If a hard deadline slips by, it
-surfaces **once, calmly** with a simple choice — give it a new date, make it soft,
-or mark it handled — then it clears (never a red pile of guilt). **Looking back**
+gently offer to **make them a goal**. Every task has a quiet **edit** link —
+change its words, date, time, importance, effort, tags, deadline, or goal any
+time (or remove it completely), overdue or not. If a hard deadline slips by, it
+surfaces **once, calmly, one at a time** with a simple choice — give it a new
+date, make it soft, or mark it handled — then it clears and the next (if any)
+takes its place. Coming back after a rough week never means a wall of overdue
+items — just today, and one calm decision. **Looking back**
 also shows a quiet **mirror** — what you've finished, broken down by area
 (category) over a stretch you choose — so you can *see* where your effort's been
 going. It describes, never scores; it's for your own steering, no one else's.

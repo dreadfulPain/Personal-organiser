@@ -19,6 +19,7 @@
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
   const LS_DISMISSED_CLUSTERS = "organiser.dismissedClusters.v1"; // UI-only: don't re-nag
   let editingTimeId = null; // which Today item's time is being set right now (inline timeline)
+  let editingItemId = null; // which item is open in the anywhere-editor (§s26: edit any task, anytime)
 
   // ---------- small helpers ----------
   const $ = (sel) => document.querySelector(sel);
@@ -394,7 +395,132 @@
     return it.date <= todayISO() ? "today" : "coming";
   }
 
+  // ---------- edit any task, anytime (§s26) ----------
+  // The same not-a-form pattern as the check-back: everything pre-filled, nothing
+  // required, blank is fine. Changes save as you make them (the store debounces);
+  // "done" just closes the editor and re-files the item wherever it now belongs.
+  // Works on any row — overdue or not.
+  function itemEditor(it) {
+    const card = document.createElement("div");
+    card.className = "cb-card item-editor";
+    card.innerHTML = `
+      <div class="cb-head">
+        <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
+        <button class="cb-remove" type="button" aria-label="Remove this completely">remove</button>
+      </div>
+      <div class="cb-row">
+        <select class="cb-type" aria-label="Kind">
+          ${TYPES.map((t) => `<option value="${t}" ${t === it.type ? "selected" : ""}>${TYPE_LABEL[t]}</option>`).join("")}
+        </select>
+        <input class="cb-date" type="date" value="${it.date || ""}" aria-label="Date (optional)" />
+        <input class="cb-time" type="time" value="${it.time || ""}" aria-label="Time (optional)" />
+      </div>
+      <div class="cb-row cb-row2">
+        <label class="cb-field"><span class="cb-lbl">Importance</span>
+          <select class="cb-importance" aria-label="Importance">
+            <option value="high" ${importanceOf(it) === "high" ? "selected" : ""}>Matters a lot</option>
+            <option value="normal" ${importanceOf(it) === "normal" ? "selected" : ""}>Normal</option>
+            <option value="low" ${importanceOf(it) === "low" ? "selected" : ""}>Minor</option>
+          </select>
+        </label>
+        <label class="cb-field"><span class="cb-lbl">Effort</span>
+          <select class="cb-effort" aria-label="Effort">
+            <option value="quick" ${effortOf(it) === "quick" ? "selected" : ""}>Quick</option>
+            <option value="medium" ${effortOf(it) === "medium" ? "selected" : ""}>Medium</option>
+            <option value="draining" ${effortOf(it) === "draining" ? "selected" : ""}>Draining</option>
+          </select>
+        </label>
+        <label class="cb-field cb-tags-field"><span class="cb-lbl">Tags</span>
+          <input class="cb-tags" type="text" value="${escapeHtml((it.tags || []).join(", "))}" placeholder="e.g. work, family" aria-label="Tags (categories)" />
+        </label>
+        <label class="cb-field"><span class="cb-lbl">Deadline</span>
+          <select class="cb-deadline" aria-label="Deadline type">
+            <option value="soft" ${it.deadlineType !== "hard" ? "selected" : ""}>Soft / flexible</option>
+            <option value="hard" ${it.deadlineType === "hard" ? "selected" : ""}>Hard (real)</option>
+          </select>
+        </label>
+      </div>
+      ${
+        goals.length
+          ? `<div class="cb-row"><label class="cb-field cb-goal-field"><span class="cb-lbl">Part of a goal</span>
+        <select class="cb-goal" aria-label="Part of a goal">
+          <option value="">— none —</option>
+          ${goals.map((g) => `<option value="${escapeHtml(g.id)}" ${g.id === it.goalId ? "selected" : ""}>${escapeHtml(g.title)}</option>`).join("")}
+        </select>
+      </label></div>`
+          : ""
+      }
+      <div class="ed-actions"><button class="link ed-done" type="button">done editing</button></div>
+    `;
+    // Save as you go; don't re-render mid-edit (it would yank focus / jump zones).
+    card.querySelector(".cb-title").addEventListener("change", (e) => {
+      const v = e.target.value.trim();
+      if (v) it.title = v;
+      else e.target.value = it.title; // blank titles quietly revert
+      persist();
+    });
+    card.querySelector(".cb-type").addEventListener("change", (e) => {
+      it.type = TYPES.includes(e.target.value) ? e.target.value : it.type;
+      persist();
+    });
+    card.querySelector(".cb-date").addEventListener("change", (e) => {
+      it.date = /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? e.target.value : "";
+      persist();
+    });
+    card.querySelector(".cb-time").addEventListener("change", (e) => {
+      it.time = normaliseTime(e.target.value);
+      persist();
+    });
+    card.querySelector(".cb-importance").addEventListener("change", (e) => {
+      it.importance = e.target.value;
+      persist();
+    });
+    card.querySelector(".cb-effort").addEventListener("change", (e) => {
+      it.effort = e.target.value;
+      persist();
+    });
+    card.querySelector(".cb-tags").addEventListener("input", (e) => {
+      it.tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+      persist();
+    });
+    card.querySelector(".cb-deadline").addEventListener("change", (e) => {
+      it.deadlineType = e.target.value === "hard" ? "hard" : "soft";
+      persist();
+    });
+    const goalSel = card.querySelector(".cb-goal");
+    if (goalSel)
+      goalSel.addEventListener("change", (e) => {
+        it.goalId = e.target.value;
+        persist();
+      });
+    card.querySelector(".cb-remove").addEventListener("click", () => {
+      if (!confirm("Remove this completely? It won't be kept in Looking back.")) return;
+      items = items.filter((x) => x.id !== it.id);
+      editingItemId = null;
+      persist();
+      renderZones();
+    });
+    card.querySelector(".ed-done").addEventListener("click", () => {
+      editingItemId = null;
+      renderZones(); // re-files the item wherever its edited date now puts it
+    });
+    return card;
+  }
+  function editLink(it) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "row-edit";
+    btn.textContent = "edit";
+    btn.setAttribute("aria-label", "Edit this");
+    btn.addEventListener("click", () => {
+      editingItemId = it.id;
+      renderZones();
+    });
+    return btn;
+  }
+
   function itemRow(it) {
+    if (editingItemId === it.id) return itemEditor(it);
     const row = document.createElement("div");
     const imp = importanceOf(it);
     row.className = `item imp-${imp}`;
@@ -422,6 +548,7 @@
         </div>
       </div>`;
     row.querySelector(".tick").addEventListener("click", () => complete(it.id));
+    row.appendChild(editLink(it));
     return row;
   }
 
@@ -494,6 +621,7 @@
     return wrap;
   }
   function timelineRow(it, withTimeColumn) {
+    if (editingItemId === it.id) return itemEditor(it);
     const row = document.createElement("div");
     const imp = importanceOf(it);
     row.className = `item tl-item imp-${imp}`;
@@ -529,6 +657,7 @@
       </div>`;
     row.appendChild(main);
     row.appendChild(timeControl(it));
+    row.appendChild(editLink(it));
     return row;
   }
   function renderTodayTimeline(list) {
@@ -917,7 +1046,11 @@
     section.hidden = false;
     listEl.innerHTML = "";
     const today = todayISO();
-    due.forEach((it) => {
+    // Restart guard (§0 s31): coming back after a bad week must never mean a wall
+    // of accusations. Show ONE missed deadline at a time (oldest first); the rest
+    // wait quietly and take its place as each gets its one calm decision.
+    const showing = due.slice(0, 1);
+    showing.forEach((it) => {
       const card = document.createElement("div");
       card.className = "od-card";
       card.innerHTML = `
@@ -947,6 +1080,13 @@
       card.querySelector(".od-done").addEventListener("click", () => complete(it.id));
       listEl.appendChild(card);
     });
+    if (due.length > showing.length) {
+      const more = document.createElement("p");
+      more.className = "od-more";
+      const n = due.length - showing.length;
+      more.textContent = `${n} more waiting quietly — ${n === 1 ? "it" : "each one"} will show here after this one.`;
+      listEl.appendChild(more);
+    }
   }
 
   // done = gone from the active view, kept in the mirror

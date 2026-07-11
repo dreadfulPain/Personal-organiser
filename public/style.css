@@ -840,6 +840,33 @@ body {
   background: #fff;
   color: var(--ink);
 }
+.od-more {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+/* edit any task, anytime — a quiet link on each row, opening the inline editor */
+.row-edit {
+  flex: none;
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+}
+.row-edit:hover {
+  color: var(--accent-dark);
+}
+.item-editor {
+  margin-bottom: 0;
+}
+.ed-actions {
+  margin-top: 10px;
+}
 
 /* a gentle, rare "make this a goal?" offer */
 .cluster-offer {

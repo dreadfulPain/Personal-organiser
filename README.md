@@ -63,6 +63,36 @@ rewrite.)
 
 ---
 
+## Reminders that come and find you
+
+Some things are **started but not closed** — a drafted email you still have to
+send. Those are the easiest things to lose, so the app treats them specially:
+
+- Mark anything as **"needs finishing"** (the AI also spots it from your words —
+  *"drafted the trip email, still need to send it"*). It appears in a
+  **Needs finishing** box at the top of the page until it's truly done.
+- Every "needs finishing" item (and every hard deadline) gets a **reminder time,
+  suggested for you** — earlier than the deadline, so no one else's "done yet?"
+  is ever your first warning. No date-maths: it's pre-filled, just nudge it if
+  you want.
+- When the time arrives, a **real Windows notification** pops up — even if the
+  organiser page isn't open. The little server is what sends it, so the app
+  window (or background start, below) needs to be running. Each reminder fires
+  **once** — changing its time re-arms it. No nagging, ever.
+- You can also mark a task **"promised to"** someone. It shows on the task,
+  counts like something that matters in *What matters today*, and is mentioned
+  in its reminder — your own word, made visible.
+
+### Start it in the background (recommended for reminders)
+
+Double-click **`Install Auto-Start.bat`** once. From then on the organiser runs
+quietly whenever you log in — no window, no browser tab — so reminders can
+always reach you; open the page whenever you like. Undo it any time with
+**`Remove Auto-Start.bat`**. (Reminders reach this computer only — that's the
+honest limit of a fully-owned, no-cloud app.)
+
+---
+
 ## Two ways to open it (and why one is "preview")
 
 - **Start Organiser (recommended):** runs the little local server, saves to your

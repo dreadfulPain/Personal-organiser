@@ -66,6 +66,43 @@
     return g ? g.title || "" : "";
   }
 
+  // ---------- open loops & reminders (§0.2 s28) ----------
+  // remindAt is a local "YYYY-MM-DDTHH:MM" the server watches; when it arrives, a
+  // real OS notification comes and finds you. The app proposes the time — earlier
+  // than the deadline — so there's never date-math to do. remindedAt marks a
+  // fired ping; changing the time clears it (re-arms).
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+  function fmtLocalDT(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+  function proposeRemindAt(it) {
+    const now = new Date();
+    // dated for a future day → the morning before it's due
+    if (it.date && /^\d{4}-\d{2}-\d{2}$/.test(it.date) && it.date > todayISO()) {
+      const dayBefore = new Date(it.date + "T09:00:00");
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      if (dayBefore > now) return fmtLocalDT(dayBefore);
+    }
+    // due today / overdue / undated / morning-before already passed → nudge soon
+    // (small things want closing in one sitting, not parking until tomorrow)
+    const soon = new Date(now.getTime() + 60 * 60 * 1000);
+    soon.setMinutes(soon.getMinutes() - (soon.getMinutes() % 15), 0, 0);
+    return fmtLocalDT(soon);
+  }
+  function fmtRemind(it) {
+    if (!it.remindAt) return "";
+    const d = new Date(it.remindAt);
+    if (isNaN(d)) return "";
+    const when = `${friendlyDate(isoOf(d))} ${fmtTime(pad2(d.getHours()) + ":" + pad2(d.getMinutes()))}`;
+    return it.remindedAt ? `pinged ${when}` : `pings ${when}`;
+  }
+  // s29: no deadline + no one waiting = nothing holding it — the ones that slip.
+  function isFragile(it) {
+    return it.type === "task" && !it.done && !it.date && !it.promisedTo;
+  }
+
   function escapeHtml(s) {
     return (s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
@@ -139,7 +176,7 @@
 
   function normalise(it) {
     const type = TYPES.includes(it.type) ? it.type : "task";
-    return {
+    const out = {
       title: (it.title || "").toString().trim() || "Untitled",
       type,
       date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
@@ -151,7 +188,18 @@
       whenText: (it.when_text || "").toString().trim(),
       // Only keep a link the AI was confident about AND that still exists.
       goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
+      openLoop: it.open_loop === true || it.openLoop === true,
+      promisedTo: (it.promised_to || it.promisedTo || "").toString().trim().slice(0, 40),
+      remindAt: typeof it.remindAt === "string" ? it.remindAt : "",
+      remindedAt: null,
     };
+    // s28: an open loop isn't properly logged until it has a trigger — and a hard
+    // deadline deserves an early ping too. Proposed here, shown pre-filled in the
+    // check-back, always yours to change.
+    if (!out.remindAt && (out.openLoop || (out.deadlineType === "hard" && out.date))) {
+      out.remindAt = proposeRemindAt(out);
+    }
+    return out;
   }
 
   async function onSort() {
@@ -162,7 +210,7 @@
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
-      pending = [{ title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", tags: [], whenText: "" }];
+      pending = [{ title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }];
       $("#dump").value = "";
       $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
       renderCheckback();
@@ -217,11 +265,54 @@
     const eff = effortOf(it);
     if (eff === "quick") parts.push("quick");
     else if (eff === "draining") parts.push("draining");
+    if (it.openLoop) parts.push("needs finishing");
+    if (it.promisedTo) parts.push("promised to " + it.promisedTo);
     const tags = Array.isArray(it.tags) ? it.tags : [];
     if (tags.length) parts.push(tags.join(", "));
     const gTitle = goalTitleById(it.goalId);
     if (gTitle) parts.push("part of " + gTitle);
     return parts.join(" · ");
+  }
+
+  // Shared by the check-back's Adjust panel and the anywhere-editor: the open-loop
+  // / promise / reminder controls (§0.2 s28/s29). Mutates the passed item; the
+  // caller decides what refresh/persist means.
+  function loopRowHtml(it) {
+    return `<div class="cb-row cb-row2">
+        <label class="cb-field"><span class="cb-lbl">Needs finishing?</span>
+          <select class="cb-loop" aria-label="Needs finishing (already started, not closed)">
+            <option value="no" ${it.openLoop ? "" : "selected"}>No</option>
+            <option value="yes" ${it.openLoop ? "selected" : ""}>Yes — prepped, not closed</option>
+          </select>
+        </label>
+        <label class="cb-field cb-promise-field"><span class="cb-lbl">Promised to</span>
+          <input class="cb-promise" type="text" value="${escapeHtml(it.promisedTo || "")}" placeholder="e.g. Sarah" aria-label="Promised to (someone waiting on it)" />
+        </label>
+        <label class="cb-field cb-remind-field"><span class="cb-lbl">Reminder</span>
+          <input class="cb-remind" type="datetime-local" value="${escapeHtml(it.remindAt || "")}" aria-label="When the app should ping you" />
+        </label>
+      </div>`;
+  }
+  function wireLoopControls(card, it, onChange) {
+    card.querySelector(".cb-loop").addEventListener("change", (e) => {
+      it.openLoop = e.target.value === "yes";
+      // s28: an open loop isn't properly logged until it has a trigger.
+      if (it.openLoop && !it.remindAt) {
+        it.remindAt = proposeRemindAt(it);
+        it.remindedAt = null;
+        card.querySelector(".cb-remind").value = it.remindAt;
+      }
+      onChange();
+    });
+    card.querySelector(".cb-promise").addEventListener("input", (e) => {
+      it.promisedTo = e.target.value.trim().slice(0, 40);
+      onChange();
+    });
+    card.querySelector(".cb-remind").addEventListener("change", (e) => {
+      it.remindAt = e.target.value || "";
+      it.remindedAt = null; // changing the time re-arms the ping
+      onChange();
+    });
   }
 
   function renderCheckback() {
@@ -273,6 +364,7 @@
               </select>
             </label>
           </div>
+          ${loopRowHtml(it)}
           ${
             goals.length
               ? `<div class="cb-row"><label class="cb-field cb-goal-field"><span class="cb-lbl">Part of a goal</span>
@@ -329,6 +421,7 @@
           pending[i].goalId = e.target.value;
           refreshSummary();
         });
+      wireLoopControls(card, pending[i], refreshSummary);
       card.querySelector(".cb-remove").addEventListener("click", () => {
         pending.splice(i, 1);
         renderCheckback();
@@ -367,6 +460,10 @@
         tags: normaliseTags(it.tags),
         whenText: it.whenText || "",
         goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
+        openLoop: it.openLoop === true,
+        promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
+        remindAt: typeof it.remindAt === "string" ? it.remindAt : "",
+        remindedAt: null,
         done: false,
         createdAt: now,
         completedAt: null,
@@ -440,6 +537,7 @@
           </select>
         </label>
       </div>
+      ${loopRowHtml(it)}
       ${
         goals.length
           ? `<div class="cb-row"><label class="cb-field cb-goal-field"><span class="cb-lbl">Part of a goal</span>
@@ -493,6 +591,7 @@
         it.goalId = e.target.value;
         persist();
       });
+    wireLoopControls(card, it, persist);
     card.querySelector(".cb-remove").addEventListener("click", () => {
       if (!confirm("Remove this completely? It won't be kept in Looking back.")) return;
       items = items.filter((x) => x.id !== it.id);
@@ -540,11 +639,14 @@
         <div class="item-title">${escapeHtml(it.title)}</div>
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
+          ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
+          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
           ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
           ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
           ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
+          ${isFragile(it) ? `<span class="fragile-chip" title="No deadline and no one waiting — these slip easiest. A date or a promise gives it a hook.">nothing holding this</span>` : ""}
         </div>
       </div>`;
     row.querySelector(".tick").addEventListener("click", () => complete(it.id));
@@ -649,11 +751,14 @@
       <div class="item-title">${escapeHtml(it.title)}</div>
       <div class="item-meta">
         <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
+        ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
+        ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
         ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
         ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
         ${overdue ? `<span class="when overdue">overdue</span>` : ""}
         ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
         ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
+        ${isFragile(it) ? `<span class="fragile-chip" title="No deadline and no one waiting — these slip easiest. A date or a promise gives it a hook.">nothing holding this</span>` : ""}
       </div>`;
     row.appendChild(main);
     row.appendChild(timeControl(it));
@@ -709,6 +814,7 @@
     $("#comingCount").textContent = groups.coming.length ? groups.coming.length : "";
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
 
+    renderLoops();
     renderOverdue();
     renderShortlist();
     renderGoalsPanel();
@@ -725,10 +831,12 @@
   // can't be faked by others); it's a weighted boost, NEVER an override — it
   // can't jump ahead of a hard deadline due today.
   function shortlistEligible(it) {
+    if (it.openLoop) return false; // open loops live in the louder "Needs finishing" — no double-shouting
     const t = todayISO();
     const dueNow = it.date && it.date <= t;
     if (it.deadlineType === "hard" && dueNow) return true; // hard deadline, can't wait
     if (importanceOf(it) === "high") return true; // you said it matters
+    if (it.promisedTo) return true; // someone's waiting on it (s29 hook)
     if (goalTitleById(it.goalId)) return true; // moves you toward a chosen goal
     if (it.date) return true; // dated → can fill a slot by nearest date
     return false; // floaty, not important, not toward a goal → not a "today" thing
@@ -737,7 +845,7 @@
     const t = todayISO();
     const dueNow = it.date && it.date <= t;
     if (it.deadlineType === "hard" && dueNow) return 0; // always first — the guard
-    if (importanceOf(it) === "high") return 1; // then importance (high first)
+    if (importanceOf(it) === "high" || it.promisedTo) return 1; // your values + your word
     if (goalTitleById(it.goalId)) return 2; // then milestone-pull (toward a goal)
     if (dueNow) return 3; // then anything else due today/overdue
     return 4; // then upcoming, by nearest date
@@ -746,6 +854,7 @@
     const t = todayISO();
     if (it.date && it.date < t) return "overdue";
     if (it.date && it.date === t) return "due today";
+    if (it.promisedTo) return "promised to " + it.promisedTo;
     if (importanceOf(it) === "high") return "matters a lot";
     const g = goalTitleById(it.goalId);
     if (g) return "toward " + g;
@@ -1023,6 +1132,50 @@
     if (clusterSuggestion) rememberDismissedCluster(clusterSignature(clusterSuggestion.taskIds));
     clusterSuggestion = null;
     $("#clusterOffer").hidden = true;
+  }
+
+  // ---------- "needs finishing": open loops, loudest on the page (§0.2 s28) ----------
+  // Prepped-but-not-closed is the highest-risk state — the thing that slips when
+  // memory is the only holder. These surface here (louder than the shortlist,
+  // which skips them to avoid double-shouting), each showing when its reminder
+  // will come find you.
+  function renderLoops() {
+    const section = $("#loops");
+    const listEl = $("#loopsList");
+    if (!section || !listEl) return;
+    const loops = items
+      .filter((i) => !i.done && i.openLoop)
+      .sort((a, b) => (a.remindAt || "9999").localeCompare(b.remindAt || "9999"));
+    if (!loops.length) {
+      section.hidden = true;
+      listEl.innerHTML = "";
+      return;
+    }
+    section.hidden = false;
+    listEl.innerHTML = "";
+    loops.forEach((it) => {
+      if (editingItemId === it.id) {
+        listEl.appendChild(itemEditor(it));
+        return;
+      }
+      const row = document.createElement("div");
+      row.className = "lp-row";
+      const due = it.date ? friendlyDate(it.date) : "";
+      const ping = fmtRemind(it);
+      row.innerHTML = `
+        <button class="tick" aria-label="Finished it" title="Finished it"></button>
+        <div class="lp-main">
+          <div class="lp-title">${escapeHtml(it.title)}</div>
+          <div class="item-meta">
+            ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
+            ${due ? `<span class="when${it.deadlineType === "hard" ? " due" : ""}">${it.deadlineType === "hard" ? "due " : ""}${escapeHtml(due)}</span>` : ""}
+            ${ping ? `<span class="ping-info">${escapeHtml(ping)}</span>` : ""}
+          </div>
+        </div>`;
+      row.querySelector(".tick").addEventListener("click", () => complete(it.id));
+      row.appendChild(editLink(it));
+      listEl.appendChild(row);
+    });
   }
 
   // ---------- past a deadline: recover gently (§s21 safety net) ----------

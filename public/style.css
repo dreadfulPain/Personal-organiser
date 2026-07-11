@@ -229,9 +229,13 @@ body {
 .cb-date,
 .cb-time,
 .cb-importance,
+.cb-effort,
 .cb-deadline,
 .cb-tags,
-.cb-goal {
+.cb-goal,
+.cb-loop,
+.cb-promise,
+.cb-remind {
   font: inherit;
   padding: 6px 8px;
   border: 1px solid var(--line);
@@ -782,6 +786,76 @@ body {
 .lb-list-title {
   font-size: 1.05rem;
   margin: 24px 0 12px;
+}
+
+/* "needs finishing" — open loops, deliberately the loudest section (calm-loud:
+   stronger border + accent, never red, never a count of how long it's sat) */
+.loops {
+  margin: 0 0 30px;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.loops h2 {
+  font-size: 1.1rem;
+  margin: 0 0 4px;
+  color: var(--accent-dark);
+}
+#loopsList {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.lp-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.lp-main {
+  flex: 1;
+  min-width: 0;
+}
+.lp-title {
+  font-weight: 600;
+}
+.ping-info {
+  font-size: 0.78rem;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+
+/* open-loop / promise / fragile chips on ordinary rows */
+.loop-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.promise-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--appointment-ink);
+  background: var(--appointment);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.fragile-chip {
+  font-size: 0.72rem;
+  color: var(--reminder-ink);
+  background: var(--reminder);
+  border-radius: 999px;
+  padding: 1px 9px;
+  cursor: help;
+}
+.cb-promise-field,
+.cb-remind-field {
+  min-width: 150px;
 }
 
 /* past a deadline — a calm one-decision recovery, never a red graveyard */

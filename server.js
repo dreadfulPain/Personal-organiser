@@ -175,8 +175,10 @@ const SCHEMA = {
           tags: { type: "array", items: { type: "string" } },
           when_text: { type: "string" },
           goal: { type: "string" },
+          open_loop: { type: "boolean" },
+          promised_to: { type: "string" },
         },
-        required: ["title", "type", "date", "time", "deadlineType", "importance", "effort", "tags", "when_text", "goal"],
+        required: ["title", "type", "date", "time", "deadlineType", "importance", "effort", "tags", "when_text", "goal", "open_loop", "promised_to"],
         additionalProperties: false,
       },
     },
@@ -255,15 +257,20 @@ Also set "goal":
 - Otherwise — if you are not sure, or no goals are listed — use an empty string "". Most items belong to no goal; only link an obvious, confident match.
 - NEVER invent a goal title that is not in the list. A wrong link is worse than no link.
 
+Also set "open_loop" and "promised_to":
+- "open_loop": true ONLY when the words say the thing is already started or prepared but not finished or sent — "drafted", "wrote it but haven't sent it", "half done", "still need to send / submit / hand in". A brand-new task is false. When unsure use false.
+- "promised_to": the NAME of a person this has been committed to ("told Sam I'd send it", "promised mum", "Sarah is waiting on it"), else "". A person merely mentioned is NOT a promise — only a stated commitment or someone clearly waiting.
+
 Return only the structured result.
 
 Example — if today is Sunday, 2026-06-07, and the user dumps:
-"tysday i gotta call the denist at 3pm and also mums bday is comin up and rly need to send the rent by friday"
+"tysday i gotta call the denist at 3pm and also mums bday is comin up and rly need to send the rent by friday. also i drafted the trip email for sarah but havnt sent it, she needs it thursday"
 you return:
 {"items":[
-  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday 3pm","goal":""},
-  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","effort":"medium","tags":["family"],"when_text":"coming up","goal":""},
-  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","effort":"quick","tags":["money","home"],"when_text":"by Friday","goal":""}
+  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday 3pm","goal":"","open_loop":false,"promised_to":""},
+  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","effort":"medium","tags":["family"],"when_text":"coming up","goal":"","open_loop":false,"promised_to":""},
+  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","effort":"quick","tags":["money","home"],"when_text":"by Friday","goal":"","open_loop":false,"promised_to":""},
+  {"title":"Send trip email to Sarah","type":"task","date":"2026-06-11","time":"","deadlineType":"hard","importance":"normal","effort":"quick","tags":["social"],"when_text":"by Thursday","goal":"","open_loop":true,"promised_to":"Sarah"}
 ]}`;
 
 // Goal breakdown prompt (§9 slice 2). Carves a goal into SMALL, soon-reachable
@@ -668,6 +675,117 @@ async function handleWarm(res) {
   }
 }
 
+// --- active reminders: the piece that comes and FINDS you (§0.2 s28) ---------
+// The user's memory must not be where unfinished tasks live. While this server
+// runs (see the auto-start launcher), it scans the owned data file and fires a
+// real OS notification when an item's reminder time arrives — browser open or
+// not. Zero new installs: Windows toasts via PowerShell, macOS via osascript,
+// Linux via notify-send. Each reminder fires once (remindedAt marks it); editing
+// the time re-arms it. Calm + activating, task-framed, never shaming.
+
+const REMIND_INTERVAL_MS = Math.max(5000, Number(process.env.REMIND_INTERVAL_MS) || 60000);
+
+function xmlEscape(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;",
+  }[c]));
+}
+
+function notify(title, body) {
+  // Test/debug hook: append to a file instead of toasting (used by the checks).
+  if (process.env.NOTIFY_FILE) {
+    try {
+      fs.appendFileSync(process.env.NOTIFY_FILE, JSON.stringify({ at: new Date().toISOString(), title, body }) + "\n");
+    } catch {
+      /* best-effort */
+    }
+    return;
+  }
+  try {
+    if (process.platform === "win32") {
+      // Native Windows toast via WinRT — no modules, no installs. Sent as an
+      // encoded command so quoting can never break it.
+      const script = `
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml('<toast scenario="reminder"><visual><binding template="ToastText02"><text id="1">${xmlEscape(title).replace(/'/g, "''")}</text><text id="2">${xmlEscape(body).replace(/'/g, "''")}</text></binding></visual></toast>')
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Personal Organiser').Show((New-Object Windows.UI.Notifications.ToastNotification $xml))`;
+      const encoded = Buffer.from(script, "utf16le").toString("base64");
+      spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
+    } else if (process.platform === "darwin") {
+      spawn("osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
+    } else {
+      spawn("notify-send", [title, body], { detached: true, stdio: "ignore" }).unref();
+    }
+  } catch (e) {
+    console.warn("[remind] couldn't show a notification:", e?.message || e);
+  }
+}
+
+// "in 3 days" style words, not date-math (dyscalculia-friendly).
+function dueWords(dateIso) {
+  if (!ISO.test(dateIso || "")) return "";
+  const today = todayStamp();
+  if (dateIso < today) return "it's past its deadline";
+  if (dateIso === today) return "due today";
+  const diff = Math.round((new Date(dateIso + "T12:00:00") - new Date(today + "T12:00:00")) / 86400000);
+  if (diff === 1) return "due tomorrow";
+  if (diff <= 6) return `due ${weekdayName(dateIso)}`;
+  return `due ${dateIso}`;
+}
+
+// Calm, task-framed words (no-shame floor s24/s28): the task is owed, the
+// person is never failing.
+function reminderText(it) {
+  const due = dueWords(it.date);
+  const promised = it.promisedTo ? `Promised to ${it.promisedTo}. ` : "";
+  if (it.openLoop) {
+    return {
+      title: `Needs finishing — ${it.title}`,
+      body: `${promised}You prepped this; closing it now takes it off your mind.${due ? ` It's ${due}.` : ""}`,
+    };
+  }
+  return {
+    title: `Coming due — ${it.title}`,
+    body: `${promised}${due ? `It's ${due} — ` : ""}doing it now keeps it on your own schedule.`,
+  };
+}
+
+// A reminder is due when its time has arrived, the item is still not done, and
+// it hasn't already fired (remindedAt). "YYYY-MM-DDTHH:MM" parses as LOCAL time
+// — the server runs on the same machine as the browser, so clocks agree.
+function dueReminders(items, now) {
+  return (items || []).filter((it) => {
+    if (!it || it.done || !it.remindAt || it.remindedAt) return false;
+    const t = new Date(it.remindAt);
+    return !isNaN(t) && t <= now;
+  });
+}
+
+function checkReminders() {
+  try {
+    const doc = readData();
+    const due = dueReminders(doc.items, new Date());
+    if (!due.length) return;
+    due.forEach((it) => {
+      const t = reminderText(it);
+      notify(t.title, t.body);
+      it.remindedAt = new Date().toISOString();
+      console.log(`[remind] ${t.title}`);
+    });
+    writeData(doc); // marks them fired so they never nag twice
+  } catch (e) {
+    console.warn("[remind] check failed:", e?.message || e);
+  }
+}
+
 // --- tiny static file server ----------------------------------------------
 
 const MIME = {
@@ -817,8 +935,12 @@ server.listen(PORT, () => {
     const keep = aiCfg.engine === "ollama" ? "keep Ollama running" : "keep your local AI running";
     console.log(`\n  AI sorting: local at ${aiCfg.baseUrl} (${keep}).`);
   }
-  console.log("\n  Keep this window open while you use the organiser. Close it to stop.\n");
+  console.log("\n  Keep this window open while you use the organiser. Close it to stop.");
+  console.log("  Reminders fire from here as real notifications — even with the browser closed.\n");
   openBrowser(url);
+  // Catch anything that came due while the machine was off, then keep watch.
+  setTimeout(checkReminders, 5000);
+  setInterval(checkReminders, REMIND_INTERVAL_MS);
 });
 
 function openBrowser(url) {

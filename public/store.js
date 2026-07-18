@@ -25,32 +25,42 @@
   const LS_ITEMS = "organiser.items.v1";
   const LS_WAITING = "organiser.waiting.v1";
   const LS_GOALS = "organiser.goals.v1";
+  const LS_RECORDS = "organiser.records.v1";
+  const LS_RECORDCONFIG = "organiser.recordconfig.v1";
 
   let statusCb = null;
   let saveTimer = null;
   let dirty = false;
-  let lastState = { items: [], waiting: [], goals: [] };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null };
 
   function emit(s) {
     if (statusCb) statusCb(s);
   }
 
   function readLegacy() {
-    function get(k) {
+    function get(k, fallback) {
       try {
         const r = localStorage.getItem(k);
-        return r ? JSON.parse(r) : [];
+        return r ? JSON.parse(r) : fallback;
       } catch {
-        return [];
+        return fallback;
       }
     }
-    return { items: get(LS_ITEMS), waiting: get(LS_WAITING), goals: get(LS_GOALS) };
+    return {
+      items: get(LS_ITEMS, []),
+      waiting: get(LS_WAITING, []),
+      goals: get(LS_GOALS, []),
+      records: get(LS_RECORDS, []),
+      recordConfig: get(LS_RECORDCONFIG, null),
+    };
   }
   function writeLegacy(state) {
     try {
       localStorage.setItem(LS_ITEMS, JSON.stringify(state.items || []));
       localStorage.setItem(LS_WAITING, JSON.stringify(state.waiting || []));
       localStorage.setItem(LS_GOALS, JSON.stringify(state.goals || []));
+      localStorage.setItem(LS_RECORDS, JSON.stringify(state.records || []));
+      localStorage.setItem(LS_RECORDCONFIG, JSON.stringify(state.recordConfig || null));
     } catch {
       /* storage may be full or blocked; ignore */
     }
@@ -59,17 +69,23 @@
   async function load() {
     if (!SERVER) {
       const data = readLegacy();
-      lastState = { items: data.items, waiting: data.waiting, goals: data.goals };
+      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig };
       emit({ mode: "preview", state: "preview" });
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [] };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
         const d = await r.json();
-        serverData = { items: d.items || [], waiting: d.waiting || [], goals: d.goals || [] };
+        serverData = {
+          items: d.items || [],
+          waiting: d.waiting || [],
+          goals: d.goals || [],
+          records: d.records || [],
+          recordConfig: d.recordConfig || null,
+        };
       }
     } catch {
       /* fall through; we'll still mirror to localStorage below */
@@ -81,10 +97,14 @@
     let migratedNote = "";
     const legacy = readLegacy();
     const serverEmpty =
-      serverData.items.length === 0 && serverData.waiting.length === 0 && serverData.goals.length === 0;
-    const haveLegacy = legacy.items.length > 0 || legacy.waiting.length > 0 || legacy.goals.length > 0;
+      serverData.items.length === 0 &&
+      serverData.waiting.length === 0 &&
+      serverData.goals.length === 0 &&
+      serverData.records.length === 0;
+    const haveLegacy =
+      legacy.items.length > 0 || legacy.waiting.length > 0 || legacy.goals.length > 0 || legacy.records.length > 0;
     if (serverEmpty && haveLegacy) {
-      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals };
+      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig };
       migratedNote = "Brought your earlier items into your saved data file.";
       try {
         await fetch("/api/data", {
@@ -105,7 +125,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 
@@ -152,7 +172,7 @@
     }
   }
 
-  // Export the WHOLE owned state (items + waiting + goals), so a backup is complete.
+  // Export the WHOLE owned state, so a backup is complete.
   function exportNow() {
     const doc = {
       version: 1,
@@ -160,6 +180,8 @@
       items: lastState.items || [],
       waiting: lastState.waiting || [],
       goals: lastState.goals || [],
+      records: lastState.records || [],
+      recordConfig: lastState.recordConfig || null,
     };
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -184,6 +206,8 @@
             items: Array.isArray(d.items) ? d.items : [],
             waiting: Array.isArray(d.waiting) ? d.waiting : [],
             goals: Array.isArray(d.goals) ? d.goals : [],
+            records: Array.isArray(d.records) ? d.records : [],
+            recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
           });
         } catch {
           reject(new Error("That file doesn't look like an organiser backup."));

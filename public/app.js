@@ -1353,7 +1353,7 @@
       items = data.items || [];
       waiting = data.waiting || [];
       goals = data.goals || [];
-      OrganiserStore.save({ items, waiting, goals });
+      OrganiserStore.save({ items, waiting, goals, records: data.records || [], recordConfig: data.recordConfig || null });
       renderZones();
       renderWaiting();
       setStatus("Restored from your backup. ✓");

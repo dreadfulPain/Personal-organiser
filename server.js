@@ -76,7 +76,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -85,6 +85,8 @@ function normaliseDoc(d) {
     items: Array.isArray(d.items) ? d.items : [],
     waiting: Array.isArray(d.waiting) ? d.waiting : [],
     goals: Array.isArray(d.goals) ? d.goals : [],
+    records: Array.isArray(d.records) ? d.records : [],
+    recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
     savedAt: d.savedAt || null,
   };
 }
@@ -96,16 +98,21 @@ function todayStamp() {
 
 function writeData(input) {
   ensureDirs();
-  // Preserve goals if a save didn't include them — never let one page wipe the
-  // half it doesn't own.
-  let goals;
-  if (Array.isArray(input.goals)) goals = input.goals;
-  else {
+  // Preserve any part a save didn't include — never let one page wipe the
+  // halves it doesn't own (goals, and the record log).
+  let goals = Array.isArray(input.goals) ? input.goals : null;
+  let records = Array.isArray(input.records) ? input.records : null;
+  let recordConfig = input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : null;
+  if (goals === null || records === null || recordConfig === null) {
+    let current = { goals: [], records: [], recordConfig: null };
     try {
-      goals = readData().goals;
+      current = readData();
     } catch {
-      goals = [];
+      /* keep empty fallbacks */
     }
+    if (goals === null) goals = current.goals || [];
+    if (records === null) records = current.records || [];
+    if (recordConfig === null) recordConfig = current.recordConfig || null;
   }
   const doc = {
     version: 1,
@@ -113,6 +120,8 @@ function writeData(input) {
     items: Array.isArray(input.items) ? input.items : [],
     waiting: Array.isArray(input.waiting) ? input.waiting : [],
     goals,
+    records,
+    recordConfig,
   };
   const json = JSON.stringify(doc, null, 2);
 

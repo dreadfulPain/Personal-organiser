@@ -1219,6 +1219,162 @@ body {
   color: var(--ink-soft);
 }
 
+/* the record log — one store, filter views, 30-second add */
+.rec-note {
+  margin: 0 0 16px;
+}
+.rec-note:empty {
+  display: none;
+}
+.rec-add {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 18px;
+}
+.rec-add-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rec-add-row2 {
+  margin-top: 10px;
+}
+.rec-add select,
+.rec-add input[type="text"],
+.rec-filters select,
+.rec-filters input[type="text"],
+.rec-config input[type="text"] {
+  font: inherit;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+#recSummary {
+  flex: 1;
+  min-width: 200px;
+}
+#recTags {
+  width: 200px;
+}
+.rec-fu {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.rec-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 16px;
+}
+#fTag {
+  width: 110px;
+}
+.rec-group-title {
+  font-size: 1rem;
+  margin: 22px 0 8px;
+  color: var(--accent-dark);
+}
+#recList {
+  display: grid;
+  gap: 10px;
+}
+.rec-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+}
+.rec-main {
+  flex: 1;
+  min-width: 0;
+}
+.rec-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+.rec-who {
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+.rec-type {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #eee;
+  color: #555;
+}
+.rec-date {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.rec-fu-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.rec-fu-chip.open {
+  color: #fff;
+  background: var(--accent);
+}
+.rec-fu-chip.closed {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+.rec-summary {
+  overflow-wrap: anywhere;
+}
+.rec-detail {
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdfa;
+  color: var(--ink);
+  resize: vertical;
+}
+.rec-actions {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.rec-config {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.rec-cfg-wide {
+  flex: 1;
+  min-width: 220px;
+}
+.rec-cfg-wide input {
+  width: 100%;
+}
+
 @media (max-width: 480px) {
   body {
     font-size: 17px;

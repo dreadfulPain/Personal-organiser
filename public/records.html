@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Record log</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="backlink"><a href="index.html">← Back to my organiser</a></p>
+      <header class="top">
+        <h1 id="recTitle">Record log</h1>
+        <p class="sub">A quick log of what happened — one line, stored once, seen through filters.
+          A note that needs chasing becomes a real task with a reminder, in your normal lists.</p>
+      </header>
+
+      <p id="recNote" class="rec-note muted"></p>
+
+      <!-- THE 30-SECOND ADD: who · type · one line · enter. Nothing else required. -->
+      <section class="rec-add">
+        <div class="rec-add-row">
+          <select id="recWho" aria-label="Who this is about"></select>
+          <select id="recType" aria-label="Kind of note"></select>
+          <input id="recSummary" type="text" placeholder="One line — what happened?" aria-label="What happened (one line)" />
+        </div>
+        <div class="rec-add-row rec-add-row2">
+          <input id="recTags" type="text" placeholder="tags (optional, e.g. reading)" aria-label="Tags (optional)" />
+          <label class="rec-fu"><input id="recFollowUp" type="checkbox" /> needs a follow-up</label>
+          <button id="recAddBtn" class="btn">Add</button>
+        </div>
+      </section>
+
+      <p id="recStatus" class="status" hidden></p>
+
+      <!-- THE VIEWS: every one is a filter over the same records — never copies -->
+      <section class="rec-filters">
+        <select id="fWho" aria-label="Filter: who"></select>
+        <select id="fType" aria-label="Filter: kind"></select>
+        <input id="fTag" type="text" placeholder="tag…" aria-label="Filter: tag" />
+        <select id="fRange" aria-label="Filter: how far back">
+          <option value="all">all time</option>
+          <option value="14">past two weeks</option>
+          <option value="30">past month</option>
+        </select>
+        <label class="rec-fu"><input id="fOpen" type="checkbox" /> open follow-ups only</label>
+      </section>
+
+      <div id="recList"></div>
+
+      <!-- SET UP: the words this page uses are yours to change — they're data, not code -->
+      <footer class="data-footer">
+        <h2>Set up this log</h2>
+        <p class="muted">The people/IDs and note kinds below are just lists you own — change them any
+          time and the log follows.</p>
+        <div class="rec-config">
+          <label class="cb-field"><span class="cb-lbl">Page title</span>
+            <input id="cfgTitle" type="text" aria-label="Page title" />
+          </label>
+          <label class="cb-field rec-cfg-wide"><span class="cb-lbl">IDs (comma-separated)</span>
+            <input id="cfgWho" type="text" aria-label="IDs, comma-separated" />
+          </label>
+          <label class="cb-field rec-cfg-wide"><span class="cb-lbl">Note kinds (comma-separated)</span>
+            <input id="cfgTypes" type="text" aria-label="Note kinds, comma-separated" />
+          </label>
+        </div>
+      </footer>
+    </main>
+
+    <script src="store.js" defer></script>
+    <script src="records.js" defer></script>
+  </body>
+</html>

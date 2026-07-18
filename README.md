@@ -171,6 +171,14 @@ items — just today, and one calm decision. **Looking back**
 also shows a quiet **mirror** — what you've finished, broken down by area
 (category) over a stretch you choose — so you can *see* where your effort's been
 going. It describes, never scores; it's for your own steering, no one else's.
+There's also a **Record log** page — a one-line log of *what happened* (who ·
+kind · one line, under 30 seconds), seen through filters: one person's timeline,
+one kind across everyone, a tag, a time window, or just the open follow-ups.
+Tick **"needs a follow-up"** and it becomes a **real task in your normal lists**,
+dated tomorrow with a morning reminder — no separate place to check. The IDs and
+note kinds are lists you own (it ships pointed at practice IDs S01–S05 — keep it
+to fake IDs and nothing sensitive until your workplace's data rules are known;
+rename everything on the page itself when the time comes).
 
 **Later, separate steps:**
 

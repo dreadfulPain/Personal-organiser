@@ -200,6 +200,16 @@
   function newestFirst(a, b) {
     return (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || "");
   }
+  // Who appears in a view, most-often first — so "who needs support with X?"
+  // and "is a pattern forming?" are answered by the filter itself, no tally kept
+  // anywhere (describes, never scores).
+  function whoCounts(list) {
+    const counts = new Map();
+    list.forEach((r) => counts.set(r.who, (counts.get(r.who) || 0) + 1));
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+      .map(([who, n]) => (n > 1 ? `${who} ×${n}` : String(who)));
+  }
 
   // ----- render -----
   function fillSelect(sel, values, allLabel) {
@@ -226,7 +236,12 @@
     row.className = "rec-row";
     const open = isFollowUpOpen(rec);
     const task = taskById(rec.taskId);
-    const fuLabel = rec.followUp ? (open ? "follow-up open" : "follow-up done ✓") : "";
+    // the chase-by date lives on the linked task (the queue), shown here live
+    const fuLabel = rec.followUp
+      ? open
+        ? `follow-up open${task && task.date ? ` · by ${friendlyDate(task.date)}` : ""}`
+        : "follow-up done ✓"
+      : "";
     row.innerHTML = `
       <div class="rec-main">
         <div class="rec-line">
@@ -272,6 +287,21 @@
     const list = $("#recList");
     list.innerHTML = "";
     const visible = visibleRecords().sort(newestFirst);
+
+    // The whole-class half of the two views: with a filter on (a kind, a tag, a
+    // window, open follow-ups), name WHO the view touches — most-often first.
+    const line = $("#recViewLine");
+    const filtering = filters.type || filters.tag || filters.openOnly || filters.range !== "all";
+    if (line) {
+      if (visible.length && !filters.who && filtering) {
+        line.textContent = "In this view: " + whoCounts(visible).join(" · ");
+        line.hidden = false;
+      } else {
+        line.hidden = true;
+        line.textContent = "";
+      }
+    }
+
     if (!visible.length) {
       list.innerHTML = `<p class="empty">${records.length ? "Nothing matches these filters." : "No records yet. One line up there is all it takes."}</p>`;
       return;

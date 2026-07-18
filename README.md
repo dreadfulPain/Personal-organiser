@@ -175,7 +175,9 @@ There's also a **Record log** page — a one-line log of *what happened* (who ·
 kind · one line, under 30 seconds), seen through filters: one person's timeline,
 one kind across everyone, a tag, a time window, or just the open follow-ups.
 Tick **"needs a follow-up"** and it becomes a **real task in your normal lists**,
-dated tomorrow with a morning reminder — no separate place to check. The IDs and
+dated tomorrow with a morning reminder — no separate place to check. When a
+filter is on, a small **"In this view"** line names who appears and how often
+(S07 ×3 …), so groups and patterns surface on their own. The IDs and
 note kinds are lists you own (it ships pointed at practice IDs S01–S05 — keep it
 to fake IDs and nothing sensitive until your workplace's data rules are known;
 rename everything on the page itself when the time comes).

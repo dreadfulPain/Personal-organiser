@@ -19,8 +19,9 @@
   let records = [];
   let config = null;
   let items = []; // the shared pool — follow-up tasks live here (the queue)
-  const filters = { who: "", type: "", tag: "", range: "all", openOnly: false };
+  const filters = { who: "", type: "", tag: "", range: "all", openOnly: false, unchecked: false };
   let expandedId = null; // which record is showing its details
+  let confirmingId = null; // which AI-sorted record's check-me actions are open
   let profileEdit = false; // is the selected ID's profile open for editing
   let aiAvailable = false; // can the AI sort a messy note into records?
   let aiFallback = false; // AI unreachable just now → show the manual controls
@@ -220,6 +221,8 @@
       tags: $("#recTags").value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4),
       followUp: false,
       taskId: "",
+      src: "hand", // you typed it yourself — nothing to double-check
+      checkedAt: nowISO(),
       createdAt: nowISO(),
     };
     records.unshift(rec);
@@ -316,6 +319,8 @@
         tags: (p.tags || []).slice(0, 4),
         followUp: p.followUp === true,
         taskId: "",
+        src: "ai", // heard by the AI — wears "check me" until you confirm it
+        checkedAt: null,
         createdAt: nowISO(),
       };
       records.unshift(rec);
@@ -414,6 +419,11 @@
     cutoff.setDate(cutoff.getDate() - Number(days));
     return base >= isoOf(cutoff);
   }
+  // AI-heard and not yet personally confirmed (§ trust): a record you typed
+  // yourself, or one from before this existed, never wears the chip.
+  function needsCheck(rec) {
+    return rec.src === "ai" && !rec.checkedAt;
+  }
   function visibleRecords() {
     return records.filter((r) => {
       if (filters.who && r.who !== filters.who) return false;
@@ -421,6 +431,7 @@
       if (filters.tag && !(r.tags || []).some((t) => t.includes(filters.tag))) return false;
       if (!withinRange(r, filters.range)) return false;
       if (filters.openOnly && !isFollowUpOpen(r)) return false;
+      if (filters.unchecked && !needsCheck(r)) return false;
       return true;
     });
   }
@@ -519,11 +530,48 @@
     if ([...el.options].some((o) => o.value === current)) el.value = current;
   }
 
-  // The gradual details area (open per record): the kind's optional fields —
-  // pre-labelled, blank-is-fine, fill any time — plus the free longer note.
+  // The gradual details area (open per record): who/kind/tags fixable any time
+  // (completes confirm-or-edit), the kind's optional fields — pre-labelled,
+  // blank-is-fine, fill any time — plus the free longer note.
   function detailArea(rec) {
     const wrap = document.createElement("div");
     wrap.className = "rec-detail-area";
+
+    const head = document.createElement("div");
+    head.className = "rec-extra-fields";
+    const mkSel = (labelText, values, current, apply) => {
+      const label = document.createElement("label");
+      label.className = "cb-field";
+      label.innerHTML = `<span class="cb-lbl">${escapeHtml(labelText)}</span>`;
+      const sel = document.createElement("select");
+      values.forEach((v) => sel.appendChild(new Option(v, v)));
+      if (![...sel.options].some((o) => o.value === current)) sel.appendChild(new Option(current, current));
+      sel.value = current;
+      sel.addEventListener("change", (e) => {
+        apply(e.target.value);
+        persistRecords();
+        render();
+      });
+      label.appendChild(sel);
+      head.appendChild(label);
+    };
+    mkSel("Who", config.whoIds, rec.who, (v) => (rec.who = v));
+    mkSel("Kind", config.types, rec.type, (v) => (rec.type = v));
+    const tagLabel = document.createElement("label");
+    tagLabel.className = "cb-field";
+    tagLabel.innerHTML = `<span class="cb-lbl">Tags</span>`;
+    const tagInput = document.createElement("input");
+    tagInput.type = "text";
+    tagInput.value = (rec.tags || []).join(", ");
+    tagInput.addEventListener("change", (e) => {
+      rec.tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+      persistRecords();
+      render();
+    });
+    tagLabel.appendChild(tagInput);
+    head.appendChild(tagLabel);
+    wrap.appendChild(head);
+
     const fields = (config.fields && config.fields[rec.type]) || [];
     if (fields.length) {
       const grid = document.createElement("div");
@@ -574,6 +622,7 @@
       : "";
     const filledExtra = Object.entries(rec.extra || {}).filter(([, v]) => (v || "").toString().trim());
     const hasDetails = filledExtra.length || (rec.detail || "").trim();
+    const unchecked = needsCheck(rec);
     row.innerHTML = `
       <div class="rec-main">
         <div class="rec-line">
@@ -582,9 +631,19 @@
           <span class="rec-date">${escapeHtml(friendlyDate(rec.date))}</span>
           ${(rec.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${fuLabel ? `<span class="rec-fu-chip ${open ? "open" : "closed"}">${fuLabel}</span>` : ""}
+          ${unchecked ? `<button class="ai-chip" type="button" title="The AI heard this from your words — worth a quick check">AI-sorted · check me</button>` : ""}
         </div>
-        <div class="rec-summary">${escapeHtml(rec.summary)}</div>
+        <input class="rec-summary-input" type="text" value="${escapeHtml(rec.summary)}" aria-label="What happened (editable)" />
         ${filledExtra.length ? `<div class="rec-extra-line">${filledExtra.map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")}</div>` : ""}
+        ${
+          confirmingId === rec.id && unchecked
+            ? `<div class="ai-check-row">
+                 <button class="link ai-ok" type="button">looks right ✓</button>
+                 <button class="link ai-edit" type="button">let me fix it</button>
+                 <button class="link ai-remove" type="button">remove it</button>
+               </div>`
+            : ""
+        }
       </div>
       <div class="rec-actions">
         <button class="link rec-note-btn" type="button">${expandedId === rec.id ? "hide details" : hasDetails ? "details" : "+ details"}</button>
@@ -592,6 +651,36 @@
         <button class="x-del" type="button" title="Delete record">×</button>
       </div>`;
     if (expandedId === rec.id) row.querySelector(".rec-main").appendChild(detailArea(rec));
+    const summaryInput = row.querySelector(".rec-summary-input");
+    summaryInput.addEventListener("change", (e) => {
+      const v = e.target.value.trim();
+      if (v) rec.summary = v;
+      else e.target.value = rec.summary; // blank quietly reverts
+      persistRecords();
+    });
+    const aiChip = row.querySelector(".ai-chip");
+    if (aiChip)
+      aiChip.addEventListener("click", () => {
+        confirmingId = confirmingId === rec.id ? null : rec.id;
+        render();
+      });
+    const aiOk = row.querySelector(".ai-ok");
+    if (aiOk)
+      aiOk.addEventListener("click", () => {
+        rec.checkedAt = nowISO(); // your eyes on it — the chip retires for good
+        confirmingId = null;
+        persistRecords();
+        render();
+      });
+    const aiEdit = row.querySelector(".ai-edit");
+    if (aiEdit)
+      aiEdit.addEventListener("click", () => {
+        expandedId = rec.id; // open everything fixable; confirm when you're happy
+        confirmingId = null;
+        render();
+      });
+    const aiRemove = row.querySelector(".ai-remove");
+    if (aiRemove) aiRemove.addEventListener("click", () => deleteRecord(rec.id));
     row.querySelector(".rec-note-btn").addEventListener("click", () => {
       expandedId = expandedId === rec.id ? null : rec.id;
       render();
@@ -759,6 +848,10 @@
     });
     $("#fOpen").addEventListener("change", (e) => {
       filters.openOnly = e.target.checked;
+      render();
+    });
+    $("#fUnchecked").addEventListener("change", (e) => {
+      filters.unchecked = e.target.checked;
       render();
     });
     window.addEventListener("pagehide", () => OrganiserStore.flushBeacon());

@@ -176,7 +176,11 @@ smart sorting on you just say it messily — *"s3 strugled with full stops, chas
 mum re the reading sheet friday"* — and the AI picks **who**, the **kind**, writes
 the clean line, fills any **detail fields** it actually heard, and spots the
 **follow-up and its date**; you glance and tap Add (it never guesses an ID it
-isn't sure of — it asks you to pick). AI off = the same bar works by hand (who ·
+isn't sure of — it asks you to pick). Anything the AI sorted then wears a small
+**"AI-sorted · check me"** chip until you've personally confirmed it — tap it for
+*looks right ✓ / let me fix it / remove it* — so reading back later you always
+know which lines were heard by the AI and which you wrote yourself (a "needs a
+check" filter sweeps them in one go). AI off = the same bar works by hand (who ·
 kind · one line, under 30 seconds). Everything's seen through filters: one
 person's timeline,
 one kind across everyone, a tag, a time window, or just the open follow-ups.

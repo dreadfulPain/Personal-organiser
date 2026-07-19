@@ -1459,6 +1459,40 @@ body {
 .rec-summary {
   overflow-wrap: anywhere;
 }
+.rec-summary-input {
+  width: 100%;
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 2px 0;
+}
+.rec-summary-input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+/* "the AI heard this" — worn until you've personally checked it */
+.ai-chip {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--reminder-ink);
+  background: var(--reminder);
+  border: 1px dashed #d9c290;
+  border-radius: 999px;
+  padding: 1px 9px;
+  cursor: pointer;
+}
+.ai-chip:hover {
+  border-style: solid;
+}
+.ai-check-row {
+  margin-top: 6px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
 .rec-detail {
   width: 100%;
   margin-top: 8px;

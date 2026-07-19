@@ -15,11 +15,20 @@
           evidence, in words. Tap a skill to see the records behind it.</p>
       </header>
 
+      <!-- MEETING PREP: the readiness checklist + one-click export of everyone -->
+      <div class="cl-tools">
+        <button id="ckBtn" class="btn ghost" type="button">Get ready for parent meetings</button>
+        <button id="exportAllBtn" class="btn" type="button" hidden>Export all students</button>
+      </div>
+      <div id="checklist" class="ck-list" hidden></div>
+      <p id="clStatus" class="status" hidden></p>
+
       <div id="classList"></div>
     </main>
 
     <script src="nav.js" defer></script>
     <script src="store.js" defer></script>
+    <script src="export.js" defer></script>
     <script src="class.js" defer></script>
   </body>
 </html>

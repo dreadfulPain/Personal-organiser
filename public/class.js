@@ -89,11 +89,86 @@
     });
   }
 
+  // ----- meeting prep: the readiness checklist + export-all -----
+  // Before anything goes in front of parents: who has unchecked AI records, whose
+  // NEWEST evidence on a skill is still unconfirmed (the export would say
+  // something older — or nothing), and who has skills with no evidence at all.
+  // One "review" click lands on that student, pre-filtered.
+  function setClStatus(msg) {
+    const el = $("#clStatus");
+    el.textContent = msg || "";
+    el.hidden = !msg;
+  }
+  function studentReadiness(who) {
+    const mine = records.filter((r) => r.who === who && r.topic);
+    const unchecked = mine.filter(OrganiserExport.needsCheck).length;
+    const stale = OrganiserExport.staleTopics(who, records, config);
+    const usable = mine.filter((r) => !OrganiserExport.needsCheck(r));
+    const assessed = OrganiserExport.latestLevels(usable).size;
+    const unassessed = (config.topics || []).length - assessed;
+    return { who, hasAny: mine.length > 0, unchecked, stale, unassessed };
+  }
+  function renderChecklist() {
+    const box = $("#checklist");
+    box.hidden = false;
+    box.innerHTML = "";
+    (config.whoIds || []).forEach((who) => {
+      const s = studentReadiness(who);
+      const row = document.createElement("div");
+      row.className = "ck-row";
+      const issues = [];
+      if (!s.hasAny) issues.push("no evidence logged yet");
+      if (s.unchecked) issues.push(`${s.unchecked} AI record${s.unchecked === 1 ? "" : "s"} to confirm`);
+      if (s.stale.length)
+        issues.push(`newest evidence unconfirmed for ${s.stale.length} skill${s.stale.length === 1 ? "" : "s"} (${s.stale.slice(0, 3).join("; ")}${s.stale.length > 3 ? "…" : ""})`);
+      if (s.hasAny && s.unassessed) issues.push(`${s.unassessed} skill${s.unassessed === 1 ? "" : "s"} not assessed yet`);
+      const ready = s.hasAny && !s.unchecked && !s.stale.length;
+      row.innerHTML = `
+        <span class="ck-who">${escapeHtml(who)}</span>
+        <span class="ck-state ${ready ? "ready" : ""}">${ready ? "ready ✓" : escapeHtml(issues.join(" · "))}</span>
+        <a class="ck-review" href="records.html?who=${encodeURIComponent(who)}${s.unchecked ? "&unchecked=1" : ""}">review</a>`;
+      box.appendChild(row);
+    });
+    $("#exportAllBtn").hidden = false;
+  }
+  async function exportAll() {
+    setClStatus("Preparing everyone's summaries — a moment…");
+    const withEvidence = (config.whoIds || []).filter((w) => records.some((r) => r.who === w && r.topic && !OrganiserExport.needsCheck(r)));
+    if (!withEvidence.length) {
+      setClStatus("No confirmed evidence to export yet.");
+      return;
+    }
+    let inner = "";
+    let excluded = 0;
+    let staleStudents = 0;
+    for (const who of withEvidence) {
+      const s = await OrganiserExport.studentSection(who, records, config);
+      inner += s.html;
+      excluded += s.excluded;
+      if (s.stale.length) staleStudents++;
+    }
+    const today = new Date();
+    const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    OrganiserExport.download(`class-progress-${stamp}.html`, OrganiserExport.docShell("Class progress summaries", inner));
+    const skipped = (config.whoIds || []).length - withEvidence.length;
+    setClStatus(
+      `Exported ${withEvidence.length} student summar${withEvidence.length === 1 ? "y" : "ies"} — each starts on a fresh page when printed. ✓` +
+        (skipped ? ` ${skipped} with no confirmed evidence were left out.` : "") +
+        (excluded ? ` ${excluded} unconfirmed AI record${excluded === 1 ? "" : "s"} not included` : "") +
+        (staleStudents ? ` (${staleStudents} student${staleStudents === 1 ? "'s" : "s'"} newest evidence is unconfirmed — see the checklist).` : excluded ? "." : "")
+    );
+  }
+
   async function init() {
     const data = await OrganiserStore.load();
     records = Array.isArray(data.records) ? data.records : [];
     config = data.recordConfig || null;
     if (config && config.title) $("#clTitle").textContent = "The class — " + config.title;
+    $("#ckBtn").addEventListener("click", renderChecklist);
+    $("#exportAllBtn").addEventListener("click", exportAll);
+    if (!config || !(config.topics || []).length || OrganiserStore.mode !== "file") {
+      $("#ckBtn").hidden = true; // nothing to prepare until skills exist (and files need the server)
+    }
     render();
   }
 

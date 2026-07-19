@@ -579,86 +579,20 @@
       .map(([who, n]) => (n > 1 ? `${who} ×${n}` : String(who)));
   }
 
-  // ----- the parent-meeting export -----
-  // One student, one self-contained page you can print or send: the year's
-  // skills each described in PARENT words (the numbers stay yours), the dated
-  // evidence beneath, and the attached work embedded. Unchecked AI records are
-  // left out — only what you've personally confirmed goes in front of a parent.
-  function parentWord(level) {
-    const i = (config.levels || []).indexOf(level);
-    const w = (config.levelParentWords || [])[i];
-    return w || level;
-  }
-  const IMG_EXT = /\.(jpe?g|png|gif|webp)$/i;
-  async function fileAsDataUri(id) {
-    try {
-      const r = await fetch("/files/" + encodeURIComponent(id));
-      if (!r.ok) return null;
-      const blob = await r.blob();
-      return await new Promise((resolve) => {
-        const fr = new FileReader();
-        fr.onload = () => resolve(fr.result);
-        fr.onerror = () => resolve(null);
-        fr.readAsDataURL(blob);
-      });
-    } catch {
-      return null;
-    }
-  }
+  // ----- the parent-meeting export (shared engine in export.js) -----
+  // One student, one self-contained page: parent words only, confirmed evidence
+  // only, work images embedded. The status tells the teacher what was left out
+  // AND which skills' newest evidence is still unconfirmed (freshness honesty).
   async function exportParentSummary() {
     const who = filters.who;
     if (!who) return;
     setStatus("Preparing the export…");
-    const mine = records.filter((r) => r.who === who && r.topic);
-    const excluded = mine.filter(needsCheck).length;
-    const usable = mine.filter((r) => !needsCheck(r));
-    const lv = latestLevels(usable);
-    const prepared = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
-
-    let body = "";
-    for (const topic of config.topics) {
-      const level = lv.get(topic);
-      body += `<section><h2>${escapeHtml(topic)}</h2>`;
-      body += `<p class="lvl">${level ? escapeHtml(parentWord(level.level)) : "not assessed yet"}</p>`;
-      const ev = usable.filter((r) => r.topic === topic).sort(newestFirst);
-      for (const r of ev) {
-        body += `<div class="ev"><p><strong>${escapeHtml(friendlyDate(r.date))}</strong> — ${escapeHtml(r.summary)}</p>`;
-        for (const f of r.files || []) {
-          if (IMG_EXT.test(f.name)) {
-            const uri = await fileAsDataUri(f.id);
-            if (uri) body += `<img src="${uri}" alt="${escapeHtml(f.name)}" />`;
-            else body += `<p class="fn">work sample: ${escapeHtml(f.name)}</p>`;
-          } else if (f.name) {
-            body += `<p class="fn">work sample on file: ${escapeHtml(f.name)}</p>`;
-          }
-        }
-        body += `</div>`;
-      }
-      body += `</section>`;
-    }
-
-    const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(who)} — progress summary</title>
-<style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#333;line-height:1.6}
-h1{font-size:1.5rem}h2{font-size:1.05rem;margin:26px 0 2px;border-bottom:1px solid #ddd;padding-bottom:4px}
-.lvl{margin:4px 0 8px;font-weight:bold;color:#3c6b5c}.ev p{margin:4px 0}.ev img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:6px 0}
-.fn{font-style:italic;color:#777}.meta{color:#777;font-size:0.9rem}</style></head><body>
-<h1>${escapeHtml(who)} — progress summary</h1>
-<p class="meta">Prepared ${escapeHtml(prepared)}. Each skill is described in plain words, with the dated work behind it.</p>
-${body}
-</body></html>`;
-
-    const blob = new Blob([doc], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${who}-progress-${todayISO()}.html`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const s = await OrganiserExport.studentSection(who, records, config);
+    OrganiserExport.download(`${who}-progress-${todayISO()}.html`, OrganiserExport.docShell(`${who} — progress summary`, s.html));
     setStatus(
       `Exported ${who}'s summary. ✓` +
-        (excluded ? ` (${excluded} AI-sorted record${excluded === 1 ? "" : "s"} left out — confirm ${excluded === 1 ? "it" : "them"} to include.)` : "")
+        (s.excluded ? ` ${s.excluded} AI-sorted record${s.excluded === 1 ? "" : "s"} left out — confirm to include.` : "") +
+        (s.stale.length ? ` Newest evidence still unconfirmed for: ${s.stale.join(", ")}.` : "")
     );
   }
 
@@ -742,7 +676,8 @@ ${body}
             const b = document.createElement("button");
             b.type = "button";
             b.className = "level-jump" + (filters.topic === t ? " active" : "");
-            b.title = "Show the evidence behind this";
+            const lvDate = (lv.get(t).key || "").split("|")[0];
+            b.title = (lvDate ? `latest evidence ${lvDate} — ` : "") + "tap to see the evidence behind this";
             b.textContent = `${t} — ${lv.get(t).level}`;
             b.addEventListener("click", () => {
               filters.topic = filters.topic === t ? "" : t;
@@ -1004,6 +939,8 @@ ${body}
     fillSelect("#fTopic", config.topics, "every skill");
     $("#fTopic").hidden = !config.topics.length;
     $("#fTopic").value = filters.topic; // the levels-so-far buttons set this too
+    $("#fWho").value = filters.who; // may arrive preset via ?who= from the Class page
+    $("#fUnchecked").checked = filters.unchecked;
     applyAddMode();
 
     renderProfile();
@@ -1145,6 +1082,12 @@ ${body}
       config.levelParentWords = DEFAULT_CONFIG.levelParentWords.slice();
       persistRecords();
     }
+
+    // Arriving from the Class checklist: ?who=S03&unchecked=1 lands filtered.
+    const qs = new URLSearchParams(location.search);
+    const qWho = qs.get("who");
+    if (qWho && config.whoIds.includes(qWho)) filters.who = qWho;
+    if (qs.get("unchecked") === "1") filters.unchecked = true;
 
     // Can the AI sort a messy note? (And wake it, so the first sort isn't slow.)
     if (OrganiserStore.mode === "file") {

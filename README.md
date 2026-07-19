@@ -202,11 +202,16 @@ And a judgement can carry its **proof**: attach the actual piece of work (a
 photo, a file) to the record behind it. Each "level so far" is a button — tap it
 and you're looking at that skill's evidence trail, work samples included. That's
 the parent-meeting layout: *here's the year's skills, here's the level, here's
-the work that shows it.* When meetings come, hit **"export for a parent
-meeting"** on a student's profile: a single printable page — every skill in the
-parent wording (never the raw numbers), the dated evidence beneath, work-sample
-photos embedded. Only records you've personally confirmed go in; unchecked
-AI-sorted ones are left out and counted so you can confirm them first.
+the work that shows it.* When meetings come, the **Class** tab has
+**"Get ready for parent meetings"**: a readiness checklist per student — AI
+records still to confirm, skills whose **newest evidence is unconfirmed** (the
+export would show an older judgement), skills not assessed yet — each with a
+one-click **review** that lands on that student pre-filtered. Then **"Export all
+students"** produces one printable file, each student starting on a fresh page:
+every skill in the parent wording (never the raw numbers), dated evidence
+beneath, work-sample photos embedded. Only records you've personally confirmed
+go in — unchecked ones are left out and counted. (A single student exports from
+their profile as before.)
 (Attached files live in `data/files/` next to your data
 — they sync and back up with the folder; the in-app "Back up now" download covers
 the data file only, so copy the whole `data` folder for a full backup.) Everything's seen through filters: one

@@ -181,7 +181,14 @@ isn't sure of — it asks you to pick). Anything the AI sorted then wears a smal
 *looks right ✓ / let me fix it / remove it* — so reading back later you always
 know which lines were heard by the AI and which you wrote yourself (a "needs a
 check" filter sweeps them in one go). AI off = the same bar works by hand (who ·
-kind · one line, under 30 seconds). Everything's seen through filters: one
+kind · one line, under 30 seconds). Paste your school's **skills/standards list**
+into Set up (one per line) and the log becomes an **evidence tracker**: any record
+can link to a skill and carry a **level** (exceeding / meeting / developing /
+beginning — reword to match your school). Then one person's view shows their
+**levels so far** (always the latest evidence, never an average), and picking a
+skill shows **where the whole class stands on it** — each ID once, grouped by
+level — which is your reteach / small-group / move-on answer. The AI extracts
+skill and level from your words too, only when you actually stated a judgement. Everything's seen through filters: one
 person's timeline,
 one kind across everyone, a tag, a time window, or just the open follow-ups.
 Tick **"needs a follow-up"** and it becomes a **real task in your normal lists**,

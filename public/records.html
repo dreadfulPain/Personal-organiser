@@ -26,6 +26,8 @@
         </div>
         <div class="rec-add-row rec-add-row2">
           <input id="recTags" type="text" placeholder="tags (optional, e.g. reading)" aria-label="Tags (optional)" />
+          <select id="recTopic" hidden aria-label="Skill or standard (optional)"></select>
+          <select id="recLevel" hidden aria-label="Level (optional)"></select>
           <label class="rec-fu"><input id="recFollowUp" type="checkbox" /> needs a follow-up</label>
           <button id="recAddBtn" class="btn">Add</button>
         </div>
@@ -47,6 +49,7 @@
       <section class="rec-filters">
         <select id="fWho" aria-label="Filter: who"></select>
         <select id="fType" aria-label="Filter: kind"></select>
+        <select id="fTopic" hidden aria-label="Filter: skill or standard"></select>
         <input id="fTag" type="text" placeholder="tag…" aria-label="Filter: tag" />
         <select id="fRange" aria-label="Filter: how far back">
           <option value="all">all time</option>

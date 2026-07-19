@@ -1332,6 +1332,38 @@ body {
   color: var(--ink-soft);
   font-weight: 400;
 }
+/* skill/standard + level on a record — evidence-linked, computed views only */
+.topic-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--note-ink);
+  background: var(--note);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.level-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border: 1px solid #d4e3dc;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.rec-levels-line {
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+.rec-topics-area {
+  width: 100%;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  resize: vertical;
+}
 
 /* per-ID profile — grows gradually; read view first, never a required form */
 .rec-profile {

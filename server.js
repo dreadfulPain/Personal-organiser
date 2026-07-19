@@ -348,31 +348,34 @@ Follow these rules without exception:
 - "tags": 0-3 short lower-case category labels, only when obvious. A tag is a category, never a judgment.
 - "follow_up": true ONLY when something needs doing or chasing later ("chase", "follow up", "check in", "send", "ask", "remind"). Logging alone is false.
 - "follow_up_date": when follow_up is true and a day is stated or clearly implied, the real date in YYYY-MM-DD (resolve "friday", "tomorrow" from the today you are given). Otherwise "".
+- "topic": a list of trackable skills/standards may be provided. Set "topic" to the EXACT entry the note is clearly evidence about — matched generously by its code or words ("RL.3.2", "central message"). If none clearly fits, or no list is given, use "". Never invent one.
+- "level": a list of judgement levels may be provided (strongest first). Set "level" ONLY when the note states a judgement ("2/4", "below expected", "got it easily", "secure") — map it to the closest provided level. No judgement stated, or no list given → "". Never invent a judgement of your own.
 - Never ask the user anything. Return only the structured result.
 
-Example — IDs: P01, P02 · kinds: visit (details: outcome, next step), check (details: result). Today is Wednesday 2026-06-10, and the note is:
-"p2 visit went ok boiler stil noisy, chase the parts quote friday. p1 check fine"
+Example — IDs: P01, P02 · kinds: visit (details: outcome, next step), check (details: result) · skills: pressure test, safety cert · levels: good, fair, poor. Today is Wednesday 2026-06-10, and the note is:
+"p2 visit went ok boiler stil noisy, pressure test came out fair, chase the parts quote friday. p1 check fine"
 you return:
 {"records":[
-  {"who":"P02","type":"visit","summary":"Visit went OK — boiler still noisy","details":[{"field":"outcome","value":"OK, boiler still noisy"},{"field":"next step","value":"chase the parts quote"}],"tags":[],"follow_up":true,"follow_up_date":"2026-06-12"},
-  {"who":"P01","type":"check","summary":"Check was fine","details":[{"field":"result","value":"fine"}],"tags":[],"follow_up":false,"follow_up_date":""}
+  {"who":"P02","type":"visit","summary":"Visit went OK — boiler still noisy","details":[{"field":"outcome","value":"OK, boiler still noisy"},{"field":"next step","value":"chase the parts quote"}],"tags":[],"follow_up":true,"follow_up_date":"2026-06-12","topic":"pressure test","level":"fair"},
+  {"who":"P01","type":"check","summary":"Check was fine","details":[{"field":"result","value":"fine"}],"tags":[],"follow_up":false,"follow_up_date":"","topic":"","level":""}
 ]}`;
 
-function recordTurn(nowLabel, today, text, whoIds, types, fieldsMap) {
+function recordTurn(nowLabel, today, text, whoIds, types, fieldsMap, topics, levels) {
   const kinds = types
     .map((t) => {
       const f = fieldsMap[t] || [];
       return f.length ? `${t} (details: ${f.join(", ")})` : t;
     })
     .join(" · ");
-  return (
+  let s =
     `Right now it is ${nowLabel} (today's date is ${today}).\n\n` +
-    `IDs: ${whoIds.join(", ")}\nKinds: ${kinds}\n\n` +
-    `Sort this note into records:\n"""\n${text}\n"""`
-  );
+    `IDs: ${whoIds.join(", ")}\nKinds: ${kinds}`;
+  if (topics.length) s += `\nSkills/standards: ${topics.join(" · ")}`;
+  if (levels.length) s += `\nLevels (strongest first): ${levels.join(", ")}`;
+  return s + `\n\nSort this note into records:\n"""\n${text}\n"""`;
 }
 
-function buildRecordSchema(whoIds, types) {
+function buildRecordSchema(whoIds, types, topics, levels) {
   return {
     type: "object",
     properties: {
@@ -396,8 +399,10 @@ function buildRecordSchema(whoIds, types) {
             tags: { type: "array", items: { type: "string" } },
             follow_up: { type: "boolean" },
             follow_up_date: { type: "string" },
+            topic: { type: "string", enum: topics.concat([""]) },
+            level: { type: "string", enum: levels.concat([""]) },
           },
-          required: ["who", "type", "summary", "details", "tags", "follow_up", "follow_up_date"],
+          required: ["who", "type", "summary", "details", "tags", "follow_up", "follow_up_date", "topic", "level"],
           additionalProperties: false,
         },
       },
@@ -762,6 +767,8 @@ async function handleRecordUnderstand(res, body) {
       if (l.length) fieldsMap[k] = l;
     });
   }
+  const topics = clean(body?.config?.topics).slice(0, 300);
+  const levels = topics.length ? clean(body?.config?.levels).slice(0, 10) : [];
 
   const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
   const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
@@ -770,8 +777,8 @@ async function handleRecordUnderstand(res, body) {
     const parsed = await runEngine(
       cfg,
       RECORD_PROMPT,
-      recordTurn(nowLabel, today, text, whoIds, types, fieldsMap),
-      buildRecordSchema(whoIds, types)
+      recordTurn(nowLabel, today, text, whoIds, types, fieldsMap, topics, levels),
+      buildRecordSchema(whoIds, types, topics, levels)
     );
     const records = (Array.isArray(parsed.records) ? parsed.records : [])
       .map((r) => {
@@ -797,6 +804,8 @@ async function handleRecordUnderstand(res, body) {
             .slice(0, 4),
           follow_up: r.follow_up === true,
           follow_up_date: ISO.test(r.follow_up_date) ? r.follow_up_date : "",
+          topic: topics.includes(r.topic) ? r.topic : "",
+          level: levels.includes(r.level) ? r.level : "",
         };
       })
       .filter((r) => r.summary);

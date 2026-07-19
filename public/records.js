@@ -19,7 +19,7 @@
   let records = [];
   let config = null;
   let items = []; // the shared pool — follow-up tasks live here (the queue)
-  const filters = { who: "", type: "", tag: "", range: "all", openOnly: false, unchecked: false };
+  const filters = { who: "", type: "", topic: "", tag: "", range: "all", openOnly: false, unchecked: false };
   let expandedId = null; // which record is showing its details
   let confirmingId = null; // which AI-sorted record's check-me actions are open
   let profileEdit = false; // is the selected ID's profile open for editing
@@ -68,6 +68,11 @@
     // The per-ID profile — a few labelled notes that grow as you learn a person.
     profileFields: ["reading level", "writing level", "maths", "learning needs (SEN / EAL)", "medical", "parent & home", "general notes"],
     profiles: {},
+    // Skills/standards to track evidence against — YOUR list (paste the school's
+    // when you have it), one per line. Empty = the whole feature stays hidden.
+    topics: [],
+    // The judgement scale, in words (strongest first), matched to the school later.
+    levels: ["exceeding", "meeting", "developing", "beginning"],
     note:
       "Practice with fake IDs first. Everything here stays on this computer — the AI is local and " +
       "nothing is sent anywhere. Two honest cautions: if this folder syncs to OneDrive/Dropbox, these " +
@@ -87,6 +92,8 @@
       fields: {},
       profileFields: list(c.profileFields),
       profiles: {},
+      topics: list(c.topics),
+      levels: list(c.levels, true),
       note: (c.note || "").toString(),
     };
     if (c.fields && typeof c.fields === "object") {
@@ -110,6 +117,7 @@
     if (!out.whoIds.length) out.whoIds = DEFAULT_CONFIG.whoIds.slice();
     if (!out.types.length) out.types = DEFAULT_CONFIG.types.slice();
     // Configs saved before these existed grow them here (a quiet upgrade).
+    if (!out.levels.length) out.levels = DEFAULT_CONFIG.levels.slice();
     if (!out.profileFields.length) out.profileFields = DEFAULT_CONFIG.profileFields.slice();
     if (!Object.keys(out.fields).length) out.fields = JSON.parse(JSON.stringify(DEFAULT_CONFIG.fields));
     if (out.note === OLD_DEFAULT_NOTE) out.note = DEFAULT_CONFIG.note; // factory text only — an edited note is never touched
@@ -218,6 +226,8 @@
       summary,
       detail: "",
       extra: {}, // per-kind detail fields — filled gradually, later, if ever
+      topic: $("#recTopic").value || "",
+      level: $("#recLevel").value || "",
       tags: $("#recTags").value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4),
       followUp: false,
       taskId: "",
@@ -268,7 +278,13 @@
           now: new Date().toLocaleString(undefined, {
             weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
           }),
-          config: { whoIds: config.whoIds, types: config.types, fields: config.fields || {} },
+          config: {
+            whoIds: config.whoIds,
+            types: config.types,
+            fields: config.fields || {},
+            topics: config.topics || [],
+            levels: config.topics.length ? config.levels || [] : [],
+          },
         }),
       });
       if (!r.ok) throw new Error("http " + r.status);
@@ -284,6 +300,8 @@
         summary: x.summary,
         tags: x.tags || [],
         extra: x.details || {},
+        topic: x.topic || "",
+        level: x.level || "",
         followUp: x.follow_up === true,
         fuDate: x.follow_up_date || "",
       }));
@@ -316,6 +334,8 @@
         summary: p.summary,
         detail: "",
         extra: p.extra || {},
+        topic: p.topic || "",
+        level: p.level || "",
         tags: (p.tags || []).slice(0, 4),
         followUp: p.followUp === true,
         taskId: "",
@@ -366,7 +386,11 @@
           <input class="rp-tags" type="text" value="${escapeHtml((p.tags || []).join(", "))}" placeholder="tags" aria-label="Tags" />
           <label class="rec-fu"><input class="rp-fu" type="checkbox" ${p.followUp ? "checked" : ""} /> needs a follow-up${p.fuDate ? ` (by ${escapeHtml(friendlyDate(p.fuDate))})` : ""}</label>
         </div>
-        ${filled.length ? `<div class="rec-extra-line">${filled.map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")} <span class="rec-extra-hint">— tweak after adding</span></div>` : ""}`;
+        ${
+          filled.length || p.topic || p.level
+            ? `<div class="rec-extra-line">${p.topic ? `<span class="topic-chip">${escapeHtml(p.topic)}</span> ` : ""}${p.level ? `<span class="level-chip">${escapeHtml(p.level)}</span> ` : ""}${filled.map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")} <span class="rec-extra-hint">— tweak after adding</span></div>`
+            : ""
+        }`;
       const whoSel = card.querySelector(".rp-who");
       const typeSel = card.querySelector(".rp-type");
       if (!p.who) whoSel.appendChild(new Option("— who? —", "")); // never guessed for you
@@ -397,6 +421,9 @@
     $("#recType").hidden = ai;
     $("#recTags").hidden = ai;
     $("#recFollowUp").parentElement.hidden = ai;
+    const showTL = !ai && config && config.topics.length > 0;
+    $("#recTopic").hidden = !showTL;
+    $("#recLevel").hidden = !showTL;
     $("#recAddBtn").textContent = ai ? "Sort it" : "Add";
     $("#recSummary").placeholder = ai
       ? "say it messily — who, what happened, what needs chasing"
@@ -428,6 +455,7 @@
     return records.filter((r) => {
       if (filters.who && r.who !== filters.who) return false;
       if (filters.type && r.type !== filters.type) return false;
+      if (filters.topic && r.topic !== filters.topic) return false;
       if (filters.tag && !(r.tags || []).some((t) => t.includes(filters.tag))) return false;
       if (!withinRange(r, filters.range)) return false;
       if (filters.openOnly && !isFollowUpOpen(r)) return false;
@@ -438,6 +466,42 @@
   function newestFirst(a, b) {
     return (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || "");
   }
+  // ----- evidence → level views (computed, never stored) -----
+  // A judgement is only ever the LATEST evidenced record — update where you have
+  // evidence, nothing else moves. Both views are derived fresh from the same
+  // records each time (describes, never scores; no tally kept anywhere).
+  function latestLevels(recs) {
+    const m = new Map(); // topic → { level, key }
+    recs.forEach((r) => {
+      if (!r.topic || !r.level) return;
+      const key = (r.date || "") + "|" + (r.createdAt || "");
+      const cur = m.get(r.topic);
+      if (!cur || key > cur.key) m.set(r.topic, { level: r.level, key });
+    });
+    return m;
+  }
+  // One topic across everyone: each ID appears once, at their latest level,
+  // grouped in the scale's own order (unknown levels trail).
+  function topicDistribution(topic) {
+    const byWho = new Map();
+    records.forEach((r) => {
+      if (r.topic !== topic || !r.level || !r.who) return;
+      const key = (r.date || "") + "|" + (r.createdAt || "");
+      const cur = byWho.get(r.who);
+      if (!cur || key > cur.key) byWho.set(r.who, { level: r.level, key });
+    });
+    const groups = new Map();
+    [...byWho.entries()].forEach(([who, v]) => {
+      if (!groups.has(v.level)) groups.set(v.level, []);
+      groups.get(v.level).push(who);
+    });
+    const order = config.levels.concat([...groups.keys()].filter((l) => !config.levels.includes(l)));
+    return order
+      .filter((l) => groups.has(l))
+      .map((l) => `${l}: ${groups.get(l).sort().join(", ")}`)
+      .join("  ·  ");
+  }
+
   // Who appears in a view, most-often first — so "who needs support with X?"
   // and "is a pattern forming?" are answered by the filter itself, no tally kept
   // anywhere (describes, never scores).
@@ -504,6 +568,18 @@
       });
       box.appendChild(wrap);
     }
+    // Where they stand, from evidence only: the latest level per skill/standard.
+    if (config.topics.length) {
+      const lv = latestLevels(records.filter((r) => r.who === who));
+      if (lv.size) {
+        const order = config.topics.concat([...lv.keys()].filter((t) => !config.topics.includes(t)));
+        const parts = order.filter((t) => lv.has(t)).map((t) => `${t} — ${lv.get(t).level}`);
+        const d = document.createElement("div");
+        d.className = "rec-levels-line";
+        d.innerHTML = `<span class="rec-extra-k">Levels so far:</span> ${parts.map((p) => escapeHtml(p)).join("  ·  ")}`;
+        box.appendChild(d);
+      }
+    }
     box.querySelector(".prof-toggle").addEventListener("click", () => {
       profileEdit = !profileEdit;
       render();
@@ -539,11 +615,12 @@
 
     const head = document.createElement("div");
     head.className = "rec-extra-fields";
-    const mkSel = (labelText, values, current, apply) => {
+    const mkSel = (labelText, values, current, apply, allowEmpty) => {
       const label = document.createElement("label");
       label.className = "cb-field";
       label.innerHTML = `<span class="cb-lbl">${escapeHtml(labelText)}</span>`;
       const sel = document.createElement("select");
+      if (allowEmpty) sel.appendChild(new Option("—", ""));
       values.forEach((v) => sel.appendChild(new Option(v, v)));
       if (![...sel.options].some((o) => o.value === current)) sel.appendChild(new Option(current, current));
       sel.value = current;
@@ -557,6 +634,10 @@
     };
     mkSel("Who", config.whoIds, rec.who, (v) => (rec.who = v));
     mkSel("Kind", config.types, rec.type, (v) => (rec.type = v));
+    if (config.topics.length) {
+      mkSel("Skill / standard", config.topics, rec.topic || "", (v) => (rec.topic = v), true);
+      mkSel("Level", config.levels, rec.level || "", (v) => (rec.level = v), true);
+    }
     const tagLabel = document.createElement("label");
     tagLabel.className = "cb-field";
     tagLabel.innerHTML = `<span class="cb-lbl">Tags</span>`;
@@ -629,6 +710,8 @@
           <span class="rec-who">${escapeHtml(rec.who)}</span>
           <span class="rec-type">${escapeHtml(rec.type)}</span>
           <span class="rec-date">${escapeHtml(friendlyDate(rec.date))}</span>
+          ${rec.topic ? `<span class="topic-chip">${escapeHtml(rec.topic)}</span>` : ""}
+          ${rec.level ? `<span class="level-chip">${escapeHtml(rec.level)}</span>` : ""}
           ${(rec.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${fuLabel ? `<span class="rec-fu-chip ${open ? "open" : "closed"}">${fuLabel}</span>` : ""}
           ${unchecked ? `<button class="ai-chip" type="button" title="The AI heard this from your words — worth a quick check">AI-sorted · check me</button>` : ""}
@@ -699,6 +782,11 @@
     fillSelect("#recType", config.types);
     fillSelect("#fWho", config.whoIds, "everyone");
     fillSelect("#fType", config.types, "every kind");
+    fillSelect("#recTopic", config.topics, "— skill —");
+    fillSelect("#recLevel", config.levels, "— level —");
+    fillSelect("#fTopic", config.topics, "every skill");
+    $("#fTopic").hidden = !config.topics.length;
+    applyAddMode();
 
     renderProfile();
     renderConfig();
@@ -710,10 +798,16 @@
 
     // The whole-class half of the two views: with a filter on (a kind, a tag, a
     // window, open follow-ups), name WHO the view touches — most-often first.
+    // With a skill/standard picked, show where everyone stands on it instead
+    // (each ID once, at their latest evidenced level).
     const line = $("#recViewLine");
-    const filtering = filters.type || filters.tag || filters.openOnly || filters.range !== "all";
+    const filtering = filters.type || filters.tag || filters.topic || filters.openOnly || filters.range !== "all";
     if (line) {
-      if (visible.length && !filters.who && filtering) {
+      const dist = filters.topic && !filters.who ? topicDistribution(filters.topic) : "";
+      if (dist) {
+        line.textContent = dist;
+        line.hidden = false;
+      } else if (visible.length && !filters.who && filtering) {
         line.textContent = "In this view: " + whoCounts(visible).join(" · ");
         line.hidden = false;
       } else {
@@ -791,6 +885,26 @@
       const l = parseList(v);
       if (l.length) config.profileFields = l;
     });
+    mk("Levels (comma-separated, strongest first)", (config.levels || []).join(", "), true, (v) => {
+      const l = parseList(v, true);
+      if (l.length) config.levels = l;
+    });
+    // Skills/standards: one per line (these lists get long — paste and go).
+    // Empty is fine: the whole levels feature stays out of the way until pasted.
+    const areaLabel = document.createElement("label");
+    areaLabel.className = "cb-field rec-cfg-wide";
+    areaLabel.innerHTML = `<span class="cb-lbl">Skills / standards to track (one per line — paste your school's list; empty = feature off)</span>`;
+    const ta = document.createElement("textarea");
+    ta.className = "rec-topics-area";
+    ta.rows = Math.min(10, Math.max(3, config.topics.length + 1));
+    ta.value = config.topics.join("\n");
+    ta.addEventListener("change", (e) => {
+      config.topics = e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 300);
+      persistRecords();
+      render();
+    });
+    areaLabel.appendChild(ta);
+    area.appendChild(areaLabel);
   }
 
   async function init() {
@@ -836,6 +950,10 @@
     });
     $("#fType").addEventListener("change", (e) => {
       filters.type = e.target.value;
+      render();
+    });
+    $("#fTopic").addEventListener("change", (e) => {
+      filters.topic = e.target.value;
       render();
     });
     $("#fTag").addEventListener("input", (e) => {

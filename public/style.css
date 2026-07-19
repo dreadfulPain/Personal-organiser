@@ -1401,6 +1401,17 @@ body {
   background: var(--accent);
   color: #fff;
 }
+.level-jump.old {
+  border-style: dashed;
+  border-color: #d9c290;
+  color: var(--reminder-ink);
+  background: var(--reminder);
+}
+.level-jump.old.active {
+  background: var(--accent);
+  color: #fff;
+  border-style: solid;
+}
 .rec-noev {
   color: var(--ink-soft);
   font-size: 0.82rem;

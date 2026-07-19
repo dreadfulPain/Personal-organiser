@@ -205,8 +205,10 @@ the parent-meeting layout: *here's the year's skills, here's the level, here's
 the work that shows it.* When meetings come, the **Class** tab has
 **"Get ready for parent meetings"**: a readiness checklist per student — AI
 records still to confirm, skills whose **newest evidence is unconfirmed** (the
-export would show an older judgement), skills not assessed yet — each with a
-one-click **review** that lands on that student pre-filtered. Then **"Export all
+export would show an older judgement), skills not assessed yet, and levels that
+are simply **getting old** (past a window you set — judgements decay; fresh AI
+capture on the same skill clears the flag) — each with a one-click **review**
+that lands on that student pre-filtered. Then **"Export all
 students"** produces one printable file, each student starting on a fresh page:
 every skill in the parent wording (never the raw numbers), dated evidence
 beneath, work-sample photos embedded. Only records you've personally confirmed

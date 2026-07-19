@@ -103,10 +103,11 @@
     const mine = records.filter((r) => r.who === who && r.topic);
     const unchecked = mine.filter(OrganiserExport.needsCheck).length;
     const stale = OrganiserExport.staleTopics(who, records, config);
+    const old = OrganiserExport.oldTopics(who, records, config);
     const usable = mine.filter((r) => !OrganiserExport.needsCheck(r));
     const assessed = OrganiserExport.latestLevels(usable).size;
     const unassessed = (config.topics || []).length - assessed;
-    return { who, hasAny: mine.length > 0, unchecked, stale, unassessed };
+    return { who, hasAny: mine.length > 0, unchecked, stale, old, unassessed };
   }
   function renderChecklist() {
     const box = $("#checklist");
@@ -122,10 +123,13 @@
       if (s.stale.length)
         issues.push(`newest evidence unconfirmed for ${s.stale.length} skill${s.stale.length === 1 ? "" : "s"} (${s.stale.slice(0, 3).join("; ")}${s.stale.length > 3 ? "…" : ""})`);
       if (s.hasAny && s.unassessed) issues.push(`${s.unassessed} skill${s.unassessed === 1 ? "" : "s"} not assessed yet`);
+      if (s.old.length)
+        issues.push(`level getting old for ${s.old.length} skill${s.old.length === 1 ? "" : "s"} (${s.old.slice(0, 3).join("; ")}${s.old.length > 3 ? "…" : ""}) — worth fresh evidence`);
       const ready = s.hasAny && !s.unchecked && !s.stale.length;
+      const readyNote = ready && s.old.length ? ` · some levels getting old (${s.old.length})` : "";
       row.innerHTML = `
         <span class="ck-who">${escapeHtml(who)}</span>
-        <span class="ck-state ${ready ? "ready" : ""}">${ready ? "ready ✓" : escapeHtml(issues.join(" · "))}</span>
+        <span class="ck-state ${ready ? "ready" : ""}">${ready ? "ready ✓" + escapeHtml(readyNote) : escapeHtml(issues.join(" · "))}</span>
         <a class="ck-review" href="records.html?who=${encodeURIComponent(who)}${s.unchecked ? "&unchecked=1" : ""}">review</a>`;
       box.appendChild(row);
     });

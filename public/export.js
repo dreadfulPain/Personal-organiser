@@ -49,6 +49,26 @@
     });
     return out;
   }
+  // Skills whose export-visible judgement (latest CONFIRMED evidence) is from
+  // more than the configured window ago — judgements decay; this names the ones
+  // worth fresh evidence. A fact about the record's age, never about the person.
+  function oldCutoffISO(config) {
+    const days = Number(config && config.staleDays) > 0 ? Math.min(Number(config.staleDays), 365) : 60;
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  function oldTopics(who, records, config) {
+    const usable = records.filter((r) => r.who === who && r.topic && !needsCheck(r));
+    const lv = latestLevels(usable);
+    const cutoff = oldCutoffISO(config);
+    const out = [];
+    lv.forEach((v, t) => {
+      const date = (v.key || "").split("|")[0];
+      if (date && date < cutoff) out.push(t);
+    });
+    return out;
+  }
 
   const IMG_EXT = /\.(jpe?g|png|gif|webp)$/i;
   async function fileAsDataUri(id) {
@@ -96,7 +116,14 @@
       html += `</section>`;
     }
     html += `</section>`;
-    return { html, excluded, stale, assessed: lv.size, unassessed: (config.topics || []).length - lv.size };
+    return {
+      html,
+      excluded,
+      stale,
+      old: oldTopics(who, records, config),
+      assessed: lv.size,
+      unassessed: (config.topics || []).length - lv.size,
+    };
   }
 
   function docShell(title, inner) {
@@ -126,5 +153,5 @@ ${inner}
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  window.OrganiserExport = { studentSection, staleTopics, latestLevels, needsCheck, docShell, download };
+  window.OrganiserExport = { studentSection, staleTopics, oldTopics, oldCutoffISO, latestLevels, needsCheck, docShell, download };
 })();

@@ -88,6 +88,9 @@
       "general notes",
     ],
     profiles: {},
+    // Judgements decay: after this many days, a level counts as "getting old —
+    // worth fresh evidence". A fact about the record, never about anyone.
+    staleDays: 60,
     // Skills/standards to track evidence against — YOUR list (paste the school's
     // when you have it), one per line. Empty = the whole feature stays hidden.
     topics: [],
@@ -122,6 +125,7 @@
       topics: list(c.topics),
       levels: list(c.levels, true),
       levelParentWords: list(c.levelParentWords),
+      staleDays: Number(c.staleDays) > 0 ? Math.min(Math.round(Number(c.staleDays)), 365) : 60,
       note: (c.note || "").toString(),
     };
     if (c.fields && typeof c.fields === "object") {
@@ -592,7 +596,8 @@
     setStatus(
       `Exported ${who}'s summary. ✓` +
         (s.excluded ? ` ${s.excluded} AI-sorted record${s.excluded === 1 ? "" : "s"} left out — confirm to include.` : "") +
-        (s.stale.length ? ` Newest evidence still unconfirmed for: ${s.stale.join(", ")}.` : "")
+        (s.stale.length ? ` Newest evidence still unconfirmed for: ${s.stale.join(", ")}.` : "") +
+        (s.old.length ? ` The level shown is getting old for: ${s.old.join(", ")} — worth fresh evidence.` : "")
     );
   }
 
@@ -675,9 +680,14 @@
           .forEach((t) => {
             const b = document.createElement("button");
             b.type = "button";
-            b.className = "level-jump" + (filters.topic === t ? " active" : "");
             const lvDate = (lv.get(t).key || "").split("|")[0];
-            b.title = (lvDate ? `latest evidence ${lvDate} — ` : "") + "tap to see the evidence behind this";
+            const isOld = lvDate && lvDate < OrganiserExport.oldCutoffISO(config);
+            b.className = "level-jump" + (filters.topic === t ? " active" : "") + (isOld ? " old" : "");
+            b.title =
+              (lvDate ? `latest evidence ${lvDate}` : "") +
+              (isOld ? " — getting old, worth fresh evidence" : "") +
+              (lvDate ? " — " : "") +
+              "tap to see the evidence behind this";
             b.textContent = `${t} — ${lv.get(t).level}`;
             b.addEventListener("click", () => {
               filters.topic = filters.topic === t ? "" : t;
@@ -1046,6 +1056,10 @@
     });
     mk("Parent wording per level (comma-separated, same order — used by exports)", (config.levelParentWords || []).join(", "), true, (v) => {
       config.levelParentWords = parseList(v);
+    });
+    mk("A level counts as old after (days)", String(config.staleDays || 60), false, (v) => {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n) && n > 0) config.staleDays = Math.min(n, 365);
     });
     // Skills/standards: one per line (these lists get long — paste and go).
     // Empty is fine: the whole levels feature stays out of the way until pasted.

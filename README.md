@@ -144,8 +144,9 @@ file in OneDrive — only the small app + data file belong there.
 · Students · Goals · Looking back* — one room per question, so each page stays
 focused and nothing is buried (Home keeps surfacing what can't be missed, plus a
 light seven-day strip). **Week** shows the next seven days one calm day at a
-time; **Month** lists only the days that hold something, with quiet stretches
-folded ("nothing 5th–11th") — never a calendar wall; **Class** lays out the
+time; **Month** is a full calendar grid — the whole month laid out so you can
+see how things sit next to each other in time, empty squares included; **Class**
+lays out the
 year's skills with where everyone stands on each, from the evidence. Plus: add by
 hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
@@ -190,8 +191,9 @@ know which lines were heard by the AI and which you wrote yourself (a "needs a
 check" filter sweeps them in one go). AI off = the same bar works by hand (who ·
 kind · one line, under 30 seconds). Paste your school's **skills/standards list**
 into Set up (one per line) and the log becomes an **evidence tracker**: any record
-can link to a skill and carry a **level** (exceeding / meeting / developing /
-beginning — reword to match your school). Then one person's view shows their
+can link to a skill and carry a **level** — numbers by default (4/3/2/1) for
+your own quick read, with **parent wording per level** kept alongside (both
+editable). Then one person's view shows their
 **levels so far** (always the latest evidence, never an average), and picking a
 skill shows **where the whole class stands on it** — each ID once, grouped by
 level — which is your reteach / small-group / move-on answer. The AI extracts
@@ -200,7 +202,12 @@ And a judgement can carry its **proof**: attach the actual piece of work (a
 photo, a file) to the record behind it. Each "level so far" is a button — tap it
 and you're looking at that skill's evidence trail, work samples included. That's
 the parent-meeting layout: *here's the year's skills, here's the level, here's
-the work that shows it.* (Attached files live in `data/files/` next to your data
+the work that shows it.* When meetings come, hit **"export for a parent
+meeting"** on a student's profile: a single printable page — every skill in the
+parent wording (never the raw numbers), the dated evidence beneath, work-sample
+photos embedded. Only records you've personally confirmed go in; unchecked
+AI-sorted ones are left out and counted so you can confirm them first.
+(Attached files live in `data/files/` next to your data
 — they sync and back up with the folder; the in-app "Back up now" download covers
 the data file only, so copy the whole `data` folder for a full backup.) Everything's seen through filters: one
 person's timeline,

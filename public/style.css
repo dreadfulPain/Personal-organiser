@@ -1464,6 +1464,12 @@ body {
   font-size: 1.05rem;
   margin: 0;
 }
+.rec-prof-actions {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
 .rec-prof-read {
   margin-top: 8px;
   display: grid;
@@ -1664,11 +1670,75 @@ body {
   font-size: 1.15rem;
   margin: 0;
 }
-.mo-gap {
-  color: var(--ink-soft);
-  font-size: 0.85rem;
+/* the month grid — time given physical form; calm cells, faded neighbours */
+.mo-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.mo-grid-head {
+  margin-bottom: 6px;
+}
+.mo-dow {
   text-align: center;
-  margin: 10px 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.mo-cell {
+  min-height: 92px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 7px;
+  overflow: hidden;
+}
+.mo-cell.faded {
+  opacity: 0.45;
+}
+.mo-cell.today {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.mo-daynum {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 3px;
+}
+.mo-cell.today .mo-daynum {
+  color: var(--accent-dark);
+}
+.mo-ev {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 3px solid var(--accent-soft);
+  padding-left: 5px;
+  margin-bottom: 2px;
+}
+.mo-ev.hard {
+  border-left-color: var(--accent-dark);
+  font-weight: 600;
+}
+.mo-more {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+@media (max-width: 640px) {
+  .mo-grid {
+    gap: 4px;
+  }
+  .mo-cell {
+    min-height: 64px;
+    padding: 4px 5px;
+  }
+  .mo-ev {
+    font-size: 0.64rem;
+  }
 }
 
 /* the home's week strip */

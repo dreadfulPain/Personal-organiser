@@ -56,6 +56,9 @@
   // The first-seeded profile set (level/EAL-flavoured) — upgraded to the
   // standards-first set ONLY when still factory-fresh and nothing's been filled.
   const OLD_PROFILE_FIELDS = ["reading level", "writing level", "maths", "learning needs (SEN / EAL)", "medical", "parent & home", "general notes"];
+  // The first-seeded word scale — upgraded to numbers ONLY when factory-fresh
+  // and no record has ever used a level (else stored levels would orphan).
+  const OLD_WORD_LEVELS = ["exceeding", "meeting", "developing", "beginning"];
   const DEFAULT_CONFIG = {
     title: "Student records",
     whoIds: ["S01", "S02", "S03", "S04", "S05"],
@@ -88,8 +91,15 @@
     // Skills/standards to track evidence against — YOUR list (paste the school's
     // when you have it), one per line. Empty = the whole feature stays hidden.
     topics: [],
-    // The judgement scale, in words (strongest first), matched to the school later.
-    levels: ["exceeding", "meeting", "developing", "beginning"],
+    // The working scale — numbers for YOUR quick read (strongest first). The
+    // parent words below are what an export says instead; both editable.
+    levels: ["4", "3", "2", "1"],
+    levelParentWords: [
+      "working beyond grade-level expectations",
+      "meeting grade-level expectations",
+      "developing towards grade-level expectations",
+      "beginning — needs support with this skill",
+    ],
     note:
       "Practice with fake IDs first. Everything here stays on this computer — the AI is local and " +
       "nothing is sent anywhere. Two honest cautions: if this folder syncs to OneDrive/Dropbox, these " +
@@ -111,6 +121,7 @@
       profiles: {},
       topics: list(c.topics),
       levels: list(c.levels, true),
+      levelParentWords: list(c.levelParentWords),
       note: (c.note || "").toString(),
     };
     if (c.fields && typeof c.fields === "object") {
@@ -135,6 +146,8 @@
     if (!out.types.length) out.types = DEFAULT_CONFIG.types.slice();
     // Configs saved before these existed grow them here (a quiet upgrade).
     if (!out.levels.length) out.levels = DEFAULT_CONFIG.levels.slice();
+    if (!out.levelParentWords.length && JSON.stringify(out.levels) === JSON.stringify(DEFAULT_CONFIG.levels))
+      out.levelParentWords = DEFAULT_CONFIG.levelParentWords.slice();
     if (!out.profileFields.length) out.profileFields = DEFAULT_CONFIG.profileFields.slice();
     // Factory-fresh old profile set + nothing filled yet → the standards-first
     // set. Any edit or any filled profile leaves the user's words alone.
@@ -566,6 +579,89 @@
       .map(([who, n]) => (n > 1 ? `${who} ×${n}` : String(who)));
   }
 
+  // ----- the parent-meeting export -----
+  // One student, one self-contained page you can print or send: the year's
+  // skills each described in PARENT words (the numbers stay yours), the dated
+  // evidence beneath, and the attached work embedded. Unchecked AI records are
+  // left out — only what you've personally confirmed goes in front of a parent.
+  function parentWord(level) {
+    const i = (config.levels || []).indexOf(level);
+    const w = (config.levelParentWords || [])[i];
+    return w || level;
+  }
+  const IMG_EXT = /\.(jpe?g|png|gif|webp)$/i;
+  async function fileAsDataUri(id) {
+    try {
+      const r = await fetch("/files/" + encodeURIComponent(id));
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      return await new Promise((resolve) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => resolve(null);
+        fr.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  }
+  async function exportParentSummary() {
+    const who = filters.who;
+    if (!who) return;
+    setStatus("Preparing the export…");
+    const mine = records.filter((r) => r.who === who && r.topic);
+    const excluded = mine.filter(needsCheck).length;
+    const usable = mine.filter((r) => !needsCheck(r));
+    const lv = latestLevels(usable);
+    const prepared = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+
+    let body = "";
+    for (const topic of config.topics) {
+      const level = lv.get(topic);
+      body += `<section><h2>${escapeHtml(topic)}</h2>`;
+      body += `<p class="lvl">${level ? escapeHtml(parentWord(level.level)) : "not assessed yet"}</p>`;
+      const ev = usable.filter((r) => r.topic === topic).sort(newestFirst);
+      for (const r of ev) {
+        body += `<div class="ev"><p><strong>${escapeHtml(friendlyDate(r.date))}</strong> — ${escapeHtml(r.summary)}</p>`;
+        for (const f of r.files || []) {
+          if (IMG_EXT.test(f.name)) {
+            const uri = await fileAsDataUri(f.id);
+            if (uri) body += `<img src="${uri}" alt="${escapeHtml(f.name)}" />`;
+            else body += `<p class="fn">work sample: ${escapeHtml(f.name)}</p>`;
+          } else if (f.name) {
+            body += `<p class="fn">work sample on file: ${escapeHtml(f.name)}</p>`;
+          }
+        }
+        body += `</div>`;
+      }
+      body += `</section>`;
+    }
+
+    const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(who)} — progress summary</title>
+<style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#333;line-height:1.6}
+h1{font-size:1.5rem}h2{font-size:1.05rem;margin:26px 0 2px;border-bottom:1px solid #ddd;padding-bottom:4px}
+.lvl{margin:4px 0 8px;font-weight:bold;color:#3c6b5c}.ev p{margin:4px 0}.ev img{max-width:100%;border:1px solid #ddd;border-radius:6px;margin:6px 0}
+.fn{font-style:italic;color:#777}.meta{color:#777;font-size:0.9rem}</style></head><body>
+<h1>${escapeHtml(who)} — progress summary</h1>
+<p class="meta">Prepared ${escapeHtml(prepared)}. Each skill is described in plain words, with the dated work behind it.</p>
+${body}
+</body></html>`;
+
+    const blob = new Blob([doc], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${who}-progress-${todayISO()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus(
+      `Exported ${who}'s summary. ✓` +
+        (excluded ? ` (${excluded} AI-sorted record${excluded === 1 ? "" : "s"} left out — confirm ${excluded === 1 ? "it" : "them"} to include.)` : "")
+    );
+  }
+
   // ----- the per-ID profile: labelled notes that grow gradually -----
   // Shown only when one ID is selected. Read view first (just what's filled);
   // "edit" opens the full field set, blank-is-fine. Nothing is ever required.
@@ -584,8 +680,13 @@
     box.hidden = false;
     box.innerHTML = `<div class="rec-prof-head">
         <h2>${escapeHtml(who)} — profile</h2>
-        <button class="link prof-toggle" type="button">${profileEdit ? "done" : filled.length ? "edit" : "+ add profile notes"}</button>
+        <span class="rec-prof-actions">
+          ${OrganiserStore.mode === "file" && (config.topics || []).length ? `<button class="link prof-export" type="button">export for a parent meeting</button>` : ""}
+          <button class="link prof-toggle" type="button">${profileEdit ? "done" : filled.length ? "edit" : "+ add profile notes"}</button>
+        </span>
       </div>`;
+    const exp = box.querySelector(".prof-export");
+    if (exp) exp.addEventListener("click", exportParentSummary);
     if (profileEdit) {
       const wrap = document.createElement("div");
       wrap.className = "rec-prof-fields";
@@ -1006,6 +1107,9 @@
       const l = parseList(v, true);
       if (l.length) config.levels = l;
     });
+    mk("Parent wording per level (comma-separated, same order — used by exports)", (config.levelParentWords || []).join(", "), true, (v) => {
+      config.levelParentWords = parseList(v);
+    });
     // Skills/standards: one per line (these lists get long — paste and go).
     // Empty is fine: the whole levels feature stays out of the way until pasted.
     const areaLabel = document.createElement("label");
@@ -1032,6 +1136,14 @@
     if (!config) {
       config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
       persistRecords(); // seed once; from here it's the user's data
+    }
+    // Numbers-for-your-eyes upgrade: a factory word scale that has never judged
+    // anything becomes the numeric scale (+ parent words for exports). A scale
+    // that's been used or edited is never touched.
+    if (JSON.stringify(config.levels) === JSON.stringify(OLD_WORD_LEVELS) && !records.some((r) => r.level)) {
+      config.levels = DEFAULT_CONFIG.levels.slice();
+      config.levelParentWords = DEFAULT_CONFIG.levelParentWords.slice();
+      persistRecords();
     }
 
     // Can the AI sort a messy note? (And wake it, so the first sort isn't slow.)

@@ -1,12 +1,10 @@
-// The Month room: the chosen month's dated things, day by day — and the empty
-// stretches folded into one quiet line each ("nothing 5th–11th"). A month grid
-// is the wall this app exists to avoid; this is the calm version of the same
-// answer.
+// The Month room: a real calendar grid — time given physical form, so the
+// relation of things to each other in time is visible at a glance (the user's
+// own accommodation: the spatial layout IS the help). Kept calm: generous
+// cells, soft colours, neighbours faded, nothing red.
 
 (() => {
   "use strict";
-
-  const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
 
   let items = [];
   let offset = 0; // months from the current one
@@ -18,100 +16,108 @@
     }[c]));
   }
   const pad2 = (n) => String(n).padStart(2, "0");
-  function monthStart(off) {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + off, 1);
-  }
   function isoOf(d) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
   const todayISO = () => isoOf(new Date());
+  function monthStart(off) {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + off, 1);
+  }
+  function shortTime(t) {
+    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
+    if (!m) return "";
+    const d = new Date();
+    d.setHours(+m[1], +m[2], 0, 0);
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: m[2] === "00" ? undefined : "2-digit" });
+  }
 
-  // The month's days that hold something, plus the folded gaps between them.
-  function monthShape(list, off, today) {
+  // Monday-first cells covering the whole weeks the month touches; neighbour
+  // days show faded WITH their items (the point is seeing time run on).
+  function monthCells(list, off) {
     const start = monthStart(off);
-    const year = start.getFullYear();
-    const month = start.getMonth();
-    const daysIn = new Date(year, month + 1, 0).getDate();
-    const byDay = new Map();
+    const y = start.getFullYear();
+    const m = start.getMonth();
+    const daysIn = new Date(y, m + 1, 0).getDate();
+    const lead = (start.getDay() + 6) % 7;
+    const total = Math.ceil((lead + daysIn) / 7) * 7;
+    const byIso = new Map();
     list.forEach((it) => {
       if (it.done || !it.date) return;
-      const d = new Date(it.date + "T12:00:00");
-      if (d.getFullYear() !== year || d.getMonth() !== month) return;
-      const day = d.getDate();
-      if (!byDay.has(day)) byDay.set(day, []);
-      byDay.get(day).push(it);
+      if (!byIso.has(it.date)) byIso.set(it.date, []);
+      byIso.get(it.date).push(it);
     });
-    const shape = [];
-    let gapFrom = null;
-    for (let day = 1; day <= daysIn; day++) {
-      if (byDay.has(day)) {
-        if (gapFrom !== null) {
-          shape.push({ gap: [gapFrom, day - 1] });
-          gapFrom = null;
-        }
-        const dayItems = byDay
-          .get(day)
-          .slice()
-          .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
-        shape.push({ day, iso: `${year}-${pad2(month + 1)}-${pad2(day)}`, items: dayItems });
-      } else if (gapFrom === null) {
-        gapFrom = day;
-      }
+    const cells = [];
+    for (let i = 0; i < total; i++) {
+      const d = new Date(y, m, 1 - lead + i);
+      const iso = isoOf(d);
+      cells.push({
+        iso,
+        day: d.getDate(),
+        inMonth: d.getMonth() === m,
+        items: (byIso.get(iso) || []).slice().sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99")),
+      });
     }
-    if (gapFrom !== null) shape.push({ gap: [gapFrom, daysIn] });
-    return { shape, label: start.toLocaleDateString(undefined, { month: "long", year: "numeric" }), today };
-  }
-  function nth(n) {
-    const s = ["th", "st", "nd", "rd"];
-    const v = n % 100;
-    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    return { cells, label: start.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
   }
 
+  function weekdayNames() {
+    const names = [];
+    const monday = new Date(2024, 0, 1); // a known Monday
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      names.push(d.toLocaleDateString(undefined, { weekday: "short" }));
+    }
+    return names;
+  }
+
+  const SHOW = 3; // item lines per cell before "+N more"
+
   function render() {
-    const { shape, label, today } = monthShape(items, offset, todayISO());
+    const { cells, label } = monthCells(items, offset);
     $("#moTitle").textContent = label;
     const wrap = $("#monthList");
     wrap.innerHTML = "";
-    const hasDays = shape.some((s) => s.day);
-    if (!hasDays) {
-      wrap.innerHTML = `<p class="empty">Nothing dated this month. Quiet is allowed.</p>`;
-      return;
-    }
-    shape.forEach((s) => {
-      if (s.gap) {
-        const g = document.createElement("p");
-        g.className = "mo-gap";
-        g.textContent = s.gap[0] === s.gap[1] ? `nothing on the ${nth(s.gap[0])}` : `nothing ${nth(s.gap[0])}–${nth(s.gap[1])}`;
-        wrap.appendChild(g);
-        return;
-      }
-      const sec = document.createElement("section");
-      sec.className = "wk-day";
-      const h = document.createElement("h2");
-      h.className = "wk-heading" + (s.iso === today ? " today" : "");
-      h.textContent =
-        new Date(s.iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric" }) +
-        (s.iso === today ? " — today" : "");
-      sec.appendChild(h);
-      const list = document.createElement("div");
-      list.className = "items";
-      s.items.forEach((it) => {
-        const row = document.createElement("div");
-        row.className = "item wk-item";
-        row.innerHTML = `
-          <div class="item-main">
-            <div class="item-title">${escapeHtml(it.title)}</div>
-            <div class="item-meta">
-              <span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span>
-              ${it.deadlineType === "hard" ? `<span class="when due">hard deadline</span>` : ""}
-            </div>
-          </div>`;
-        list.appendChild(row);
-      });
-      sec.appendChild(list);
-      wrap.appendChild(sec);
+
+    const head = document.createElement("div");
+    head.className = "mo-grid mo-grid-head";
+    weekdayNames().forEach((n) => {
+      const c = document.createElement("div");
+      c.className = "mo-dow";
+      c.textContent = n;
+      head.appendChild(c);
     });
+    wrap.appendChild(head);
+
+    const grid = document.createElement("div");
+    grid.className = "mo-grid";
+    const today = todayISO();
+    cells.forEach((cell) => {
+      const el = document.createElement("div");
+      el.className =
+        "mo-cell" + (cell.inMonth ? "" : " faded") + (cell.iso === today ? " today" : "");
+      const num = document.createElement("div");
+      num.className = "mo-daynum";
+      num.textContent = cell.day;
+      el.appendChild(num);
+      cell.items.slice(0, SHOW).forEach((it) => {
+        const line = document.createElement("div");
+        line.className = "mo-ev" + (it.deadlineType === "hard" ? " hard" : "");
+        const t = shortTime(it.time);
+        line.textContent = (t ? t + " " : "") + it.title;
+        line.title = it.title;
+        el.appendChild(line);
+      });
+      if (cell.items.length > SHOW) {
+        const more = document.createElement("div");
+        more.className = "mo-more";
+        more.textContent = `+${cell.items.length - SHOW} more`;
+        el.appendChild(more);
+      }
+      grid.appendChild(el);
+    });
+    wrap.appendChild(grid);
   }
 
   async function init() {

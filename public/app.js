@@ -818,6 +818,32 @@
     renderOverdue();
     renderShortlist();
     renderGoalsPanel();
+    renderWeekStrip();
+  }
+
+  // ---------- the week at a glance (seven light chips; Week tab has the depth) ----------
+  function renderWeekStrip() {
+    const el = $("#weekStrip");
+    if (!el) return;
+    const t = todayISO();
+    const active = items.filter((i) => !i.done && i.date);
+    let any = false;
+    const chips = [];
+    for (let i = 0; i < 7; i++) {
+      const iso = addDaysISO(t, i);
+      const day = active.filter((x) => x.date === iso);
+      if (day.length) any = true;
+      const hard = day.some((x) => x.deadlineType === "hard");
+      const label =
+        i === 0 ? "Today" : new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" });
+      chips.push(
+        `<a class="ws-chip${i === 0 ? " today" : ""}" href="week.html" title="${day.length} thing${day.length === 1 ? "" : "s"}">` +
+          `<span class="ws-day">${label}</span>` +
+          `<span class="ws-n">${day.length || "·"}</span>${hard ? `<span class="ws-dot" title="hard deadline"></span>` : ""}</a>`
+      );
+    }
+    el.hidden = !any; // an empty week stays invisible — no empty furniture
+    el.innerHTML = any ? chips.join("") : "";
   }
 
   // ---------- "what matters today" shortlist ----------

@@ -140,7 +140,14 @@ file in OneDrive — only the small app + data file belong there.
 
 ## What's here on purpose — and what's not yet
 
-**Working now:** add by hand, the check-back, calm **Today / Coming up /
+**Working now:** a **tab bar** on every page — *Home · Day · Week · Month · Class
+· Students · Goals · Looking back* — one room per question, so each page stays
+focused and nothing is buried (Home keeps surfacing what can't be missed, plus a
+light seven-day strip). **Week** shows the next seven days one calm day at a
+time; **Month** lists only the days that hold something, with quiet stretches
+folded ("nothing 5th–11th") — never a calendar wall; **Class** lays out the
+year's skills with where everyone stands on each, from the evidence. Plus: add by
+hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
 **Today** section is laid out as a timeline right on the home page — your timed
 things in order with the gaps between them, an "anytime today" group, and you can

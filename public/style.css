@@ -54,6 +54,32 @@ body {
   font-weight: 600;
 }
 
+/* the tab bar — one room per question */
+.tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 0 0 22px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+.tabs a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+.tabs a:hover {
+  background: #f2ece2;
+  color: var(--ink);
+}
+.tabs a.active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
 .sub {
   margin: 0 0 24px;
   color: var(--ink-soft);
@@ -1608,6 +1634,127 @@ body {
 }
 .rec-cfg-wide input {
   width: 100%;
+}
+
+/* week + month rooms — calm lists, never grids */
+.wk-day {
+  margin: 0 0 22px;
+}
+.wk-heading {
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+.wk-heading.today {
+  color: var(--accent-dark);
+}
+.wk-free {
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 2px 0;
+}
+.mo-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+.mo-title {
+  font-size: 1.15rem;
+  margin: 0;
+}
+.mo-gap {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  text-align: center;
+  margin: 10px 0;
+}
+
+/* the home's week strip */
+.week-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 30px;
+}
+.ws-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+.ws-chip:hover {
+  border-color: var(--accent);
+}
+.ws-chip.today {
+  background: var(--accent-soft);
+  border-color: #d4e3dc;
+  color: var(--accent-dark);
+}
+.ws-n {
+  font-weight: 700;
+  color: var(--ink);
+}
+.ws-chip.today .ws-n {
+  color: var(--accent-dark);
+}
+.ws-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-dark);
+}
+
+/* the class room */
+.cl-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.cl-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cl-topic {
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+}
+.cl-topic:hover {
+  color: var(--accent-dark);
+  border-bottom-color: var(--accent);
+}
+.cl-count {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.cl-lines {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+.cl-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.cl-whos {
+  font-size: 0.92rem;
 }
 
 @media (max-width: 480px) {

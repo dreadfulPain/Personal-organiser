@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The month</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>The month</h1>
+        <p class="sub">Only the days that hold something — quiet stretches stay quiet. Not a wall,
+          a list.</p>
+      </header>
+
+      <div class="mo-nav">
+        <button id="moPrev" class="btn ghost" type="button">‹ earlier</button>
+        <h2 id="moTitle" class="mo-title"></h2>
+        <button id="moNext" class="btn ghost" type="button">later ›</button>
+      </div>
+
+      <div id="monthList"></div>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="month.js" defer></script>
+  </body>
+</html>

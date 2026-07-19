@@ -8,6 +8,7 @@
   </head>
   <body>
     <main class="wrap">
+      <div id="tabs"></div>
       <header class="top">
         <h1>What's on your mind?</h1>
         <p class="sub">Type it however it comes out — spelling never matters here.</p>
@@ -94,8 +95,8 @@
         </div>
       </section>
 
-      <p class="timeline-link"><a href="goals.html">Goals &amp; milestones →</a></p>
-      <p class="timeline-link"><a href="records.html">Record log →</a></p>
+      <!-- THIS WEEK, at a glance: seven light chips; the Week tab has the depth -->
+      <section id="weekStrip" class="week-strip" hidden></section>
 
       <!-- THE VIEW: calm zones. Today is laid out as a timeline you can plan in. -->
       <section class="zones">
@@ -114,9 +115,6 @@
         </div>
       </section>
 
-      <!-- the mirror is its own page now — done items never clutter this screen -->
-      <p class="lookback-link"><a href="looking-back.html">Looking back →</a></p>
-
       <!-- YOUR DATA: where it lives + how to back it up -->
       <footer class="data-footer">
         <h2>Your data</h2>
@@ -129,6 +127,7 @@
       </footer>
     </main>
 
+    <script src="nav.js" defer></script>
     <script src="store.js" defer></script>
     <script src="app.js" defer></script>
   </body>

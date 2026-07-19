@@ -53,6 +53,9 @@
   const OLD_DEFAULT_NOTE =
     "Fake IDs only for now — no real names, no medical or SEN detail, no sensitive parent notes. " +
     "Those live only in the school's official system. One line is enough.";
+  // The first-seeded profile set (level/EAL-flavoured) — upgraded to the
+  // standards-first set ONLY when still factory-fresh and nothing's been filled.
+  const OLD_PROFILE_FIELDS = ["reading level", "writing level", "maths", "learning needs (SEN / EAL)", "medical", "parent & home", "general notes"];
   const DEFAULT_CONFIG = {
     title: "Student records",
     whoIds: ["S01", "S02", "S03", "S04", "S05"],
@@ -66,7 +69,21 @@
       academic: ["next step"],
     },
     // The per-ID profile — a few labelled notes that grow as you learn a person.
-    profileFields: ["reading level", "writing level", "maths", "learning needs (SEN / EAL)", "medical", "parent & home", "general notes"],
+    // Standards-first framing: strengths + targets per area (what they CAN do and
+    // the next step), never deficit labels. All renameable — it's your list.
+    profileFields: [
+      "reading — strengths",
+      "reading — targets",
+      "writing — strengths",
+      "writing — targets",
+      "maths — strengths",
+      "maths — targets",
+      "speaking & listening",
+      "access & support needs",
+      "medical",
+      "home & parent notes",
+      "general notes",
+    ],
     profiles: {},
     // Skills/standards to track evidence against — YOUR list (paste the school's
     // when you have it), one per line. Empty = the whole feature stays hidden.
@@ -119,6 +136,13 @@
     // Configs saved before these existed grow them here (a quiet upgrade).
     if (!out.levels.length) out.levels = DEFAULT_CONFIG.levels.slice();
     if (!out.profileFields.length) out.profileFields = DEFAULT_CONFIG.profileFields.slice();
+    // Factory-fresh old profile set + nothing filled yet → the standards-first
+    // set. Any edit or any filled profile leaves the user's words alone.
+    if (
+      JSON.stringify(out.profileFields) === JSON.stringify(OLD_PROFILE_FIELDS) &&
+      !Object.keys(out.profiles).length
+    )
+      out.profileFields = DEFAULT_CONFIG.profileFields.slice();
     if (!Object.keys(out.fields).length) out.fields = JSON.parse(JSON.stringify(DEFAULT_CONFIG.fields));
     if (out.note === OLD_DEFAULT_NOTE) out.note = DEFAULT_CONFIG.note; // factory text only — an edited note is never touched
     return out;

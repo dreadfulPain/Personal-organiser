@@ -177,10 +177,16 @@ one kind across everyone, a tag, a time window, or just the open follow-ups.
 Tick **"needs a follow-up"** and it becomes a **real task in your normal lists**,
 dated tomorrow with a morning reminder — no separate place to check. When a
 filter is on, a small **"In this view"** line names who appears and how often
-(S07 ×3 …), so groups and patterns surface on their own. The IDs and
-note kinds are lists you own (it ships pointed at practice IDs S01–S05 — keep it
-to fake IDs and nothing sensitive until your workplace's data rules are known;
-rename everything on the page itself when the time comes).
+(S07 ×3 …), so groups and patterns surface on their own. Detail grows
+**gradually**: each note kind has a few optional fields (result, next step, action
+taken…) you can come back and fill later — capture is still one line — and picking
+one ID shows their **profile** (reading level, learning needs, medical, home
+notes…), also filled bit by bit, never a form. All the words — IDs, kinds, fields
+— are lists you own; it ships pointed at practice IDs S01–S05. Everything stays on
+this computer (the AI is local), but two honest cautions: if the folder syncs to
+OneDrive/Dropbox the notes sync with it, and before real names or medical details
+go in, check what your workplace's data rules allow outside their official
+system.
 
 **Later, separate steps:**
 

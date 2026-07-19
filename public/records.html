@@ -46,27 +46,22 @@
         <label class="rec-fu"><input id="fOpen" type="checkbox" /> open follow-ups only</label>
       </section>
 
+      <!-- one ID selected → their profile: a few labelled notes you fill GRADUALLY.
+           Never required; grows as you learn the person. -->
+      <section id="recProfile" class="rec-profile" hidden></section>
+
       <!-- who appears in the current view, with counts — patterns surface on their own -->
       <p id="recViewLine" class="rec-view-line" hidden></p>
 
       <div id="recList"></div>
 
-      <!-- SET UP: the words this page uses are yours to change — they're data, not code -->
+      <!-- SET UP: every word this page uses — IDs, note kinds, each kind's detail
+           fields, the profile fields — is a list you own. Change them; the log follows. -->
       <footer class="data-footer">
         <h2>Set up this log</h2>
-        <p class="muted">The people/IDs and note kinds below are just lists you own — change them any
-          time and the log follows.</p>
-        <div class="rec-config">
-          <label class="cb-field"><span class="cb-lbl">Page title</span>
-            <input id="cfgTitle" type="text" aria-label="Page title" />
-          </label>
-          <label class="cb-field rec-cfg-wide"><span class="cb-lbl">IDs (comma-separated)</span>
-            <input id="cfgWho" type="text" aria-label="IDs, comma-separated" />
-          </label>
-          <label class="cb-field rec-cfg-wide"><span class="cb-lbl">Note kinds (comma-separated)</span>
-            <input id="cfgTypes" type="text" aria-label="Note kinds, comma-separated" />
-          </label>
-        </div>
+        <p class="muted">The IDs, note kinds, detail fields, and profile fields below are just lists
+          you own — change them any time and the log follows.</p>
+        <div id="cfgArea" class="rec-config"></div>
       </footer>
     </main>
 

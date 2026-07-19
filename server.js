@@ -330,6 +330,83 @@ you return:
 Example — given unrelated errands with no common goal, you return:
 {"title":"","tasks":[]}`;
 
+// Record-log understanding (§10 + the core pillar): one messy note → clean
+// records. GENERIC: every word of vocabulary — the IDs, the kinds, each kind's
+// detail fields — arrives with the request as data; nothing here knows what the
+// log is about. The worked example uses neutral placeholders on purpose.
+const RECORD_PROMPT = `You are the "understanding" engine inside a calm personal organiser's record log, built for someone with dyslexia and dyscalculia. The log keeps short dated records ABOUT entries on a list of IDs, each record of one KIND from a given list; a kind may have a few optional DETAIL FIELDS. The lists arrive with every request.
+
+Your job: read one messy, possibly misspelled note — it may contain SEVERAL separate records — and return clean records.
+
+Follow these rules without exception:
+- Spelling never matters. Silently fix all typos. Never comment on them.
+- Split the note into separate records when it covers different IDs or clearly different happenings.
+- "who": EXACTLY one ID copied from the provided list. Match generously ("p2", "P02", "number 2" all mean "P02" when the list has P02). If no ID from the list is implied, use "" — NEVER invent an ID.
+- "type": the best-fitting kind from the provided list.
+- "summary": ONE short, clean line saying what happened, in plain words.
+- "details": only field names listed for the chosen kind, and ONLY when the note actually states that information — [{"field":"...","value":"..."}]. Most details stay empty; never pad, never guess.
+- "tags": 0-3 short lower-case category labels, only when obvious. A tag is a category, never a judgment.
+- "follow_up": true ONLY when something needs doing or chasing later ("chase", "follow up", "check in", "send", "ask", "remind"). Logging alone is false.
+- "follow_up_date": when follow_up is true and a day is stated or clearly implied, the real date in YYYY-MM-DD (resolve "friday", "tomorrow" from the today you are given). Otherwise "".
+- Never ask the user anything. Return only the structured result.
+
+Example — IDs: P01, P02 · kinds: visit (details: outcome, next step), check (details: result). Today is Wednesday 2026-06-10, and the note is:
+"p2 visit went ok boiler stil noisy, chase the parts quote friday. p1 check fine"
+you return:
+{"records":[
+  {"who":"P02","type":"visit","summary":"Visit went OK — boiler still noisy","details":[{"field":"outcome","value":"OK, boiler still noisy"},{"field":"next step","value":"chase the parts quote"}],"tags":[],"follow_up":true,"follow_up_date":"2026-06-12"},
+  {"who":"P01","type":"check","summary":"Check was fine","details":[{"field":"result","value":"fine"}],"tags":[],"follow_up":false,"follow_up_date":""}
+]}`;
+
+function recordTurn(nowLabel, today, text, whoIds, types, fieldsMap) {
+  const kinds = types
+    .map((t) => {
+      const f = fieldsMap[t] || [];
+      return f.length ? `${t} (details: ${f.join(", ")})` : t;
+    })
+    .join(" · ");
+  return (
+    `Right now it is ${nowLabel} (today's date is ${today}).\n\n` +
+    `IDs: ${whoIds.join(", ")}\nKinds: ${kinds}\n\n` +
+    `Sort this note into records:\n"""\n${text}\n"""`
+  );
+}
+
+function buildRecordSchema(whoIds, types) {
+  return {
+    type: "object",
+    properties: {
+      records: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            who: { type: "string", enum: whoIds.concat([""]) },
+            type: { type: "string", enum: types },
+            summary: { type: "string" },
+            details: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { field: { type: "string" }, value: { type: "string" } },
+                required: ["field", "value"],
+                additionalProperties: false,
+              },
+            },
+            tags: { type: "array", items: { type: "string" } },
+            follow_up: { type: "boolean" },
+            follow_up_date: { type: "string" },
+          },
+          required: ["who", "type", "summary", "details", "tags", "follow_up", "follow_up_date"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["records"],
+    additionalProperties: false,
+  };
+}
+
 function weekdayName(iso) {
   try {
     return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", {
@@ -663,6 +740,73 @@ async function handleCluster(res, body) {
   }
 }
 
+// Record-log understanding: messy note → clean records, using ONLY the
+// vocabulary the client sent (IDs, kinds, per-kind fields — all data). The
+// client shows the result for a glance-and-tap before anything is filed.
+async function handleRecordUnderstand(res, body) {
+  const text = (body?.text || "").toString().trim();
+  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
+
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+
+  const clean = (v) => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, 100) : []);
+  const whoIds = clean(body?.config?.whoIds);
+  const types = clean(body?.config?.types);
+  if (!whoIds.length || !types.length)
+    return sendJson(res, 400, { error: "no_vocab", message: "The log's lists are missing." });
+  const fieldsMap = {};
+  if (body?.config?.fields && typeof body.config.fields === "object") {
+    Object.keys(body.config.fields).forEach((k) => {
+      const l = clean(body.config.fields[k]);
+      if (l.length) fieldsMap[k] = l;
+    });
+  }
+
+  const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
+  const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
+
+  try {
+    const parsed = await runEngine(
+      cfg,
+      RECORD_PROMPT,
+      recordTurn(nowLabel, today, text, whoIds, types, fieldsMap),
+      buildRecordSchema(whoIds, types)
+    );
+    const records = (Array.isArray(parsed.records) ? parsed.records : [])
+      .map((r) => {
+        const type = types.includes(r.type) ? r.type : types[0];
+        const allowed = fieldsMap[type] || [];
+        const details = {};
+        (Array.isArray(r.details) ? r.details : []).forEach((d) => {
+          const name = (d && d.field ? String(d.field) : "").trim();
+          const value = (d && d.value ? String(d.value) : "").trim();
+          if (!name || !value) return;
+          // match the kind's configured field names loosely, store under the exact name
+          const exact = allowed.find((f) => f.toLowerCase() === name.toLowerCase());
+          if (exact) details[exact] = value.slice(0, 300);
+        });
+        return {
+          who: whoIds.includes(r.who) ? r.who : "",
+          type,
+          summary: (r.summary || "").toString().trim().slice(0, 200),
+          details,
+          tags: (Array.isArray(r.tags) ? r.tags : [])
+            .map((t) => String(t).trim().toLowerCase())
+            .filter(Boolean)
+            .slice(0, 4),
+          follow_up: r.follow_up === true,
+          follow_up_date: ISO.test(r.follow_up_date) ? r.follow_up_date : "",
+        };
+      })
+      .filter((r) => r.summary);
+    sendJson(res, 200, { records });
+  } catch (e) {
+    console.error("[record-understand] failed:", e?.message || e);
+    sendJson(res, 502, { error: "sort_failed", message: "I couldn't sort that note just now." });
+  }
+}
+
 // Pre-warm: load the local model into memory BEFORE the first real sort, so the
 // daily-sort step (touched every day) doesn't pay the cold-start wait. Ollama
 // loads a model when /api/generate is called with an empty prompt; keep_alive
@@ -909,6 +1053,17 @@ const server = http.createServer(async (req, res) => {
         /* leave empty */
       }
       return handleCluster(res, parsed);
+    }
+
+    if (pathname === "/api/record-understand" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleRecordUnderstand(res, parsed);
     }
 
     if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);

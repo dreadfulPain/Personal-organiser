@@ -33,6 +33,16 @@
 
       <p id="recStatus" class="status" hidden></p>
 
+      <!-- THE CHECK-BACK: what the AI understood, pre-filled — glance, tweak, add -->
+      <section id="recPending" class="rec-pending" hidden>
+        <h2>Here's what I understood — look right?</h2>
+        <div id="recPendingList"></div>
+        <div class="cb-actions">
+          <button id="recPendAdd" class="btn">Add to the log</button>
+          <button id="recPendCancel" class="btn ghost">Cancel</button>
+        </div>
+      </section>
+
       <!-- THE VIEWS: every one is a filter over the same records — never copies -->
       <section class="rec-filters">
         <select id="fWho" aria-label="Filter: who"></select>

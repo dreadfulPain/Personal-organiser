@@ -171,8 +171,14 @@ items — just today, and one calm decision. **Looking back**
 also shows a quiet **mirror** — what you've finished, broken down by area
 (category) over a stretch you choose — so you can *see* where your effort's been
 going. It describes, never scores; it's for your own steering, no one else's.
-There's also a **Record log** page — a one-line log of *what happened* (who ·
-kind · one line, under 30 seconds), seen through filters: one person's timeline,
+There's also a **Record log** page — a one-line log of *what happened*. With
+smart sorting on you just say it messily — *"s3 strugled with full stops, chase
+mum re the reading sheet friday"* — and the AI picks **who**, the **kind**, writes
+the clean line, fills any **detail fields** it actually heard, and spots the
+**follow-up and its date**; you glance and tap Add (it never guesses an ID it
+isn't sure of — it asks you to pick). AI off = the same bar works by hand (who ·
+kind · one line, under 30 seconds). Everything's seen through filters: one
+person's timeline,
 one kind across everyone, a tag, a time window, or just the open follow-ups.
 Tick **"needs a follow-up"** and it becomes a **real task in your normal lists**,
 dated tomorrow with a morning reminder — no separate place to check. When a

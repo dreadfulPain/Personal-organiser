@@ -22,6 +22,9 @@
   const filters = { who: "", type: "", tag: "", range: "all", openOnly: false };
   let expandedId = null; // which record is showing its details
   let profileEdit = false; // is the selected ID's profile open for editing
+  let aiAvailable = false; // can the AI sort a messy note into records?
+  let aiFallback = false; // AI unreachable just now → show the manual controls
+  let pending = null; // AI-understood records awaiting the glance-and-tap
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -135,15 +138,39 @@
     d.setDate(d.getDate() + 1);
     return `${isoOf(d)}T09:00`;
   }
+  function addDaysISO(iso, n) {
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return isoOf(d);
+  }
+  function fmtLocalDT(d) {
+    return `${isoOf(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+  // A reminder for a dated follow-up: the morning before it's due; the morning
+  // itself when that's already gone; "in about an hour" when it's due today.
+  function remindForDate(dateIso) {
+    const today = todayISO();
+    if (dateIso && dateIso > today) {
+      const before = addDaysISO(dateIso, -1);
+      const at9 = (iso) => `${iso}T09:00`;
+      if (before > today) return at9(before);
+      if (before === today && new Date() < new Date(at9(today))) return at9(today);
+      return at9(dateIso);
+    }
+    const soon = new Date(Date.now() + 60 * 60 * 1000);
+    soon.setMinutes(soon.getMinutes() - (soon.getMinutes() % 15), 0, 0);
+    return fmtLocalDT(soon);
+  }
   // The killer integration: the follow-up becomes a REAL task in the normal
   // queue — dated tomorrow so it surfaces in the ordinary lists/shortlist, with
   // a morning reminder that comes and finds you (s28). No separate place to check.
-  function spawnFollowUpTask(rec) {
+  function spawnFollowUpTask(rec, dueDate) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dueDate || "") ? dueDate : isoOf(new Date(Date.now() + 24 * 60 * 60 * 1000));
     const t = {
       id: uid(),
       title: `Follow up: ${rec.summary}${rec.who ? ` (${rec.who})` : ""}`,
       type: "task",
-      date: isoOf(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+      date,
       time: "",
       deadlineType: "soft",
       importance: "normal",
@@ -153,7 +180,7 @@
       goalId: "",
       openLoop: false,
       promisedTo: "",
-      remindAt: tomorrowAt9(),
+      remindAt: remindForDate(date),
       remindedAt: null,
       done: false,
       createdAt: nowISO(),
@@ -215,6 +242,160 @@
     records = records.filter((r) => r.id !== id);
     persistRecords();
     render();
+  }
+
+  // ----- the AI way in: one messy line → understood records (core pillar) -----
+  // The AI is handed ONLY the log's own vocabulary (IDs, kinds, fields — data),
+  // and nothing files without the glance-and-tap below. AI off or unreachable →
+  // the manual boxes are right there; nothing is lost.
+  async function sortNote() {
+    const text = $("#recSummary").value.trim();
+    if (!text) return;
+    const btn = $("#recAddBtn");
+    btn.disabled = true;
+    btn.textContent = "Sorting…";
+    setStatus("Reading what you wrote…");
+    try {
+      const r = await fetch("/api/record-understand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          today: todayISO(),
+          now: new Date().toLocaleString(undefined, {
+            weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+          }),
+          config: { whoIds: config.whoIds, types: config.types, fields: config.fields || {} },
+        }),
+      });
+      if (!r.ok) throw new Error("http " + r.status);
+      const d = await r.json();
+      const recs = Array.isArray(d.records) ? d.records : [];
+      if (!recs.length) {
+        setStatus("I couldn't find a record in that — a few more words?");
+        return;
+      }
+      pending = recs.map((x) => ({
+        who: x.who || "", // unknown stays blank — you pick, it never guesses an ID
+        type: x.type,
+        summary: x.summary,
+        tags: x.tags || [],
+        extra: x.details || {},
+        followUp: x.follow_up === true,
+        fuDate: x.follow_up_date || "",
+      }));
+      $("#recSummary").value = "";
+      setStatus("");
+      render();
+    } catch {
+      aiFallback = true; // show the manual boxes for this one — nothing lost
+      setStatus("Can't reach the AI right now — pick the boxes and add it by hand instead.");
+      render();
+    } finally {
+      btn.disabled = false;
+      applyAddMode();
+    }
+  }
+
+  function addPendingAll() {
+    if (!pending || !pending.length) return;
+    if (pending.some((p) => !p.who)) {
+      setStatus("One of them needs a who — pick the ID and add again.");
+      return;
+    }
+    let spawned = 0;
+    pending.forEach((p) => {
+      const rec = {
+        id: uid(),
+        who: p.who,
+        date: todayISO(),
+        type: p.type,
+        summary: p.summary,
+        detail: "",
+        extra: p.extra || {},
+        tags: (p.tags || []).slice(0, 4),
+        followUp: p.followUp === true,
+        taskId: "",
+        createdAt: nowISO(),
+      };
+      records.unshift(rec);
+      if (rec.followUp) {
+        spawnFollowUpTask(rec, p.fuDate);
+        spawned++;
+      }
+    });
+    const n = pending.length;
+    pending = null;
+    if (spawned) persistAll();
+    else persistRecords();
+    setStatus(
+      `Logged ${n === 1 ? "it" : n + " records"}.` +
+        (spawned ? ` ${spawned === 1 ? "A follow-up task is" : spawned + " follow-up tasks are"} in your list, reminder set. ✓` : " ✓")
+    );
+    render();
+  }
+
+  function renderPending() {
+    const box = $("#recPending");
+    const list = $("#recPendingList");
+    if (!box || !list) return;
+    if (!pending || !pending.length) {
+      box.hidden = true;
+      list.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    list.innerHTML = "";
+    pending.forEach((p, i) => {
+      const card = document.createElement("div");
+      card.className = "rec-pend-card";
+      const filled = Object.entries(p.extra || {}).filter(([, v]) => (v || "").trim());
+      card.innerHTML = `
+        <div class="rec-add-row">
+          <select class="rp-who" aria-label="Who"></select>
+          <select class="rp-type" aria-label="Kind"></select>
+          <input class="rp-summary" type="text" value="${escapeHtml(p.summary)}" aria-label="What happened" />
+          <button class="x-del rp-remove" type="button" title="Remove this one">×</button>
+        </div>
+        <div class="rec-add-row rec-add-row2">
+          <input class="rp-tags" type="text" value="${escapeHtml((p.tags || []).join(", "))}" placeholder="tags" aria-label="Tags" />
+          <label class="rec-fu"><input class="rp-fu" type="checkbox" ${p.followUp ? "checked" : ""} /> needs a follow-up${p.fuDate ? ` (by ${escapeHtml(friendlyDate(p.fuDate))})` : ""}</label>
+        </div>
+        ${filled.length ? `<div class="rec-extra-line">${filled.map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")} <span class="rec-extra-hint">— tweak after adding</span></div>` : ""}`;
+      const whoSel = card.querySelector(".rp-who");
+      const typeSel = card.querySelector(".rp-type");
+      if (!p.who) whoSel.appendChild(new Option("— who? —", "")); // never guessed for you
+      config.whoIds.forEach((w) => whoSel.appendChild(new Option(w, w)));
+      config.types.forEach((t) => typeSel.appendChild(new Option(t, t)));
+      whoSel.value = p.who;
+      typeSel.value = p.type;
+      whoSel.addEventListener("change", (e) => (p.who = e.target.value));
+      typeSel.addEventListener("change", (e) => (p.type = e.target.value));
+      card.querySelector(".rp-summary").addEventListener("input", (e) => (p.summary = e.target.value));
+      card.querySelector(".rp-tags").addEventListener("input", (e) => {
+        p.tags = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+      });
+      card.querySelector(".rp-fu").addEventListener("change", (e) => (p.followUp = e.target.checked));
+      card.querySelector(".rp-remove").addEventListener("click", () => {
+        pending.splice(i, 1);
+        render();
+      });
+      list.appendChild(card);
+    });
+  }
+
+  // With AI on, the add bar is just the one box (the app sorts; you don't) —
+  // the who/kind/tags/follow-up boxes reappear if the AI can't be reached.
+  function applyAddMode() {
+    const ai = aiAvailable && !aiFallback;
+    $("#recWho").hidden = ai;
+    $("#recType").hidden = ai;
+    $("#recTags").hidden = ai;
+    $("#recFollowUp").parentElement.hidden = ai;
+    $("#recAddBtn").textContent = ai ? "Sort it" : "Add";
+    $("#recSummary").placeholder = ai
+      ? "say it messily — who, what happened, what needs chasing"
+      : "One line — what happened?";
   }
   function setStatus(msg) {
     const s = $("#recStatus");
@@ -432,6 +613,7 @@
 
     renderProfile();
     renderConfig();
+    renderPending();
 
     const list = $("#recList");
     list.innerHTML = "";
@@ -532,12 +714,32 @@
       persistRecords(); // seed once; from here it's the user's data
     }
 
-    $("#recAddBtn").addEventListener("click", addRecord);
+    // Can the AI sort a messy note? (And wake it, so the first sort isn't slow.)
+    if (OrganiserStore.mode === "file") {
+      try {
+        const r = await fetch("/api/health");
+        const j = await r.json();
+        aiAvailable = !!j.hasAI;
+        if (aiAvailable) fetch("/api/warm", { method: "POST" }).catch(() => {});
+      } catch {
+        aiAvailable = false;
+      }
+    }
+
+    const submit = () => (aiAvailable && !aiFallback ? sortNote() : addRecord());
+    $("#recAddBtn").addEventListener("click", submit);
     [$("#recSummary"), $("#recTags")].forEach((el) =>
       el.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") addRecord();
+        if (e.key === "Enter") submit();
       })
     );
+    $("#recPendAdd").addEventListener("click", addPendingAll);
+    $("#recPendCancel").addEventListener("click", () => {
+      pending = null;
+      setStatus("");
+      render();
+    });
+    applyAddMode();
     $("#fWho").addEventListener("change", (e) => {
       filters.who = e.target.value;
       profileEdit = false; // fresh person → read view first

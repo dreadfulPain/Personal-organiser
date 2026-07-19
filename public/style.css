@@ -1295,6 +1295,44 @@ body {
   border-radius: 10px;
   padding: 8px 12px;
 }
+/* the record check-back: what the AI understood, pre-filled */
+.rec-pending {
+  margin: 0 0 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.rec-pending h2 {
+  font-size: 1.05rem;
+  margin: 0 0 12px;
+}
+.rec-pend-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fffefb;
+}
+.rec-pend-card select,
+.rec-pend-card input[type="text"] {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+.rp-summary {
+  flex: 1;
+  min-width: 180px;
+}
+.rec-extra-hint {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
 /* per-ID profile — grows gradually; read view first, never a required form */
 .rec-profile {
   margin: 0 0 16px;

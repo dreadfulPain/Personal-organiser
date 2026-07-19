@@ -281,6 +281,35 @@
     render();
   }
 
+  // ----- evidence files: the actual work behind a judgement -----
+  // Real files in data/files/ (owned, syncs with the folder); the record keeps
+  // only small references. Needs the server, so preview mode hides the controls.
+  async function uploadEvidence(rec, file) {
+    try {
+      const r = await fetch("/api/upload?name=" + encodeURIComponent(file.name), { method: "POST", body: file });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setStatus(j.message || "Couldn't save that file.");
+        return;
+      }
+      const d = await r.json();
+      if (!rec.files) rec.files = [];
+      rec.files.push({ id: d.id, name: d.name, addedAt: nowISO() });
+      persistRecords();
+      setStatus("Work attached. ✓");
+      render();
+    } catch {
+      setStatus("Couldn't save that file — is the app window still open?");
+    }
+  }
+  function removeEvidence(rec, f) {
+    if (!confirm(`Remove "${f.name}" from this record? The file is deleted too.`)) return;
+    fetch("/files/" + encodeURIComponent(f.id), { method: "DELETE" }).catch(() => {});
+    rec.files = (rec.files || []).filter((x) => x.id !== f.id);
+    persistRecords();
+    render();
+  }
+
   // ----- the AI way in: one messy line → understood records (core pillar) -----
   // The AI is handed ONLY the log's own vocabulary (IDs, kinds, fields — data),
   // and nothing files without the glance-and-tap below. AI off or unreachable →
@@ -593,14 +622,38 @@
       box.appendChild(wrap);
     }
     // Where they stand, from evidence only: the latest level per skill/standard.
+    // Each one is a button — tap it and the records below become that topic's
+    // evidence trail (the parent-meeting view: level, then the work behind it).
     if (config.topics.length) {
       const lv = latestLevels(records.filter((r) => r.who === who));
+      const noEvidence = config.topics.filter((t) => !lv.has(t)).length;
       if (lv.size) {
-        const order = config.topics.concat([...lv.keys()].filter((t) => !config.topics.includes(t)));
-        const parts = order.filter((t) => lv.has(t)).map((t) => `${t} — ${lv.get(t).level}`);
         const d = document.createElement("div");
         d.className = "rec-levels-line";
-        d.innerHTML = `<span class="rec-extra-k">Levels so far:</span> ${parts.map((p) => escapeHtml(p)).join("  ·  ")}`;
+        const k = document.createElement("span");
+        k.className = "rec-extra-k";
+        k.textContent = "Levels so far: ";
+        d.appendChild(k);
+        const order = config.topics.concat([...lv.keys()].filter((t) => !config.topics.includes(t)));
+        order
+          .filter((t) => lv.has(t))
+          .forEach((t) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "level-jump" + (filters.topic === t ? " active" : "");
+            b.title = "Show the evidence behind this";
+            b.textContent = `${t} — ${lv.get(t).level}`;
+            b.addEventListener("click", () => {
+              filters.topic = filters.topic === t ? "" : t;
+              render();
+            });
+            d.appendChild(b);
+          });
+        if (noEvidence)
+          d.insertAdjacentHTML(
+            "beforeend",
+            `<span class="rec-noev">· ${noEvidence} with no evidence yet</span>`
+          );
         box.appendChild(d);
       }
     }
@@ -711,6 +764,43 @@
       persistRecords();
     });
     wrap.appendChild(ta);
+
+    // the work itself — proof you can open in a parent meeting
+    if (OrganiserStore.mode === "file") {
+      const fw = document.createElement("div");
+      fw.className = "rec-files";
+      (rec.files || []).forEach((f) => {
+        const line = document.createElement("div");
+        line.className = "rec-file-line";
+        const a = document.createElement("a");
+        a.href = "/files/" + encodeURIComponent(f.id);
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = f.name;
+        const del = document.createElement("button");
+        del.className = "x-del";
+        del.type = "button";
+        del.title = "Remove this file";
+        del.textContent = "×";
+        del.addEventListener("click", () => removeEvidence(rec, f));
+        line.append(a, del);
+        fw.appendChild(line);
+      });
+      const attach = document.createElement("label");
+      attach.className = "rec-attach";
+      attach.textContent = "+ attach a piece of work (photo / file)";
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.hidden = true;
+      inp.addEventListener("change", (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (f) uploadEvidence(rec, f);
+        e.target.value = "";
+      });
+      attach.appendChild(inp);
+      fw.appendChild(attach);
+      wrap.appendChild(fw);
+    }
     return wrap;
   }
 
@@ -726,7 +816,8 @@
         : "follow-up done ✓"
       : "";
     const filledExtra = Object.entries(rec.extra || {}).filter(([, v]) => (v || "").toString().trim());
-    const hasDetails = filledExtra.length || (rec.detail || "").trim();
+    const fileCount = (rec.files || []).length;
+    const hasDetails = filledExtra.length || (rec.detail || "").trim() || fileCount;
     const unchecked = needsCheck(rec);
     row.innerHTML = `
       <div class="rec-main">
@@ -736,6 +827,7 @@
           <span class="rec-date">${escapeHtml(friendlyDate(rec.date))}</span>
           ${rec.topic ? `<span class="topic-chip">${escapeHtml(rec.topic)}</span>` : ""}
           ${rec.level ? `<span class="level-chip">${escapeHtml(rec.level)}</span>` : ""}
+          ${fileCount ? `<span class="files-chip">${fileCount} piece${fileCount === 1 ? "" : "s"} of work</span>` : ""}
           ${(rec.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${fuLabel ? `<span class="rec-fu-chip ${open ? "open" : "closed"}">${fuLabel}</span>` : ""}
           ${unchecked ? `<button class="ai-chip" type="button" title="The AI heard this from your words — worth a quick check">AI-sorted · check me</button>` : ""}
@@ -810,6 +902,7 @@
     fillSelect("#recLevel", config.levels, "— level —");
     fillSelect("#fTopic", config.topics, "every skill");
     $("#fTopic").hidden = !config.topics.length;
+    $("#fTopic").value = filters.topic; // the levels-so-far buttons set this too
     applyAddMode();
 
     renderProfile();

@@ -56,9 +56,12 @@ function loadEnvFile() {
 
 // --- the store: a real file the user owns, saved safely --------------------
 
+const FILES_DIR = path.join(DATA_DIR, "files");
+
 function ensureDirs() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  fs.mkdirSync(FILES_DIR, { recursive: true });
 }
 
 function readData() {
@@ -958,7 +961,78 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".heic": "image/heic",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain; charset=utf-8",
 };
+
+// --- evidence files: real files in a folder the user owns ------------------
+// Attached work samples live as plain files in data/files/ (they sync/back up
+// with the folder). The data file only stores small references — it never
+// balloons with file bytes.
+
+function readBodyBuffer(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > maxBytes) {
+        reject(new Error("too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+// Only ever a basename inside FILES_DIR — a hostile id can't walk out of it.
+function evidencePath(id) {
+  const base = path.basename(decodeURIComponent(String(id || "")));
+  if (!base || base === "." || base === "..") return null;
+  const p = path.normalize(path.join(FILES_DIR, base));
+  if (!p.startsWith(FILES_DIR + path.sep)) return null;
+  return p;
+}
+
+async function handleUpload(req, res, query) {
+  const rawName = (query.get("name") || "file").toString().slice(0, 120);
+  const safe = rawName.replace(/[^\w.\- ()]/g, "_").slice(-80) || "file";
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + "-" + safe;
+  let buf;
+  try {
+    buf = await readBodyBuffer(req, 15 * 1024 * 1024);
+  } catch {
+    return sendJson(res, 413, { error: "too_large", message: "That file is too big (15 MB max)." });
+  }
+  if (!buf.length) return sendJson(res, 400, { error: "empty", message: "That file looks empty." });
+  ensureDirs();
+  fs.writeFileSync(path.join(FILES_DIR, id), buf);
+  sendJson(res, 200, { id, name: rawName });
+}
+
+function handleEvidenceFile(req, res, id) {
+  const p = evidencePath(id);
+  if (!p || !fs.existsSync(p)) return sendJson(res, 404, { error: "not_found" });
+  if (req.method === "DELETE") {
+    try {
+      fs.unlinkSync(p);
+    } catch {
+      /* already gone is fine */
+    }
+    return sendJson(res, 200, { ok: true });
+  }
+  const type = MIME[path.extname(p).toLowerCase()] || "application/octet-stream";
+  res.writeHead(200, { "Content-Type": type, "Content-Disposition": "inline" });
+  fs.createReadStream(p).pipe(res);
+}
 
 function serveStatic(pathname, res) {
   const rel = pathname === "/" ? "/index.html" : pathname;
@@ -1004,7 +1078,16 @@ function readBody(req) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    const pathname = new URL(req.url, `http://localhost:${PORT}`).pathname;
+    const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
+    const pathname = reqUrl.pathname;
+
+    if (pathname === "/api/upload" && req.method === "POST") {
+      return handleUpload(req, res, reqUrl.searchParams);
+    }
+
+    if (pathname.startsWith("/files/") && (req.method === "GET" || req.method === "DELETE")) {
+      return handleEvidenceFile(req, res, pathname.slice("/files/".length));
+    }
 
     if (req.method === "GET" && pathname === "/api/health") {
       const cfg = aiConfig();

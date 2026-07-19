@@ -188,7 +188,14 @@ beginning — reword to match your school). Then one person's view shows their
 **levels so far** (always the latest evidence, never an average), and picking a
 skill shows **where the whole class stands on it** — each ID once, grouped by
 level — which is your reteach / small-group / move-on answer. The AI extracts
-skill and level from your words too, only when you actually stated a judgement. Everything's seen through filters: one
+skill and level from your words too, only when you actually stated a judgement.
+And a judgement can carry its **proof**: attach the actual piece of work (a
+photo, a file) to the record behind it. Each "level so far" is a button — tap it
+and you're looking at that skill's evidence trail, work samples included. That's
+the parent-meeting layout: *here's the year's skills, here's the level, here's
+the work that shows it.* (Attached files live in `data/files/` next to your data
+— they sync and back up with the folder; the in-app "Back up now" download covers
+the data file only, so copy the whole `data` folder for a full backup.) Everything's seen through filters: one
 person's timeline,
 one kind across everyone, a tag, a time window, or just the open follow-ups.
 Tick **"needs a follow-up"** and it becomes a **real task in your normal lists**,

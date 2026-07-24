@@ -79,7 +79,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -90,6 +90,7 @@ function normaliseDoc(d) {
     goals: Array.isArray(d.goals) ? d.goals : [],
     records: Array.isArray(d.records) ? d.records : [],
     recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
+    portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
     savedAt: d.savedAt || null,
   };
 }
@@ -104,7 +105,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, savedAt: null };
   try {
     current = readData();
   } catch {
@@ -126,6 +127,7 @@ function writeData(input, opts) {
         goals: Array.isArray(input.goals) ? input.goals : current.goals || [],
         records: Array.isArray(input.records) ? input.records : current.records || [],
         recordConfig: input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null,
+        portfolio: input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null,
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -143,6 +145,8 @@ function writeData(input, opts) {
   const records = Array.isArray(input.records) ? input.records : current.records || [];
   const recordConfig =
     input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null;
+  const portfolio =
+    input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null;
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -151,6 +155,7 @@ function writeData(input, opts) {
     goals,
     records,
     recordConfig,
+    portfolio,
   };
   const json = JSON.stringify(doc, null, 2);
 

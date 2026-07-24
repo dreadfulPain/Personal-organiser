@@ -1950,6 +1950,79 @@ body {
   color: var(--accent-dark);
 }
 
+/* the portfolio — points + evidence per point, exportable */
+.pf-tools {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+.pf-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.pf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pf-code {
+  font-size: 1rem;
+  margin: 0;
+  color: var(--accent-dark);
+}
+.pf-count {
+  flex: none;
+  font-size: 0.78rem;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.pf-count.gap {
+  color: var(--reminder-ink);
+  background: var(--reminder);
+}
+.pf-title {
+  margin: 2px 0 10px;
+  color: var(--ink);
+}
+.pf-evs {
+  display: grid;
+  gap: 10px;
+}
+.pf-ev {
+  border-left: 3px solid var(--accent-soft);
+  padding-left: 10px;
+}
+.pf-ev-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pf-ev-date {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.pf-ev-note {
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdfa;
+  color: var(--ink);
+  resize: vertical;
+  margin-top: 2px;
+}
+
 @media (max-width: 480px) {
   body {
     font-size: 17px;

@@ -172,7 +172,7 @@ file in OneDrive — only the small app + data file belong there.
 ## What's here on purpose — and what's not yet
 
 **Working now:** a **tab bar** on every page — *Home · Day · Week · Month · Class
-· Students · Goals · Looking back* — one room per question, so each page stays
+· Students · Portfolio · Goals · Looking back* — one room per question, so each page stays
 focused and nothing is buried (Home keeps surfacing what can't be missed, plus a
 light seven-day strip). **Week** shows the next seven days one calm day at a
 time; **Month** is a full calendar grid — the whole month laid out so you can
@@ -182,7 +182,10 @@ year's skills with where everyone stands on each, from the evidence. **Every
 page has a capture box** — dump a messy thought anywhere ("call the dentist tues
 · S03 struggled with full stops · get fit") and the app *routes* each part to the
 right place: a task, a student record, or a goal. You never go to the right tab
-first; it sorts, you don't. Plus: add by
+first; it sorts, you don't. The **Portfolio** tab is your *own* evidence log — a
+list of standards (it ships with the UK Teachers' Standards, all editable) where
+you attach notes and work files to each point and export the whole thing as a
+portfolio document, gaps and all. Plus: add by
 hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
 **Today** section is laid out as a timeline right on the home page — your timed

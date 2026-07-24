@@ -27,6 +27,7 @@
   const LS_GOALS = "organiser.goals.v1";
   const LS_RECORDS = "organiser.records.v1";
   const LS_RECORDCONFIG = "organiser.recordconfig.v1";
+  const LS_PORTFOLIO = "organiser.portfolio.v1";
 
   let statusCb = null;
   let externalCb = null; // page refresh when the shared file changed elsewhere
@@ -34,7 +35,7 @@
   let pollTimer = null;
   let dirty = false;
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null };
 
   function emit(s) {
     if (statusCb) statusCb(s);
@@ -55,6 +56,7 @@
       goals: get(LS_GOALS, []),
       records: get(LS_RECORDS, []),
       recordConfig: get(LS_RECORDCONFIG, null),
+      portfolio: get(LS_PORTFOLIO, null),
     };
   }
   function writeLegacy(state) {
@@ -64,6 +66,7 @@
       localStorage.setItem(LS_GOALS, JSON.stringify(state.goals || []));
       localStorage.setItem(LS_RECORDS, JSON.stringify(state.records || []));
       localStorage.setItem(LS_RECORDCONFIG, JSON.stringify(state.recordConfig || null));
+      localStorage.setItem(LS_PORTFOLIO, JSON.stringify(state.portfolio || null));
     } catch {
       /* storage may be full or blocked; ignore */
     }
@@ -72,12 +75,12 @@
   async function load() {
     if (!SERVER) {
       const data = readLegacy();
-      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig };
+      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig, portfolio: data.portfolio };
       emit({ mode: "preview", state: "preview" });
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
@@ -88,6 +91,7 @@
           goals: d.goals || [],
           records: d.records || [],
           recordConfig: d.recordConfig || null,
+          portfolio: d.portfolio || null,
         };
         baseSavedAt = d.savedAt || null; // the version we're now working from
       }
@@ -108,7 +112,7 @@
     const haveLegacy =
       legacy.items.length > 0 || legacy.waiting.length > 0 || legacy.goals.length > 0 || legacy.records.length > 0;
     if (serverEmpty && haveLegacy) {
-      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig };
+      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig, portfolio: legacy.portfolio };
       migratedNote = "Brought your earlier items into your saved data file.";
       try {
         await fetch("/api/data", {
@@ -161,6 +165,7 @@
         goals: d.goals || [],
         records: d.records || [],
         recordConfig: d.recordConfig || null,
+        portfolio: d.portfolio || null,
       };
       baseSavedAt = d.savedAt || null;
       writeLegacy(lastState);
@@ -173,7 +178,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 
@@ -206,6 +211,7 @@
             goals: d.data.goals || [],
             records: d.data.records || [],
             recordConfig: d.data.recordConfig || null,
+            portfolio: d.data.portfolio || null,
           };
           baseSavedAt = d.data.savedAt || d.savedAt || baseSavedAt;
           writeLegacy(lastState);
@@ -260,6 +266,7 @@
       goals: lastState.goals || [],
       records: lastState.records || [],
       recordConfig: lastState.recordConfig || null,
+      portfolio: lastState.portfolio || null,
     };
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -286,6 +293,7 @@
             goals: Array.isArray(d.goals) ? d.goals : [],
             records: Array.isArray(d.records) ? d.records : [],
             recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
+            portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
           });
         } catch {
           reject(new Error("That file doesn't look like an organiser backup."));

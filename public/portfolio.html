@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Portfolio</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <div id="capture"></div>
+      <header class="top">
+        <h1 id="pfTitle">Portfolio</h1>
+        <p class="sub">A place for each standard, and the evidence of your own work behind it. Attach
+          notes and files as you go; export the lot as a portfolio when you need it.</p>
+      </header>
+
+      <div class="pf-tools">
+        <button id="pfExport" class="btn" type="button">Export portfolio</button>
+        <label class="rec-fu"><input id="pfGaps" type="checkbox" /> show only points with no evidence yet</label>
+      </div>
+      <p id="pfStatus" class="status" hidden></p>
+
+      <div id="pfList"></div>
+
+      <!-- SET UP: the points are your list — reword them, add or remove any -->
+      <footer class="data-footer">
+        <h2>Set up this portfolio</h2>
+        <p class="muted">The title and the list of points below are yours to change — one point per
+          line as <code>CODE — description</code> (the code part is optional).</p>
+        <div class="rec-config">
+          <label class="cb-field rec-cfg-wide"><span class="cb-lbl">Portfolio title</span>
+            <input id="pfCfgTitle" type="text" aria-label="Portfolio title" />
+          </label>
+        </div>
+        <label class="cb-field rec-cfg-wide" style="display:block;margin-top:10px">
+          <span class="cb-lbl">Points to evidence (one per line)</span>
+        </label>
+        <textarea id="pfCfgPoints" class="rec-topics-area" rows="10" aria-label="Points, one per line"></textarea>
+      </footer>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="capture.js" defer></script>
+    <script src="portfolio.js" defer></script>
+  </body>
+</html>

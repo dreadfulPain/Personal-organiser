@@ -12,6 +12,7 @@
   "use strict";
 
   let pf = null; // { title, points:[{id,code,title}], evidence:[{id,pointId,date,note,files:[]}] }
+  let items = []; // the shared task pool — tasks linked to a standard live here too
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -78,6 +79,50 @@
       .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.id || "").localeCompare(a.id || ""));
   }
 
+  // ----- tasks linked to a standard (the "reminders to do the work" half) -----
+  // A real task in the shared pool, so it also appears in Today/Week and can
+  // carry a reminder — but shown here under its standard, tickable in place.
+  function tasksFor(pointId) {
+    return items
+      .filter((i) => !i.done && i.standardId === pointId)
+      .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+  }
+  function addTask(pointId, title) {
+    title = (title || "").trim();
+    if (!title) return;
+    items.push({
+      id: uid(),
+      title,
+      type: "task",
+      date: "",
+      time: "",
+      deadlineType: "soft",
+      importance: "normal",
+      effort: "medium",
+      tags: [],
+      whenText: "",
+      goalId: "",
+      standardId: pointId,
+      openLoop: false,
+      promisedTo: "",
+      remindAt: "",
+      remindedAt: null,
+      done: false,
+      createdAt: nowISO(),
+      completedAt: null,
+    });
+    OrganiserStore.save({ items });
+    render();
+  }
+  function completeTask(id) {
+    const it = items.find((x) => x.id === id);
+    if (!it) return;
+    it.done = true;
+    it.completedAt = nowISO();
+    OrganiserStore.save({ items });
+    render();
+  }
+
   // ----- mutations -----
   function addEvidence(pointId, note) {
     note = (note || "").trim();
@@ -89,14 +134,18 @@
   function deleteEvidence(id) {
     if (!confirm("Remove this piece of evidence? Any attached file is deleted too.")) return;
     const e = pf.evidence.find((x) => x.id === id);
-    (e && e.files ? e.files : []).forEach((f) => fetch("/files/" + encodeURIComponent(f.id), { method: "DELETE" }).catch(() => {}));
+    (e && e.files ? e.files : []).forEach((f) => fetch("/files/" + String(f.id).split("/").map(encodeURIComponent).join("/"), { method: "DELETE" }).catch(() => {}));
     pf.evidence = pf.evidence.filter((x) => x.id !== id);
     persist();
     render();
   }
-  async function uploadTo(ev, file) {
+  async function uploadTo(ev, file, folder) {
     try {
-      const r = await fetch("/api/upload?name=" + encodeURIComponent(file.name), { method: "POST", body: file });
+      // Filed into a plain, grabbable folder: data/files/portfolio/<standard>/…
+      const r = await fetch(
+        "/api/upload?name=" + encodeURIComponent(file.name) + "&folder=" + encodeURIComponent("portfolio/" + (folder || "unfiled")),
+        { method: "POST", body: file }
+      );
       if (!r.ok) {
         setStatus("Couldn't save that file.");
         return;
@@ -113,7 +162,7 @@
   }
   function removeFile(ev, f) {
     if (!confirm(`Remove "${f.name}"? The file is deleted too.`)) return;
-    fetch("/files/" + encodeURIComponent(f.id), { method: "DELETE" }).catch(() => {});
+    fetch("/files/" + String(f.id).split("/").map(encodeURIComponent).join("/"), { method: "DELETE" }).catch(() => {});
     ev.files = (ev.files || []).filter((x) => x.id !== f.id);
     persist();
     render();
@@ -147,7 +196,7 @@
       const line = document.createElement("div");
       line.className = "rec-file-line";
       const a = document.createElement("a");
-      a.href = "/files/" + encodeURIComponent(f.id);
+      a.href = "/files/" + String(f.id).split("/").map(encodeURIComponent).join("/");
       a.target = "_blank";
       a.rel = "noopener";
       a.textContent = f.name;
@@ -169,7 +218,7 @@
       inp.hidden = true;
       inp.addEventListener("change", (e) => {
         const f = e.target.files && e.target.files[0];
-        if (f) uploadTo(ev, f);
+        if (f) uploadTo(ev, f, point.code || point.id);
         e.target.value = "";
       });
       attach.appendChild(inp);
@@ -205,6 +254,46 @@
     });
     add.appendChild(input);
     card.appendChild(add);
+
+    // Things to DO for this standard — real tasks, tickable here, that also live
+    // in your normal lists (and can carry a reminder like any task).
+    const tasks = tasksFor(point.id);
+    const th = document.createElement("p");
+    th.className = "pf-tasks-title";
+    th.textContent = "To do for this standard";
+    card.appendChild(th);
+    if (tasks.length) {
+      const tw = document.createElement("div");
+      tw.className = "pf-tasks";
+      tasks.forEach((it) => {
+        const row = document.createElement("div");
+        row.className = "gt-row";
+        const tick = document.createElement("button");
+        tick.className = "tick";
+        tick.setAttribute("aria-label", "Mark done");
+        tick.title = "Mark done";
+        tick.addEventListener("click", () => completeTask(it.id));
+        const main = document.createElement("div");
+        main.className = "gt-main";
+        main.innerHTML = `<span class="gt-title">${escapeHtml(it.title)}</span>${it.date ? `<span class="gt-when">${escapeHtml(friendlyDate(it.date))}</span>` : ""}`;
+        row.append(tick, main);
+        tw.appendChild(row);
+      });
+      card.appendChild(tw);
+    }
+    const addT = document.createElement("div");
+    addT.className = "add-line";
+    const ti = document.createElement("input");
+    ti.type = "text";
+    ti.placeholder = "+ add a task for this standard";
+    ti.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        addTask(point.id, ti.value);
+        ti.value = "";
+      }
+    });
+    addT.appendChild(ti);
+    card.appendChild(addT);
     return card;
   }
 
@@ -229,7 +318,7 @@
   const IMG_EXT = /\.(jpe?g|png|gif|webp)$/i;
   async function fileAsDataUri(id) {
     try {
-      const r = await fetch("/files/" + encodeURIComponent(id));
+      const r = await fetch("/files/" + String(id).split("/").map(encodeURIComponent).join("/"));
       if (!r.ok) return null;
       const blob = await r.blob();
       return await new Promise((resolve) => {
@@ -325,6 +414,7 @@ ${body}</body></html>`;
 
   function refreshFromExternal(state) {
     pf = normalisePortfolio(state.portfolio) || pf;
+    items = state.items || [];
     render();
     wireConfig();
   }
@@ -332,6 +422,7 @@ ${body}</body></html>`;
   async function init() {
     const data = await OrganiserStore.load();
     pf = normalisePortfolio(data.portfolio);
+    items = data.items || [];
     if (!pf || !pf.points.length) {
       pf = JSON.parse(JSON.stringify(DEFAULT_PORTFOLIO));
       persist(); // seed once; from here it's your data

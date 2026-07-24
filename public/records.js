@@ -303,7 +303,12 @@
   // only small references. Needs the server, so preview mode hides the controls.
   async function uploadEvidence(rec, file) {
     try {
-      const r = await fetch("/api/upload?name=" + encodeURIComponent(file.name), { method: "POST", body: file });
+      // Filed into a plain, grabbable folder: data/files/students/<who>/…
+      const folder = "students/" + (rec.who || "_unfiled");
+      const r = await fetch(
+        "/api/upload?name=" + encodeURIComponent(file.name) + "&folder=" + encodeURIComponent(folder),
+        { method: "POST", body: file }
+      );
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         setStatus(j.message || "Couldn't save that file.");
@@ -321,7 +326,7 @@
   }
   function removeEvidence(rec, f) {
     if (!confirm(`Remove "${f.name}" from this record? The file is deleted too.`)) return;
-    fetch("/files/" + encodeURIComponent(f.id), { method: "DELETE" }).catch(() => {});
+    fetch("/files/" + String(f.id).split("/").map(encodeURIComponent).join("/"), { method: "DELETE" }).catch(() => {});
     rec.files = (rec.files || []).filter((x) => x.id !== f.id);
     persistRecords();
     render();
@@ -819,7 +824,7 @@
         const line = document.createElement("div");
         line.className = "rec-file-line";
         const a = document.createElement("a");
-        a.href = "/files/" + encodeURIComponent(f.id);
+        a.href = "/files/" + String(f.id).split("/").map(encodeURIComponent).join("/");
         a.target = "_blank";
         a.rel = "noopener";
         a.textContent = f.name;

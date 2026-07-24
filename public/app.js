@@ -16,6 +16,7 @@
   let goals = []; // read-only here: the Goals page owns these; we only link/show them
   let records = []; // the record log — the home only writes routed records to it
   let recordConfig = null; // the record vocabulary, for routing a dump to a student record
+  let portfolio = null; // read-only here: to show which standard a task is "for"
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
@@ -66,6 +67,13 @@
     if (!id) return "";
     const g = goals.find((x) => x && x.id === id);
     return g ? g.title || "" : "";
+  }
+  // A task can be "for" a portfolio standard — show its short code (or title).
+  function standardLabelById(id) {
+    if (!id || !portfolio || !Array.isArray(portfolio.points)) return "";
+    const p = portfolio.points.find((x) => x && x.id === id);
+    if (!p) return "";
+    return p.code || (p.title || "").slice(0, 24);
   }
 
   // ---------- open loops & reminders (§0.2 s28) ----------
@@ -157,6 +165,7 @@
       tags: normaliseTags(it.tags),
       whenText: (it.whenText || "").toString().trim(),
       goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
+      standardId: standardLabelById(it.standardId) ? it.standardId : "",
       openLoop: it.openLoop === true,
       promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
       remindAt: "",
@@ -188,7 +197,8 @@
       // The dump is routed: tasks come to the check-back below; a clear student
       // record or a goal is filed straight to its tab (records wear the
       // "AI-sorted · check me" chip there, so nothing skips a confirm).
-      const entries = await OrganiserCapture.route(text, { goals, config: recordConfig || {} });
+      const stds = portfolio && Array.isArray(portfolio.points) ? portfolio.points.map((p) => ({ id: p.id, code: p.code })) : [];
+      const entries = await OrganiserCapture.route(text, { goals, config: recordConfig || {}, standards: stds });
       if (!entries.length) {
         setStatus("I couldn't find anything to add there — try a few more words?");
         return;
@@ -445,6 +455,7 @@
         tags: normaliseTags(it.tags),
         whenText: it.whenText || "",
         goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
+        standardId: standardLabelById(it.standardId) ? it.standardId : "",
         openLoop: it.openLoop === true,
         promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
         remindAt: typeof it.remindAt === "string" ? it.remindAt : "",
@@ -631,6 +642,7 @@
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
           ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
+          ${standardLabelById(it.standardId) ? `<span class="standard-chip">for ${escapeHtml(standardLabelById(it.standardId))}</span>` : ""}
           ${isFragile(it) ? `<span class="fragile-chip" title="No deadline and no one waiting — these slip easiest. A date or a promise gives it a hook.">nothing holding this</span>` : ""}
         </div>
       </div>`;
@@ -743,6 +755,7 @@
         ${overdue ? `<span class="when overdue">overdue</span>` : ""}
         ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
         ${part ? `<span class="part-of">part of: ${escapeHtml(part)}</span>` : ""}
+        ${standardLabelById(it.standardId) ? `<span class="standard-chip">for ${escapeHtml(standardLabelById(it.standardId))}</span>` : ""}
         ${isFragile(it) ? `<span class="fragile-chip" title="No deadline and no one waiting — these slip easiest. A date or a promise gives it a hook.">nothing holding this</span>` : ""}
       </div>`;
     row.appendChild(main);
@@ -1389,6 +1402,7 @@
     goals = state.goals || [];
     records = state.records || [];
     recordConfig = state.recordConfig || recordConfig;
+    portfolio = state.portfolio || portfolio;
     renderZones();
     renderWaiting();
     setStatus("Updated with changes from another device.");
@@ -1404,6 +1418,7 @@
     goals = data.goals || [];
     records = data.records || [];
     recordConfig = data.recordConfig || null;
+    portfolio = data.portfolio || null;
 
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {

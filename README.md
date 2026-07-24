@@ -59,9 +59,14 @@ Everything the app keeps — your data **and** every attached piece of work — 
 inside this one folder:
 
 ```
-<this folder>/data/organiser-data.json     ← your tasks, goals, records
-<this folder>/data/files/                   ← the work samples you attach
+<this folder>/data/organiser-data.json      ← your tasks, goals, records, portfolio
+<this folder>/data/files/students/<ID>/…    ← a student's attached work
+<this folder>/data/files/portfolio/<TS…>/…  ← evidence for each standard
 ```
+
+Evidence files are kept in plain, readable folders (by student, and by standard),
+with their original names — so you can lift a whole folder straight out if you
+ever need just that student's or that standard's work.
 
 So sharing between computers is just: **put this whole folder inside your
 OneDrive / Dropbox / Google Drive**, on *both* computers, pointing at the *same*

@@ -732,6 +732,14 @@ body {
   border-radius: 999px;
   padding: 1px 8px;
 }
+/* "for <standard>" — a task tied to a portfolio point */
+.standard-chip {
+  font-size: 0.72rem;
+  color: var(--note-ink);
+  background: var(--note);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
 
 /* second check-back row: importance / tags / deadline (lighter, secondary) */
 .cb-row2 {
@@ -2021,6 +2029,17 @@ body {
   color: var(--ink);
   resize: vertical;
   margin-top: 2px;
+}
+.pf-tasks-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 16px 0 6px;
+}
+.pf-tasks {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 @media (max-width: 480px) {

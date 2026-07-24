@@ -873,7 +873,7 @@ Rules:
 - Spelling never matters; fix it silently. Split different things into separate entries. Make a sensible call and never ask.
 - Most notes are a single task. Only use "record" for a clear observation about a listed ID; only use "goal" for a genuine long-term aim.
 
-For a "task" entry set: title (short, verb-first for to-dos), item_type (task | appointment | reminder | note), date (YYYY-MM-DD or "" — resolve "tuesday"/"tomorrow" from the given today), time ("HH:MM" or ""), deadline ("hard" for a real deadline with consequences, else "soft"), importance ("high"/"normal"/"low"), effort ("quick"/"medium"/"draining"), tags (0-3 lowercase categories), when_text (the user's own time phrase, or ""), goal_link (the EXACT title of one listed goal it clearly belongs to, else ""), open_loop (true only if already started/prepped but not sent/finished), promised_to (a person's name it's committed to, else "").
+For a "task" entry set: title (short, verb-first for to-dos), item_type (task | appointment | reminder | note), date (YYYY-MM-DD or "" — resolve "tuesday"/"tomorrow" from the given today), time ("HH:MM" or ""), deadline ("hard" for a real deadline with consequences, else "soft"), importance ("high"/"normal"/"low"), effort ("quick"/"medium"/"draining"), tags (0-3 lowercase categories), when_text (the user's own time phrase, or ""), goal_link (the EXACT title of one listed goal it clearly belongs to, else ""), open_loop (true only if already started/prepped but not sent/finished), promised_to (a person's name it's committed to, else ""), standard (the EXACT code of one listed standard the task EXPLICITLY names, e.g. "TS4" in "prep TS4 display" — else ""; never guess a standard from the topic).
 
 For a "record" entry set: who (EXACTLY one ID from the list, or "" if unsure — never invent one), note_type (the best-fitting kind from the list), summary (one clean line), topic (an EXACT skill from the list if it's clearly evidence of one, else ""), level (an EXACT level from the list only if a judgement is stated, else ""), tags, follow_up (true if it needs chasing later), follow_up_date (YYYY-MM-DD when implied, else "").
 
@@ -881,14 +881,15 @@ For a "goal" entry set: title (a few plain words).
 
 Return only the structured result.
 
-Example — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent; goals: Learn guitar. Note:
-"s3 realy struggled with full stops in writing, chase his mum friday. also book the dentist for tuesday and i want to get fit"
+Example — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent; goals: Learn guitar; standards: TS4, TS7. Note:
+"s3 realy struggled with full stops in writing, chase his mum friday. also book the dentist for tuesday, prep the TS4 display, and i want to get fit"
 you return:
 {"entries":[
-  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":""},
-  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":""},
-  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":""},
-  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":""}
+  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":""},
+  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":""},
+  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
+  {"kind":"task","title":"Prep the display","item_type":"task","date":"","time":"","deadline":"soft","importance":"normal","effort":"medium","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"TS4"},
+  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
 ]}`;
 
 const ROUTE_SCHEMA = {
@@ -919,11 +920,12 @@ const ROUTE_SCHEMA = {
           level: { type: "string" },
           follow_up: { type: "boolean" },
           follow_up_date: { type: "string" },
+          standard: { type: "string" },
         },
         required: [
           "kind", "title", "item_type", "date", "time", "deadline", "importance", "effort", "tags",
           "when_text", "goal_link", "open_loop", "promised_to", "who", "note_type", "summary",
-          "topic", "level", "follow_up", "follow_up_date",
+          "topic", "level", "follow_up", "follow_up_date", "standard",
         ],
         additionalProperties: false,
       },
@@ -933,7 +935,7 @@ const ROUTE_SCHEMA = {
   additionalProperties: false,
 };
 
-function routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels) {
+function routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels, standardCodes) {
   let s = `Right now it is ${nowLabel} (today's date is ${today}).`;
   const gTitles = (Array.isArray(goals) ? goals : []).map((g) => (g && g.title ? String(g.title).trim() : "")).filter(Boolean);
   if (gTitles.length) s += `\n\nMy goals (a task can belong to one; "get better at" phrasing may itself be a goal):\n- ${gTitles.join("\n- ")}`;
@@ -944,6 +946,7 @@ function routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels) 
   } else {
     s += `\n\n(No IDs configured, so nothing is a "record" — only tasks and goals.)`;
   }
+  if (standardCodes.length) s += `\n\nStandards (set a task's "standard" only if it NAMES one of these codes): ${standardCodes.join(", ")}`;
   return s + `\n\nSort this note into entries:\n"""\n${text}\n"""`;
 }
 
@@ -959,6 +962,13 @@ async function handleRoute(res, body) {
   const types = clean(body?.config?.types).slice(0, 40);
   const topics = whoIds.length ? clean(body?.config?.topics).slice(0, 300) : [];
   const levels = topics.length ? clean(body?.config?.levels).slice(0, 10) : [];
+  // Standards a task can be tagged "for" — {code, id} pairs; the AI returns the
+  // code, we map it to the portfolio point's id.
+  const standards = (Array.isArray(body?.standards) ? body.standards : [])
+    .map((s) => ({ code: (s && s.code ? String(s.code) : "").trim(), id: s && s.id ? String(s.id) : "" }))
+    .filter((s) => s.code && s.id)
+    .slice(0, 100);
+  const standardCodes = standards.map((s) => s.code);
 
   const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
   const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
@@ -971,7 +981,7 @@ async function handleRoute(res, body) {
     const parsed = await runEngine(
       cfg,
       ROUTE_PROMPT,
-      routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels),
+      routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels, standardCodes),
       ROUTE_SCHEMA
     );
     const entries = [];
@@ -1010,6 +1020,8 @@ async function handleRoute(res, body) {
         const m = goals.find((g) => g && typeof g.title === "string" && g.title.trim().toLowerCase() === want && g.id);
         if (m) goalId = String(m.id);
       }
+      const wantStd = (e.standard || "").toString().trim().toLowerCase();
+      const stdMatch = wantStd ? standards.find((s) => s.code.toLowerCase() === wantStd) : null;
       entries.push({
         kind: "task",
         item: {
@@ -1023,6 +1035,7 @@ async function handleRoute(res, body) {
           tags: clean(e.tags).map((t) => t.toLowerCase()).slice(0, 4),
           whenText: (e.when_text || "").toString().trim(),
           goalId,
+          standardId: stdMatch ? stdMatch.id : "",
           openLoop: e.open_loop === true,
           promisedTo: (e.promised_to || "").toString().trim().slice(0, 40),
         },
@@ -1212,18 +1225,33 @@ function readBodyBuffer(req, maxBytes) {
 }
 
 // Only ever a basename inside FILES_DIR — a hostile id can't walk out of it.
+// A reference id is now a relative path under data/files/ (e.g.
+// "students/S03/reading sample.jpg" or "portfolio/TS1/display.jpg"), so the
+// files sit in plain, human-navigable, grabbable folders — you can lift a
+// student's or a standard's folder straight out. Old flat ids (no slash) still
+// resolve. Traversal is blocked; the path can never leave data/files/.
 function evidencePath(id) {
-  const base = path.basename(decodeURIComponent(String(id || "")));
-  if (!base || base === "." || base === "..") return null;
-  const p = path.normalize(path.join(FILES_DIR, base));
-  if (!p.startsWith(FILES_DIR + path.sep)) return null;
+  const rel = decodeURIComponent(String(id || "")).replace(/\\/g, "/");
+  if (!rel || rel.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) return null;
+  const p = path.normalize(path.join(FILES_DIR, rel));
+  if (p !== FILES_DIR && !p.startsWith(FILES_DIR + path.sep)) return null;
   return p;
+}
+
+// "students/S03" → safe folder segments; anything odd becomes "_".
+function safeFolder(raw) {
+  return String(raw || "")
+    .split("/")
+    .map((seg) => seg.trim().replace(/[^\w.\-() ]/g, "_").replace(/^\.+/, "").slice(0, 60))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("/");
 }
 
 async function handleUpload(req, res, query) {
   const rawName = (query.get("name") || "file").toString().slice(0, 120);
-  const safe = rawName.replace(/[^\w.\- ()]/g, "_").slice(-80) || "file";
-  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + "-" + safe;
+  let base = (rawName.replace(/[^\w.\-() ]/g, "_").slice(-90) || "file").replace(/^\.+/, "") || "file";
+  const folder = safeFolder(query.get("folder") || "");
   let buf;
   try {
     buf = await readBodyBuffer(req, 15 * 1024 * 1024);
@@ -1232,7 +1260,17 @@ async function handleUpload(req, res, query) {
   }
   if (!buf.length) return sendJson(res, 400, { error: "empty", message: "That file looks empty." });
   ensureDirs();
-  fs.writeFileSync(path.join(FILES_DIR, id), buf);
+  const dir = folder ? path.join(FILES_DIR, folder) : FILES_DIR;
+  fs.mkdirSync(dir, { recursive: true });
+  // Keep the readable original name; only uniquify if that name is already taken.
+  let name = base;
+  if (fs.existsSync(path.join(dir, name))) {
+    const ext = path.extname(base);
+    const stem = base.slice(0, base.length - ext.length);
+    name = `${stem}-${Math.random().toString(36).slice(2, 6)}${ext}`;
+  }
+  fs.writeFileSync(path.join(dir, name), buf);
+  const id = folder ? `${folder}/${name}` : name;
   sendJson(res, 200, { id, name: rawName });
 }
 

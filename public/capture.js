@@ -59,6 +59,7 @@
         }),
         goals: (vocab && vocab.goals ? vocab.goals : []).map((g) => ({ id: g.id, title: g.title })),
         config: (vocab && vocab.config) || {},
+        standards: (vocab && vocab.standards ? vocab.standards : []).map((s) => ({ id: s.id, code: s.code })),
       }),
     });
     if (!r.ok) throw new Error("route " + r.status);
@@ -95,6 +96,7 @@
       tags: item.tags || [],
       whenText: item.whenText || "",
       goalId: item.goalId || "",
+      standardId: item.standardId || "",
       openLoop: item.openLoop === true,
       promisedTo: item.promisedTo || "",
       remindAt,
@@ -237,7 +239,10 @@
     btn.textContent = "Sorting…";
     setCapStatus("Reading what you wrote…");
     try {
-      const entries = await route(text, { goals: barState.goals, config: barState.recordConfig || {} });
+      const stds = barState.portfolio && Array.isArray(barState.portfolio.points)
+        ? barState.portfolio.points.map((p) => ({ id: p.id, code: p.code }))
+        : [];
+      const entries = await route(text, { goals: barState.goals, config: barState.recordConfig || {}, standards: stds });
       if (!entries.length) {
         setCapStatus("I couldn't find anything to add there — a few more words?");
         return;
@@ -277,6 +282,7 @@
       goals: data.goals || [],
       records: data.records || [],
       recordConfig: data.recordConfig || null,
+      portfolio: data.portfolio || null,
       aiAvailable: false,
     };
     if (OrganiserStore.mode === "file") {

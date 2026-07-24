@@ -73,7 +73,7 @@
   const IMG_EXT = /\.(jpe?g|png|gif|webp)$/i;
   async function fileAsDataUri(id) {
     try {
-      const r = await fetch("/files/" + encodeURIComponent(id));
+      const r = await fetch("/files/" + String(id).split("/").map(encodeURIComponent).join("/"));
       if (!r.ok) return null;
       const blob = await r.blob();
       return await new Promise((resolve) => {

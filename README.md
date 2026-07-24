@@ -147,7 +147,11 @@ light seven-day strip). **Week** shows the next seven days one calm day at a
 time; **Month** is a full calendar grid — the whole month laid out so you can
 see how things sit next to each other in time, empty squares included; **Class**
 lays out the
-year's skills with where everyone stands on each, from the evidence. Plus: add by
+year's skills with where everyone stands on each, from the evidence. **Every
+page has a capture box** — dump a messy thought anywhere ("call the dentist tues
+· S03 struggled with full stops · get fit") and the app *routes* each part to the
+right place: a task, a student record, or a goal. You never go to the right tab
+first; it sorts, you don't. Plus: add by
 hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
 **Today** section is laid out as a timeline right on the home page — your timed

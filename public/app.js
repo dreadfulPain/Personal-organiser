@@ -14,6 +14,8 @@
   let items = []; // everything filed
   let waiting = []; // dumps saved while the AI sorter was unreachable
   let goals = []; // read-only here: the Goals page owns these; we only link/show them
+  let records = []; // the record log — the home only writes routed records to it
+  let recordConfig = null; // the record vocabulary, for routing a dump to a student record
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
@@ -141,64 +143,26 @@
   }
 
   // ---------- adding things ----------
-  async function understandViaAI(text) {
-    const res = await fetch("/api/understand", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        today: todayISO(),
-        // Prompt rule 1: tell the model the real date AND time (it has no clock).
-        now: new Date().toLocaleString(undefined, {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        // §9 slice 2: let the AI confidently link a new item to an existing goal.
-        goals: goals.map((g) => ({ id: g.id, title: g.title })),
-      }),
-    });
-    if (!res.ok) {
-      let info = {};
-      try {
-        info = await res.json();
-      } catch {}
-      const err = new Error(info.message || "Sort failed");
-      err.code = info.error || "http_" + res.status;
-      throw err;
-    }
-    const data = await res.json();
-    return Array.isArray(data.items) ? data.items : [];
-  }
-
-  function normalise(it) {
-    const type = TYPES.includes(it.type) ? it.type : "task";
+  // A route-returned task item is already in the app's own shape; finish it for
+  // the check-back (propose a reminder for open loops / hard deadlines).
+  function fromRouteItem(it) {
     const out = {
       title: (it.title || "").toString().trim() || "Untitled",
-      type,
+      type: TYPES.includes(it.type) ? it.type : "task",
       date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
       time: normaliseTime(it.time),
       deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
       importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
       effort: EFFORT.includes(it.effort) ? it.effort : "medium",
       tags: normaliseTags(it.tags),
-      whenText: (it.when_text || "").toString().trim(),
-      // Only keep a link the AI was confident about AND that still exists.
+      whenText: (it.whenText || "").toString().trim(),
       goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
-      openLoop: it.open_loop === true || it.openLoop === true,
-      promisedTo: (it.promised_to || it.promisedTo || "").toString().trim().slice(0, 40),
-      remindAt: typeof it.remindAt === "string" ? it.remindAt : "",
+      openLoop: it.openLoop === true,
+      promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
+      remindAt: "",
       remindedAt: null,
     };
-    // s28: an open loop isn't properly logged until it has a trigger — and a hard
-    // deadline deserves an early ping too. Proposed here, shown pre-filled in the
-    // check-back, always yours to change.
-    if (!out.remindAt && (out.openLoop || (out.deadlineType === "hard" && out.date))) {
-      out.remindAt = proposeRemindAt(out);
-    }
+    if (out.openLoop || (out.deadlineType === "hard" && out.date)) out.remindAt = proposeRemindAt(out);
     return out;
   }
 
@@ -221,15 +185,36 @@
     setBusy(true);
     setStatus("Reading what you wrote…");
     try {
-      const understood = await understandViaAI(text);
-      if (!understood.length) {
+      // The dump is routed: tasks come to the check-back below; a clear student
+      // record or a goal is filed straight to its tab (records wear the
+      // "AI-sorted · check me" chip there, so nothing skips a confirm).
+      const entries = await OrganiserCapture.route(text, { goals, config: recordConfig || {} });
+      if (!entries.length) {
         setStatus("I couldn't find anything to add there — try a few more words?");
         return;
       }
-      pending = understood.map(normalise);
-      $("#checkbackHeading").textContent = "Here's what I understood — look right?";
-      renderCheckback();
-      setStatus("");
+      const taskEntries = entries.filter((e) => e.kind === "task");
+      const others = entries.filter((e) => e.kind !== "task");
+      let filed = "";
+      if (others.length) {
+        const state = { items, goals, records };
+        const n = OrganiserCapture.applyEntries(others, state);
+        OrganiserStore.save({ items, goals, records });
+        renderZones(); // reflect any follow-up tasks + goals-in-motion
+        const bits = [];
+        if (n.records) bits.push(`${n.records} to Students →`);
+        if (n.goals) bits.push(`${n.goals} to Goals →`);
+        filed = "Filed " + bits.join(" · ");
+      }
+      if (taskEntries.length) {
+        pending = taskEntries.map((e) => fromRouteItem(e.item));
+        $("#checkbackHeading").textContent = "Here's what I understood — look right?";
+        renderCheckback();
+        setStatus(filed);
+      } else {
+        $("#dump").value = "";
+        setStatus(filed || "Added. ✓");
+      }
     } catch (err) {
       // AI is set up but unreachable: keep the dump safe to sort later (§0.1).
       waiting.unshift({ id: uid(), text, createdAt: new Date().toISOString() });
@@ -1379,7 +1364,9 @@
       items = data.items || [];
       waiting = data.waiting || [];
       goals = data.goals || [];
-      OrganiserStore.save({ items, waiting, goals, records: data.records || [], recordConfig: data.recordConfig || null });
+      records = data.records || [];
+      recordConfig = data.recordConfig || null;
+      OrganiserStore.save({ items, waiting, goals, records, recordConfig });
       renderZones();
       renderWaiting();
       setStatus("Restored from your backup. ✓");
@@ -1397,6 +1384,8 @@
     items = data.items || [];
     waiting = data.waiting || [];
     goals = data.goals || [];
+    records = data.records || [];
+    recordConfig = data.recordConfig || null;
 
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {

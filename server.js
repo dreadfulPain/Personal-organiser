@@ -819,6 +819,183 @@ async function handleRecordUnderstand(res, body) {
   }
 }
 
+// Universal router (the core pillar, at the app level): one messy note, split
+// into ENTRIES, each classified as a task, a record about one of the IDs, or a
+// goal — and extracted accordingly, in ONE call. All vocabulary (goals, IDs,
+// note kinds, skills, levels) arrives with the request; the code stays generic.
+const ROUTE_PROMPT = `You are the router inside a calm personal organiser. You read one messy, possibly misspelled note — which may hold SEVERAL different things — and split it into clean ENTRIES. For each entry you decide ONE "kind" and fill only that kind's fields (leave the rest empty/false).
+
+The three kinds:
+- "task": something the user must DO, or an appointment/reminder/note FOR THEMSELVES ("call the dentist tuesday", "mum's birthday friday", "idea: try a cold open").
+- "record": an observation ABOUT one of the IDs listed below — only when a list of IDs is given AND the note is clearly about one of them ("S03 struggled with full stops", "called Leo's mum"). If no IDs are listed, never use this kind.
+- "goal": a longer-term aim the user wants to work towards over time, that would be carved into milestones ("get fit", "learn the guitar", "get a new job"). Not a one-off task.
+
+Rules:
+- Spelling never matters; fix it silently. Split different things into separate entries. Make a sensible call and never ask.
+- Most notes are a single task. Only use "record" for a clear observation about a listed ID; only use "goal" for a genuine long-term aim.
+
+For a "task" entry set: title (short, verb-first for to-dos), item_type (task | appointment | reminder | note), date (YYYY-MM-DD or "" — resolve "tuesday"/"tomorrow" from the given today), time ("HH:MM" or ""), deadline ("hard" for a real deadline with consequences, else "soft"), importance ("high"/"normal"/"low"), effort ("quick"/"medium"/"draining"), tags (0-3 lowercase categories), when_text (the user's own time phrase, or ""), goal_link (the EXACT title of one listed goal it clearly belongs to, else ""), open_loop (true only if already started/prepped but not sent/finished), promised_to (a person's name it's committed to, else "").
+
+For a "record" entry set: who (EXACTLY one ID from the list, or "" if unsure — never invent one), note_type (the best-fitting kind from the list), summary (one clean line), topic (an EXACT skill from the list if it's clearly evidence of one, else ""), level (an EXACT level from the list only if a judgement is stated, else ""), tags, follow_up (true if it needs chasing later), follow_up_date (YYYY-MM-DD when implied, else "").
+
+For a "goal" entry set: title (a few plain words).
+
+Return only the structured result.
+
+Example — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent; goals: Learn guitar. Note:
+"s3 realy struggled with full stops in writing, chase his mum friday. also book the dentist for tuesday and i want to get fit"
+you return:
+{"entries":[
+  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":""},
+  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":""},
+  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":""},
+  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":""}
+]}`;
+
+const ROUTE_SCHEMA = {
+  type: "object",
+  properties: {
+    entries: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["task", "record", "goal"] },
+          title: { type: "string" },
+          item_type: { type: "string" },
+          date: { type: "string" },
+          time: { type: "string" },
+          deadline: { type: "string" },
+          importance: { type: "string" },
+          effort: { type: "string" },
+          tags: { type: "array", items: { type: "string" } },
+          when_text: { type: "string" },
+          goal_link: { type: "string" },
+          open_loop: { type: "boolean" },
+          promised_to: { type: "string" },
+          who: { type: "string" },
+          note_type: { type: "string" },
+          summary: { type: "string" },
+          topic: { type: "string" },
+          level: { type: "string" },
+          follow_up: { type: "boolean" },
+          follow_up_date: { type: "string" },
+        },
+        required: [
+          "kind", "title", "item_type", "date", "time", "deadline", "importance", "effort", "tags",
+          "when_text", "goal_link", "open_loop", "promised_to", "who", "note_type", "summary",
+          "topic", "level", "follow_up", "follow_up_date",
+        ],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["entries"],
+  additionalProperties: false,
+};
+
+function routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels) {
+  let s = `Right now it is ${nowLabel} (today's date is ${today}).`;
+  const gTitles = (Array.isArray(goals) ? goals : []).map((g) => (g && g.title ? String(g.title).trim() : "")).filter(Boolean);
+  if (gTitles.length) s += `\n\nMy goals (a task can belong to one; "get better at" phrasing may itself be a goal):\n- ${gTitles.join("\n- ")}`;
+  if (whoIds.length) {
+    s += `\n\nIDs a record can be about: ${whoIds.join(", ")}\nNote kinds: ${types.join(", ")}`;
+    if (topics.length) s += `\nSkills: ${topics.join(" · ")}`;
+    if (levels.length) s += `\nLevels: ${levels.join(", ")}`;
+  } else {
+    s += `\n\n(No IDs configured, so nothing is a "record" — only tasks and goals.)`;
+  }
+  return s + `\n\nSort this note into entries:\n"""\n${text}\n"""`;
+}
+
+async function handleRoute(res, body) {
+  const text = (body?.text || "").toString().trim();
+  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+
+  const clean = (v) => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : []);
+  const goals = Array.isArray(body?.goals) ? body.goals : [];
+  const whoIds = clean(body?.config?.whoIds).slice(0, 100);
+  const types = clean(body?.config?.types).slice(0, 40);
+  const topics = whoIds.length ? clean(body?.config?.topics).slice(0, 300) : [];
+  const levels = topics.length ? clean(body?.config?.levels).slice(0, 10) : [];
+
+  const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
+  const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
+
+  const TYPES = ["task", "appointment", "reminder", "note"];
+  const IMP = ["high", "normal", "low"];
+  const EFF = ["quick", "medium", "draining"];
+
+  try {
+    const parsed = await runEngine(
+      cfg,
+      ROUTE_PROMPT,
+      routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels),
+      ROUTE_SCHEMA
+    );
+    const entries = [];
+    (Array.isArray(parsed.entries) ? parsed.entries : []).forEach((e) => {
+      const kind = ["task", "record", "goal"].includes(e.kind) ? e.kind : "task";
+      if (kind === "goal") {
+        const title = (e.title || "").toString().trim().slice(0, 120);
+        if (title) entries.push({ kind: "goal", goal: { title } });
+        return;
+      }
+      if (kind === "record" && whoIds.length) {
+        const summary = (e.summary || "").toString().trim().slice(0, 200);
+        if (!summary) return;
+        entries.push({
+          kind: "record",
+          record: {
+            who: whoIds.includes(e.who) ? e.who : "",
+            type: types.includes(e.note_type) ? e.note_type : types[0],
+            summary,
+            topic: topics.includes(e.topic) ? e.topic : "",
+            level: levels.includes(e.level) ? e.level : "",
+            tags: clean(e.tags).map((t) => t.toLowerCase()).slice(0, 4),
+            follow_up: e.follow_up === true,
+            follow_up_date: ISO.test(e.follow_up_date) ? e.follow_up_date : "",
+          },
+        });
+        return;
+      }
+      // task (default, and the fallback if a record had no IDs). Returned in the
+      // app's own field names, ready to file.
+      const title = (e.title || e.summary || "").toString().trim().slice(0, 200);
+      if (!title) return;
+      const want = (e.goal_link || "").toString().trim().toLowerCase();
+      let goalId = "";
+      if (want) {
+        const m = goals.find((g) => g && typeof g.title === "string" && g.title.trim().toLowerCase() === want && g.id);
+        if (m) goalId = String(m.id);
+      }
+      entries.push({
+        kind: "task",
+        item: {
+          title,
+          type: TYPES.includes(e.item_type) ? e.item_type : "task",
+          date: ISO.test(e.date) ? e.date : "",
+          time: /^\d{1,2}:\d{2}$/.test(e.time || "") ? e.time : "",
+          deadlineType: e.deadline === "hard" ? "hard" : "soft",
+          importance: IMP.includes(e.importance) ? e.importance : "normal",
+          effort: EFF.includes(e.effort) ? e.effort : "medium",
+          tags: clean(e.tags).map((t) => t.toLowerCase()).slice(0, 4),
+          whenText: (e.when_text || "").toString().trim(),
+          goalId,
+          openLoop: e.open_loop === true,
+          promisedTo: (e.promised_to || "").toString().trim().slice(0, 40),
+        },
+      });
+    });
+    sendJson(res, 200, { entries });
+  } catch (e) {
+    console.error("[route] failed:", e?.message || e);
+    sendJson(res, 502, { error: "sort_failed", message: "I couldn't sort that just now." });
+  }
+}
+
 // Pre-warm: load the local model into memory BEFORE the first real sort, so the
 // daily-sort step (touched every day) doesn't pay the cold-start wait. Ollama
 // loads a model when /api/generate is called with an empty prompt; keep_alive
@@ -1156,6 +1333,17 @@ const server = http.createServer(async (req, res) => {
         /* leave empty */
       }
       return handleRecordUnderstand(res, parsed);
+    }
+
+    if (pathname === "/api/route" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleRoute(res, parsed);
     }
 
     if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);

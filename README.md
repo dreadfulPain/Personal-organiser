@@ -53,13 +53,44 @@ to a real file on your computer:
   folder).
 - **Restore** a backup any time with the **Restore from a backup** button.
 
-### Getting it on more than one device (optional, free, still yours)
+### Using it on two computers (e.g. work laptop + home) — via a shared folder
 
-Put this whole folder inside your **OneDrive / Dropbox / Google Drive** folder.
-Your data file then syncs across your devices automatically — and it's still a
-file you own, with no separate service to depend on. (A more seamless built-in
-sync can come later; the storage is built so that can be added without a
-rewrite.)
+Everything the app keeps — your data **and** every attached piece of work — lives
+inside this one folder:
+
+```
+<this folder>/data/organiser-data.json     ← your tasks, goals, records
+<this folder>/data/files/                   ← the work samples you attach
+```
+
+So sharing between computers is just: **put this whole folder inside your
+OneDrive / Dropbox / Google Drive**, on *both* computers, pointing at the *same*
+synced folder. Open it on the work laptop, add and edit; close it; at home it's
+all there — records, evidence photos, the lot. No account with us, no server of
+ours; the sync service you already have does the carrying.
+
+**A few simple rules so nothing collides** (two computers, one shared file):
+
+- **Use one computer at a time, and let the sync finish before you switch.** Give
+  OneDrive a moment to show "up to date" after you close it on one machine before
+  you open it on the other. (You're one person — this is natural anyway.)
+- **The app protects you if a clash ever happens.** If the shared file was changed
+  on the other computer while you had this one open, the app will *not* overwrite
+  it — it quietly pulls in the newer version, and your unsaved edit is kept safe
+  in `data/backups/` (a `conflict-…json` file) rather than lost. If you leave a
+  page open, it also refreshes on its own when the file changes underneath it.
+- **Only turn on background auto-start (`Install Auto-Start.bat`) on ONE computer**
+  — your main/home one. Two always-running copies both writing the shared file is
+  the one thing that causes churn; a single background copy plus opening the other
+  when you need it is the clean setup.
+- **The AI (Ollama) is per-computer.** It runs on the machine that has it (your
+  home desktop with the graphics card). On a work laptop without it, the app just
+  works by hand — sorting/routing is off there, everything else is the same. Don't
+  put the big model file in the shared folder; only this app folder belongs there.
+
+(You'll need [Node.js](https://nodejs.org/) on each computer to run it. A full
+backup = copy the whole `data` folder, since that's where the evidence files
+live too — the in-app "Back up now" saves the data file only.)
 
 ---
 

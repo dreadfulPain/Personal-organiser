@@ -29,8 +29,11 @@
   const LS_RECORDCONFIG = "organiser.recordconfig.v1";
 
   let statusCb = null;
+  let externalCb = null; // page refresh when the shared file changed elsewhere
   let saveTimer = null;
+  let pollTimer = null;
   let dirty = false;
+  let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
   let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null };
 
   function emit(s) {
@@ -86,6 +89,7 @@
           records: d.records || [],
           recordConfig: d.recordConfig || null,
         };
+        baseSavedAt = d.savedAt || null; // the version we're now working from
       }
     } catch {
       /* fall through; we'll still mirror to localStorage below */
@@ -120,7 +124,51 @@
     lastState = serverData;
     writeLegacy(serverData); // emergency mirror
     emit({ mode: "file", state: "saved", at: Date.now() });
+    startPolling(); // watch the shared file for changes made on another computer
     return { ...serverData, mode: "file", migratedNote };
+  }
+
+  // ---- shared-folder awareness -------------------------------------------
+  // When the app folder lives in OneDrive/Dropbox, another computer (or a sync)
+  // can update the data file while this page is open. Poll the cheap version
+  // stamp; when it moves and we've nothing unsaved, quietly pull the latest in.
+  function startPolling() {
+    if (!SERVER || pollTimer) return;
+    pollTimer = setInterval(checkFresh, 20000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkFresh();
+    });
+  }
+  async function checkFresh() {
+    if (!SERVER || dirty || document.hidden) return; // don't yank away unsaved edits
+    try {
+      const r = await fetch("/api/data-version");
+      if (!r.ok) return;
+      const { savedAt } = await r.json();
+      if (savedAt && savedAt !== baseSavedAt) await pullLatest("Updated from another device.");
+    } catch {
+      /* offline / server down — try again next tick */
+    }
+  }
+  async function pullLatest(note) {
+    try {
+      const r = await fetch("/api/data");
+      if (!r.ok) return;
+      const d = await r.json();
+      lastState = {
+        items: d.items || [],
+        waiting: d.waiting || [],
+        goals: d.goals || [],
+        records: d.records || [],
+        recordConfig: d.recordConfig || null,
+      };
+      baseSavedAt = d.savedAt || null;
+      writeLegacy(lastState);
+      emit({ mode: "file", state: "saved", at: Date.now(), note });
+      if (externalCb) externalCb(lastState);
+    } catch {
+      /* leave as-is */
+    }
   }
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
@@ -143,10 +191,32 @@
       const r = await fetch("/api/data", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lastState),
+        body: JSON.stringify({ ...lastState, baseSavedAt }),
       });
+      if (r.status === 409) {
+        // Another computer changed the shared file first. Our edit is safe in a
+        // conflict copy on disk; pull in their latest so we're not stacking on a
+        // stale base. (Rare for one person using one machine at a time.)
+        dirty = false;
+        const d = await r.json().catch(() => ({}));
+        if (d.data) {
+          lastState = {
+            items: d.data.items || [],
+            waiting: d.data.waiting || [],
+            goals: d.data.goals || [],
+            records: d.data.records || [],
+            recordConfig: d.data.recordConfig || null,
+          };
+          baseSavedAt = d.data.savedAt || d.savedAt || baseSavedAt;
+          writeLegacy(lastState);
+          if (externalCb) externalCb(lastState);
+        }
+        emit({ mode: "file", state: "conflict", note: "Changed on another device — pulled in the latest (your edit was kept in data/backups)." });
+        return;
+      }
       if (!r.ok) throw new Error("status " + r.status);
       const d = await r.json().catch(() => ({}));
+      if (d.savedAt) baseSavedAt = d.savedAt;
       dirty = false;
       emit({ mode: "file", state: "saved", at: d.savedAt ? Date.parse(d.savedAt) : Date.now() });
     } catch {
@@ -159,12 +229,20 @@
     }
   }
 
+  // Force any pending save out NOW and wait for it (used before a reload, so the
+  // reload can never outrun the debounced write).
+  async function flush() {
+    clearTimeout(saveTimer);
+    if (!SERVER || !dirty) return;
+    await doSave(0);
+  }
+
   // On the way out, flush any unsaved change with a beacon (survives the page
   // closing, where a normal fetch might be cut off).
   function flushBeacon() {
     if (!SERVER || !dirty) return;
     try {
-      const blob = new Blob([JSON.stringify(lastState)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify({ ...lastState, baseSavedAt })], { type: "application/json" });
       navigator.sendBeacon("/api/data", blob);
       dirty = false;
     } catch {
@@ -221,11 +299,17 @@
   window.OrganiserStore = {
     load,
     save,
+    flush,
     exportNow,
     importFile,
     flushBeacon,
     onStatus: (cb) => {
       statusCb = cb;
+    },
+    // Fires when the shared file changed on another computer and we pulled it in;
+    // the page re-renders from the fresh state passed to the callback.
+    onExternalChange: (cb) => {
+      externalCb = cb;
     },
     get mode() {
       return SERVER ? "file" : "preview";

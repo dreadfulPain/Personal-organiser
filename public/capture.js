@@ -162,26 +162,12 @@
     try {
       sessionStorage.setItem("capture.flash", msg);
     } catch {}
-    if (OrganiserStore.mode === "file") {
-      // Direct, awaited write so the reload can't outrun the debounced save.
-      try {
-        await fetch("/api/data", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: barState.items || [],
-            waiting: barState.waiting || [],
-            goals: barState.goals || [],
-            records: barState.records || [],
-            recordConfig: barState.recordConfig || null,
-          }),
-        });
-      } catch {
-        OrganiserStore.save({ items: barState.items, goals: barState.goals, records: barState.records });
-      }
-    } else {
-      OrganiserStore.save({ items: barState.items, goals: barState.goals, records: barState.records });
-    }
+    // Go through the store so the write carries the shared-folder version guard;
+    // flush() forces it out and waits, so the reload can't outrun the save.
+    OrganiserStore.save({ items: barState.items, goals: barState.goals, records: barState.records });
+    try {
+      await OrganiserStore.flush();
+    } catch {}
     location.reload();
   }
 

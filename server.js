@@ -99,24 +99,50 @@ function todayStamp() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function writeData(input) {
+function writeData(input, opts) {
   ensureDirs();
-  // Preserve any part a save didn't include — never let one page wipe the
-  // halves it doesn't own (goals, and the record log).
-  let goals = Array.isArray(input.goals) ? input.goals : null;
-  let records = Array.isArray(input.records) ? input.records : null;
-  let recordConfig = input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : null;
-  if (goals === null || records === null || recordConfig === null) {
-    let current = { goals: [], records: [], recordConfig: null };
-    try {
-      current = readData();
-    } catch {
-      /* keep empty fallbacks */
-    }
-    if (goals === null) goals = current.goals || [];
-    if (records === null) records = current.records || [];
-    if (recordConfig === null) recordConfig = current.recordConfig || null;
+  const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
+  // Read the current on-disk state ONCE — used both to preserve omitted halves
+  // and to guard against clobbering a shared file another machine just changed.
+  let current = { goals: [], records: [], recordConfig: null, savedAt: null };
+  try {
+    current = readData();
+  } catch {
+    /* keep empty fallbacks */
   }
+
+  // SHARED-FOLDER CONFLICT GUARD: if the client loaded version X but the file on
+  // disk is now version Y (another computer wrote it, or a sync pulled it in),
+  // do NOT overwrite. Preserve the incoming edit as a conflict copy so nothing
+  // is ever lost, and tell the client to reload the latest.
+  if (baseSavedAt !== null && current.savedAt && current.savedAt !== baseSavedAt) {
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const kept = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        items: Array.isArray(input.items) ? input.items : [],
+        waiting: Array.isArray(input.waiting) ? input.waiting : [],
+        goals: Array.isArray(input.goals) ? input.goals : current.goals || [],
+        records: Array.isArray(input.records) ? input.records : current.records || [],
+        recordConfig: input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null,
+      };
+      fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
+      pruneBackups();
+    } catch (e) {
+      console.warn("[data] conflict copy warning:", e.message);
+    }
+    const err = new Error("conflict");
+    err.conflict = true;
+    err.current = current;
+    throw err;
+  }
+
+  // Preserve any half a save didn't include (goals, records, config).
+  const goals = Array.isArray(input.goals) ? input.goals : current.goals || [];
+  const records = Array.isArray(input.records) ? input.records : current.records || [];
+  const recordConfig =
+    input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null;
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -158,6 +184,14 @@ function pruneBackups() {
       .sort();
     const keep = 60;
     for (const f of files.slice(0, Math.max(0, files.length - keep))) {
+      fs.unlinkSync(path.join(BACKUP_DIR, f));
+    }
+    // keep only the most recent handful of shared-folder conflict copies
+    const conflicts = fs
+      .readdirSync(BACKUP_DIR)
+      .filter((f) => /^conflict-.*\.json$/.test(f))
+      .sort();
+    for (const f of conflicts.slice(0, Math.max(0, conflicts.length - 20))) {
       fs.unlinkSync(path.join(BACKUP_DIR, f));
     }
   } catch {
@@ -1122,7 +1156,9 @@ function checkReminders() {
       it.remindedAt = new Date().toISOString();
       console.log(`[remind] ${t.title}`);
     });
-    writeData(doc); // marks them fired so they never nag twice
+    // Mark them fired. Guarded by the version we just read, so if another
+    // computer wrote the shared file in between, we back off (it'll retry).
+    writeData(doc, { baseSavedAt: doc.savedAt }); // never nag twice
   } catch (e) {
     console.warn("[remind] check failed:", e?.message || e);
   }
@@ -1271,6 +1307,15 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, dataFile: DATA_FILE });
     }
 
+    // Cheap freshness check for the shared-folder poll: just the version stamp.
+    if (pathname === "/api/data-version" && req.method === "GET") {
+      let savedAt = null;
+      try {
+        savedAt = readData().savedAt;
+      } catch {}
+      return sendJson(res, 200, { savedAt });
+    }
+
     if (pathname === "/api/data") {
       if (req.method === "GET") return sendJson(res, 200, readData());
       if (req.method === "PUT" || req.method === "POST") {
@@ -1281,8 +1326,17 @@ const server = http.createServer(async (req, res) => {
         } catch {
           return sendJson(res, 400, { error: "bad_json", message: "Could not read the data." });
         }
-        const savedAt = writeData(parsed);
-        return sendJson(res, 200, { ok: true, savedAt });
+        try {
+          const savedAt = writeData(parsed, { baseSavedAt: parsed.baseSavedAt });
+          return sendJson(res, 200, { ok: true, savedAt });
+        } catch (e) {
+          if (e && e.conflict) {
+            // Another computer changed the shared file first. The client's edit is
+            // safe in a conflict copy; hand back the current data so it can reload.
+            return sendJson(res, 409, { error: "conflict", savedAt: e.current.savedAt, data: e.current });
+          }
+          throw e;
+        }
       }
       return sendJson(res, 405, { error: "method_not_allowed" });
     }

@@ -1305,10 +1305,13 @@
     if (s.state === "saving") {
       el.classList.add("saving");
       el.textContent = "Saving…";
+    } else if (s.state === "conflict") {
+      el.classList.add("error");
+      el.textContent = s.note || "Changed on another device — pulled in the latest.";
     } else if (s.state === "saved") {
       el.classList.add("saved");
       const t = s.at ? new Date(s.at) : new Date();
-      el.textContent = `Saved ✓ ${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+      el.textContent = s.note || `Saved ✓ ${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
     } else if (s.state === "error") {
       el.classList.add("error");
       el.textContent = "Couldn't save — will keep trying. Make sure the app window is still open.";
@@ -1377,8 +1380,23 @@
   }
 
   // ---------- wire up ----------
+  // When another computer changes the shared file, the store pulls it in and
+  // hands us the fresh state — re-render from it without a reload.
+  function refreshFromExternal(state) {
+    if (editingItemId || pending) return; // don't yank away an open edit / check-back
+    items = state.items || [];
+    waiting = state.waiting || [];
+    goals = state.goals || [];
+    records = state.records || [];
+    recordConfig = state.recordConfig || recordConfig;
+    renderZones();
+    renderWaiting();
+    setStatus("Updated with changes from another device.");
+  }
+
   async function init() {
     OrganiserStore.onStatus(renderStorageStatus);
+    OrganiserStore.onExternalChange(refreshFromExternal);
 
     const data = await OrganiserStore.load();
     items = data.items || [];

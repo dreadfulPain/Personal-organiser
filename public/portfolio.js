@@ -64,6 +64,7 @@
       date: /^\d{4}-\d{2}-\d{2}$/.test(e && e.date) ? e.date : todayISO(),
       note: (e && e.note ? String(e.note) : "").trim(),
       files: Array.isArray(e && e.files) ? e.files : [],
+      fromTaskId: (e && e.fromTaskId ? String(e.fromTaskId) : "") || undefined,
     }));
     return { title: (p.title || "").toString().trim() || "Portfolio", points, evidence };
   }
@@ -114,12 +115,28 @@
     OrganiserStore.save({ items });
     render();
   }
-  function completeTask(id) {
+  // Done — and, if you want, the doing becomes the proof. A to-do and a piece of
+  // evidence are different things, so the bridge is a choice, never automatic:
+  // asEvidence=true files a matching evidence line under the same standard.
+  function completeTask(id, asEvidence) {
     const it = items.find((x) => x.id === id);
     if (!it) return;
     it.done = true;
     it.completedAt = nowISO();
-    OrganiserStore.save({ items });
+    if (asEvidence) {
+      pf.evidence.unshift({
+        id: uid(),
+        pointId: it.standardId,
+        date: todayISO(),
+        note: it.title,
+        files: [],
+        fromTaskId: it.id, // traceable back to the task that produced it
+      });
+      OrganiserStore.save({ items, portfolio: pf });
+      setStatus("Done — and logged as evidence. Add the proof to it below. ✓");
+    } else {
+      OrganiserStore.save({ items });
+    }
     render();
   }
 
@@ -271,12 +288,18 @@
         const tick = document.createElement("button");
         tick.className = "tick";
         tick.setAttribute("aria-label", "Mark done");
-        tick.title = "Mark done";
-        tick.addEventListener("click", () => completeTask(it.id));
+        tick.title = "Mark done (without logging evidence)";
+        tick.addEventListener("click", () => completeTask(it.id, false));
         const main = document.createElement("div");
         main.className = "gt-main";
         main.innerHTML = `<span class="gt-title">${escapeHtml(it.title)}</span>${it.date ? `<span class="gt-when">${escapeHtml(friendlyDate(it.date))}</span>` : ""}`;
-        row.append(tick, main);
+        const asEv = document.createElement("button");
+        asEv.className = "link pf-done-ev";
+        asEv.type = "button";
+        asEv.textContent = "done → evidence";
+        asEv.title = "Mark done AND log it as evidence for this standard";
+        asEv.addEventListener("click", () => completeTask(it.id, true));
+        row.append(tick, main, asEv);
         tw.appendChild(row);
       });
       card.appendChild(tw);

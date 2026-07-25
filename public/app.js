@@ -75,6 +75,28 @@
     if (!p) return "";
     return p.code || (p.title || "").slice(0, 24);
   }
+  function standardPoints() {
+    return portfolio && Array.isArray(portfolio.points) ? portfolio.points : [];
+  }
+  // The "for a standard" picker — shown wherever a task is editable, so an
+  // existing task can be attached to a standard any time (not just at capture).
+  function standardSelectHtml(it) {
+    const pts = standardPoints();
+    if (!pts.length) return "";
+    return `<div class="cb-row"><label class="cb-field cb-goal-field"><span class="cb-lbl">For a standard</span>
+        <select class="cb-standard" aria-label="For a standard">
+          <option value="">— none —</option>
+          ${pts
+            .map(
+              (p) =>
+                `<option value="${escapeHtml(p.id)}" ${p.id === it.standardId ? "selected" : ""}>${escapeHtml(
+                  (p.code ? p.code + " — " : "") + (p.title || "")
+                )}</option>`
+            )
+            .join("")}
+        </select>
+      </label></div>`;
+  }
 
   // ---------- open loops & reminders (§0.2 s28) ----------
   // remindAt is a local "YYYY-MM-DDTHH:MM" the server watches; when it arrives, a
@@ -266,6 +288,8 @@
     if (tags.length) parts.push(tags.join(", "));
     const gTitle = goalTitleById(it.goalId);
     if (gTitle) parts.push("part of " + gTitle);
+    const std = standardLabelById(it.standardId);
+    if (std) parts.push("for " + std);
     return parts.join(" · ");
   }
 
@@ -375,6 +399,7 @@
           </label></div>`
               : ""
           }
+          ${standardSelectHtml(it)}
           ${it.whenText ? `<div class="cb-when">your words: “${escapeHtml(it.whenText)}”</div>` : ""}
         </div>
       `;
@@ -414,6 +439,12 @@
       if (goalSel)
         goalSel.addEventListener("change", (e) => {
           pending[i].goalId = e.target.value;
+          refreshSummary();
+        });
+      const stdSel = card.querySelector(".cb-standard");
+      if (stdSel)
+        stdSel.addEventListener("change", (e) => {
+          pending[i].standardId = e.target.value;
           refreshSummary();
         });
       wireLoopControls(card, pending[i], refreshSummary);
@@ -544,6 +575,7 @@
       </label></div>`
           : ""
       }
+      ${standardSelectHtml(it)}
       <div class="ed-actions"><button class="link ed-done" type="button">done editing</button></div>
     `;
     // Save as you go; don't re-render mid-edit (it would yank focus / jump zones).
@@ -585,6 +617,12 @@
     if (goalSel)
       goalSel.addEventListener("change", (e) => {
         it.goalId = e.target.value;
+        persist();
+      });
+    const stdSel = card.querySelector(".cb-standard");
+    if (stdSel)
+      stdSel.addEventListener("change", (e) => {
+        it.standardId = e.target.value; // attach an existing task to a standard, any time
         persist();
       });
     wireLoopControls(card, it, persist);

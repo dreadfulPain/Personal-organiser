@@ -190,7 +190,11 @@ right place: a task, a student record, or a goal. You never go to the right tab
 first; it sorts, you don't. The **Portfolio** tab is your *own* evidence log — a
 list of standards (it ships with the UK Teachers' Standards, all editable) where
 you attach notes and work files to each point and export the whole thing as a
-portfolio document, gaps and all. Plus: add by
+portfolio document, gaps and all. Each standard also keeps its own **to-do list**
+(real tasks, so they show in Today/Week and can carry reminders) — tick one with
+**"done → evidence"** and the doing is logged as evidence under that standard,
+ready for you to attach the proof. Any task can be pointed at a standard at any
+time from its **edit** panel. Plus: add by
 hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
 **Today** section is laid out as a timeline right on the home page — your timed

@@ -2041,6 +2041,11 @@ body {
   gap: 8px;
   margin-bottom: 4px;
 }
+.pf-done-ev {
+  flex: none;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
 
 @media (max-width: 480px) {
   body {

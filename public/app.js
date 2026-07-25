@@ -207,6 +207,7 @@
     if (!aiAvailable) {
       pending = [{ title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }];
       $("#dump").value = "";
+      $("#dump").style.height = "auto";
       $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
       renderCheckback();
       setStatus("");
@@ -245,6 +246,7 @@
         setStatus(filed);
       } else {
         $("#dump").value = "";
+      $("#dump").style.height = "auto";
         setStatus(filed || "Added. ✓");
       }
     } catch (err) {
@@ -252,6 +254,7 @@
       waiting.unshift({ id: uid(), text, createdAt: new Date().toISOString() });
       persist();
       $("#dump").value = "";
+      $("#dump").style.height = "auto";
       const msg = err && err.code ? err.message : "I can't reach the app right now.";
       setStatus(msg + " Saved below to sort later.");
       renderWaiting();
@@ -500,6 +503,7 @@
     pending = null;
     persist();
     $("#dump").value = "";
+      $("#dump").style.height = "auto";
     $("#checkback").hidden = true;
     $("#checkbackList").innerHTML = "";
     renderZones();
@@ -1465,6 +1469,14 @@
         onSort();
       }
     });
+    // Grow to fit a pasted conversation, so you can see what you dropped in.
+    const dumpBox = $("#dump");
+    const growDump = () => {
+      dumpBox.style.height = "auto";
+      dumpBox.style.height = Math.min(dumpBox.scrollHeight, 260) + "px";
+    };
+    dumpBox.addEventListener("input", growDump);
+    dumpBox.addEventListener("paste", () => setTimeout(growDump, 0));
     $("#addBtn").addEventListener("click", confirmCheckback);
     $("#cancelBtn").addEventListener("click", () => {
       cancelCheckback();

@@ -249,6 +249,7 @@
       }
       pending = entries;
       input.value = "";
+      input.style.height = "auto";
       setCapStatus("");
       renderPending();
     } catch {
@@ -269,7 +270,7 @@
     host.className = "capture";
     host.innerHTML = `
       <div class="cap-bar">
-        <input id="capInput" type="text" placeholder="Add anything — I'll send it to the right place" aria-label="Add anything" />
+        <textarea id="capInput" rows="1" placeholder="Add anything — or paste a whole conversation; I'll send it to the right place" aria-label="Add anything"></textarea>
         <button id="capBtn" class="btn" type="button">Add</button>
       </div>
       <p id="capStatus" class="status" hidden></p>
@@ -295,9 +296,24 @@
     }
     document.getElementById("capBtn").textContent = barState.aiAvailable ? "Sort it" : "Add";
     document.getElementById("capBtn").addEventListener("click", onSubmit);
-    document.getElementById("capInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") onSubmit();
+    const capInput = document.getElementById("capInput");
+    // Enter sends a one-liner; Shift+Enter (or a pasted chat) makes it multi-line
+    // and the box grows to fit — so a whole conversation can be dropped in.
+    capInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !capInput.value.includes("\n")) {
+        e.preventDefault();
+        onSubmit();
+      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        onSubmit();
+      }
     });
+    const grow = () => {
+      capInput.style.height = "auto";
+      capInput.style.height = Math.min(capInput.scrollHeight, 220) + "px";
+    };
+    capInput.addEventListener("input", grow);
+    capInput.addEventListener("paste", () => setTimeout(grow, 0));
 
     // Flash from the reload after an add.
     try {

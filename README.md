@@ -187,7 +187,11 @@ year's skills with where everyone stands on each, from the evidence. **Every
 page has a capture box** — dump a messy thought anywhere ("call the dentist tues
 · S03 struggled with full stops · get fit") and the app *routes* each part to the
 right place: a task, a student record, or a goal. You never go to the right tab
-first; it sorts, you don't. The **Portfolio** tab is your *own* evidence log — a
+first; it sorts, you don't. You can also **paste a whole conversation** (a WeChat
+thread, an email chain): it reads who said what, turns what *you* were asked or
+promised into your tasks — with the person's name on them — logs anything about a
+student as a record, ignores the greetings, and writes it all in English even if
+the chat wasn't. The **Portfolio** tab is your *own* evidence log — a
 list of standards (it ships with the UK Teachers' Standards, all editable) where
 you attach notes and work files to each point and export the whole thing as a
 portfolio document, gaps and all. Each standard also keeps its own **to-do list**

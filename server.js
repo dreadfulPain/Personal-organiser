@@ -873,6 +873,15 @@ Rules:
 - Spelling never matters; fix it silently. Split different things into separate entries. Make a sensible call and never ask.
 - Most notes are a single task. Only use "record" for a clear observation about a listed ID; only use "goal" for a genuine long-term aim.
 
+PASTED CONVERSATIONS: the note may be a copied chat rather than the user's own words — lines like "Anna: ...", "[10:32] Mr Li: ...", or alternating messages, possibly in another language. When it looks like a conversation:
+- Read it as messages between the USER and other people, and extract ONLY what the user must do, chase, or remember. Never turn the other person's own to-do into a task for the user.
+- If someone ASKS the user for something ("could you send the report by Friday?"), that is a task for the user with promised_to set to that person's name.
+- If the USER commits to something ("I'll get it to you Friday"), that is also a task with promised_to set to the person they told.
+- Ignore greetings, thanks, small talk, and anything already settled or already done.
+- If a message shows its own date/time, resolve "Friday"/"tomorrow" against THAT message's date; otherwise use the today you are given.
+- Write every title and summary in ENGLISH even when the conversation is in another language — translate the essential action; the user reads their list in English. Keep a person's name as written.
+- If nothing in the conversation needs the user to act or remember, return no entries at all.
+
 For a "task" entry set: title (short, verb-first for to-dos), item_type (task | appointment | reminder | note), date (YYYY-MM-DD or "" — resolve "tuesday"/"tomorrow" from the given today), time ("HH:MM" or ""), deadline ("hard" for a real deadline with consequences, else "soft"), importance ("high"/"normal"/"low"), effort ("quick"/"medium"/"draining"), tags (0-3 lowercase categories), when_text (the user's own time phrase, or ""), goal_link (the EXACT title of one listed goal it clearly belongs to, else ""), open_loop (true only if already started/prepped but not sent/finished), promised_to (a person's name it's committed to, else ""), standard (the EXACT code of one listed standard the task EXPLICITLY names, e.g. "TS4" in "prep TS4 display" — else ""; never guess a standard from the topic).
 
 For a "record" entry set: who (EXACTLY one ID from the list, or "" if unsure — never invent one), note_type (the best-fitting kind from the list), summary (one clean line), topic (an EXACT skill from the list if it's clearly evidence of one, else ""), level (an EXACT level from the list only if a judgement is stated, else ""), tags, follow_up (true if it needs chasing later), follow_up_date (YYYY-MM-DD when implied, else "").
@@ -890,7 +899,18 @@ you return:
   {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
   {"kind":"task","title":"Prep the display","item_type":"task","date":"","time":"","deadline":"soft","importance":"normal","effort":"medium","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"TS4"},
   {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
-]}`;
+]}
+
+Example of a PASTED CONVERSATION — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent. Note:
+"[Mon 09:14] Wang Li (S02's mum): Hello teacher! Thank you for yesterday.
+[Mon 09:15] Wang Li: Could you send the reading list before Friday? Also XiaoMing was upset about the seating change.
+[Mon 09:20] Me: Of course, I'll email it Thursday. I'll keep an eye on him."
+you return:
+{"entries":[
+  {"kind":"task","title":"Email the reading list to Wang Li","item_type":"task","date":"2026-09-10","time":"","deadline":"hard","importance":"normal","effort":"quick","tags":[],"when_text":"Thursday","goal_link":"","open_loop":false,"promised_to":"Wang Li","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
+  {"kind":"record","who":"S02","note_type":"parent","summary":"Mum says he was upset about the seating change","topic":"","level":"","tags":["pastoral"],"follow_up":true,"follow_up_date":"2026-09-08","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":""}
+]}
+(The greeting and the thanks produced nothing; the mother's own words became a record about her child, and the two things the user committed to became one dated task promised to her.)`;
 
 const ROUTE_SCHEMA = {
   type: "object",

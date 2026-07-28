@@ -195,8 +195,12 @@ the chat wasn't. The **People** tab holds the humans around the work — colleag
 anyone — with the details you actually need (how and when to reach them, what
 they can realistically help with) filled in gradually. Open someone and you see
 what's *live* between you: what you've promised them, and recent notes that
-mention them. It keeps no score of anyone — the facts and your own words, never
-the app's verdict. The **Portfolio** tab is your *own* evidence log — a
+mention them. You can also log **work passed between you** — one tap for
+"they passed work to me" or "I passed work to them", with an optional note — and
+see the plain counts over a window you choose, always alongside the dated list of
+what they actually were. That's there to check a feeling against the facts, in
+both directions ("is this person really loading me up — or am I assuming it?").
+The app counts events you logged and shows them; it never rates anybody. The **Portfolio** tab is your *own* evidence log — a
 list of standards (it ships with the UK Teachers' Standards, all editable) where
 you attach notes and work files to each point and export the whole thing as a
 portfolio document, gaps and all. Each standard also keeps its own **to-do list**

@@ -31,7 +31,15 @@
       <section class="rec-filters">
         <select id="fGroup" aria-label="Filter: kind"></select>
         <input id="fName" type="text" placeholder="search…" aria-label="Search by name" />
+        <select id="fRange" aria-label="Work log: how far back">
+          <option value="30">past month</option>
+          <option value="90" selected>past few months</option>
+          <option value="all">all time</option>
+        </select>
       </section>
+
+      <!-- your own load, from what you've logged — about you, not about them -->
+      <p id="pplLoad" class="rec-view-line" hidden></p>
 
       <div id="pplList"></div>
 

@@ -5,11 +5,12 @@
 // The groups ("colleague", "parent") and each group's detail fields are DATA,
 // seeded once and fully editable — point it at anyone.
 //
-// DELIBERATELY NOT A SCOREBOARD (§5/§16 — the mirror describes, never judges):
-// the app keeps no give/take tally on a person. What it shows instead is what
-// actually happened and is still open — things you promised them, records that
-// mention them — plus your own words about how to work well with them. Facts and
-// your judgement; never the app's verdict on a colleague.
+// NOT A CHARACTER SCOREBOARD, but it DOES count one factual thing: work passed
+// between you (§5/§16 — describe, never judge). The point is calibration in both
+// directions: "is this person really loading me up, or am I assuming it?" So the
+// app logs events you tap in, shows them with their dates and notes, and never
+// draws a conclusion about anybody. Everything else here is contact detail and
+// your own words about how to work well with someone.
 //
 // Plain script (works under file://). Saves only { contacts, contactConfig }.
 
@@ -22,6 +23,7 @@
   let records = []; // to show mentions of them
   const filters = { group: "", name: "" };
   let openId = null; // which person's card is expanded
+  let range = "90"; // work-log window: "30" | "90" | "all"
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -31,11 +33,23 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
+  const pad2 = (n) => String(n).padStart(2, "0");
+  function isoOf(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+  const todayISO = () => isoOf(new Date());
   function friendlyDate(iso) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
     const d = new Date(iso + "T12:00:00");
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   }
+  function rangeCutoff() {
+    if (range === "all") return "";
+    const d = new Date();
+    d.setDate(d.getDate() - Number(range));
+    return isoOf(d);
+  }
+  const RANGE_WORDS = { 30: "the past month", 90: "the past few months", all: "all time" };
 
   // Seeded once; then it's your list. Note the framing of the "notes" fields:
   // how to work WITH someone, never a rating of them.
@@ -71,6 +85,13 @@
       name: (c && c.name ? String(c.name) : "").trim(),
       group: (c && c.group ? String(c.group) : "").trim(),
       details: c && c.details && typeof c.details === "object" ? c.details : {},
+      workLog: (Array.isArray(c && c.workLog) ? c.workLog : [])
+        .map((w) => ({
+          id: w && w.id ? String(w.id) : uid(),
+          dir: w && w.dir === "out" ? "out" : "in", // "in" = passed to me, "out" = I passed on
+          note: (w && w.note ? String(w.note) : "").trim(),
+          date: /^\d{4}-\d{2}-\d{2}$/.test(w && w.date) ? w.date : todayISO(),
+        })),
       createdAt: (c && c.createdAt) || nowISO(),
     })).filter((c) => c.name);
   }
@@ -102,6 +123,33 @@
       .filter((r) => ((r.summary || "") + " " + (r.detail || "")).toLowerCase().includes(n))
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
       .slice(0, 5);
+  }
+
+  // ----- the work log: countable events, never a verdict -----
+  // "in" = they passed work to me · "out" = I passed work to them. Counted only
+  // inside the chosen window, and always shown WITH the dated list, so it stays
+  // evidence you can read rather than a number you argue with.
+  function workIn(person) {
+    const cut = rangeCutoff();
+    return (person.workLog || []).filter((w) => w.dir === "in" && (!cut || w.date >= cut));
+  }
+  function workOut(person) {
+    const cut = rangeCutoff();
+    return (person.workLog || []).filter((w) => w.dir === "out" && (!cut || w.date >= cut));
+  }
+  function logWork(person, dir) {
+    const note = prompt(dir === "in" ? "What did they pass to you? (optional)" : "What did you pass to them? (optional)");
+    if (note === null) return; // cancelled
+    if (!person.workLog) person.workLog = [];
+    person.workLog.unshift({ id: uid(), dir, note: (note || "").trim(), date: todayISO() });
+    persist();
+    openId = person.id;
+    render();
+  }
+  function unlogWork(person, id) {
+    person.workLog = (person.workLog || []).filter((w) => w.id !== id);
+    persist();
+    render();
   }
 
   // ----- mutations -----
@@ -139,10 +187,13 @@
     const promises = openPromises(person);
     const open = openId === person.id;
     const filled = Object.entries(person.details || {}).filter(([, v]) => (v || "").toString().trim());
+    const wIn = workIn(person).length;
+    const wOut = workOut(person).length;
     card.innerHTML = `
       <div class="ppl-head">
         <button class="ppl-name" type="button">${escapeHtml(person.name)}</button>
         <span class="ppl-group">${escapeHtml(person.group || "")}</span>
+        ${wIn || wOut ? `<span class="work-chip" title="Work passed between you in ${escapeHtml(RANGE_WORDS[range])}">${wIn} to you · ${wOut} from you</span>` : ""}
         ${promises.length ? `<span class="promise-chip">${promises.length} promised to them</span>` : ""}
         <button class="x-del ppl-del" type="button" title="Remove">×</button>
       </div>
@@ -198,6 +249,44 @@
       if (!html) html = `<p class="ppl-live-title">Nothing open with them right now.</p>`;
       live.innerHTML = html;
       card.appendChild(live);
+
+      // Work passed between you — tap to log, with the dated evidence beneath.
+      const wl = document.createElement("div");
+      wl.className = "ppl-work";
+      const entries = (person.workLog || [])
+        .filter((w) => {
+          const cut = rangeCutoff();
+          return !cut || w.date >= cut;
+        })
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      wl.innerHTML = `
+        <p class="ppl-live-title">Work passed between you — ${escapeHtml(RANGE_WORDS[range])}</p>
+        <p class="ppl-work-counts">${wIn} to you · ${wOut} from you</p>
+        <div class="ppl-work-btns">
+          <button class="link w-in" type="button">+ they passed work to me</button>
+          <button class="link w-out" type="button">+ I passed work to them</button>
+        </div>`;
+      const listWrap = document.createElement("div");
+      listWrap.className = "ppl-work-list";
+      entries.forEach((w) => {
+        const row = document.createElement("div");
+        row.className = "ppl-work-row";
+        row.innerHTML = `<span class="gt-when">${escapeHtml(friendlyDate(w.date))}</span>
+          <span class="w-dir ${w.dir}">${w.dir === "in" ? "to you" : "from you"}</span>
+          <span class="w-note">${escapeHtml(w.note || "")}</span>`;
+        const del = document.createElement("button");
+        del.className = "x-del";
+        del.type = "button";
+        del.title = "Remove this entry";
+        del.textContent = "×";
+        del.addEventListener("click", () => unlogWork(person, w.id));
+        row.appendChild(del);
+        listWrap.appendChild(row);
+      });
+      wl.appendChild(listWrap);
+      wl.querySelector(".w-in").addEventListener("click", () => logWork(person, "in"));
+      wl.querySelector(".w-out").addEventListener("click", () => logWork(person, "out"));
+      card.appendChild(wl);
     }
     return card;
   }
@@ -207,6 +296,19 @@
     fillSelect("#pplGroup", config.groups);
     fillSelect("#fGroup", config.groups, "everyone");
     renderConfig();
+
+    // Your own load: the totals across everyone. Framed about YOU (how much is
+    // coming your way vs going out), never as a ranking of other people.
+    const totIn = contacts.reduce((n, c) => n + workIn(c).length, 0);
+    const totOut = contacts.reduce((n, c) => n + workOut(c).length, 0);
+    const load = $("#pplLoad");
+    if (totIn || totOut) {
+      load.hidden = false;
+      load.textContent = `Over ${RANGE_WORDS[range]} you've logged ${totIn} thing${totIn === 1 ? "" : "s"} passed to you and ${totOut} passed on by you. Open a person to see what.`;
+    } else {
+      load.hidden = true;
+      load.textContent = "";
+    }
 
     const list = $("#pplList");
     list.innerHTML = "";
@@ -297,6 +399,10 @@
     });
     $("#fName").addEventListener("input", (e) => {
       filters.name = e.target.value.trim().toLowerCase();
+      render();
+    });
+    $("#fRange").addEventListener("change", (e) => {
+      range = e.target.value;
       render();
     });
     window.addEventListener("pagehide", () => OrganiserStore.flushBeacon());

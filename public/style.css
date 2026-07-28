@@ -2011,6 +2011,58 @@ body {
   font-size: 0.92rem;
   padding: 2px 0;
 }
+/* work passed between you — plain counts + the dated evidence, no verdicts */
+.work-chip {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  background: #f0ebe2;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.ppl-work {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.ppl-work-counts {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.ppl-work-btns {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.ppl-work-list {
+  display: grid;
+  gap: 4px;
+}
+.ppl-work-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.88rem;
+}
+.w-dir {
+  flex: none;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.w-dir.in {
+  color: var(--reminder-ink);
+  background: var(--reminder);
+}
+.w-dir.out {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+.w-note {
+  flex: 1;
+  min-width: 0;
+}
 
 /* the portfolio — points + evidence per point, exportable */
 .pf-tools {

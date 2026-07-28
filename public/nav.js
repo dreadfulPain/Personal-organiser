@@ -10,6 +10,7 @@
     ["month.html", "Month"],
     ["class.html", "Class"],
     ["records.html", "Students"],
+    ["people.html", "People"],
     ["portfolio.html", "Portfolio"],
     ["goals.html", "Goals"],
     ["looking-back.html", "Looking back"],

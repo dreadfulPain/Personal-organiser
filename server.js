@@ -79,7 +79,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -91,6 +91,8 @@ function normaliseDoc(d) {
     records: Array.isArray(d.records) ? d.records : [],
     recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
     portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
+    contacts: Array.isArray(d.contacts) ? d.contacts : [],
+    contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
     savedAt: d.savedAt || null,
   };
 }
@@ -105,7 +107,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, savedAt: null };
   try {
     current = readData();
   } catch {
@@ -128,6 +130,8 @@ function writeData(input, opts) {
         records: Array.isArray(input.records) ? input.records : current.records || [],
         recordConfig: input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null,
         portfolio: input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null,
+        contacts: Array.isArray(input.contacts) ? input.contacts : current.contacts || [],
+        contactConfig: input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null,
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -147,6 +151,9 @@ function writeData(input, opts) {
     input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null;
   const portfolio =
     input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null;
+  const contacts = Array.isArray(input.contacts) ? input.contacts : current.contacts || [];
+  const contactConfig =
+    input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null;
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -156,6 +163,8 @@ function writeData(input, opts) {
     records,
     recordConfig,
     portfolio,
+    contacts,
+    contactConfig,
   };
   const json = JSON.stringify(doc, null, 2);
 

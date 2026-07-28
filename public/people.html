@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>People</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <div id="capture"></div>
+      <header class="top">
+        <h1>People</h1>
+        <p class="sub">The people you work with — how to reach them, what's useful to remember, and
+          what's currently live between you.</p>
+      </header>
+
+      <p id="pplNote" class="rec-note muted"></p>
+
+      <section class="rec-add">
+        <div class="rec-add-row">
+          <select id="pplGroup" aria-label="Kind of contact"></select>
+          <input id="pplName" type="text" placeholder="Name — that's all you need to start" aria-label="Name" />
+          <button id="pplAdd" class="btn">Add</button>
+        </div>
+      </section>
+
+      <p id="pplStatus" class="status" hidden></p>
+
+      <section class="rec-filters">
+        <select id="fGroup" aria-label="Filter: kind"></select>
+        <input id="fName" type="text" placeholder="search…" aria-label="Search by name" />
+      </section>
+
+      <div id="pplList"></div>
+
+      <footer class="data-footer">
+        <h2>Set up</h2>
+        <p class="muted">The kinds of people and the details kept for each are yours to change.</p>
+        <div id="pplCfg" class="rec-config"></div>
+      </footer>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="capture.js" defer></script>
+    <script src="people.js" defer></script>
+  </body>
+</html>

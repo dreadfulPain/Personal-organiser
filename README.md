@@ -177,7 +177,7 @@ file in OneDrive — only the small app + data file belong there.
 ## What's here on purpose — and what's not yet
 
 **Working now:** a **tab bar** on every page — *Home · Day · Week · Month · Class
-· Students · Portfolio · Goals · Looking back* — one room per question, so each page stays
+· Students · People · Portfolio · Goals · Looking back* — one room per question, so each page stays
 focused and nothing is buried (Home keeps surfacing what can't be missed, plus a
 light seven-day strip). **Week** shows the next seven days one calm day at a
 time; **Month** is a full calendar grid — the whole month laid out so you can
@@ -191,7 +191,12 @@ first; it sorts, you don't. You can also **paste a whole conversation** (a WeCha
 thread, an email chain): it reads who said what, turns what *you* were asked or
 promised into your tasks — with the person's name on them — logs anything about a
 student as a record, ignores the greetings, and writes it all in English even if
-the chat wasn't. The **Portfolio** tab is your *own* evidence log — a
+the chat wasn't. The **People** tab holds the humans around the work — colleagues, parents,
+anyone — with the details you actually need (how and when to reach them, what
+they can realistically help with) filled in gradually. Open someone and you see
+what's *live* between you: what you've promised them, and recent notes that
+mention them. It keeps no score of anyone — the facts and your own words, never
+the app's verdict. The **Portfolio** tab is your *own* evidence log — a
 list of standards (it ships with the UK Teachers' Standards, all editable) where
 you attach notes and work files to each point and export the whole thing as a
 portfolio document, gaps and all. Each standard also keeps its own **to-do list**

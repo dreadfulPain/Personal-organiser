@@ -28,6 +28,8 @@
   const LS_RECORDS = "organiser.records.v1";
   const LS_RECORDCONFIG = "organiser.recordconfig.v1";
   const LS_PORTFOLIO = "organiser.portfolio.v1";
+  const LS_CONTACTS = "organiser.contacts.v1";
+  const LS_CONTACTCONFIG = "organiser.contactconfig.v1";
 
   let statusCb = null;
   let externalCb = null; // page refresh when the shared file changed elsewhere
@@ -35,7 +37,7 @@
   let pollTimer = null;
   let dirty = false;
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null };
 
   function emit(s) {
     if (statusCb) statusCb(s);
@@ -57,6 +59,8 @@
       records: get(LS_RECORDS, []),
       recordConfig: get(LS_RECORDCONFIG, null),
       portfolio: get(LS_PORTFOLIO, null),
+      contacts: get(LS_CONTACTS, []),
+      contactConfig: get(LS_CONTACTCONFIG, null),
     };
   }
   function writeLegacy(state) {
@@ -67,6 +71,8 @@
       localStorage.setItem(LS_RECORDS, JSON.stringify(state.records || []));
       localStorage.setItem(LS_RECORDCONFIG, JSON.stringify(state.recordConfig || null));
       localStorage.setItem(LS_PORTFOLIO, JSON.stringify(state.portfolio || null));
+      localStorage.setItem(LS_CONTACTS, JSON.stringify(state.contacts || []));
+      localStorage.setItem(LS_CONTACTCONFIG, JSON.stringify(state.contactConfig || null));
     } catch {
       /* storage may be full or blocked; ignore */
     }
@@ -75,12 +81,12 @@
   async function load() {
     if (!SERVER) {
       const data = readLegacy();
-      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig, portfolio: data.portfolio };
+      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig, portfolio: data.portfolio, contacts: data.contacts, contactConfig: data.contactConfig };
       emit({ mode: "preview", state: "preview" });
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
@@ -92,6 +98,8 @@
           records: d.records || [],
           recordConfig: d.recordConfig || null,
           portfolio: d.portfolio || null,
+          contacts: d.contacts || [],
+          contactConfig: d.contactConfig || null,
         };
         baseSavedAt = d.savedAt || null; // the version we're now working from
       }
@@ -112,7 +120,7 @@
     const haveLegacy =
       legacy.items.length > 0 || legacy.waiting.length > 0 || legacy.goals.length > 0 || legacy.records.length > 0;
     if (serverEmpty && haveLegacy) {
-      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig, portfolio: legacy.portfolio };
+      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig, portfolio: legacy.portfolio, contacts: legacy.contacts, contactConfig: legacy.contactConfig };
       migratedNote = "Brought your earlier items into your saved data file.";
       try {
         await fetch("/api/data", {
@@ -166,6 +174,8 @@
         records: d.records || [],
         recordConfig: d.recordConfig || null,
         portfolio: d.portfolio || null,
+        contacts: d.contacts || [],
+        contactConfig: d.contactConfig || null,
       };
       baseSavedAt = d.savedAt || null;
       writeLegacy(lastState);
@@ -178,7 +188,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 
@@ -212,6 +222,8 @@
             records: d.data.records || [],
             recordConfig: d.data.recordConfig || null,
             portfolio: d.data.portfolio || null,
+            contacts: d.data.contacts || [],
+            contactConfig: d.data.contactConfig || null,
           };
           baseSavedAt = d.data.savedAt || d.savedAt || baseSavedAt;
           writeLegacy(lastState);
@@ -267,6 +279,8 @@
       records: lastState.records || [],
       recordConfig: lastState.recordConfig || null,
       portfolio: lastState.portfolio || null,
+      contacts: lastState.contacts || [],
+      contactConfig: lastState.contactConfig || null,
     };
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -294,6 +308,8 @@
             records: Array.isArray(d.records) ? d.records : [],
             recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
             portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
+            contacts: Array.isArray(d.contacts) ? d.contacts : [],
+            contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
           });
         } catch {
           reject(new Error("That file doesn't look like an organiser backup."));

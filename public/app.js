@@ -1203,6 +1203,66 @@
     $("#clusterOffer").hidden = true;
   }
 
+  // ---------- snooze to a MOMENT, not a duration ----------
+  // "In an hour" is useless mid-lesson — you can't act at 10:15. These match how
+  // a teaching day actually breaks. Snooze is never the only exit: "leave it" is
+  // always there, so nothing can be postponed forever by default.
+  const MORNING = [7, 30]; // before the first lesson, same moment every time
+  function nextWeekday(targetDow, hour, min) {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    d.setHours(hour, min);
+    do {
+      d.setDate(d.getDate() + 1);
+    } while (d.getDay() !== targetDow);
+    return fmtLocalDT(d);
+  }
+  function momentAfterSchool() {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    d.setHours(16, 0);
+    if (d <= new Date()) d.setDate(d.getDate() + 1); // already gone → tomorrow
+    return fmtLocalDT(d);
+  }
+  function momentTomorrowMorning() {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    d.setDate(d.getDate() + 1);
+    d.setHours(MORNING[0], MORNING[1]);
+    return fmtLocalDT(d);
+  }
+  function snoozeTo(it, when, label) {
+    it.remindAt = when;
+    it.remindedAt = null; // re-arm
+    persist();
+    renderZones();
+    setStatus(`Will remind you ${label}. ✓`);
+  }
+  function stopAsking(it) {
+    it.remindAt = "";
+    it.remindedAt = null;
+    persist();
+    renderZones();
+    setStatus("Won't remind you about that again — it's still on your list.");
+  }
+  function snoozeRow(it) {
+    const row = document.createElement("div");
+    row.className = "snooze-row";
+    const mk = (label, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "link";
+      b.textContent = label;
+      b.addEventListener("click", fn);
+      row.appendChild(b);
+    };
+    mk("after school", () => snoozeTo(it, momentAfterSchool(), "after school"));
+    mk("tomorrow morning", () => snoozeTo(it, momentTomorrowMorning(), "tomorrow morning"));
+    mk("Friday", () => snoozeTo(it, nextWeekday(5, MORNING[0], MORNING[1]), "Friday morning"));
+    mk("leave it", () => stopAsking(it));
+    return row;
+  }
+
   // ---------- "needs finishing": open loops, loudest on the page (§0.2 s28) ----------
   // Prepped-but-not-closed is the highest-risk state — the thing that slips when
   // memory is the only holder. These surface here (louder than the shortlist,
@@ -1244,6 +1304,7 @@
       row.querySelector(".tick").addEventListener("click", () => complete(it.id));
       row.appendChild(editLink(it));
       listEl.appendChild(row);
+      if (it.remindAt) listEl.appendChild(snoozeRow(it)); // move it, or stop it asking
     });
   }
 

@@ -1271,16 +1271,52 @@ function dueReminders(items, now) {
   });
 }
 
+// IMPORTANCE HAS NO CLOCK — so ageing supplies one. Something you marked as
+// mattering a lot, that has sat untouched for a while and has no reminder of its
+// own, gets ONE quiet nudge. Then it never asks again; it just stays high on the
+// shortlist. This closes the "important things never ping" gap without turning
+// importance into a nag.
+const AGE_DAYS = Math.max(1, Number(process.env.REMIND_AGE_DAYS) || 10);
+function agedImportant(items, now) {
+  const cutoff = now.getTime() - AGE_DAYS * 24 * 60 * 60 * 1000;
+  return (items || []).filter((it) => {
+    if (!it || it.done || it.importance !== "high") return false;
+    if (it.remindAt || it.agedAt) return false; // has its own ping, or already nudged once
+    const born = new Date(it.createdAt || 0).getTime();
+    return born && born <= cutoff;
+  });
+}
+
+// QUIET HOURS — a reminder you can't act on teaches you to ignore reminders. If
+// QUIET_HOURS is set (e.g. "08:30-15:30"), pings hold and land after the window.
+function inQuietHours(now) {
+  const raw = (process.env.QUIET_HOURS || "").trim();
+  const m = /^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/.exec(raw);
+  if (!m) return false;
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const from = +m[1] * 60 + +m[2];
+  const to = +m[3] * 60 + +m[4];
+  return from <= to ? mins >= from && mins < to : mins >= from || mins < to; // handles overnight
+}
+
 function checkReminders() {
   try {
+    const now = new Date();
+    if (inQuietHours(now)) return; // hold; they'll land once the window ends
     const doc = readData();
-    const due = dueReminders(doc.items, new Date());
-    if (!due.length) return;
+    const due = dueReminders(doc.items, now);
+    const aged = agedImportant(doc.items, now);
+    if (!due.length && !aged.length) return;
     due.forEach((it) => {
       const t = reminderText(it);
       notify(t.title, t.body);
       it.remindedAt = new Date().toISOString();
       console.log(`[remind] ${t.title}`);
+    });
+    aged.forEach((it) => {
+      notify(`Still waiting — ${it.title}`, `You marked this as mattering. It's been sitting a while — worth a moment, or let it go?`);
+      it.agedAt = new Date().toISOString(); // once only; never asks again
+      console.log(`[remind:aged] ${it.title}`);
     });
     // Mark them fired. Guarded by the version we just read, so if another
     // computer wrote the shared file in between, we back off (it'll retry).

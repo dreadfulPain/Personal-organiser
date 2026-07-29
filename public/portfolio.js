@@ -11,7 +11,11 @@
 (() => {
   "use strict";
 
-  let pf = null; // { title, points:[{id,code,title}], evidence:[{id,pointId,date,note,files:[]}] }
+  // Evidence is the THING; frameworks are tags ON it. One photo of a lesson can
+  // count toward a Teachers' Standard, an IB practice and anything else at once —
+  // stored once, tagged many times. (Storing evidence inside each framework would
+  // mean three copies of everything and no way to keep them in step.)
+  let pf = null; // { title, points:[{id,code,title}], evidence:[{id,pointIds:[],date,note,files:[]}] }
   let items = []; // the shared task pool — tasks linked to a standard live here too
 
   const $ = (sel) => document.querySelector(sel);
@@ -60,7 +64,10 @@
       .filter((pt) => pt.title || pt.code);
     const evidence = (Array.isArray(p.evidence) ? p.evidence : []).map((e) => ({
       id: e && e.id ? String(e.id) : uid(),
-      pointId: (e && e.pointId ? String(e.pointId) : "").trim(),
+      // back-compat: older evidence carried a single pointId
+      pointIds: (Array.isArray(e && e.pointIds) ? e.pointIds : e && e.pointId ? [e.pointId] : [])
+        .map((x) => String(x).trim())
+        .filter(Boolean),
       date: /^\d{4}-\d{2}-\d{2}$/.test(e && e.date) ? e.date : todayISO(),
       note: (e && e.note ? String(e.note) : "").trim(),
       files: Array.isArray(e && e.files) ? e.files : [],
@@ -76,7 +83,7 @@
 
   function evidenceFor(pointId) {
     return pf.evidence
-      .filter((e) => e.pointId === pointId)
+      .filter((e) => (e.pointIds || []).includes(pointId))
       .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.id || "").localeCompare(a.id || ""));
   }
 
@@ -126,7 +133,7 @@
     if (asEvidence) {
       pf.evidence.unshift({
         id: uid(),
-        pointId: it.standardId,
+        pointIds: it.standardId ? [it.standardId] : [],
         date: todayISO(),
         note: it.title,
         files: [],
@@ -144,7 +151,7 @@
   function addEvidence(pointId, note) {
     note = (note || "").trim();
     if (!note) return;
-    pf.evidence.unshift({ id: uid(), pointId, date: todayISO(), note, files: [] });
+    pf.evidence.unshift({ id: uid(), pointIds: [pointId], date: todayISO(), note, files: [] });
     persist();
     render();
   }
@@ -208,6 +215,42 @@
       persist();
     });
     row.querySelector(".pf-ev-del").addEventListener("click", () => deleteEvidence(ev.id));
+
+    // The same piece of work can count toward other points too — tag it here
+    // rather than filing a duplicate copy under each framework.
+    const also = (ev.pointIds || []).filter((id) => id !== point.id);
+    const tagLine = document.createElement("div");
+    tagLine.className = "pf-ev-tags";
+    also.forEach((id) => {
+      const p = pf.points.find((x) => x.id === id);
+      if (!p) return;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "topic-chip pf-untag";
+      chip.title = "Also counts here — click to untag";
+      chip.textContent = "also " + (p.code || p.title.slice(0, 20));
+      chip.addEventListener("click", () => {
+        ev.pointIds = ev.pointIds.filter((x) => x !== id);
+        persist();
+        render();
+      });
+      tagLine.appendChild(chip);
+    });
+    const addTag = document.createElement("select");
+    addTag.className = "pf-addtag";
+    addTag.appendChild(new Option("+ also counts for…", ""));
+    pf.points
+      .filter((p) => !(ev.pointIds || []).includes(p.id))
+      .forEach((p) => addTag.appendChild(new Option((p.code ? p.code + " — " : "") + p.title, p.id)));
+    addTag.addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      if (!ev.pointIds) ev.pointIds = [];
+      ev.pointIds.push(e.target.value);
+      persist();
+      render();
+    });
+    if (pf.points.length > 1) tagLine.appendChild(addTag);
+    row.appendChild(tagLine);
     const fw = row.querySelector(".rec-files");
     (ev.files || []).forEach((f) => {
       const line = document.createElement("div");

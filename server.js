@@ -1102,13 +1102,11 @@ async function handleRoute(res, body) {
   }
 }
 
-// --- speech to text (optional, and swappable like the AI box) --------------
-// Two routes, and the difference matters:
-//   • Nothing configured → the page uses the BROWSER's own speech recognition.
-//     Zero setup, but Chrome/Edge send the audio to their servers to transcribe.
-//     Fine for "call the dentist tuesday"; not for student or parent detail.
-//   • STT_URL set → the page records audio and posts it here, and we forward it
-//     to YOUR local Whisper server. Nothing leaves the machine, like Ollama.
+// --- speech to text (OFF unless you configure it) ---------------------------
+// Deliberately in-house only: there is no cloud speech route in this app. With
+// no STT_URL set, no microphone appears anywhere and this endpoint declines.
+// Point STT_URL at your own local Whisper server and dictation turns on, with
+// the audio staying on this machine exactly like Ollama.
 function sttConfig() {
   const url = (process.env.STT_URL || "").trim();
   if (!url) return null;
@@ -1458,7 +1456,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/health") {
       const cfg = aiConfig();
       const stt = sttConfig();
-      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, stt: stt ? "local" : "browser", dataFile: DATA_FILE });
+      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, stt: stt ? "local" : "off", dataFile: DATA_FILE });
     }
 
     // Cheap freshness check for the shared-folder poll: just the version stamp.

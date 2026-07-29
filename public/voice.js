@@ -1,24 +1,23 @@
-// Voice input — the tracker's Session-1 lock: voice as a first-class way in,
-// typing as backup, leaning on what's already on the machine rather than
-// building our own recogniser.
+// Voice input — CURRENTLY OFF, and invisible unless you switch it on.
 //
-// TWO ROUTES, chosen automatically, and the difference is stated in the app:
-//   • "local"   — the server has STT_URL set (your own Whisper). We record with
-//                 MediaRecorder and post the audio to the server, which forwards
-//                 it locally. Nothing leaves the machine, exactly like Ollama.
-//   • "browser" — nothing configured, so we use the browser's own speech
-//                 recognition: zero setup, but Chrome/Edge send the audio to
-//                 their servers. Fine for everyday things; the button says so
-//                 before you use it, because student and parent detail is not.
+// The browser's own speech recognition (Chrome/Edge) was removed deliberately:
+// it transcribes in the cloud, which contradicts the rest of this app. What's
+// left is the in-house path only:
 //
-// Nothing is ever filed by voice alone: dictation only fills the box, and the
-// normal check-back still runs.
+//   • No STT_URL in .env  → there is NO microphone button anywhere. Nothing to
+//                            see, nothing running, no audio path at all.
+//   • STT_URL set         → the mic appears and records to YOUR local Whisper
+//                            server via /api/transcribe. Audio never leaves the
+//                            machine, exactly like Ollama.
+//
+// So this file is dormant scaffolding for the in-house version, not a feature
+// that's live today. Dictation would only ever FILL the capture box — the normal
+// check-back still runs, and nothing is filed by voice alone.
 
 (function () {
   "use strict";
 
-  let mode = null; // "local" | "browser" | null (unavailable)
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let mode = null; // "local" | "" (off)
 
   async function detectMode() {
     if (mode !== null) return mode;
@@ -29,72 +28,21 @@
         const j = await r.json();
         if (j.stt === "local") mode = "local";
       } catch {
-        /* fall through to browser */
+        /* leave off */
       }
     }
-    if (!mode && SR) mode = "browser";
     return mode;
   }
 
-  function warnedOnce() {
-    try {
-      return localStorage.getItem("organiser.voiceWarned.v1") === "1";
-    } catch {
-      return false;
-    }
-  }
-  function markWarned() {
-    try {
-      localStorage.setItem("organiser.voiceWarned.v1", "1");
-    } catch {}
-  }
-
   function appendTo(box, text) {
-    if (!text) return;
-    const t = text.trim();
+    const t = (text || "").trim();
     if (!t) return;
     box.value = box.value ? box.value.replace(/\s*$/, "") + " " + t : t;
     box.dispatchEvent(new Event("input", { bubbles: true })); // let it auto-grow
     box.focus();
   }
 
-  // ---- browser speech: live, no recording round-trip ----
-  function startBrowser(box, btn, setNote) {
-    const rec = new SR();
-    rec.lang = navigator.language || "en-GB";
-    rec.interimResults = false;
-    rec.continuous = true;
-    let stopped = false;
-    rec.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) appendTo(box, e.results[i][0].transcript);
-      }
-    };
-    rec.onerror = (e) => {
-      setNote(e.error === "not-allowed" ? "Microphone blocked — allow it in the browser bar." : "Didn't catch that.");
-      stop();
-    };
-    rec.onend = () => {
-      if (!stopped) stop();
-    };
-    function stop() {
-      stopped = true;
-      btn.classList.remove("listening");
-      btn.title = "Dictate";
-      btn.dataset.stop = "";
-      try {
-        rec.stop();
-      } catch {}
-    }
-    btn.dataset.stop = "1";
-    btn.classList.add("listening");
-    btn.title = "Listening — click to stop";
-    setNote("Listening… speak, then click again to stop.");
-    rec.start();
-    return stop;
-  }
-
-  // ---- local Whisper: record, then transcribe on this machine ----
+  // Record here, transcribe on this machine.
   async function startLocal(box, btn, setNote) {
     let stream;
     try {
@@ -132,11 +80,11 @@
     return () => mr.stop();
   }
 
-  // Attach a mic button to any textarea. Returns the button (or null if voice
-  // isn't available at all, in which case nothing is shown — no dead controls).
+  // Attach a mic to a textarea. Returns null (and adds NOTHING to the page)
+  // unless local transcription is configured — so today it's simply absent.
   async function attach(box, host, setNote) {
     const m = await detectMode();
-    if (!m || !box || !host) return null;
+    if (m !== "local" || !box || !host) return null;
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "mic-btn";
@@ -151,12 +99,7 @@
         stopFn = null;
         return;
       }
-      // One-time honesty about where the audio goes on the browser route.
-      if (m === "browser" && !warnedOnce()) {
-        markWarned();
-        note("Heads up: your browser transcribes this in the cloud. Fine for everyday notes — for student or parent detail, set up local transcription (see the README) or type it.");
-      }
-      stopFn = m === "browser" ? startBrowser(box, btn, note) : await startLocal(box, btn, note);
+      stopFn = await startLocal(box, btn, note);
     });
     host.appendChild(btn);
     return btn;

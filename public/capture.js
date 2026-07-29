@@ -336,6 +336,10 @@
     };
     capInput.addEventListener("input", grow);
     capInput.addEventListener("paste", () => setTimeout(grow, 0));
+    // Speak it instead of typing, if this machine can (mic appears only if so).
+    if (window.OrganiserVoice) {
+      OrganiserVoice.attach(capInput, document.querySelector(".cap-bar"), setCapStatus);
+    }
 
     // Flash from the reload after an add.
     try {

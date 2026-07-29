@@ -129,6 +129,26 @@ honest limit of a fully-owned, no-cloud app.)
 
 ---
 
+## Speaking instead of typing
+
+Every capture box has a **🎤 button** (it only appears if this computer can hear
+you). Click it, say the thing, click again — the words land in the box and you
+still get the normal check-back before anything files. Nothing is ever filed by
+voice alone.
+
+There are two ways it can hear you, and the difference matters:
+
+- **Out of the box:** your browser's own speech recognition. No setup — but
+  Chrome and Edge send the audio to *their* servers to turn into text. Fine for
+  "call the dentist Tuesday". **Not** for student or parent detail. The app says
+  this once, the first time you use it.
+- **Fully private (recommended once you're logging real things):** run a local
+  Whisper server and put its address in `.env` as `STT_URL` — then the audio is
+  transcribed on this machine and never leaves it, exactly like Ollama. See
+  `.env.example` for the two lines.
+
+---
+
 ## Two ways to open it (and why one is "preview")
 
 - **Start Organiser (recommended):** runs the little local server, saves to your

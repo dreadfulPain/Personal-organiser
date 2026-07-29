@@ -1102,6 +1102,62 @@ async function handleRoute(res, body) {
   }
 }
 
+// --- speech to text (optional, and swappable like the AI box) --------------
+// Two routes, and the difference matters:
+//   • Nothing configured → the page uses the BROWSER's own speech recognition.
+//     Zero setup, but Chrome/Edge send the audio to their servers to transcribe.
+//     Fine for "call the dentist tuesday"; not for student or parent detail.
+//   • STT_URL set → the page records audio and posts it here, and we forward it
+//     to YOUR local Whisper server. Nothing leaves the machine, like Ollama.
+function sttConfig() {
+  const url = (process.env.STT_URL || "").trim();
+  if (!url) return null;
+  return { url, model: (process.env.STT_MODEL || "whisper-1").trim(), apiKey: (process.env.STT_API_KEY || "").trim() };
+}
+
+// Build an OpenAI-style multipart body by hand (no dependencies) — the shape
+// faster-whisper-server / whisper.cpp / LM Studio all accept.
+function multipartAudio(buf, filename, model) {
+  const boundary = "----organiser" + Math.random().toString(36).slice(2);
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+      `Content-Type: application/octet-stream\r\n\r\n`
+  );
+  const mid = Buffer.from(
+    `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${model}\r\n--${boundary}--\r\n`
+  );
+  return { body: Buffer.concat([head, buf, mid]), boundary };
+}
+
+async function handleTranscribe(req, res, query) {
+  const cfg = sttConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_stt", message: "Local transcription isn't set up." });
+  let audio;
+  try {
+    audio = await readBodyBuffer(req, 25 * 1024 * 1024);
+  } catch {
+    return sendJson(res, 413, { error: "too_large", message: "That recording is too long." });
+  }
+  if (!audio.length) return sendJson(res, 400, { error: "empty", message: "Nothing was recorded." });
+  try {
+    const name = (query.get("name") || "audio.webm").replace(/[^\w.\-]/g, "_");
+    const { body, boundary } = multipartAudio(audio, name, cfg.model);
+    const headers = { "Content-Type": `multipart/form-data; boundary=${boundary}` };
+    if (cfg.apiKey) headers["Authorization"] = "Bearer " + cfg.apiKey;
+    const r = await fetch(cfg.url, { method: "POST", headers, body });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      console.error("[stt] server said", r.status, detail.slice(0, 150));
+      return sendJson(res, 502, { error: "stt_failed", message: "The transcriber couldn't hear that." });
+    }
+    const d = await r.json().catch(() => ({}));
+    sendJson(res, 200, { text: (d.text || "").toString().trim() });
+  } catch (e) {
+    console.error("[stt] failed:", e?.message || e);
+    sendJson(res, 502, { error: "stt_failed", message: "Couldn't reach your transcriber." });
+  }
+}
+
 // Pre-warm: load the local model into memory BEFORE the first real sort, so the
 // daily-sort step (touched every day) doesn't pay the cold-start wait. Ollama
 // loads a model when /api/generate is called with an empty prompt; keep_alive
@@ -1401,7 +1457,8 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" && pathname === "/api/health") {
       const cfg = aiConfig();
-      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, dataFile: DATA_FILE });
+      const stt = sttConfig();
+      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, stt: stt ? "local" : "browser", dataFile: DATA_FILE });
     }
 
     // Cheap freshness check for the shared-folder poll: just the version stamp.
@@ -1440,6 +1497,10 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/warm" && req.method === "POST") {
       return handleWarm(res);
+    }
+
+    if (pathname === "/api/transcribe" && req.method === "POST") {
+      return handleTranscribe(req, res, reqUrl.searchParams);
     }
 
     if (pathname === "/api/understand" && req.method === "POST") {

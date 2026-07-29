@@ -54,6 +54,35 @@ body {
   font-weight: 600;
 }
 
+/* the dictate button — appears only when this machine can hear you */
+.mic-btn {
+  flex: none;
+  align-self: flex-start;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.mic-btn:hover {
+  border-color: var(--accent);
+}
+.mic-btn.listening {
+  background: var(--accent);
+  border-color: var(--accent);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.dumprow .mic-btn {
+  align-self: center;
+  padding: 8px 11px;
+}
+
 /* universal capture bar (view pages) */
 .capture {
   margin: 0 0 22px;

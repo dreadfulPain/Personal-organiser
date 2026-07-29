@@ -1482,6 +1482,8 @@
     };
     dumpBox.addEventListener("input", growDump);
     dumpBox.addEventListener("paste", () => setTimeout(growDump, 0));
+    // Speak it instead of typing (the mic only appears if this machine can).
+    if (window.OrganiserVoice) OrganiserVoice.attach(dumpBox, $(".dumprow"), setStatus);
     $("#addBtn").addEventListener("click", confirmCheckback);
     $("#cancelBtn").addEventListener("click", () => {
       cancelCheckback();

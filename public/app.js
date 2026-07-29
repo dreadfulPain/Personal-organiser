@@ -17,6 +17,7 @@
   let records = []; // the record log — the home only writes routed records to it
   let recordConfig = null; // the record vocabulary, for routing a dump to a student record
   let portfolio = null; // read-only here: to show which standard a task is "for"
+  let contacts = []; // the People list — a routed handover can add to it
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
@@ -230,13 +231,15 @@
       const others = entries.filter((e) => e.kind !== "task");
       let filed = "";
       if (others.length) {
-        const state = { items, goals, records };
+        const state = { items, goals, records, contacts };
         const n = OrganiserCapture.applyEntries(others, state);
-        OrganiserStore.save({ items, goals, records });
+        contacts = state.contacts; // a handover may have added a new person
+        OrganiserStore.save({ items, goals, records, contacts });
         renderZones(); // reflect any follow-up tasks + goals-in-motion
         const bits = [];
         if (n.records) bits.push(`${n.records} to Students →`);
         if (n.goals) bits.push(`${n.goals} to Goals →`);
+        if (n.handovers) bits.push(`${n.handovers} logged to People →`);
         filed = "Filed " + bits.join(" · ");
       }
       if (taskEntries.length) {
@@ -1445,6 +1448,7 @@
     records = state.records || [];
     recordConfig = state.recordConfig || recordConfig;
     portfolio = state.portfolio || portfolio;
+    contacts = state.contacts || contacts;
     renderZones();
     renderWaiting();
     setStatus("Updated with changes from another device.");
@@ -1461,6 +1465,7 @@
     records = data.records || [];
     recordConfig = data.recordConfig || null;
     portfolio = data.portfolio || null;
+    contacts = data.contacts || [];
 
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {

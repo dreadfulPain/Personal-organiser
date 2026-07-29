@@ -873,10 +873,11 @@ async function handleRecordUnderstand(res, body) {
 // note kinds, skills, levels) arrives with the request; the code stays generic.
 const ROUTE_PROMPT = `You are the router inside a calm personal organiser. You read one messy, possibly misspelled note — which may hold SEVERAL different things — and split it into clean ENTRIES. For each entry you decide ONE "kind" and fill only that kind's fields (leave the rest empty/false).
 
-The three kinds:
+The four kinds:
 - "task": something the user must DO, or an appointment/reminder/note FOR THEMSELVES ("call the dentist tuesday", "mum's birthday friday", "idea: try a cold open").
 - "record": an observation ABOUT one of the IDs listed below — only when a list of IDs is given AND the note is clearly about one of them ("S03 struggled with full stops", "called Leo's mum"). If no IDs are listed, never use this kind.
 - "goal": a longer-term aim the user wants to work towards over time, that would be carved into milestones ("get fit", "learn the guitar", "get a new job"). Not a one-off task.
+- "handover": a piece of WORK moving between the user and a named person — only when the words plainly say so ("Sarah passed me the display board", "handed the trip forms to Tom", "Priya's covering my Tuesday"). Set person (their name as written), direction ("to_me" when the work lands on the user, "from_me" when the user hands it off), and note (the work, in a few words). Merely mentioning someone is NOT a handover; asking the user to do something is a task, not a handover, unless the words say it was passed/handed/given over.
 
 Rules:
 - Spelling never matters; fix it silently. Split different things into separate entries. Make a sensible call and never ask.
@@ -897,17 +898,19 @@ For a "record" entry set: who (EXACTLY one ID from the list, or "" if unsure —
 
 For a "goal" entry set: title (a few plain words).
 
+For a "handover" entry set: person, direction, note (leave the task/record fields empty).
+
 Return only the structured result.
 
 Example — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent; goals: Learn guitar; standards: TS4, TS7. Note:
 "s3 realy struggled with full stops in writing, chase his mum friday. also book the dentist for tuesday, prep the TS4 display, and i want to get fit"
 you return:
 {"entries":[
-  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":""},
-  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":""},
-  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
-  {"kind":"task","title":"Prep the display","item_type":"task","date":"","time":"","deadline":"soft","importance":"normal","effort":"medium","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"TS4"},
-  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
+  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"task","title":"Prep the display","item_type":"task","date":"","time":"","deadline":"soft","importance":"normal","effort":"medium","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"TS4","person":"","direction":"","note":""},
+  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""}
 ]}
 
 Example of a PASTED CONVERSATION — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent. Note:
@@ -916,10 +919,16 @@ Example of a PASTED CONVERSATION — today is Monday 2026-09-07; IDs: S01, S02, 
 [Mon 09:20] Me: Of course, I'll email it Thursday. I'll keep an eye on him."
 you return:
 {"entries":[
-  {"kind":"task","title":"Email the reading list to Wang Li","item_type":"task","date":"2026-09-10","time":"","deadline":"hard","importance":"normal","effort":"quick","tags":[],"when_text":"Thursday","goal_link":"","open_loop":false,"promised_to":"Wang Li","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
-  {"kind":"record","who":"S02","note_type":"parent","summary":"Mum says he was upset about the seating change","topic":"","level":"","tags":["pastoral"],"follow_up":true,"follow_up_date":"2026-09-08","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":""}
+  {"kind":"task","title":"Email the reading list to Wang Li","item_type":"task","date":"2026-09-10","time":"","deadline":"hard","importance":"normal","effort":"quick","tags":[],"when_text":"Thursday","goal_link":"","open_loop":false,"promised_to":"Wang Li","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"record","who":"S02","note_type":"parent","summary":"Mum says he was upset about the seating change","topic":"","level":"","tags":["pastoral"],"follow_up":true,"follow_up_date":"2026-09-08","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":"","person":"","direction":"","note":""}
 ]}
-(The greeting and the thanks produced nothing; the mother's own words became a record about her child, and the two things the user committed to became one dated task promised to her.)`;
+(The greeting and the thanks produced nothing; the mother's own words became a record about her child, and the two things the user committed to became one dated task promised to her.)
+
+Example of a HANDOVER — "sarah's passed me the year 4 display board, and i gave the trip forms to tom" becomes:
+{"entries":[
+  {"kind":"handover","person":"Sarah","direction":"to_me","note":"Year 4 display board","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
+  {"kind":"handover","person":"Tom","direction":"from_me","note":"Trip forms","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
+]}`;
 
 const ROUTE_SCHEMA = {
   type: "object",
@@ -929,7 +938,7 @@ const ROUTE_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["task", "record", "goal"] },
+          kind: { type: "string", enum: ["task", "record", "goal", "handover"] },
           title: { type: "string" },
           item_type: { type: "string" },
           date: { type: "string" },
@@ -950,11 +959,14 @@ const ROUTE_SCHEMA = {
           follow_up: { type: "boolean" },
           follow_up_date: { type: "string" },
           standard: { type: "string" },
+          person: { type: "string" },
+          direction: { type: "string" },
+          note: { type: "string" },
         },
         required: [
           "kind", "title", "item_type", "date", "time", "deadline", "importance", "effort", "tags",
           "when_text", "goal_link", "open_loop", "promised_to", "who", "note_type", "summary",
-          "topic", "level", "follow_up", "follow_up_date", "standard",
+          "topic", "level", "follow_up", "follow_up_date", "standard", "person", "direction", "note",
         ],
         additionalProperties: false,
       },
@@ -1015,10 +1027,23 @@ async function handleRoute(res, body) {
     );
     const entries = [];
     (Array.isArray(parsed.entries) ? parsed.entries : []).forEach((e) => {
-      const kind = ["task", "record", "goal"].includes(e.kind) ? e.kind : "task";
+      const kind = ["task", "record", "goal", "handover"].includes(e.kind) ? e.kind : "task";
       if (kind === "goal") {
         const title = (e.title || "").toString().trim().slice(0, 120);
         if (title) entries.push({ kind: "goal", goal: { title } });
+        return;
+      }
+      if (kind === "handover") {
+        const person = (e.person || "").toString().trim().slice(0, 60);
+        if (!person) return; // a handover with nobody attached is meaningless
+        entries.push({
+          kind: "handover",
+          handover: {
+            person,
+            dir: e.direction === "from_me" ? "out" : "in",
+            note: (e.note || "").toString().trim().slice(0, 120),
+          },
+        });
         return;
       }
       if (kind === "record" && whoIds.length) {

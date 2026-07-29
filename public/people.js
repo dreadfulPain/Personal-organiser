@@ -24,6 +24,7 @@
   const filters = { group: "", name: "" };
   let openId = null; // which person's card is expanded
   let range = "90"; // work-log window: "30" | "90" | "all"
+  let focusNoteId = null; // a just-logged entry whose note box should take focus
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -137,13 +138,16 @@
     const cut = rangeCutoff();
     return (person.workLog || []).filter((w) => w.dir === "out" && (!cut || w.date >= cut));
   }
+  // ONE CLICK, no dialog: the entry is logged immediately with an empty note and
+  // its note box is focused — type if you want, walk away if you don't. If it
+  // ever costs more than a moment it won't get done, and the log dies.
   function logWork(person, dir) {
-    const note = prompt(dir === "in" ? "What did they pass to you? (optional)" : "What did you pass to them? (optional)");
-    if (note === null) return; // cancelled
     if (!person.workLog) person.workLog = [];
-    person.workLog.unshift({ id: uid(), dir, note: (note || "").trim(), date: todayISO() });
+    const entry = { id: uid(), dir, note: "", date: todayISO() };
+    person.workLog.unshift(entry);
     persist();
-    openId = person.id;
+    openId = person.id; // show what just happened
+    focusNoteId = entry.id;
     render();
   }
   function unlogWork(person, id) {
@@ -195,6 +199,10 @@
         <span class="ppl-group">${escapeHtml(person.group || "")}</span>
         ${wIn || wOut ? `<span class="work-chip" title="Work passed between you in ${escapeHtml(RANGE_WORDS[range])}">${wIn} to you · ${wOut} from you</span>` : ""}
         ${promises.length ? `<span class="promise-chip">${promises.length} promised to them</span>` : ""}
+        <span class="ppl-quick">
+          <button class="link q-in" type="button" title="They passed work to me — logs straight away">+ to me</button>
+          <button class="link q-out" type="button" title="I passed work to them — logs straight away">+ from me</button>
+        </span>
         <button class="x-del ppl-del" type="button" title="Remove">×</button>
       </div>
       ${!open && filled.length ? `<div class="rec-extra-line">${filled.slice(0, 3).map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")}</div>` : ""}`;
@@ -202,6 +210,8 @@
       openId = open ? null : person.id;
       render();
     });
+    card.querySelector(".q-in").addEventListener("click", () => logWork(person, "in"));
+    card.querySelector(".q-out").addEventListener("click", () => logWork(person, "out"));
     card.querySelector(".ppl-del").addEventListener("click", () => deletePerson(person.id));
 
     if (open) {
@@ -209,6 +219,21 @@
       const fields = (config.fields && config.fields[person.group]) || config.fields[config.groups[0]] || [];
       const grid = document.createElement("div");
       grid.className = "rec-extra-fields";
+      // which kind of person — changeable any time (e.g. one added by a dump)
+      const gl = document.createElement("label");
+      gl.className = "cb-field";
+      gl.innerHTML = `<span class="cb-lbl">Kind</span>`;
+      const gsel = document.createElement("select");
+      if (!config.groups.includes(person.group)) gsel.appendChild(new Option("— not sorted —", person.group || ""));
+      config.groups.forEach((g) => gsel.appendChild(new Option(g, g)));
+      gsel.value = person.group || "";
+      gsel.addEventListener("change", (e) => {
+        person.group = e.target.value;
+        persist();
+        render();
+      });
+      gl.appendChild(gsel);
+      grid.appendChild(gl);
       fields.forEach((f) => {
         const label = document.createElement("label");
         label.className = "cb-field";
@@ -272,8 +297,18 @@
         const row = document.createElement("div");
         row.className = "ppl-work-row";
         row.innerHTML = `<span class="gt-when">${escapeHtml(friendlyDate(w.date))}</span>
-          <span class="w-dir ${w.dir}">${w.dir === "in" ? "to you" : "from you"}</span>
-          <span class="w-note">${escapeHtml(w.note || "")}</span>`;
+          <span class="w-dir ${w.dir}">${w.dir === "in" ? "to you" : "from you"}</span>`;
+        // the note is optional and editable in place — never a required step
+        const note = document.createElement("input");
+        note.type = "text";
+        note.className = "w-note";
+        note.value = w.note || "";
+        note.placeholder = "what was it? (optional)";
+        note.addEventListener("change", (e) => {
+          w.note = e.target.value.trim();
+          persist();
+        });
+        row.appendChild(note);
         const del = document.createElement("button");
         del.className = "x-del";
         del.type = "button";
@@ -282,6 +317,10 @@
         del.addEventListener("click", () => unlogWork(person, w.id));
         row.appendChild(del);
         listWrap.appendChild(row);
+        if (focusNoteId === w.id) {
+          setTimeout(() => note.focus(), 0);
+          focusNoteId = null;
+        }
       });
       wl.appendChild(listWrap);
       wl.querySelector(".w-in").addEventListener("click", () => logWork(person, "in"));
@@ -328,7 +367,7 @@
       if (!inGroup.length) return;
       const h = document.createElement("h2");
       h.className = "rec-group-title";
-      h.textContent = `${g} (${inGroup.length})`;
+      h.textContent = `${g || "not sorted yet"} (${inGroup.length})`;
       list.appendChild(h);
       inGroup
         .slice()

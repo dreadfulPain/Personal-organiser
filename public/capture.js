@@ -113,7 +113,8 @@
     state.items = state.items || [];
     state.goals = state.goals || [];
     state.records = state.records || [];
-    const n = { tasks: 0, records: 0, goals: 0 };
+    state.contacts = state.contacts || [];
+    const n = { tasks: 0, records: 0, goals: 0, handovers: 0 };
     entries.forEach((e) => {
       if (e.kind === "task" && e.item) {
         state.items.push(finishItem(e.item));
@@ -143,6 +144,23 @@
       } else if (e.kind === "goal" && e.goal) {
         state.goals.unshift({ id: uid(), title: e.goal.title, createdAt: nowISO(), milestones: [] });
         n.goals++;
+      } else if (e.kind === "handover" && e.handover) {
+        // Log it against that person — creating them if they're new, so a
+        // handover never needs a detour to the People page first.
+        const want = (e.handover.person || "").trim().toLowerCase();
+        let person = state.contacts.find((c) => (c.name || "").trim().toLowerCase() === want);
+        if (!person) {
+          person = { id: uid(), name: e.handover.person, group: "", details: {}, workLog: [], createdAt: nowISO() };
+          state.contacts.unshift(person);
+        }
+        if (!person.workLog) person.workLog = [];
+        person.workLog.unshift({
+          id: uid(),
+          dir: e.handover.dir === "out" ? "out" : "in",
+          note: e.handover.note || "",
+          date: todayISO(),
+        });
+        n.handovers++;
       }
     });
     return n;
@@ -153,6 +171,7 @@
     if (n.tasks) parts.push(`${n.tasks} to your tasks`);
     if (n.records) parts.push(`${n.records} to Students`);
     if (n.goals) parts.push(`${n.goals} to Goals`);
+    if (n.handovers) parts.push(`${n.handovers} logged to People`);
     return parts.join(" · ");
   }
 
@@ -166,7 +185,7 @@
     } catch {}
     // Go through the store so the write carries the shared-folder version guard;
     // flush() forces it out and waits, so the reload can't outrun the save.
-    OrganiserStore.save({ items: barState.items, goals: barState.goals, records: barState.records });
+    OrganiserStore.save({ items: barState.items, goals: barState.goals, records: barState.records, contacts: barState.contacts });
     try {
       await OrganiserStore.flush();
     } catch {}
@@ -181,7 +200,7 @@
       return;
     }
     box.hidden = false;
-    const dest = { task: "→ Tasks", record: "→ Students", goal: "→ Goals" };
+    const dest = { task: "→ Tasks", record: "→ Students", goal: "→ Goals", handover: "→ People" };
     box.innerHTML =
       `<p class="cap-hint">Here's where each will go — tweak or drop any, then add.</p>` +
       pending
@@ -191,6 +210,8 @@
           else if (e.kind === "record")
             mid = `<span class="cap-who">${escapeHtml(e.record.who || "— who? —")}</span> ${escapeHtml(e.record.summary)}` +
               (e.record.topic ? ` <span class="cap-when">${escapeHtml(e.record.topic)}${e.record.level ? " " + escapeHtml(e.record.level) : ""}</span>` : "");
+          else if (e.kind === "handover")
+            mid = `<span class="cap-who">${escapeHtml(e.handover.person)}</span> ${e.handover.dir === "out" ? "← you passed on" : "→ passed to you"}${e.handover.note ? ` <span class="cap-when">${escapeHtml(e.handover.note)}</span>` : ""}`;
           else mid = escapeHtml(e.goal.title);
           return `<div class="cap-row"><span class="cap-dest">${dest[e.kind]}</span><span class="cap-mid">${mid}</span><button class="link cap-drop" data-i="${i}" type="button">drop</button></div>`;
         })
@@ -284,6 +305,7 @@
       records: data.records || [],
       recordConfig: data.recordConfig || null,
       portfolio: data.portfolio || null,
+      contacts: data.contacts || [],
       aiAvailable: false,
     };
     if (OrganiserStore.mode === "file") {

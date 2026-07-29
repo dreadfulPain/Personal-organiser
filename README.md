@@ -195,8 +195,10 @@ the chat wasn't. The **People** tab holds the humans around the work — colleag
 anyone — with the details you actually need (how and when to reach them, what
 they can realistically help with) filled in gradually. Open someone and you see
 what's *live* between you: what you've promised them, and recent notes that
-mention them. You can also log **work passed between you** — one tap for
-"they passed work to me" or "I passed work to them", with an optional note — and
+mention them. You can also log **work passed between you** — one tap on the person's row for
+"+ to me" / "+ from me" (it logs straight away; the note is optional and typed in
+place), or just say it in any capture box — *"sarah passed me the display board"*
+— and
 see the plain counts over a window you choose, always alongside the dated list of
 what they actually were. That's there to check a feeling against the facts, in
 both directions ("is this person really loading me up — or am I assuming it?").

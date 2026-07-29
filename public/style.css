@@ -998,10 +998,442 @@ body {
 /* snooze to a moment — and "leave it" so nothing is postponed forever */
 .snooze-row {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
   margin: -2px 0 8px 36px;
   font-size: 0.8rem;
+}
+.snooze-wrap {
+  margin-bottom: 8px;
+}
+.btn.tiny {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+}
+/* The snooze counter: a number, and nothing else. It never gains a caption. */
+.sn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sn-count.green {
+  background: var(--task);
+  color: var(--task-ink);
+}
+.sn-count.amber {
+  background: var(--reminder);
+  color: var(--reminder-ink);
+}
+.sn-count.red {
+  background: #f7e6e2;
+  color: #8d4a39;
+}
+.sn-exits {
+  display: inline-flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.breakup {
+  margin: 6px 0 10px 36px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.bu-hint {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.breakup textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  resize: vertical;
+}
+.bu-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 10px;
+}
+.status-undo {
+  font-size: 0.85rem;
+}
+
+/* ---- the day plan ---- */
+.dp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 18px;
+}
+.dp-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+/* THE most important visual rule on this page: a fact and a guess must never
+   look the same, or the whole plan stops being trustworthy. */
+.dp-row.soft {
+  border-style: dashed;
+  background: transparent;
+}
+.dp-block {
+  border-left: 4px solid var(--accent);
+}
+.dp-block.soft {
+  border-left: 4px dashed var(--accent);
+  opacity: 0.75;
+}
+.dp-time {
+  min-width: 108px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  padding-top: 2px;
+}
+.dp-main {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.dp-title {
+  font-size: 1.02rem;
+}
+.dp-guess,
+.dp-about {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.dp-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.dp-est.guess {
+  font-style: italic;
+}
+.dp-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.8rem;
+}
+.dp-free {
+  padding: 4px 16px 4px 130px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.dp-movebox {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+.dp-accept {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.dp-note,
+.dp-settled {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+.dp-flagged {
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  background: var(--reminder);
+  border-radius: var(--radius);
+}
+.dp-flagged h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.dp-flagged .muted {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+}
+.dp-flagrow {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.92rem;
+}
+.dp-flagtitle {
+  flex: 1 1 auto;
+}
+.dp-also h2 {
+  font-size: 1rem;
+}
+.dp-alsorow {
+  padding: 6px 0;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+/* ---- setting up the week (a once-a-term job) ---- */
+.setup-wrap {
+  margin: 28px 0 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.setup {
+  margin-top: 14px;
+}
+.setup .muted {
+  font-size: 0.88rem;
+}
+.su-lab {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.setup textarea,
+.su-form input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.su-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.su-file {
+  font-size: 0.85rem;
+  color: var(--accent-dark);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.su-status {
+  margin: 10px 0 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+.su-review {
+  margin: 18px 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.su-review h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.su-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.su-trow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.su-trow.dropped {
+  opacity: 0.45;
+}
+.su-trow input[type="text"] {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.su-trow input[type="time"] {
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.su-days {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  min-width: 90px;
+}
+.su-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+.bf-days {
+  display: flex;
+  gap: 6px;
+}
+.bf-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.su-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+}
+.su-brow {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.su-brow.soft {
+  border-style: dashed;
+  opacity: 0.8;
+}
+.su-bwhen {
+  min-width: 170px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+.su-blabel {
+  flex: 1 1 auto;
+}
+.su-softtag {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+/* ---- before a meeting ---- */
+.meetings {
+  margin-bottom: 26px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.meetings h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+.mt-card + .mt-card {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.mt-head {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.mt-when {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.mt-when.urgent {
+  background: #f7e6e2;
+  color: #8d4a39;
+}
+.mt-label {
+  font-size: 1rem;
+}
+.mt-time {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.mt-who {
+  margin-top: 12px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+.mt-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.mt-have {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 2px 0 6px;
+}
+.mt-gap {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 3px 0;
+  font-size: 0.88rem;
+}
+.mt-gap.blocking .mt-gaptext {
+  color: #8d4a39;
+}
+.mt-gaptext {
+  flex: 1 1 220px;
+}
+.mt-fix:disabled {
+  color: var(--ink-soft);
+  text-decoration: none;
+  cursor: default;
+}
+.cl-foot {
+  margin: -6px 0 16px;
+  font-size: 0.85rem;
 }
 .pf-ev-tags {
   display: flex;

@@ -224,14 +224,32 @@ ready for you to attach the proof. Any task can be pointed at a standard at any
 time from its **edit** panel. Plus: add by
 hand, the check-back, calm **Today / Coming up /
 Someday** zones, tick-to-complete (done = gone, kept in **Looking back**). The
-**Today** section is laid out as a timeline right on the home page — your timed
-things in order with the gaps between them, an "anytime today" group, and you can
-give any task a time on the spot. Trustworthy file storage with backups, and
+**Day** tab opens on a plan that is **already built**: your timetable's fixed
+blocks laid down first, then the gaps between them filled — hard deadlines due
+today first, then tasks matched to the size of the gap — and left about
+two-thirds full on purpose, because a day packed wall to wall collapses at the
+first interruption. Move anything, drop anything, then press **"That's my day"**.
+Set your week up once (paste a timetable and check the rows the AI read, or
+import a `.ics` calendar, which is parsed by plain code with no AI at all) and
+two more things start working by themselves: **reminders hold during lessons**
+and land together at the next gap, and **"not now"** becomes one button that
+brings a reminder back at the next moment you're genuinely free. A reminder
+pushed back three times shows the count and offers three ways out — drop it,
+make it soft, or **break it up** into pieces that inherit its date, tags, goal
+and standard. Trustworthy file storage with backups, and
 import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
 guess), a rough **effort** (quick / draining — handy for picking light things on a
 low-energy day), **category tags**, and whether a date is a **deadline** — shown
-lightly in the zones. At the top, a **What matters today** shortlist surfaces a few
+lightly in the zones. Put a **meeting** on your week and name who it's about, and the home page
+starts telling you — days ahead, without being asked — what you actually have
+for those people, listing what you have and what you haven't separately, and
+being careful about the difference between "nothing to raise" and "nothing
+written down". Each gap becomes a real task in one tap, dated the day before.
+The Class page can also **save into folders**: a dated results spreadsheet that
+opens straight in Excel and a page per student that opens in Word, written into
+`data/exports/` so anyone can read them with the app closed.
+At the top, a **What matters today** shortlist surfaces a few
 must-dos and important items (each with a one-word reason) — it only *suggests*,
 nothing moves on its own. A separate **Goals & milestones** page lets you name a
 big goal in a sentence and — with smart sorting on — the app **suggests small

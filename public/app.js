@@ -18,6 +18,8 @@
   let recordConfig = null; // the record vocabulary, for routing a dump to a student record
   let portfolio = null; // read-only here: to show which standard a task is "for"
   let contacts = []; // the People list — a routed handover can add to it
+  let schedule = []; // the day's fixed blocks + soft assumptions (the Day tab owns these)
+  let scheduleConfig = null; // day window, effort→minutes, learned durations, plans
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
@@ -157,10 +159,21 @@
     const d = new Date(iso + "T12:00:00");
     return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   }
-  function setStatus(msg) {
+  // An optional "undo" rides along on the status line. Rule 4: small reversible
+  // things just happen, and the way back is one tap — never an "are you sure?"
+  // asked before the fact.
+  function setStatus(msg, undo) {
     const s = $("#status");
     s.textContent = msg || "";
     s.hidden = !msg;
+    if (msg && typeof undo === "function") {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "link status-undo";
+      b.textContent = "undo";
+      b.addEventListener("click", undo);
+      s.append(" ", b);
+    }
   }
   function setBusy(b) {
     const btn = $("#sortBtn");
@@ -858,6 +871,7 @@
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
 
     renderLoops();
+    renderMeetings();
     renderOverdue();
     renderShortlist();
     renderGoalsPanel();
@@ -894,53 +908,22 @@
   // offline. It never changes, reorders, or completes the stored items — the
   // full zones below are the source of truth and one glance away.
   //
-  // Three signals feed it (§0.2): urgency (hard deadline due), importance (your
-  // own "matters a lot"), and milestone-pull (§9 slice 3) — a task linked to a
-  // goal you chose to finish. Milestone-pull is the ungameable one (your goals
-  // can't be faked by others); it's a weighted boost, NEVER an override — it
-  // can't jump ahead of a hard deadline due today.
-  function shortlistEligible(it) {
-    if (it.openLoop) return false; // open loops live in the louder "Needs finishing" — no double-shouting
-    const t = todayISO();
-    const dueNow = it.date && it.date <= t;
-    if (it.deadlineType === "hard" && dueNow) return true; // hard deadline, can't wait
-    if (importanceOf(it) === "high") return true; // you said it matters
-    if (it.promisedTo) return true; // someone's waiting on it (s29 hook)
-    if (goalTitleById(it.goalId)) return true; // moves you toward a chosen goal
-    if (it.date) return true; // dated → can fill a slot by nearest date
-    return false; // floaty, not important, not toward a goal → not a "today" thing
-  }
-  function shortlistRank(it) {
-    const t = todayISO();
-    const dueNow = it.date && it.date <= t;
-    if (it.deadlineType === "hard" && dueNow) return 0; // always first — the guard
-    if (importanceOf(it) === "high" || it.promisedTo) return 1; // your values + your word
-    if (goalTitleById(it.goalId)) return 2; // then milestone-pull (toward a goal)
-    if (dueNow) return 3; // then anything else due today/overdue
-    return 4; // then upcoming, by nearest date
+  // The scoring itself lives in priority.js, because the Day plan fills its gaps
+  // from the same definition. One answer to "what matters", used twice — so the
+  // two screens can never quietly start disagreeing with each other.
+  function priorityCtx() {
+    return { today: todayISO(), goalTitle: goalTitleById };
   }
   function shortlistReason(it) {
-    const t = todayISO();
-    if (it.date && it.date < t) return "overdue";
-    if (it.date && it.date === t) return "due today";
-    if (it.promisedTo) return "promised to " + it.promisedTo;
-    if (importanceOf(it) === "high") return "matters a lot";
-    const g = goalTitleById(it.goalId);
-    if (g) return "toward " + g;
-    if (it.date) return friendlyDate(it.date);
-    return "";
+    const r = OrganiserPriority.reason(it, priorityCtx());
+    return r || (it.date ? friendlyDate(it.date) : "");
   }
   function renderShortlist() {
     const listEl = $("#shortlistItems");
     const msgEl = $("#shortlistMsg");
     if (!listEl) return;
-    // filter + sort work on a fresh array — the stored items are never touched
-    const eligible = items.filter((i) => !i.done && shortlistEligible(i));
-    eligible.sort(
-      (a, b) =>
-        shortlistRank(a) - shortlistRank(b) ||
-        (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99")
-    );
+    // works on a fresh array — the stored items are never touched
+    const eligible = OrganiserPriority.ordered(items, priorityCtx());
     const picks = eligible.slice(0, SHORTLIST_CAP);
 
     listEl.innerHTML = "";
@@ -1203,40 +1186,25 @@
     $("#clusterOffer").hidden = true;
   }
 
-  // ---------- snooze to a MOMENT, not a duration ----------
-  // "In an hour" is useless mid-lesson — you can't act at 10:15. These match how
-  // a teaching day actually breaks. Snooze is never the only exit: "leave it" is
-  // always there, so nothing can be postponed forever by default.
-  const MORNING = [7, 30]; // before the first lesson, same moment every time
-  function nextWeekday(targetDow, hour, min) {
-    const d = new Date();
-    d.setSeconds(0, 0);
-    d.setHours(hour, min);
-    do {
-      d.setDate(d.getDate() + 1);
-    } while (d.getDay() !== targetDow);
-    return fmtLocalDT(d);
-  }
-  function momentAfterSchool() {
-    const d = new Date();
-    d.setSeconds(0, 0);
-    d.setHours(16, 0);
-    if (d <= new Date()) d.setDate(d.getDate() + 1); // already gone → tomorrow
-    return fmtLocalDT(d);
-  }
-  function momentTomorrowMorning() {
-    const d = new Date();
-    d.setSeconds(0, 0);
-    d.setDate(d.getDate() + 1);
-    d.setHours(MORNING[0], MORNING[1]);
-    return fmtLocalDT(d);
-  }
+  // ---------- SMART SNOOZE: one button, because you're busy ----------
+  // Choosing between four options is itself work, and it always arrives at the
+  // worst moment. So there is one button — "not now" — and the app works out
+  // when you're actually free from your own schedule. No decision at the point
+  // of interruption; that's the whole point.
+  //
+  // If no timetable has been loaded yet it falls back to a plain "in about two
+  // hours", so the button behaves sensibly from the first day.
   function snoozeTo(it, when, label) {
     it.remindAt = when;
     it.remindedAt = null; // re-arm
     persist();
     renderZones();
-    setStatus(`Will remind you ${label}. ✓`);
+    setStatus(`Back to you ${label}. ✓`);
+  }
+  function notNow(it) {
+    const next = OrganiserSchedule.nextFreeMoment(schedule, scheduleConfig, new Date());
+    it.snoozes = (Number(it.snoozes) || 0) + 1; // a plain count, kept on the task
+    snoozeTo(it, fmtLocalDT(next.at), next.why);
   }
   function stopAsking(it) {
     it.remindAt = "";
@@ -1245,21 +1213,171 @@
     renderZones();
     setStatus("Won't remind you about that again — it's still on your list.");
   }
+
+  // ---------- the snooze counter ----------
+  // A number, and nothing else. Not "you keep avoiding this" — the app does not
+  // get to have an opinion about that. The number is simply a fact you can see.
+  //
+  // What it's FOR: a task pushed three times is usually one of three things —
+  // not actually important, blocked by something unnamed, or too big for the
+  // gaps it keeps being offered. That last one matters most, and deleting would
+  // be exactly the wrong move. So at three the exits come to the front.
+  //
+  // Deliberately NOT attached to the ageing nudge. That's a different situation:
+  // there the app spoke first, once, and went quiet. Here you have answered and
+  // pushed back — counting your own answers is fair; counting the app's own
+  // unanswered nudges would just be a guilt tally.
+  function snoozeCount(it) {
+    return Math.max(0, Number(it.snoozes) || 0);
+  }
+  function dropTask(it) {
+    const snapshot = { ...it };
+    items = items.filter((x) => x.id !== it.id);
+    persist();
+    renderZones();
+    setStatus(`Dropped “${snapshot.title}”.`, () => {
+      items.push(snapshot); // control by undo, not by an "are you sure"
+      persist();
+      renderZones();
+      setStatus("Put it back. ✓");
+    });
+  }
+  function makeSoft(it) {
+    it.remindAt = "";
+    it.remindedAt = null;
+    it.deadlineType = "soft";
+    it.snoozes = 0; // it's no longer being pushed back — there's nothing to push
+    persist();
+    renderZones();
+    setStatus(`“${it.title}” stays on your list, quietly. No more pings. ✓`);
+  }
+  // Break it up — the exit that's usually right and never offered. The pieces
+  // inherit everything that made the original findable (date, tags, goal,
+  // standard), so nothing is orphaned by splitting it.
+  function breakUpBox(it) {
+    const box = document.createElement("div");
+    box.className = "breakup";
+    box.innerHTML = `
+      <p class="bu-hint">What are the actual pieces? One per line — the original closes when you save.</p>
+      <textarea class="bu-text" rows="3" placeholder="first small piece&#10;next small piece"></textarea>
+      <div class="bu-actions">
+        <button type="button" class="btn bu-save">Save the pieces</button>
+        <button type="button" class="link bu-cancel">cancel</button>
+      </div>`;
+    const ta = box.querySelector(".bu-text");
+    setTimeout(() => ta.focus(), 0);
+    box.querySelector(".bu-cancel").addEventListener("click", () => {
+      openExits = null;
+      renderZones();
+    });
+    box.querySelector(".bu-save").addEventListener("click", () => {
+      const pieces = ta.value
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 12);
+      if (!pieces.length) {
+        ta.focus();
+        return;
+      }
+      pieces.forEach((title) => {
+        items.push({
+          id: uid(),
+          title,
+          type: it.type || "task",
+          date: it.date || "",
+          time: "",
+          deadlineType: it.deadlineType || "soft",
+          importance: it.importance || "normal",
+          effort: "quick", // a piece of a too-big thing is, by definition, smaller
+          tags: Array.isArray(it.tags) ? it.tags.slice() : [],
+          whenText: it.whenText || "",
+          goalId: it.goalId || "",
+          standardId: it.standardId || "",
+          openLoop: false,
+          promisedTo: it.promisedTo || "",
+          remindAt: "",
+          remindedAt: null,
+          createdAt: new Date().toISOString(),
+          done: false,
+        });
+      });
+      it.done = true; // the original is finished — it has become its pieces
+      it.completedAt = new Date().toISOString();
+      it.brokenInto = pieces.length;
+      openExits = null;
+      persist();
+      renderZones();
+      setStatus(`Split into ${pieces.length} smaller piece${pieces.length === 1 ? "" : "s"}. ✓`);
+    });
+    return box;
+  }
+
+  let openExits = null; // which item's exits are showing
+  let breakingUp = null; // which item's break-up box is open
+
   function snoozeRow(it) {
     const row = document.createElement("div");
     row.className = "snooze-row";
-    const mk = (label, fn) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "link";
-      b.textContent = label;
-      b.addEventListener("click", fn);
-      row.appendChild(b);
-    };
-    mk("after school", () => snoozeTo(it, momentAfterSchool(), "after school"));
-    mk("tomorrow morning", () => snoozeTo(it, momentTomorrowMorning(), "tomorrow morning"));
-    mk("Friday", () => snoozeTo(it, nextWeekday(5, MORNING[0], MORNING[1]), "Friday morning"));
-    mk("leave it", () => stopAsking(it));
+    const n = snoozeCount(it);
+    const red = n >= 3;
+
+    if (n > 0) {
+      const chip = document.createElement("span");
+      chip.className = "sn-count " + (n >= 3 ? "red" : n === 2 ? "amber" : "green");
+      chip.textContent = n;
+      chip.title = `Pushed back ${n} time${n === 1 ? "" : "s"}`;
+      row.appendChild(chip);
+    }
+
+    const not = document.createElement("button");
+    not.type = "button";
+    not.className = "btn tiny sn-notnow";
+    not.textContent = "not now";
+    not.addEventListener("click", () => notNow(it));
+    row.appendChild(not);
+
+    // Below red the exits stay one tap away, out of the way. At red they open
+    // themselves — three pushes means the plain "later" isn't working.
+    const showExits = red || openExits === it.id;
+    if (!showExits) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "link sn-more";
+      more.textContent = "options";
+      more.addEventListener("click", () => {
+        openExits = it.id;
+        renderZones();
+      });
+      row.appendChild(more);
+    } else {
+      const exits = document.createElement("span");
+      exits.className = "sn-exits";
+      const mk = (label, fn, cls) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "link " + (cls || "");
+        b.textContent = label;
+        b.addEventListener("click", fn);
+        exits.appendChild(b);
+      };
+      mk("break it up", () => {
+        breakingUp = breakingUp === it.id ? null : it.id;
+        openExits = it.id;
+        renderZones();
+      });
+      mk("make it soft", () => makeSoft(it));
+      mk("drop it", () => dropTask(it));
+      row.appendChild(exits);
+    }
+
+    if (breakingUp === it.id) {
+      const wrap = document.createElement("div");
+      wrap.className = "snooze-wrap";
+      wrap.appendChild(row);
+      wrap.appendChild(breakUpBox(it));
+      return wrap;
+    }
     return row;
   }
 
@@ -1306,6 +1424,108 @@
       listEl.appendChild(row);
       if (it.remindAt) listEl.appendChild(snoozeRow(it)); // move it, or stop it asking
     });
+  }
+
+  // ---------- before a meeting: what you ACTUALLY have ----------
+  // This is the one panel that exists to stop a specific bad moment: walking
+  // into a meeting believing you're prepared, and finding you have nothing.
+  //
+  // Three rules it follows:
+  //   - It speaks first. You never have to remember to check.
+  //   - It separates "here's what you have" from "here's what you haven't", so
+  //     a green-looking screen can't quietly mean an empty folder.
+  //   - Every gap it names has a one-tap way to become a real task, dated to
+  //     land before the meeting — because naming a problem without offering the
+  //     next step is just a nicer way of worrying.
+  function renderMeetings() {
+    const section = $("#meetings");
+    const listEl = $("#meetingsList");
+    if (!section || !listEl || !window.OrganiserMeeting || !window.OrganiserSchedule) return;
+    const due = OrganiserMeeting.upcoming(schedule, scheduleConfig, new Date());
+    if (!due.length) {
+      section.hidden = true;
+      listEl.innerHTML = "";
+      return;
+    }
+    section.hidden = false;
+    listEl.innerHTML = "";
+    const cfgR = recordConfig || { topics: [] };
+
+    due.slice(0, 3).forEach((m) => {
+      const card = document.createElement("div");
+      card.className = "mt-card";
+      const when =
+        m.daysAway === 0 ? "today" : m.daysAway === 1 ? "tomorrow" : `in ${m.daysAway} days`;
+      const readies = m.block.about.map((who) => OrganiserMeeting.readiness(who, records, cfgR));
+      const verdict = OrganiserMeeting.verdict(readies, cfgR);
+      const head = document.createElement("div");
+      head.className = "mt-head";
+      head.innerHTML = `
+        <span class="mt-when ${verdict === "empty-handed" ? "urgent" : ""}">${escapeHtml(when)}</span>
+        <span class="mt-label">${escapeHtml(m.block.label)}</span>
+        <span class="mt-time">${escapeHtml(OrganiserSchedule.fmtSpan(m.block.start, m.block.end))}</span>`;
+      card.appendChild(head);
+
+      readies.forEach((r) => {
+        const { have, missing } = OrganiserMeeting.lines(r, cfgR);
+        const who = document.createElement("div");
+        who.className = "mt-who";
+        who.innerHTML = `<div class="mt-name">${escapeHtml(r.who)}</div>`;
+
+        // What you have — stated plainly, even when it's zero.
+        const haveEl = document.createElement("div");
+        haveEl.className = "mt-have";
+        haveEl.textContent = have.length ? have.map((h) => h.text).join(" · ") : "nothing written down yet";
+        who.appendChild(haveEl);
+
+        missing.forEach((g) => {
+          const row = document.createElement("div");
+          row.className = "mt-gap" + (g.blocking ? " blocking" : "");
+          row.innerHTML = `<span class="mt-gaptext">${escapeHtml(g.text)}</span>`;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "link mt-fix";
+          const already = items.some((i) => !i.done && i.title === g.task);
+          btn.textContent = already ? "on your list ✓" : "make it a task";
+          btn.disabled = already;
+          btn.addEventListener("click", () => makeMeetingTask(g.task, m));
+          row.appendChild(btn);
+          who.appendChild(row);
+        });
+        card.appendChild(who);
+      });
+      listEl.appendChild(card);
+    });
+  }
+
+  // Working back from the meeting date: the task is due the day before, so it
+  // lands while there's still time to do something about it.
+  function makeMeetingTask(title, m) {
+    const dayBefore = addDaysISO(m.date, -1);
+    const today = todayISO();
+    items.push({
+      id: uid(),
+      title,
+      type: "task",
+      date: dayBefore < today ? today : dayBefore,
+      time: "",
+      deadlineType: "hard", // it has a real, external date — the meeting happens regardless
+      importance: "high",
+      effort: "medium",
+      tags: [],
+      whenText: `before ${m.block.label}`,
+      goalId: "",
+      standardId: "",
+      openLoop: false,
+      promisedTo: "",
+      remindAt: "",
+      remindedAt: null,
+      createdAt: new Date().toISOString(),
+      done: false,
+    });
+    persist();
+    renderZones();
+    setStatus(`Added “${title}” for the day before. ✓`);
   }
 
   // ---------- past a deadline: recover gently (§s21 safety net) ----------
@@ -1510,6 +1730,8 @@
     recordConfig = state.recordConfig || recordConfig;
     portfolio = state.portfolio || portfolio;
     contacts = state.contacts || contacts;
+    schedule = state.schedule || schedule;
+    scheduleConfig = state.scheduleConfig || scheduleConfig;
     renderZones();
     renderWaiting();
     setStatus("Updated with changes from another device.");
@@ -1527,6 +1749,8 @@
     recordConfig = data.recordConfig || null;
     portfolio = data.portfolio || null;
     contacts = data.contacts || [];
+    schedule = data.schedule || [];
+    scheduleConfig = data.scheduleConfig || null;
 
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {

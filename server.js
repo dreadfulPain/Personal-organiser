@@ -57,11 +57,13 @@ function loadEnvFile() {
 // --- the store: a real file the user owns, saved safely --------------------
 
 const FILES_DIR = path.join(DATA_DIR, "files");
+const EXPORT_DIR = path.join(DATA_DIR, "exports");
 
 function ensureDirs() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   fs.mkdirSync(FILES_DIR, { recursive: true });
+  fs.mkdirSync(EXPORT_DIR, { recursive: true });
 }
 
 function readData() {
@@ -79,7 +81,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -93,6 +95,8 @@ function normaliseDoc(d) {
     portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
     contacts: Array.isArray(d.contacts) ? d.contacts : [],
     contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
+    schedule: Array.isArray(d.schedule) ? d.schedule : [],
+    scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
     savedAt: d.savedAt || null,
   };
 }
@@ -107,7 +111,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, savedAt: null };
   try {
     current = readData();
   } catch {
@@ -132,6 +136,8 @@ function writeData(input, opts) {
         portfolio: input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null,
         contacts: Array.isArray(input.contacts) ? input.contacts : current.contacts || [],
         contactConfig: input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null,
+        schedule: Array.isArray(input.schedule) ? input.schedule : current.schedule || [],
+        scheduleConfig: input.scheduleConfig && typeof input.scheduleConfig === "object" ? input.scheduleConfig : current.scheduleConfig || null,
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -154,6 +160,9 @@ function writeData(input, opts) {
   const contacts = Array.isArray(input.contacts) ? input.contacts : current.contacts || [];
   const contactConfig =
     input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null;
+  const schedule = Array.isArray(input.schedule) ? input.schedule : current.schedule || [];
+  const scheduleConfig =
+    input.scheduleConfig && typeof input.scheduleConfig === "object" ? input.scheduleConfig : current.scheduleConfig || null;
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -165,6 +174,8 @@ function writeData(input, opts) {
     portfolio,
     contacts,
     contactConfig,
+    schedule,
+    scheduleConfig,
   };
   const json = JSON.stringify(doc, null, 2);
 
@@ -991,6 +1002,85 @@ function routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels, 
   return s + `\n\nSort this note into entries:\n"""\n${text}\n"""`;
 }
 
+// ---- the timetable, read once a term -------------------------------------
+// This is the rare, valuable, human-checked job the local model is genuinely
+// good for: a wall of pasted text into a clean list of blocks, shown as an
+// editable table BEFORE anything is saved. It is allowed to be slow and it is
+// allowed to be wrong, because a person reads every row afterwards.
+//
+// It stays domain-neutral: the model is told to copy the labels it is given,
+// never to interpret them. "Period 3" and "Shift B" get identical treatment.
+const TIMETABLE_PROMPT = `You read one pasted timetable and turn it into a plain list of time blocks. Nothing else.
+
+A block has: label, start time, end time, and the weekdays it repeats on.
+
+RULES
+- COPY the label exactly as written. Do not tidy, translate, expand or interpret it. If a row says "P3 Mth/7B", the label is "P3 Mth/7B".
+- Times are 24-hour "HH:MM". Convert "9am" to "09:00", "1.15pm" to "13:15".
+- "days" lists weekday numbers: 0=Sunday, 1=Monday … 6=Saturday.
+- A block on every weekday is [1,2,3,4,5]. A block on one day is that one day.
+- If a row has no end time, make the end 60 minutes after the start.
+- Include breaks, lunch and free periods if they are written down — they are blocks like any other.
+- If a row is not a time block (a title, a note, a page number), leave it out.
+- Never invent a block that is not in the text. An empty list is a fine answer.
+
+Return only the JSON object.`;
+
+const TIMETABLE_SCHEMA = {
+  type: "object",
+  properties: {
+    blocks: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          start: { type: "string" },
+          end: { type: "string" },
+          days: { type: "array", items: { type: "integer" } },
+        },
+        required: ["label", "start", "end", "days"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["blocks"],
+  additionalProperties: false,
+};
+
+const HHMM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+function tidyHM(v) {
+  const m = HHMM.exec((v || "").toString().trim());
+  if (!m) return "";
+  return String(m[1]).padStart(2, "0") + ":" + m[2];
+}
+
+async function handleTimetable(res, body) {
+  const text = (body?.text || "").toString().trim();
+  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to read." });
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+  try {
+    const parsed = await runEngine(cfg, TIMETABLE_PROMPT, `Turn this timetable into blocks:\n"""\n${text.slice(0, 8000)}\n"""`, TIMETABLE_SCHEMA);
+    const blocks = [];
+    (Array.isArray(parsed.blocks) ? parsed.blocks : []).slice(0, 200).forEach((b) => {
+      const label = (b.label || "").toString().trim().slice(0, 80);
+      const start = tidyHM(b.start);
+      const end = tidyHM(b.end);
+      if (!label || !start || !end || end <= start) return; // a block with no width isn't a block
+      const days = (Array.isArray(b.days) ? b.days : [])
+        .map((d) => Number(d))
+        .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+      if (!days.length) return;
+      blocks.push({ label, start, end, days, soft: false, source: "paste" });
+    });
+    return sendJson(res, 200, { blocks });
+  } catch (e) {
+    console.warn("[timetable] failed:", e?.message || e);
+    return sendJson(res, 502, { error: "ai_failed", message: "Couldn't read that just now — you can still type the blocks in by hand." });
+  }
+}
+
 async function handleRoute(res, body) {
   const text = (body?.text || "").toString().trim();
   if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
@@ -1287,26 +1377,70 @@ function agedImportant(items, now) {
   });
 }
 
-// QUIET HOURS — a reminder you can't act on teaches you to ignore reminders. If
-// QUIET_HOURS is set (e.g. "08:30-15:30"), pings hold and land after the window.
-function inQuietHours(now) {
-  const raw = (process.env.QUIET_HOURS || "").trim();
-  const m = /^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/.exec(raw);
-  if (!m) return false;
+// QUIET TIME COMES FROM THE SCHEDULE, not from a setting.
+//
+// A reminder you can't act on at 10:15 teaches you to ignore reminders. So
+// nothing fires while you're inside a fixed block — it's HELD, and lands the
+// moment the block ends. Soft blocks (the app's own guesses) never silence
+// anything; a guess must not be able to swallow a real ping.
+//
+// This repeats a little of public/schedule.js on purpose. The browser files are
+// plain classic scripts and this is an ES module, so there is no honest way to
+// share them without a build step — and a build step costs more than these
+// twenty lines. Only the narrow "am I inside a fixed block" question lives here;
+// all the planning logic stays in the one place, client-side.
+function blockMinutes(v) {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec((v || "").toString().trim());
+  return m ? +m[1] * 60 + +m[2] : null;
+}
+function blockAppliesOn(b, iso, dow) {
+  if (b.from && iso < b.from) return false;
+  if (b.to && iso > b.to) return false;
+  if (b.date) return b.date === iso;
+  return Array.isArray(b.days) && b.days.includes(dow);
+}
+// The fixed block covering this exact moment, or null if you're free.
+function fixedBlockAt(schedule, now) {
+  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const dow = now.getDay();
   const mins = now.getHours() * 60 + now.getMinutes();
-  const from = +m[1] * 60 + +m[2];
-  const to = +m[3] * 60 + +m[4];
-  return from <= to ? mins >= from && mins < to : mins >= from || mins < to; // handles overnight
+  for (const b of Array.isArray(schedule) ? schedule : []) {
+    if (!b || b.soft) continue;
+    const s = blockMinutes(b.start);
+    const e = blockMinutes(b.end);
+    if (s === null || e === null || e <= s) continue;
+    if (!blockAppliesOn(b, iso, dow)) continue;
+    if (s <= mins && mins < e) return b;
+  }
+  return null;
 }
 
 function checkReminders() {
   try {
     const now = new Date();
-    if (inQuietHours(now)) return; // hold; they'll land once the window ends
     const doc = readData();
+    // Inside a lesson, meeting, or anything else you called fixed: hold everything.
+    const busy = fixedBlockAt(doc.schedule, now);
+    if (busy) return;
     const due = dueReminders(doc.items, now);
     const aged = agedImportant(doc.items, now);
     if (!due.length && !aged.length) return;
+    // Everything that piled up while you were teaching arrives as ONE notification
+    // at the next gap. Four separate pings at the same second is just noise.
+    if (due.length + aged.length > 2) {
+      const titles = due.concat(aged).map((it) => it.title).slice(0, 5);
+      const extra = due.length + aged.length - titles.length;
+      notify(
+        `${due.length + aged.length} things waiting`,
+        titles.join(" · ") + (extra ? ` · and ${extra} more` : "")
+      );
+      const stamp = new Date().toISOString();
+      due.forEach((it) => (it.remindedAt = stamp));
+      aged.forEach((it) => (it.agedAt = stamp));
+      console.log(`[remind] batched ${due.length + aged.length}`);
+      writeData(doc, { baseSavedAt: doc.savedAt });
+      return;
+    }
     due.forEach((it) => {
       const t = reminderText(it);
       notify(t.title, t.body);
@@ -1416,6 +1550,54 @@ async function handleUpload(req, res, query) {
   fs.writeFileSync(path.join(dir, name), buf);
   const id = folder ? `${folder}/${name}` : name;
   sendJson(res, 200, { id, name: rawName });
+}
+
+// ---- EXPORTS: readable without the app ------------------------------------
+// organiser-data.json stays the single truth. Everything under data/exports/ is
+// a rebuildable copy, written as a NEW dated file every time rather than
+// overwritten — so a hand-edit in Excel is never silently wiped, it's just
+// superseded by a file next to it.
+//
+// No .xlsx, no .docx: those are zipped folders of XML and writing them properly
+// means a library. CSV opens in Excel on a double-click; HTML opens in Word and
+// prints correctly. That is the whole trick that keeps the zero-dependency rule.
+function exportPath(rel) {
+  const parts = String(rel || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((seg) => seg.trim().replace(/[^\w.\-() ]/g, "_").replace(/^\.+/, "").slice(0, 60))
+    .filter(Boolean)
+    .slice(0, 4);
+  if (!parts.length) return null;
+  const p = path.normalize(path.join(EXPORT_DIR, parts.join("/")));
+  if (!p.startsWith(EXPORT_DIR + path.sep)) return null;
+  return p;
+}
+
+async function handleExport(req, res) {
+  let parsed = {};
+  try {
+    parsed = JSON.parse((await readBody(req)) || "{}");
+  } catch {
+    return sendJson(res, 400, { error: "bad_json" });
+  }
+  const rel = (parsed.path || "").toString();
+  const p = exportPath(rel);
+  if (!p) return sendJson(res, 400, { error: "bad_path", message: "That filename can't be used." });
+  const text = (parsed.content || "").toString();
+  if (text.length > 20 * 1024 * 1024) return sendJson(res, 413, { error: "too_large" });
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    // Excel reads a bare UTF-8 CSV as the system's legacy code page and turns
+    // Chinese characters (and anything accented) into rubbish. The three-byte
+    // BOM is what tells it otherwise. This is not optional.
+    const bom = parsed.bom ? "﻿" : "";
+    fs.writeFileSync(p, bom + text, "utf8");
+    return sendJson(res, 200, { ok: true, path: path.relative(DATA_DIR, p).split(path.sep).join("/"), full: p });
+  } catch (e) {
+    console.warn("[export] write failed:", e?.message || e);
+    return sendJson(res, 500, { error: "write_failed", message: "Couldn't write that file." });
+  }
 }
 
 function handleEvidenceFile(req, res, id) {
@@ -1579,6 +1761,21 @@ const server = http.createServer(async (req, res) => {
         /* leave empty */
       }
       return handleRecordUnderstand(res, parsed);
+    }
+
+    if (pathname === "/api/timetable" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleTimetable(res, parsed);
+    }
+
+    if (pathname === "/api/export" && req.method === "POST") {
+      return handleExport(req, res);
     }
 
     if (pathname === "/api/route" && req.method === "POST") {

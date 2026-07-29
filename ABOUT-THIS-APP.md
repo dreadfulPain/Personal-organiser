@@ -56,7 +56,7 @@ One question per room, so no page becomes a wall.
 | Tab | What it answers |
 |---|---|
 | **Home** | What needs me right now? |
-| **Day** | How does today lay out in time? |
+| **Day** | What's my plan for today? (already built when you open it) |
 | **Week** | What's coming in the next seven days? |
 | **Month** | How do things sit next to each other? (a real calendar grid) |
 | **Class** | Where does the whole class stand on each skill? |
@@ -104,8 +104,45 @@ Every page has a capture box, so you never navigate somewhere to add something.
   else's "done yet?" is your first warning). When it's due, a **real Windows
   notification** appears — even with the browser closed. Each fires once. No
   nagging.
+- **Never during a lesson.** Reminders hold while you're inside anything your
+  timetable calls fixed, and land the moment it ends. If several piled up they
+  arrive as *one* notification at the next gap, not a burst. A reminder you
+  can't act on at 10:15 only teaches you to ignore reminders.
+- **Importance gets a clock.** Something marked "matters a lot" that's sat
+  untouched for ten days gets one quiet nudge, then goes silent for good.
+- **"Not now" is one button.** No menu to pick from while you're busy — the app
+  works out the next moment you're actually free and brings it back then.
+- **A count of how many times you've pushed something back**, shown as a plain
+  number. At three, three exits appear: **drop it**, **make it soft** (keeps the
+  task, stops the pinging), or **break it up** (the pieces inherit its date,
+  tags, goal and standard). Three pushes usually means *too big*, not
+  *unimportant* — deleting would be the wrong move.
 - **Past a deadline** — one missed deadline at a time, with three ways out: new
   date, make it soft, or handled. Never a red graveyard.
+
+### The shape of the day
+- **Your week, once a term.** Paste your timetable in any layout and the local
+  AI turns it into rows — **shown as an editable table before anything saves**,
+  so you fix what's wrong. Or import a `.ics` calendar, which is read by plain
+  code with no AI involved at all (term dates are facts; a fact shouldn't arrive
+  through a guess). Anything unreadable is *named*, never silently dropped.
+- **Fixed vs soft.** A fixed block is a fact and holds reminders back. A soft
+  block is the app guessing ("usually home by five") and is drawn dashed — it
+  never silences anything. If those two ever looked the same, the plan would
+  stop being trustworthy.
+- **A plan that's already made.** Open the Day tab and today is laid out: fixed
+  blocks first, then the gaps filled — hard deadlines due today first, then
+  effort matched to the size of the gap, then whatever else matters. Move
+  things, drop things, add things, then press **"That's my day"**. Nothing locks
+  after that; days move.
+- **About two thirds full, on purpose.** A day packed wall to wall collapses at
+  the first interruption, and then the plan is a liar.
+- **"Needs a proper slot."** A draining task isn't crammed into fifteen minutes.
+  If today has no long enough stretch it says so, and offers to find the first
+  day that does.
+- **It learns how long things take without ever asking.** Starting guesses come
+  from the effort you already set; ticking something off inside its slot is a
+  free measurement. Every learned duration is a *guess* and displays as one.
 
 ### The work side
 - **Students** — one-line records (under 30 seconds), seen through filters: one
@@ -123,6 +160,19 @@ Every page has a capture box, so you never navigate somewhere to add something.
   embedded. Plus **"Get ready for parent meetings"**: a checklist flagging
   unconfirmed AI records, skills whose newest evidence isn't confirmed, gaps,
   and levels getting old — then **export all students** in one go.
+- **Before a meeting, unasked.** Put a meeting on your week and name who it's
+  about, and Home starts telling you what you *actually* have for those people
+  days ahead — separately listing what you have and what you haven't. It is
+  careful about the difference between "nothing to raise" and "nothing written
+  down", because those look identical from the outside and only one of them is
+  fine. Every gap it names turns into a real task in one tap, dated to land the
+  day before.
+- **Files you can open without the app.** "Save into folders" writes a dated
+  spreadsheet of results (CSV, with the byte marker Excel needs or Chinese
+  characters come out as rubbish) and a page per student that opens in Word —
+  into `data/exports/`, in folders you can navigate in Explorer. Each export is
+  a **new dated file**, never an overwrite, so nothing you've hand-edited is
+  wiped.
 - **Portfolio** — the UK Teachers' Standards (editable), evidence per point,
   its own to-do list per standard, and a one-tap "done → evidence" bridge.
 - **People** — colleagues and parents: how to reach them, what they can
@@ -156,7 +206,9 @@ Every page has a capture box, so you never navigate somewhere to add something.
   damage: prepped work that vanishes until someone asks. The system holds it and
   pings before it's late.
 - **Parent meetings stop being a scramble.** Evidence accumulates as a by-product
-  of ordinary logging, and the export assembles itself.
+  of ordinary logging, and the export assembles itself. More to the point, the
+  app tells you days ahead when it *hasn't* — so "I thought I was on top of my
+  docs" can't turn into standing in front of a parent with nothing.
 - **Standards stop being a September panic.** Evidence lands as you go.
 - **You can check a feeling against facts** — whether work really is landing on
   you, or whether you're assuming it.
@@ -177,12 +229,26 @@ Every page has a capture box, so you never navigate somewhere to add something.
 
 - **Reminders reach one computer** — the one running the app. Nothing reaches
   your phone. That's the price of no cloud.
-- **Reminders fire from deadlines and unfinished things**, not from importance
-  alone. A task marked "matters a lot" with no date won't ping.
+- **Importance pings once, and only once.** A task marked "matters a lot" with
+  no date gets a single nudge after ten quiet days, then never asks again. It
+  still sits high on the shortlist.
+- **The day plan is only as good as your timetable.** Until you've set your week
+  up, there are no gaps to plan into, quiet time can't work out when a lesson
+  is, and "not now" falls back to a plain two hours.
+- **Estimates are guesses and always say so.** They start from the effort you
+  set and sharpen slowly. They will be wrong sometimes; the plan is built to
+  survive that by staying two-thirds full.
 - **The AI is a local model.** It's good at sorting and extraction, not perfect —
   which is exactly why the check-back and the "check me" chips exist.
 - **Sync isn't live.** Close it on one machine, let the folder sync, open it on
   the other.
+- **Exports are copies, not the truth.** `organiser-data.json` is the real thing.
+  If you hand-edit an exported spreadsheet, the next export sits beside it as a
+  new dated file rather than overwriting you — but your edit doesn't come back
+  into the app.
+- **No real `.xlsx` or `.docx`.** Both are zipped folders of XML and writing them
+  properly would mean adding a dependency. CSV opens in Excel; HTML opens in
+  Word and prints correctly. That's a deliberate trade, not an oversight.
 - **Voice is switched off**, awaiting an in-house version. There's deliberately
   no cloud dictation.
 - **Student data:** it stays on your machine — but if the folder syncs, the notes
@@ -224,6 +290,7 @@ public/                    ← the screens
 data/organiser-data.json   ← everything you've written
 data/files/students/<ID>/  ← a student's attached work
 data/files/portfolio/<TS>/ ← evidence for each standard
+data/exports/              ← spreadsheets and pages you can open without the app
 data/backups/              ← automatic safety copies
 .env                       ← switches the AI on (and later, dictation)
 ```

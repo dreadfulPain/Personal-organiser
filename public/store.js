@@ -30,6 +30,8 @@
   const LS_PORTFOLIO = "organiser.portfolio.v1";
   const LS_CONTACTS = "organiser.contacts.v1";
   const LS_CONTACTCONFIG = "organiser.contactconfig.v1";
+  const LS_SCHEDULE = "organiser.schedule.v1";
+  const LS_SCHEDULECONFIG = "organiser.scheduleconfig.v1";
 
   let statusCb = null;
   let externalCb = null; // page refresh when the shared file changed elsewhere
@@ -37,7 +39,7 @@
   let pollTimer = null;
   let dirty = false;
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null };
 
   function emit(s) {
     if (statusCb) statusCb(s);
@@ -61,6 +63,8 @@
       portfolio: get(LS_PORTFOLIO, null),
       contacts: get(LS_CONTACTS, []),
       contactConfig: get(LS_CONTACTCONFIG, null),
+      schedule: get(LS_SCHEDULE, []),
+      scheduleConfig: get(LS_SCHEDULECONFIG, null),
     };
   }
   function writeLegacy(state) {
@@ -73,6 +77,8 @@
       localStorage.setItem(LS_PORTFOLIO, JSON.stringify(state.portfolio || null));
       localStorage.setItem(LS_CONTACTS, JSON.stringify(state.contacts || []));
       localStorage.setItem(LS_CONTACTCONFIG, JSON.stringify(state.contactConfig || null));
+      localStorage.setItem(LS_SCHEDULE, JSON.stringify(state.schedule || []));
+      localStorage.setItem(LS_SCHEDULECONFIG, JSON.stringify(state.scheduleConfig || null));
     } catch {
       /* storage may be full or blocked; ignore */
     }
@@ -81,12 +87,12 @@
   async function load() {
     if (!SERVER) {
       const data = readLegacy();
-      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig, portfolio: data.portfolio, contacts: data.contacts, contactConfig: data.contactConfig };
+      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig, portfolio: data.portfolio, contacts: data.contacts, contactConfig: data.contactConfig, schedule: data.schedule, scheduleConfig: data.scheduleConfig };
       emit({ mode: "preview", state: "preview" });
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
@@ -100,6 +106,8 @@
           portfolio: d.portfolio || null,
           contacts: d.contacts || [],
           contactConfig: d.contactConfig || null,
+          schedule: d.schedule || [],
+          scheduleConfig: d.scheduleConfig || null,
         };
         baseSavedAt = d.savedAt || null; // the version we're now working from
       }
@@ -120,7 +128,7 @@
     const haveLegacy =
       legacy.items.length > 0 || legacy.waiting.length > 0 || legacy.goals.length > 0 || legacy.records.length > 0;
     if (serverEmpty && haveLegacy) {
-      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig, portfolio: legacy.portfolio, contacts: legacy.contacts, contactConfig: legacy.contactConfig };
+      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig, portfolio: legacy.portfolio, contacts: legacy.contacts, contactConfig: legacy.contactConfig, schedule: legacy.schedule, scheduleConfig: legacy.scheduleConfig };
       migratedNote = "Brought your earlier items into your saved data file.";
       try {
         await fetch("/api/data", {
@@ -176,6 +184,8 @@
         portfolio: d.portfolio || null,
         contacts: d.contacts || [],
         contactConfig: d.contactConfig || null,
+        schedule: d.schedule || [],
+        scheduleConfig: d.scheduleConfig || null,
       };
       baseSavedAt = d.savedAt || null;
       writeLegacy(lastState);
@@ -188,7 +198,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 
@@ -224,6 +234,8 @@
             portfolio: d.data.portfolio || null,
             contacts: d.data.contacts || [],
             contactConfig: d.data.contactConfig || null,
+            schedule: d.data.schedule || [],
+            scheduleConfig: d.data.scheduleConfig || null,
           };
           baseSavedAt = d.data.savedAt || d.savedAt || baseSavedAt;
           writeLegacy(lastState);
@@ -281,6 +293,8 @@
       portfolio: lastState.portfolio || null,
       contacts: lastState.contacts || [],
       contactConfig: lastState.contactConfig || null,
+      schedule: lastState.schedule || [],
+      scheduleConfig: lastState.scheduleConfig || null,
     };
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -310,6 +324,8 @@
             portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
             contacts: Array.isArray(d.contacts) ? d.contacts : [],
             contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
+            schedule: Array.isArray(d.schedule) ? d.schedule : [],
+            scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
           });
         } catch {
           reject(new Error("That file doesn't look like an organiser backup."));

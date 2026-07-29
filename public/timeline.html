@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Today's timeline</title>
+    <title>Today's plan</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -14,12 +14,27 @@
         <h1>Today</h1>
         <p class="sub" id="tlDate"></p>
       </header>
+
+      <p id="tlStatus" class="status" hidden></p>
+
+      <!-- THE PLAN: already built when you get here. Adjust it, then accept it. -->
       <div id="timeline"></div>
+      <div id="dpAccept" class="dp-accept" hidden></div>
+      <section id="unplanned" class="dp-also" hidden></section>
+
+      <!-- THE WEEK'S SHAPE: a once-a-term job, folded away the rest of the time -->
+      <section class="setup-wrap">
+        <button type="button" id="setupToggle" class="link setup-toggle">set up my week</button>
+        <div id="setup" class="setup" hidden></div>
+      </section>
     </main>
 
     <script src="nav.js" defer></script>
     <script src="voice.js" defer></script>
     <script src="store.js" defer></script>
+    <script src="schedule.js" defer></script>
+    <script src="ics.js" defer></script>
+    <script src="priority.js" defer></script>
     <script src="capture.js" defer></script>
     <script src="timeline.js" defer></script>
   </body>

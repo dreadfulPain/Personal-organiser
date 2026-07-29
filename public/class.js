@@ -134,6 +134,7 @@
       box.appendChild(row);
     });
     $("#exportAllBtn").hidden = false;
+    $("#folderBtn").hidden = false;
   }
   async function exportAll() {
     setClStatus("Preparing everyone's summaries — a moment…");
@@ -163,6 +164,40 @@
     );
   }
 
+  // ----- into folders you can open without the app -----
+  // Mirrors data/files/ so the shape is guessable: results at the top, a page
+  // per student in the same folder their work samples already live in. Dated,
+  // so nothing you've hand-edited in Excel is ever overwritten.
+  async function saveIntoFolders() {
+    const X = OrganiserExport;
+    setClStatus("Writing the files…");
+    const day = X.stamp();
+    const written = [];
+    const failed = [];
+
+    const csv = X.resultsCsv(records, config);
+    const r1 = await X.saveToFolder(`results-${day}.csv`, csv, { bom: true });
+    r1.ok ? written.push(r1.fallback ? "results (downloaded)" : r1.path) : failed.push(r1.message);
+
+    const withEvidence = (config.whoIds || []).filter((w) =>
+      records.some((r) => r.who === w && r.topic && !X.needsCheck(r))
+    );
+    for (const who of withEvidence) {
+      const s = await X.studentSection(who, records, config);
+      const html = X.docShell(`${who} — progress summary`, s.html);
+      const r = await X.saveToFolder(`students/${who}/comments-${day}.html`, html);
+      r.ok ? written.push(r.path || who) : failed.push(r.message);
+    }
+
+    const skipped = (config.whoIds || []).length - withEvidence.length;
+    setClStatus(
+      `Wrote ${written.length} file${written.length === 1 ? "" : "s"} into your data folder ✓` +
+        (skipped ? ` — ${skipped} student${skipped === 1 ? "" : "s"} had no confirmed evidence, so ${skipped === 1 ? "no page was" : "no pages were"} written.` : ".") +
+        (failed.length ? ` ${failed.length} couldn't be written: ${failed[0]}` : "") +
+        " Open data/exports/ to find them."
+    );
+  }
+
   async function init() {
     const data = await OrganiserStore.load();
     records = Array.isArray(data.records) ? data.records : [];
@@ -170,6 +205,7 @@
     if (config && config.title) $("#clTitle").textContent = "The class — " + config.title;
     $("#ckBtn").addEventListener("click", renderChecklist);
     $("#exportAllBtn").addEventListener("click", exportAll);
+    $("#folderBtn").addEventListener("click", saveIntoFolders);
     if (!config || !(config.topics || []).length || OrganiserStore.mode !== "file") {
       $("#ckBtn").hidden = true; // nothing to prepare until skills exist (and files need the server)
     }

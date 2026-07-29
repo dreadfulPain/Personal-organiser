@@ -153,5 +153,90 @@ ${inner}
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  window.OrganiserExport = { studentSection, staleTopics, oldTopics, oldCutoffISO, latestLevels, needsCheck, docShell, download };
+  // ---- exports you can open WITHOUT the app --------------------------------
+  // organiser-data.json stays the single truth. Everything below is a copy that
+  // gets rebuilt, written to data/exports/ in folders you can navigate in
+  // Windows Explorer without knowing this app exists.
+  //
+  // No .xlsx and no .docx on purpose: both are zipped folders of XML and writing
+  // them properly needs a library, which would break the zero-dependency rule
+  // for no real gain. CSV opens in Excel on a double-click. HTML opens in Word
+  // and prints correctly. That's the whole trick.
+  //
+  // Every write is a NEW dated file, never an overwrite — so if you hand-edit
+  // one in Excel, the next export sits beside it instead of wiping your work.
+  function stamp() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  // Excel's rules, not ours: quote anything with a comma, quote or newline, and
+  // double up internal quotes.
+  function csvCell(v) {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function toCsv(rows) {
+    return (rows || []).map((r) => (r || []).map(csvCell).join(",")).join("\r\n");
+  }
+
+  // Writes into data/exports/. Needs the server (file mode); in preview mode it
+  // falls back to a normal download so nothing is silently lost.
+  async function saveToFolder(relPath, content, opts) {
+    if (window.OrganiserStore && OrganiserStore.mode !== "file") {
+      download(relPath.split("/").pop(), content);
+      return { ok: true, fallback: true };
+    }
+    try {
+      const r = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: relPath, content, bom: !!(opts && opts.bom) }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, message: d.message || "Couldn't write that file." };
+      return { ok: true, path: d.path };
+    } catch {
+      return { ok: false, message: "Couldn't reach the app's file store." };
+    }
+  }
+
+  // One row per id per skill, with the level as BOTH the working number and the
+  // parent wording — so the spreadsheet is useful to you and safe to hand on.
+  function resultsCsv(records, config) {
+    const rows = [["id", "skill", "level", "in words", "dated", "from"]];
+    (config.whoIds || []).forEach((who) => {
+      const usable = (records || []).filter((r) => r.who === who && r.topic && !needsCheck(r));
+      const lv = latestLevels(usable);
+      (config.topics || []).forEach((topic) => {
+        const v = lv.get(topic);
+        rows.push([
+          who,
+          topic,
+          v ? v.level : "",
+          v ? parentWord(config, v.level) : "not assessed yet",
+          v ? (v.key || "").split("|")[0] : "",
+          v ? "confirmed evidence" : "",
+        ]);
+      });
+    });
+    return toCsv(rows);
+  }
+
+  window.OrganiserExport = {
+    studentSection,
+    staleTopics,
+    oldTopics,
+    oldCutoffISO,
+    latestLevels,
+    parentWord,
+    needsCheck,
+    docShell,
+    download,
+    toCsv,
+    csvCell,
+    saveToFolder,
+    resultsCsv,
+    stamp,
+  };
 })();

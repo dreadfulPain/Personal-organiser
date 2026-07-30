@@ -1689,6 +1689,14 @@ body {
 .ms-now.none {
   font-style: italic;
 }
+/* A level held by observation alone: stated, never scolded. It's the thinnest
+   thing in the folder while reading as the most confident. */
+.ms-now.nowork {
+  color: #8d6c39;
+}
+.sk-work.none {
+  color: #8d6c39;
+}
 .ms-btns {
   display: flex;
   gap: 6px;

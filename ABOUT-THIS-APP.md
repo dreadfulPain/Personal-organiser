@@ -169,8 +169,18 @@ Every page has a capture box, so you never navigate somewhere to add something.
   Recording the **same level again is a confirmation, not new evidence** — it
   stamps the record that's there instead of adding another, because six
   worksheets at an unchanged level aren't six pieces of evidence; the valuable
-  one is the piece that *moved* them. At the end it names who still has no
-  record for that skill at all.
+  one is the piece that *moved* them. **Attaching a photo always writes a
+  record, though**, even at an unchanged level: if you first judged a 3 from
+  watching and now you're holding written work at 3, that work is exactly what
+  an export needs, and it's dated the day you took it. At the end it names who
+  still has no record for that skill at all.
+- **Confidence is not evidence.** A level confirmed five times by watching reads
+  as your most settled judgement and is your thinnest — there's nothing to put
+  on the table. So "has a level" and "has work attached" are counted as two
+  different things everywhere: the marking row says *nothing on file* beside the
+  confirmation count (the one moment it's cheap to fix, since the book is in
+  your hand), and a student can't come up **ready** for a meeting on confident
+  levels alone.
 - **The whole trail, kept.** Every level ever recorded sits one tap behind the
   current one, dated, each linking to its own work. Nothing is overwritten and
   there's no way to delete it from these views — "here's September, here's now"

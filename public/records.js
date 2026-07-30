@@ -578,7 +578,11 @@
       if (!groups.has(v.level)) groups.set(v.level, []);
       groups.get(v.level).push(who);
     });
-    const order = config.levels.concat([...groups.keys()].filter((l) => !config.levels.includes(l)));
+    // Weakest-first, matching every other place a scale is shown. Storage runs
+    // strongest-first and always has; display must not, or two views of the same
+    // scale read in opposite directions and you stop trusting either.
+    const asc = OrganiserLevels.ascending(config);
+    const order = asc.concat([...groups.keys()].filter((l) => !asc.includes(l)));
     return order
       .filter((l) => groups.has(l))
       .map((l) => `${l}: ${groups.get(l).sort().join(", ")}`)
@@ -768,6 +772,13 @@
         (conf && conf > current.date ? ` · checked again ${friendlyDate(conf)}` : "") +
         (old ? " · getting old" : "");
       foot.appendChild(when);
+      // Confidence is not evidence. A level held for months by observation has
+      // nothing an export can show, so it says so rather than looking settled.
+      const work = L.workFor(records, who, skill);
+      const w = document.createElement("span");
+      w.className = "sk-work" + (work ? "" : " none");
+      w.textContent = work ? `${work} piece${work === 1 ? "" : "s"} of work on file` : "nothing on file to show";
+      foot.appendChild(w);
       if (history.length > 1) {
         const h = document.createElement("button");
         h.type = "button";

@@ -161,6 +161,36 @@
     if (!rec.confirmedOn.includes(iso)) rec.confirmedOn.push(iso);
     return rec;
   }
+  // Used when a confirmation turns out to have real work behind it after all —
+  // the stamp is replaced by a proper dated record, so the same day isn't
+  // counted twice in two places.
+  function removeConfirmation(rec, iso) {
+    if (!rec || !Array.isArray(rec.confirmedOn)) return rec;
+    rec.confirmedOn = rec.confirmedOn.filter((d) => d !== iso);
+    if (!rec.confirmedOn.length) delete rec.confirmedOn;
+    return rec;
+  }
+
+  // ---- confidence is not evidence ------------------------------------------
+  // A level confirmed five times by watching someone has no work behind it. It
+  // reads as your strongest judgement and is actually your thinnest: there is
+  // nothing to put in front of a parent. So "has a level" and "has work" are
+  // counted as two different things everywhere, and never collapsed into one.
+  function fileCount(rec) {
+    return Array.isArray(rec && rec.files) ? rec.files.length : 0;
+  }
+  function hasWork(rec) {
+    return fileCount(rec) > 0;
+  }
+  // Any work at all behind this person's judgement on this skill, at any level —
+  // an older photo still counts as something to show.
+  function workFor(records, who, skill) {
+    return historyFor(records, who, skill).reduce((n, r) => n + fileCount(r), 0);
+  }
+  // Skills where a level exists but nothing was ever attached to it.
+  function skillsWithoutWork(records, who, topics) {
+    return (topics || []).filter((t) => currentFor(records, who, t) && !workFor(records, who, t));
+  }
 
   function sortKey(r) {
     return (r.date || "") + "|" + (r.createdAt || "");
@@ -268,6 +298,11 @@
     lastConfirmed,
     asOf,
     addConfirmation,
+    removeConfirmation,
+    fileCount,
+    hasWork,
+    workFor,
+    skillsWithoutWork,
     historyFor,
     currentFor,
     classFor,

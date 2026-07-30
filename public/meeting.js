@@ -21,7 +21,13 @@
 (function () {
   "use strict";
 
+  // Needs schedule.js (to know when a meeting is), export.js (to know what's
+  // confirmed) and levels.js (to know what has work behind it). Load all three
+  // before this file. It deliberately does NOT fall back if one is missing:
+  // guessing "no work attached" when it simply couldn't look would put a false
+  // warning in front of someone, which is worse than the page not rendering.
   const S = () => window.OrganiserSchedule;
+  const LV = () => window.OrganiserLevels;
 
   function daysBetween(fromISO, toISO) {
     return Math.round((new Date(toISO + "T12:00:00") - new Date(fromISO + "T12:00:00")) / 86400000);
@@ -74,6 +80,12 @@
       unassessed: Math.max(0, topics.length - assessed),
       stale: X.staleTopics(who, records || [], config || { topics: [] }),
       old: X.oldTopics(who, records || [], config || { topics: [] }),
+      // CONFIDENCE IS NOT EVIDENCE. A level confirmed five times by watching
+      // someone has no work behind it — it reads as your strongest judgement
+      // and is your thinnest, because there is nothing to put on the table.
+      // So "has a level" and "has work" are counted separately, always.
+      work: mine.reduce((n, r) => n + LV().fileCount(r), 0),
+      noWork: LV().skillsWithoutWork(records || [], who, topics),
       // THE IMPORTANT ONE. Not "no problems found" — "nothing written down".
       empty: mine.length === 0,
     };
@@ -98,7 +110,25 @@
         `${r.confirmed} confirmed record${r.confirmed === 1 ? "" : "s"}` +
         (r.newestDate ? `, newest ${r.ageDays === 0 ? "today" : r.ageDays === 1 ? "yesterday" : `${r.ageDays} days ago`}` : ""),
     });
-    if (topics.length) have.push({ text: `${r.assessed} of ${topics.length} skill${topics.length === 1 ? "" : "s"} has evidence behind it` });
+    if (topics.length) have.push({ text: `${r.assessed} of ${topics.length} skill${topics.length === 1 ? "" : "s"} has a level` });
+    // Stated as its own fact, because it's the one an export actually needs.
+    if (r.work) have.push({ text: `${r.work} piece${r.work === 1 ? "" : "s"} of work attached` });
+
+    // Levels resting on observation alone. Not nothing — you can still talk
+    // from the note — but there'd be nothing to put in front of anyone.
+    if (r.assessed && !r.work) {
+      missing.push({
+        text: "every level is from watching, with no work attached — there'd be nothing to show",
+        blocking: true,
+        task: `Get a piece of ${r.who}'s work on file`,
+      });
+    } else if (r.noWork.length) {
+      missing.push({
+        text: `${r.noWork.length} skill${r.noWork.length === 1 ? "" : "s"} judged with no work attached (${r.noWork.slice(0, 3).join("; ")}${r.noWork.length > 3 ? "…" : ""})`,
+        blocking: false,
+        task: `Get work on file for ${r.who}`,
+      });
+    }
 
     if (!r.confirmed && r.unchecked) {
       missing.push({

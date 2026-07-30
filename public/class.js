@@ -176,15 +176,50 @@
     setSessionNote(current ? `${who} — moved to ${L.levelLabel(config, level)}. ✓` : `${who} — ${L.levelLabel(config, level)}. ✓`);
   }
 
-  // A photo is optional per student, never required, one tap away. It attaches
-  // to the newest record for this skill — creating one first if there isn't a
-  // judgement yet, so the picture is never orphaned.
+  // A photo is optional per student, never required, one tap away.
+  //
+  // BUT: A PHOTO IS ALWAYS NEW EVIDENCE, even at an unchanged level. If you
+  // first judged a 3 from watching someone and now you're holding written work
+  // at 3, that piece of work is exactly what a parent export needs — and the
+  // "same level, no new record" rule would have swallowed it into a
+  // confirmation stamp on an old record, which would also have mis-dated it
+  // (September's record, November's photo).
+  //
+  // So the photo always lands on a record dated TODAY. If the newest record
+  // isn't from today, one is created at the same level to hold it, and any
+  // confirmation stamped today is removed — the same day must not be counted
+  // both as a stamp and as a record.
   async function attachPhoto(who, skill, file) {
     const L = OrganiserLevels;
-    let rec = L.currentFor(records, who, skill);
-    if (!rec) {
+    const latest = L.currentFor(records, who, skill);
+    if (!latest) {
       setSessionNote(`Give ${who} a level first — then the photo has something to sit under.`);
       return;
+    }
+    const today = OrganiserExport.stamp();
+    let rec = latest;
+    if (latest.date !== today) {
+      const now = new Date().toISOString();
+      L.removeConfirmation(latest, today); // it's a real record now, not a stamp
+      rec = {
+        id: uid(),
+        who,
+        date: today,
+        type: (config.types || [])[0] || "assessment",
+        summary: `${skill} — ${L.levelLabel(config, latest.level)}, with work`,
+        detail: "",
+        extra: {},
+        topic: skill,
+        level: String(latest.level),
+        tags: [],
+        followUp: false,
+        taskId: "",
+        src: "hand",
+        checkedAt: now,
+        createdAt: now,
+        files: [],
+      };
+      records.unshift(rec);
     }
     sessionBusy = who;
     renderSession();
@@ -278,10 +313,14 @@
       name.className = "ms-who";
       name.textContent = who;
       const now = document.createElement("span");
-      now.className = "ms-now" + (current ? "" : " none");
+      const work = L.workFor(records, who, session.skill);
+      // "confirmed 3×" reads as strong. With no work behind it, it's the
+      // thinnest thing in the folder — so the two are always shown together,
+      // and this is the moment it's cheapest to fix: the book is in your hand.
+      now.className = "ms-now" + (current ? (work ? "" : " nowork") : " none");
       const conf = current ? L.confirmations(current).length : 0;
       now.textContent = current
-        ? `${current.level}${conf ? ` · confirmed ${conf}×` : ""}`
+        ? `${current.level}${conf ? ` · confirmed ${conf}×` : ""}${work ? ` · ${work} on file` : " · nothing on file"}`
         : "no record";
       row.append(name, now);
 
@@ -357,7 +396,11 @@
     const usable = mine.filter((r) => !OrganiserExport.needsCheck(r));
     const assessed = OrganiserExport.latestLevels(usable).size;
     const unassessed = (config.topics || []).length - assessed;
-    return { who, hasAny: mine.length > 0, unchecked, stale, old, unassessed };
+    // Confidence is not evidence: a level confirmed five times by watching has
+    // nothing to put on the table. Counted separately from "has a level".
+    const work = mine.reduce((n, r) => n + OrganiserLevels.fileCount(r), 0);
+    const noWork = OrganiserLevels.skillsWithoutWork(records, who, config.topics || []);
+    return { who, hasAny: mine.length > 0, unchecked, stale, old, unassessed, assessed, work, noWork };
   }
   function renderChecklist() {
     const box = $("#checklist");
@@ -373,9 +416,13 @@
       if (s.stale.length)
         issues.push(`newest evidence unconfirmed for ${s.stale.length} skill${s.stale.length === 1 ? "" : "s"} (${s.stale.slice(0, 3).join("; ")}${s.stale.length > 3 ? "…" : ""})`);
       if (s.hasAny && s.unassessed) issues.push(`${s.unassessed} skill${s.unassessed === 1 ? "" : "s"} not assessed yet`);
+      if (s.assessed && !s.work) issues.push("every level is from watching — no work attached to show");
+      else if (s.noWork.length) issues.push(`${s.noWork.length} skill${s.noWork.length === 1 ? "" : "s"} judged with no work attached`);
       if (s.old.length)
         issues.push(`level getting old for ${s.old.length} skill${s.old.length === 1 ? "" : "s"} (${s.old.slice(0, 3).join("; ")}${s.old.length > 3 ? "…" : ""}) — worth fresh evidence`);
-      const ready = s.hasAny && !s.unchecked && !s.stale.length;
+      // "Ready" now requires something to actually show, not just something
+      // to say. A folder of confident levels with no work in it isn't ready.
+      const ready = s.hasAny && !s.unchecked && !s.stale.length && !(s.assessed && !s.work);
       const readyNote = ready && s.old.length ? ` · some levels getting old (${s.old.length})` : "";
       row.innerHTML = `
         <span class="ck-who">${escapeHtml(who)}</span>

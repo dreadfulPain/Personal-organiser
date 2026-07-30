@@ -246,7 +246,12 @@ once on the Class tab, its description stays on screen while you judge, and it's
 one tap per child (a photo optional, one tap away). Recording the **same level
 again is a confirmation, not new evidence** — it stamps the record already there
 rather than piling up repeats, because the valuable piece is the one that
-*moved* them. Each skill draws as a **line of boxes with the student sitting in
+*moved* them. Attaching a photo always writes a record though, even at an
+unchanged level, dated the day you took it: work in your hand is the thing an
+export actually needs. And because a level confirmed five times by watching has
+nothing behind it to show, **work attached is counted separately from having a
+level** — the marking row says *nothing on file* right beside the confirmation
+count, and nobody reads as meeting-ready on confident levels alone. Each skill draws as a **line of boxes with the student sitting in
 one**, with the **target level marked** — on a four-point scale that's 3, not 4,
 and the scale is deliberately not a red-to-green ramp, because that makes
 reaching the goal look like a near-miss. Every level ever recorded stays one tap

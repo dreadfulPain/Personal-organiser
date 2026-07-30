@@ -26,6 +26,8 @@
   let aiAvailable = false; // can the AI sort a messy note into records?
   let aiFallback = false; // AI unreachable just now → show the manual controls
   let pending = null; // AI-understood records awaiting the glance-and-tap
+  let descSkill = ""; // which skill's descriptors are open in the config panel
+  let openHistory = ""; // "<who>|<skill>" whose full level trail is showing
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -97,6 +99,17 @@
     // The working scale — numbers for YOUR quick read (strongest first). The
     // parent words below are what an export says instead; both editable.
     levels: ["4", "3", "2", "1"],
+    // Names for those numbers, and WHICH ONE IS THE TARGET. On a four-point
+    // standards scale the target is 3, not 4 — most people are meant to sit
+    // there, and 4 means going beyond. Seeded onto the factory scale only;
+    // a scale you've edited or already used is never renamed underneath you.
+    levelNames: { 4: "Exceeding", 3: "Proficient", 2: "Developing", 1: "Beginning" },
+    targetLevel: "3",
+    // skill → { level → what that looks like }. Optional everywhere. Written
+    // once per skill and reused for years; never a per-task rubric.
+    descriptors: {},
+    // skill → [framework codes]. One statement in your words, many frameworks.
+    skillTags: {},
     levelParentWords: [
       "working beyond grade-level expectations",
       "meeting grade-level expectations",
@@ -125,6 +138,10 @@
       topics: list(c.topics),
       levels: list(c.levels, true),
       levelParentWords: list(c.levelParentWords),
+      levelNames: c.levelNames && typeof c.levelNames === "object" ? { ...c.levelNames } : {},
+      targetLevel: (c.targetLevel || "").toString().trim(),
+      descriptors: c.descriptors && typeof c.descriptors === "object" ? JSON.parse(JSON.stringify(c.descriptors)) : {},
+      skillTags: c.skillTags && typeof c.skillTags === "object" ? JSON.parse(JSON.stringify(c.skillTags)) : {},
       staleDays: Number(c.staleDays) > 0 ? Math.min(Math.round(Number(c.staleDays)), 365) : 60,
       note: (c.note || "").toString(),
     };
@@ -162,6 +179,7 @@
       out.profileFields = DEFAULT_CONFIG.profileFields.slice();
     if (!Object.keys(out.fields).length) out.fields = JSON.parse(JSON.stringify(DEFAULT_CONFIG.fields));
     if (out.note === OLD_DEFAULT_NOTE) out.note = DEFAULT_CONFIG.note; // factory text only — an edited note is never touched
+    OrganiserLevels.normalise(out); // names, target, descriptors, framework tags
     return out;
   }
 
@@ -545,16 +563,6 @@
   // A judgement is only ever the LATEST evidenced record — update where you have
   // evidence, nothing else moves. Both views are derived fresh from the same
   // records each time (describes, never scores; no tally kept anywhere).
-  function latestLevels(recs) {
-    const m = new Map(); // topic → { level, key }
-    recs.forEach((r) => {
-      if (!r.topic || !r.level) return;
-      const key = (r.date || "") + "|" + (r.createdAt || "");
-      const cur = m.get(r.topic);
-      if (!cur || key > cur.key) m.set(r.topic, { level: r.level, key });
-    });
-    return m;
-  }
   // One topic across everyone: each ID appears once, at their latest level,
   // grouped in the scale's own order (unknown levels trail).
   function topicDistribution(topic) {
@@ -666,52 +674,158 @@
       });
       box.appendChild(wrap);
     }
-    // Where they stand, from evidence only: the latest level per skill/standard.
-    // Each one is a button — tap it and the records below become that topic's
-    // evidence trail (the parent-meeting view: level, then the work behind it).
-    if (config.topics.length) {
-      const lv = latestLevels(records.filter((r) => r.who === who));
-      const noEvidence = config.topics.filter((t) => !lv.has(t)).length;
-      if (lv.size) {
-        const d = document.createElement("div");
-        d.className = "rec-levels-line";
-        const k = document.createElement("span");
-        k.className = "rec-extra-k";
-        k.textContent = "Levels so far: ";
-        d.appendChild(k);
-        const order = config.topics.concat([...lv.keys()].filter((t) => !config.topics.includes(t)));
-        order
-          .filter((t) => lv.has(t))
-          .forEach((t) => {
-            const b = document.createElement("button");
-            b.type = "button";
-            const lvDate = (lv.get(t).key || "").split("|")[0];
-            const isOld = lvDate && lvDate < OrganiserExport.oldCutoffISO(config);
-            b.className = "level-jump" + (filters.topic === t ? " active" : "") + (isOld ? " old" : "");
-            b.title =
-              (lvDate ? `latest evidence ${lvDate}` : "") +
-              (isOld ? " — getting old, worth fresh evidence" : "") +
-              (lvDate ? " — " : "") +
-              "tap to see the evidence behind this";
-            b.textContent = `${t} — ${lv.get(t).level}`;
-            b.addEventListener("click", () => {
-              filters.topic = filters.topic === t ? "" : t;
-              render();
-            });
-            d.appendChild(b);
-          });
-        if (noEvidence)
-          d.insertAdjacentHTML(
-            "beforeend",
-            `<span class="rec-noev">· ${noEvidence} with no evidence yet</span>`
-          );
-        box.appendChild(d);
-      }
+    // WHERE THEY STAND — the skill as a line, the levels as boxes, the person
+    // sitting in one of them. Every skill gets a row, including the ones with
+    // nothing in them: a skill with no evidence and a skill they're doing fine
+    // at must never look the same.
+    if (config.topics.length && config.levels.length) {
+      const extra = [...new Set(records.filter((r) => r.who === who && r.topic && r.level).map((r) => r.topic))].filter(
+        (t) => !config.topics.includes(t)
+      );
+      const wrap = document.createElement("div");
+      wrap.className = "sk-lines";
+      config.topics.concat(extra).forEach((skill) => wrap.appendChild(skillLine(who, skill)));
+      box.appendChild(wrap);
     }
     box.querySelector(".prof-toggle").addEventListener("click", () => {
       profileEdit = !profileEdit;
       render();
     });
+  }
+
+  // ONE SKILL, ONE PERSON — the row that the whole assessment layer is for.
+  //
+  // Drawn as a line of boxes with the person sitting in one, because a number in
+  // a list doesn't answer "where are they, and where should they be?" at a
+  // glance and a line does.
+  //
+  // Deliberately NOT a red-to-green gradient. The target is usually not the top
+  // of the scale, and colouring it as a temperature makes reaching the goal look
+  // like a near-miss. The target gets a quiet marker; the levels stay neutral.
+  function skillLine(who, skill) {
+    const L = OrganiserLevels;
+    const row = document.createElement("div");
+    row.className = "sk-row";
+    const current = L.currentFor(records, who, skill);
+    const history = L.historyFor(records, who, skill);
+    const target = L.targetLevel(config);
+
+    const head = document.createElement("div");
+    head.className = "sk-head";
+    const name = document.createElement("span");
+    name.className = "sk-name";
+    name.textContent = skill;
+    head.appendChild(name);
+    // One statement, many frameworks — the codes ride along on the skill.
+    L.skillTags(config, skill).forEach((t) => {
+      const chip = document.createElement("span");
+      chip.className = "sk-tag";
+      chip.textContent = t;
+      head.appendChild(chip);
+    });
+    row.appendChild(head);
+
+    const line = document.createElement("div");
+    line.className = "sk-boxes";
+    L.ascending(config).forEach((lv) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      const here = current && String(current.level) === lv;
+      b.className = "sk-box" + (here ? " here" : "") + (lv === target ? " target" : "");
+      b.textContent = lv;
+      const nm = L.levelName(config, lv);
+      const desc = L.descriptor(config, skill, lv);
+      b.title =
+        (nm ? `${lv} — ${nm}` : `Level ${lv}`) +
+        (lv === target ? " (the target)" : "") +
+        (desc ? `\n${desc}` : "") +
+        (here ? "\n\nTap to see the evidence behind this" : "");
+      if (here) {
+        b.addEventListener("click", () => {
+          filters.topic = filters.topic === skill ? "" : skill;
+          render();
+        });
+      } else {
+        b.disabled = true; // an empty box isn't a claim about anyone
+      }
+      line.appendChild(b);
+    });
+    row.appendChild(line);
+
+    const foot = document.createElement("div");
+    foot.className = "sk-foot";
+    if (current) {
+      // A level from four days ago and a level from four months ago are
+      // different facts, so the date is part of the answer, not a footnote.
+      const asOf = L.asOf(current);
+      const old = asOf && asOf < OrganiserExport.oldCutoffISO(config);
+      const when = document.createElement("span");
+      when.className = "sk-when" + (old ? " old" : "");
+      const conf = L.lastConfirmed(current);
+      when.textContent =
+        (L.levelName(config, current.level) ? L.levelName(config, current.level) + " · " : "") +
+        friendlyDate(current.date) +
+        (conf && conf > current.date ? ` · checked again ${friendlyDate(conf)}` : "") +
+        (old ? " · getting old" : "");
+      foot.appendChild(when);
+      if (history.length > 1) {
+        const h = document.createElement("button");
+        h.type = "button";
+        h.className = "link sk-hist";
+        const key = who + "|" + skill;
+        h.textContent = openHistory === key ? "hide the trail" : `${history.length} levels recorded`;
+        h.addEventListener("click", () => {
+          openHistory = openHistory === key ? "" : key;
+          render();
+        });
+        foot.appendChild(h);
+      }
+    } else {
+      const none = document.createElement("span");
+      none.className = "sk-none";
+      none.textContent = "no evidence yet";
+      foot.appendChild(none);
+    }
+    row.appendChild(foot);
+
+    if (openHistory === who + "|" + skill) row.appendChild(levelTrail(history));
+    return row;
+  }
+
+  // THE TRAIL — every level ever recorded, oldest change visible, nothing
+  // overwritten and nothing removable from here.
+  //
+  // Kept because the progression is the valuable part ("here's September, here's
+  // now" beats one current number in front of a parent), and because a
+  // questioned judgement needs the working, not just the conclusion. Storage is
+  // a non-issue: a photo of a page is a few hundred KB.
+  function levelTrail(history) {
+    const L = OrganiserLevels;
+    const box = document.createElement("div");
+    box.className = "sk-trail";
+    history.forEach((r, i) => {
+      const line = document.createElement("div");
+      line.className = "sk-trailrow";
+      const prev = history[i + 1];
+      const moved = prev && String(prev.level) !== String(r.level);
+      line.innerHTML =
+        `<span class="sk-tlvl">${escapeHtml(L.levelLabel(config, r.level))}</span>` +
+        `<span class="sk-tdate">${escapeHtml(friendlyDate(r.date))}</span>` +
+        (moved ? `<span class="sk-moved">moved from ${escapeHtml(String(prev.level))}</span>` : "") +
+        (L.confirmations(r).length ? `<span class="sk-tconf">confirmed again ${L.confirmations(r).length}×</span>` : "") +
+        `<span class="sk-tsum">${escapeHtml(r.summary || "")}</span>`;
+      (r.files || []).forEach((f) => {
+        const a = document.createElement("a");
+        a.className = "sk-tfile";
+        a.href = "/files/" + String(f.id).split("/").map(encodeURIComponent).join("/");
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = f.name;
+        line.appendChild(a);
+      });
+      box.appendChild(line);
+    });
+    return box;
   }
 
   // ----- render -----
@@ -1082,6 +1196,125 @@
     });
     areaLabel.appendChild(ta);
     area.appendChild(areaLabel);
+
+    // Names for the levels, and which one is the TARGET. The target is not the
+    // top: on a four-point scale most people are meant to sit at 3, and 4 means
+    // beyond the standard. Without saying which is which, a scale silently
+    // reads as "higher is better" and 3 looks like a near-miss.
+    if ((config.levels || []).length) {
+      const nameWrap = document.createElement("div");
+      nameWrap.className = "cb-field rec-cfg-wide";
+      nameWrap.innerHTML = `<span class="cb-lbl">Level names, and which level is the target (the one most people are meant to reach — usually not the top)</span>`;
+      const rows = document.createElement("div");
+      rows.className = "lvl-cfg";
+      OrganiserLevels.ascending(config).forEach((lv) => {
+        const row = document.createElement("label");
+        row.className = "lvl-cfg-row";
+        const tgt = document.createElement("input");
+        tgt.type = "radio";
+        tgt.name = "targetLevel";
+        tgt.checked = OrganiserLevels.isTarget(config, lv);
+        tgt.title = "Mark this level as the target";
+        tgt.addEventListener("change", () => {
+          config.targetLevel = lv;
+          persistRecords();
+          render();
+        });
+        const num = document.createElement("span");
+        num.className = "lvl-cfg-num";
+        num.textContent = lv;
+        const name = document.createElement("input");
+        name.type = "text";
+        name.placeholder = "name (optional)";
+        name.value = OrganiserLevels.levelName(config, lv);
+        name.addEventListener("change", (e) => {
+          if (!config.levelNames) config.levelNames = {};
+          const v = e.target.value.trim();
+          if (v) config.levelNames[lv] = v.slice(0, 40);
+          else delete config.levelNames[lv];
+          persistRecords();
+          render();
+        });
+        row.append(tgt, num, name);
+        rows.appendChild(row);
+      });
+      nameWrap.appendChild(rows);
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "link";
+      clear.textContent = "no target level";
+      clear.addEventListener("click", () => {
+        config.targetLevel = "";
+        persistRecords();
+        render();
+      });
+      nameWrap.appendChild(clear);
+      area.appendChild(nameWrap);
+    }
+
+    // Per-skill descriptors and framework codes. Both optional, both written
+    // ONCE per skill and reused for years — these are not per-task rubrics.
+    if ((config.topics || []).length && (config.levels || []).length) {
+      const dWrap = document.createElement("div");
+      dWrap.className = "cb-field rec-cfg-wide";
+      dWrap.innerHTML =
+        `<span class="cb-lbl">What each level looks like, per skill (optional)</span>` +
+        `<p class="rec-cfg-hint">Writing only the <strong>target</strong> box is a complete approach in its own right — a third of the work, and it's the one you read while judging. The levels either side can stay blank on purpose. Write these once; they last for years.</p>`;
+      const pick = document.createElement("select");
+      pick.className = "desc-pick";
+      pick.innerHTML =
+        `<option value="">— pick a skill —</option>` +
+        config.topics.map((t) => `<option value="${escapeHtml(t)}"${descSkill === t ? " selected" : ""}>${escapeHtml(t)}${OrganiserLevels.hasDescriptors(config, t) ? " ✓" : ""}</option>`).join("");
+      pick.addEventListener("change", (e) => {
+        descSkill = e.target.value;
+        render();
+      });
+      dWrap.appendChild(pick);
+      if (descSkill && config.topics.includes(descSkill)) dWrap.appendChild(descriptorEditor(descSkill));
+      area.appendChild(dWrap);
+    }
+  }
+
+  // One skill's descriptors + framework codes. Target level first and marked,
+  // because that's the one worth writing if only one gets written.
+  function descriptorEditor(skill) {
+    const box = document.createElement("div");
+    box.className = "desc-editor";
+    const target = OrganiserLevels.targetLevel(config);
+    const order = OrganiserLevels.ascending(config).slice().sort((a, b) => (a === target ? -1 : b === target ? 1 : 0));
+    order.forEach((lv) => {
+      const row = document.createElement("label");
+      row.className = "desc-row" + (lv === target ? " target" : "");
+      const head = document.createElement("span");
+      head.className = "desc-lvl";
+      head.textContent = OrganiserLevels.levelLabel(config, lv) + (lv === target ? "  ← the target" : "");
+      const ta = document.createElement("textarea");
+      ta.rows = lv === target ? 3 : 2;
+      ta.placeholder = lv === target ? "what reaching this skill looks like" : "optional — can stay blank";
+      ta.value = OrganiserLevels.descriptor(config, skill, lv);
+      ta.addEventListener("change", (e) => {
+        OrganiserLevels.setDescriptor(config, skill, lv, e.target.value);
+        persistRecords();
+        render();
+      });
+      row.append(head, ta);
+      box.appendChild(row);
+    });
+    // Framework codes: one statement in your words, many frameworks on top.
+    const tagRow = document.createElement("label");
+    tagRow.className = "cb-field";
+    tagRow.innerHTML = `<span class="cb-lbl">Also counts as (framework codes, comma-separated — a US standard, a national curriculum objective, an IB practice…)</span>`;
+    const tagIn = document.createElement("input");
+    tagIn.type = "text";
+    tagIn.value = OrganiserLevels.skillTags(config, skill).join(", ");
+    tagIn.addEventListener("change", (e) => {
+      OrganiserLevels.setSkillTags(config, skill, e.target.value.split(",").map((x) => x.trim()));
+      persistRecords();
+      render();
+    });
+    tagRow.appendChild(tagIn);
+    box.appendChild(tagRow);
+    return box;
   }
 
   async function init() {
@@ -1101,12 +1334,21 @@
       config.levelParentWords = DEFAULT_CONFIG.levelParentWords.slice();
       persistRecords();
     }
+    // Same guard, one step later: a factory numeric scale that has still never
+    // judged anything gains names and a target. Anything edited or used is left
+    // exactly as it is — renaming someone's levels underneath them would be
+    // worse than having no names at all.
+    if (OrganiserLevels.seedNames(config, records)) persistRecords();
 
     // Arriving from the Class checklist: ?who=S03&unchecked=1 lands filtered.
     const qs = new URLSearchParams(location.search);
     const qWho = qs.get("who");
     if (qWho && config.whoIds.includes(qWho)) filters.who = qWho;
     if (qs.get("unchecked") === "1") filters.unchecked = true;
+    // Arriving from a skill on the Class page: land ON that skill's evidence
+    // rather than at the door being told to find it again in the filter.
+    const qTopic = qs.get("topic");
+    if (qTopic && config.topics.includes(qTopic)) filters.topic = qTopic;
 
     // Can the AI sort a messy note? (And wake it, so the first sort isn't slow.)
     if (OrganiserStore.mode === "file") {

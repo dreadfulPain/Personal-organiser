@@ -1435,6 +1435,383 @@ body {
   margin: -6px 0 16px;
   font-size: 0.85rem;
 }
+
+/* ---- the skill line: one skill, one person ----
+   Deliberately NOT a red-to-green gradient. The target is usually not the top
+   of the scale, and a temperature ramp makes reaching the goal look like a
+   near-miss. Levels stay neutral; only the target carries a marker. */
+.sk-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.sk-row {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.sk-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.sk-name {
+  font-size: 0.95rem;
+}
+.sk-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--note);
+  color: var(--note-ink);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+.sk-boxes {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.sk-box {
+  flex: 1 1 0;
+  min-width: 40px;
+  padding: 10px 4px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: default;
+}
+.sk-box.here {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+/* The target marker: a quiet line under the box that is the goal. */
+.sk-box.target {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.sk-box:disabled {
+  opacity: 0.75;
+}
+.sk-foot {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.sk-when.old {
+  color: #8d6c39;
+}
+.sk-none {
+  font-style: italic;
+}
+.sk-trail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sk-trailrow {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+}
+.sk-tlvl {
+  font-weight: 600;
+  color: var(--ink);
+}
+.sk-tdate,
+.sk-tsum {
+  color: var(--ink-soft);
+}
+.sk-moved {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+}
+.sk-tconf {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.sk-tfile {
+  font-size: 0.78rem;
+}
+
+/* ---- one skill, the whole class ---- */
+.cl-boxes {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 6px;
+  align-items: stretch;
+}
+.cl-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.cl-cell.target {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.cl-celltop {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.cl-cellname {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+.cl-target {
+  font-size: 0.68rem;
+  color: var(--accent-dark);
+  text-transform: lowercase;
+}
+.cl-cellwhos {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.cl-who {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+}
+.cl-cellempty {
+  color: var(--ink-soft);
+}
+.cl-missing {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* ---- marking session ---- */
+.marking {
+  margin-bottom: 24px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.ms-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ms-skill {
+  flex: 1 1 240px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+/* The descriptor stays VISIBLE — the whole point of writing one is reading it
+   at the moment of judgement, and a tap away is too far. */
+.ms-desc {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.ms-desclvl {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-dark);
+  margin-bottom: 2px;
+}
+.ms-nodesc {
+  margin: 12px 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.ms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ms-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.ms-who {
+  min-width: 62px;
+  font-size: 0.95rem;
+}
+.ms-now {
+  min-width: 104px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.ms-now.none {
+  font-style: italic;
+}
+.ms-btns {
+  display: flex;
+  gap: 6px;
+}
+.ms-lvl {
+  min-width: 42px;
+  padding: 9px 0;
+  font: inherit;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ms-lvl:hover {
+  border-color: var(--accent);
+}
+.ms-lvl.here {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+.ms-lvl.target {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.ms-photo {
+  font-size: 0.8rem;
+  color: var(--accent-dark);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ms-photo.busy {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.ms-missing,
+.ms-note {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.ms-note {
+  color: var(--accent-dark);
+}
+
+/* ---- descriptors in the config panel ---- */
+.lvl-cfg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.lvl-cfg-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.lvl-cfg-num {
+  min-width: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.lvl-cfg-row input[type="text"] {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.rec-cfg-hint {
+  margin: 4px 0 8px;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.desc-pick {
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.desc-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.desc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.desc-lvl {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.desc-row.target .desc-lvl {
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.desc-row textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+.desc-row.target textarea {
+  border-color: var(--accent);
+}
 .pf-ev-tags {
   display: flex;
   gap: 8px;

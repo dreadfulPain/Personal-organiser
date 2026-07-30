@@ -150,9 +150,36 @@ Every page has a capture box, so you never navigate somewhere to add something.
   follow-ups. Tick "needs a follow-up" and it becomes a real task with a morning
   reminder. Details and profiles fill in **gradually** — never a form.
 - **Evidence and levels.** Paste your school's skills list and any record can
-  carry a skill and a level (numbers for your quick read). A person's "levels so
-  far" is always the *latest* evidence, never an average — and each is clickable
-  through to the records and the actual work behind it.
+  carry a skill and a level. A person's level is always the *latest* evidence,
+  never an average — and it's clickable through to the records and the actual
+  work behind it.
+- **The skill as a line.** Each skill is a row of boxes with the student sitting
+  in one, so "where are they, and where should they be?" is one glance instead
+  of a number in a list. The same row shape on the Class tab shows where
+  everyone sits. **The target level is marked** — on a four-point scale that's
+  3, not 4, and the scale is deliberately *not* coloured red-to-green, because a
+  temperature ramp makes reaching the goal look like a near-miss.
+- **Level names and descriptions, both optional.** Name the levels if you like.
+  For any skill you can write what each level looks like — and writing *only*
+  the target box is a complete approach in its own right, a third of the work.
+  Written once per skill and reused for years; never a per-task rubric.
+- **Marking a whole class in one pass.** Pick the skill once, its description
+  stays on screen while you judge, then one tap per child. A photo is optional
+  and one tap away. It saves as it goes, so closing the tab loses nothing.
+  Recording the **same level again is a confirmation, not new evidence** — it
+  stamps the record that's there instead of adding another, because six
+  worksheets at an unchanged level aren't six pieces of evidence; the valuable
+  one is the piece that *moved* them. At the end it names who still has no
+  record for that skill at all.
+- **The whole trail, kept.** Every level ever recorded sits one tap behind the
+  current one, dated, each linking to its own work. Nothing is overwritten and
+  there's no way to delete it from these views — "here's September, here's now"
+  is a far stronger parent conversation than one current number, and a
+  questioned judgement needs the working, not just the conclusion.
+- **One skill, many frameworks.** A skill is written in your words and carries
+  any number of framework codes — a US standard, a national curriculum
+  objective, an IB practice. Changing school means re-tagging, not rewriting,
+  and every piece of evidence underneath keeps working.
 - **Attach the work itself** — photos and files, stored in plain folders by
   student and by standard.
 - **Parent-meeting export** — one printable page per student in **parent

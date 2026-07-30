@@ -241,7 +241,21 @@ import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
 guess), a rough **effort** (quick / draining — handy for picking light things on a
 low-energy day), **category tags**, and whether a date is a **deadline** — shown
-lightly in the zones. Put a **meeting** on your week and name who it's about, and the home page
+lightly in the zones. Assessment is built around **marking a whole class in one pass**: pick the skill
+once on the Class tab, its description stays on screen while you judge, and it's
+one tap per child (a photo optional, one tap away). Recording the **same level
+again is a confirmation, not new evidence** — it stamps the record already there
+rather than piling up repeats, because the valuable piece is the one that
+*moved* them. Each skill draws as a **line of boxes with the student sitting in
+one**, with the **target level marked** — on a four-point scale that's 3, not 4,
+and the scale is deliberately not a red-to-green ramp, because that makes
+reaching the goal look like a near-miss. Every level ever recorded stays one tap
+behind the current one, dated and linked to its own work; nothing is ever
+overwritten. Level names, and a description of what each level looks like per
+skill, are both optional — and writing only the target box is a complete
+approach in its own right. A skill carries any number of framework codes, so
+changing school means re-tagging rather than rewriting.
+Put a **meeting** on your week and name who it's about, and the home page
 starts telling you — days ahead, without being asked — what you actually have
 for those people, listing what you have and what you haven't separately, and
 being careful about the difference between "nothing to raise" and "nothing

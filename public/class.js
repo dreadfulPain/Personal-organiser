@@ -10,21 +10,16 @@
   let config = null;
 
   const $ = (sel) => document.querySelector(sel);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  // This page used to be read-only. The marking session writes, so it saves the
+  // one half it owns — the merge-save keeps everything else intact.
+  function persist() {
+    OrganiserStore.save({ records });
+  }
   function escapeHtml(s) {
     return (s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
-  }
-
-  function latestByWho(topic) {
-    const byWho = new Map();
-    records.forEach((r) => {
-      if (r.topic !== topic || !r.level || !r.who) return;
-      const key = (r.date || "") + "|" + (r.createdAt || "");
-      const cur = byWho.get(r.who);
-      if (!cur || key > cur.key) byWho.set(r.who, { level: r.level, key });
-    });
-    return byWho;
   }
 
   function render() {
@@ -36,22 +31,30 @@
         from the evidence you log.</p>`;
       return;
     }
-    const levels = config.levels || [];
+    const L = OrganiserLevels;
     const evidenceCount = (topic) => records.filter((r) => r.topic === topic).length;
 
     config.topics.forEach((topic) => {
       const card = document.createElement("section");
       card.className = "cl-card";
-      const byWho = latestByWho(topic);
+      const byWho = L.classFor(records, topic);
       const n = evidenceCount(topic);
       const head = document.createElement("div");
       head.className = "cl-head";
       const a = document.createElement("a");
       a.className = "cl-topic";
-      a.href = "records.html";
-      a.title = "Open the evidence for this skill (pick it in the skill filter)";
+      // Carries the skill through, so you land ON its evidence rather than at
+      // the door being told to find it again in the filter.
+      a.href = "records.html?topic=" + encodeURIComponent(topic);
+      a.title = "Open the evidence behind this skill";
       a.textContent = topic;
       head.appendChild(a);
+      L.skillTags(config, topic).forEach((t) => {
+        const chip = document.createElement("span");
+        chip.className = "sk-tag";
+        chip.textContent = t;
+        head.appendChild(chip);
+      });
       if (n) {
         const c = document.createElement("span");
         c.className = "cl-count";
@@ -60,33 +63,280 @@
       }
       card.appendChild(head);
 
-      if (!byWho.size) {
-        card.insertAdjacentHTML("beforeend", `<p class="wk-free">no evidence yet</p>`);
-      } else {
-        const groups = new Map();
-        [...byWho.entries()].forEach(([who, v]) => {
-          if (!groups.has(v.level)) groups.set(v.level, []);
-          groups.get(v.level).push(who);
-        });
-        const order = levels.concat([...groups.keys()].filter((l) => !levels.includes(l)));
-        const lines = document.createElement("div");
-        lines.className = "cl-lines";
-        order
-          .filter((l) => groups.has(l))
-          .forEach((l) => {
-            const line = document.createElement("div");
-            line.className = "cl-line";
-            line.innerHTML = `<span class="level-chip">${escapeHtml(l)}</span> <span class="cl-whos">${groups
-              .get(l)
-              .sort()
-              .map((w) => escapeHtml(w))
-              .join(", ")}</span>`;
-            lines.appendChild(line);
-          });
-        card.appendChild(lines);
-      }
+      // ONE SKILL, THE WHOLE CLASS — the same row shape as a single student's,
+      // but each box holds the people sitting in it. The target is marked; the
+      // scale is never a red-to-green gradient, because the target usually
+      // isn't the top and colouring it that way makes the goal read as a miss.
+      const line = document.createElement("div");
+      line.className = "cl-boxes";
+      const target = L.targetLevel(config);
+      L.ascending(config).forEach((lv) => {
+        const cell = document.createElement("div");
+        cell.className = "cl-cell" + (lv === target ? " target" : "");
+        const whos = [...byWho.entries()].filter(([, r]) => String(r.level) === lv).map(([w]) => w).sort();
+        const nm = L.levelName(config, lv);
+        const top = document.createElement("div");
+        top.className = "cl-celltop";
+        top.innerHTML =
+          escapeHtml(lv) +
+          (nm ? `<span class="cl-cellname">${escapeHtml(nm)}</span>` : "") +
+          (lv === target ? `<span class="cl-target">target</span>` : "");
+        const body = document.createElement("div");
+        body.className = "cl-cellwhos";
+        body.innerHTML = whos.length
+          ? whos.map((w) => `<span class="cl-who">${escapeHtml(w)}</span>`).join("")
+          : `<span class="cl-cellempty">—</span>`;
+        cell.append(top, body);
+        line.appendChild(cell);
+      });
+      card.appendChild(line);
+
+      // Empty and unrecorded must never look the same.
+      const missing = (config.whoIds || []).filter((w) => !byWho.has(w));
+      const foot = document.createElement("p");
+      foot.className = "cl-missing";
+      foot.textContent = missing.length
+        ? `${missing.length} with no record for this skill: ${missing.join(", ")}`
+        : "everyone has a record for this skill";
+      card.appendChild(foot);
       wrap.appendChild(card);
     });
+  }
+
+  // ----- MARKING SESSION: 25 children in one pass, not 25 separate entries ---
+  //
+  // This is the feature everything else depends on. The cost of assessment was
+  // never the judging — it's the re-entering. A system that needs a separate
+  // trip through an add form per child does not survive a real week, and then
+  // none of the levels, descriptors or visuals have anything to draw.
+  //
+  // The shape: pick the skill ONCE, it stays. The descriptor for it sits next to
+  // the buttons and STAYS VISIBLE — that's the whole reason for writing one, and
+  // putting it behind a tap wastes it. Then it's one tap per child.
+  //
+  // It saves as it goes. Closing the tab mid-way loses nothing.
+  let session = null; // { skill }
+  let sessionBusy = ""; // which student's photo is uploading
+  let sessionNote = ""; // the last "✓" line — survives the re-render after it
+
+  function startSession(skill) {
+    session = { skill };
+    sessionNote = "";
+    renderSession();
+  }
+  function endSession() {
+    session = null;
+    renderSession();
+    render();
+  }
+
+  // A record is only written when the JUDGEMENT MOVED. Recording the same level
+  // again, with no new work attached, is a CONFIRMATION — it stamps the record
+  // that's already there instead of adding another one.
+  //
+  // Six worksheets at an unchanged level are not six pieces of evidence. The
+  // valuable piece is the one that moved them, and burying it under repeats
+  // makes the real evidence harder to find, not easier. So a confirmation is
+  // cheap, and it looks different.
+  function markLevel(who, skill, level) {
+    const L = OrganiserLevels;
+    const current = L.currentFor(records, who, skill);
+    const today = OrganiserExport.stamp();
+    if (current && String(current.level) === String(level)) {
+      L.addConfirmation(current, today);
+      persist();
+      renderSession();
+      setSessionNote(`${who} — still ${L.levelLabel(config, level)}. Noted, no new record. ✓`);
+      return;
+    }
+    const now = new Date().toISOString();
+    const rec = {
+      id: uid(),
+      who,
+      date: today,
+      type: (config.types || [])[0] || "assessment",
+      summary: current
+        ? `${skill} — now ${L.levelLabel(config, level)} (was ${current.level})`
+        : `${skill} — ${L.levelLabel(config, level)}`,
+      detail: "",
+      extra: {},
+      topic: skill,
+      level: String(level),
+      tags: [],
+      followUp: false,
+      taskId: "",
+      src: "hand", // you judged it in front of the work — nothing to double-check
+      checkedAt: now,
+      createdAt: now,
+      files: [],
+    };
+    records.unshift(rec);
+    persist();
+    renderSession();
+    setSessionNote(current ? `${who} — moved to ${L.levelLabel(config, level)}. ✓` : `${who} — ${L.levelLabel(config, level)}. ✓`);
+  }
+
+  // A photo is optional per student, never required, one tap away. It attaches
+  // to the newest record for this skill — creating one first if there isn't a
+  // judgement yet, so the picture is never orphaned.
+  async function attachPhoto(who, skill, file) {
+    const L = OrganiserLevels;
+    let rec = L.currentFor(records, who, skill);
+    if (!rec) {
+      setSessionNote(`Give ${who} a level first — then the photo has something to sit under.`);
+      return;
+    }
+    sessionBusy = who;
+    renderSession();
+    try {
+      const folder = "students/" + (who || "_unfiled");
+      const r = await fetch("/api/upload?name=" + encodeURIComponent(file.name) + "&folder=" + encodeURIComponent(folder), {
+        method: "POST",
+        body: file,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setSessionNote(d.message || "Couldn't save that file.");
+        return;
+      }
+      if (!rec.files) rec.files = [];
+      rec.files.push({ id: d.id, name: d.name, addedAt: new Date().toISOString() });
+      persist();
+      setSessionNote(`Work attached for ${who}. ✓`);
+    } catch {
+      setSessionNote("Couldn't save that file just now.");
+    } finally {
+      sessionBusy = "";
+      renderSession();
+    }
+  }
+
+  function setSessionNote(msg) {
+    sessionNote = msg || "";
+    const el = $("#msNote");
+    if (!el) return;
+    el.textContent = sessionNote;
+    el.hidden = !sessionNote;
+  }
+
+  function renderSession() {
+    const box = $("#marking");
+    if (!box) return;
+    if (!session) {
+      box.hidden = true;
+      box.innerHTML = "";
+      $("#msBtn").hidden = !(config && (config.topics || []).length && (config.levels || []).length);
+      return;
+    }
+    const L = OrganiserLevels;
+    box.hidden = false;
+    $("#msBtn").hidden = true;
+    box.innerHTML = "";
+
+    const head = document.createElement("div");
+    head.className = "ms-head";
+    const pick = document.createElement("select");
+    pick.className = "ms-skill";
+    pick.innerHTML = config.topics
+      .map((t) => `<option value="${escapeHtml(t)}"${t === session.skill ? " selected" : ""}>${escapeHtml(t)}</option>`)
+      .join("");
+    pick.addEventListener("change", (e) => {
+      session.skill = e.target.value;
+      renderSession();
+    });
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "btn ghost";
+    done.textContent = "done";
+    done.addEventListener("click", endSession);
+    head.append(pick, done);
+    box.appendChild(head);
+
+    // THE DESCRIPTOR, VISIBLE. Not behind a tap — the point of writing it is
+    // reading it at the moment of judgement.
+    const jt = L.judgingText(config, session.skill);
+    if (jt) {
+      const d = document.createElement("div");
+      d.className = "ms-desc";
+      d.innerHTML = `<span class="ms-desclvl">${escapeHtml(jt.name || jt.level)} looks like</span> ${escapeHtml(jt.text)}`;
+      box.appendChild(d);
+    } else {
+      const d = document.createElement("p");
+      d.className = "ms-nodesc";
+      d.innerHTML = `No description written for this skill yet — <a href="records.html">you can add one</a>, or just judge from the work.`;
+      box.appendChild(d);
+    }
+
+    const target = L.targetLevel(config);
+    const list = document.createElement("div");
+    list.className = "ms-list";
+    (config.whoIds || []).forEach((who) => {
+      const current = L.currentFor(records, who, session.skill);
+      const row = document.createElement("div");
+      row.className = "ms-row";
+      const name = document.createElement("span");
+      name.className = "ms-who";
+      name.textContent = who;
+      const now = document.createElement("span");
+      now.className = "ms-now" + (current ? "" : " none");
+      const conf = current ? L.confirmations(current).length : 0;
+      now.textContent = current
+        ? `${current.level}${conf ? ` · confirmed ${conf}×` : ""}`
+        : "no record";
+      row.append(name, now);
+
+      const btns = document.createElement("span");
+      btns.className = "ms-btns";
+      L.ascending(config).forEach((lv) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        const here = current && String(current.level) === lv;
+        b.className = "ms-lvl" + (here ? " here" : "") + (lv === target ? " target" : "");
+        b.textContent = lv;
+        b.title = here ? "Same as before — records a check, not new evidence" : L.levelLabel(config, lv);
+        b.addEventListener("click", () => markLevel(who, session.skill, lv));
+        btns.appendChild(b);
+      });
+      row.appendChild(btns);
+
+      if (OrganiserStore.mode === "file") {
+        const lab = document.createElement("label");
+        lab.className = "ms-photo" + (sessionBusy === who ? " busy" : "");
+        lab.title = "Attach a photo of the work (optional)";
+        lab.textContent = sessionBusy === who ? "…" : "photo";
+        const inp = document.createElement("input");
+        inp.type = "file";
+        inp.accept = "image/*";
+        inp.hidden = true;
+        inp.addEventListener("change", (e) => {
+          const f = e.target.files && e.target.files[0];
+          if (f) attachPhoto(who, session.skill, f);
+          e.target.value = "";
+        });
+        lab.appendChild(inp);
+        row.appendChild(lab);
+      }
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+
+    // Show what's MISSING, not just what's there — the same principle as the
+    // meeting panel. Nothing recorded and nothing wrong must never look alike.
+    const byWho = L.classFor(records, session.skill);
+    const missing = (config.whoIds || []).filter((w) => !byWho.has(w));
+    const foot = document.createElement("p");
+    foot.className = "ms-missing";
+    foot.textContent = missing.length
+      ? `${missing.length} still with no record for this skill: ${missing.join(", ")}`
+      : "everyone has a record for this skill ✓";
+    box.appendChild(foot);
+
+    const note = document.createElement("p");
+    note.className = "ms-note";
+    note.id = "msNote";
+    note.textContent = sessionNote;
+    note.hidden = !sessionNote;
+    box.appendChild(note);
   }
 
   // ----- meeting prep: the readiness checklist + export-all -----
@@ -206,10 +456,18 @@
     $("#ckBtn").addEventListener("click", renderChecklist);
     $("#exportAllBtn").addEventListener("click", exportAll);
     $("#folderBtn").addEventListener("click", saveIntoFolders);
+    $("#msBtn").addEventListener("click", () => startSession((config.topics || [])[0] || ""));
+    OrganiserStore.onExternalChange((state) => {
+      records = Array.isArray(state.records) ? state.records : records;
+      config = state.recordConfig || config;
+      renderSession();
+      render();
+    });
     if (!config || !(config.topics || []).length || OrganiserStore.mode !== "file") {
       $("#ckBtn").hidden = true; // nothing to prepare until skills exist (and files need the server)
     }
     render();
+    renderSession();
   }
 
   init();

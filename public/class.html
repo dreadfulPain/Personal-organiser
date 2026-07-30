@@ -16,6 +16,14 @@
           evidence, in words. Tap a skill to see the records behind it.</p>
       </header>
 
+      <!-- MARKING SESSION: the whole class against one skill, one pass. Pick the
+           skill once, read its description while you judge, one tap per child.
+           Saves as it goes, so closing the tab mid-way loses nothing. -->
+      <div class="cl-tools">
+        <button id="msBtn" class="btn" type="button" hidden>Mark a skill for the whole class</button>
+      </div>
+      <section id="marking" class="marking" hidden></section>
+
       <!-- MEETING PREP: the readiness checklist + one-click export of everyone -->
       <div class="cl-tools">
         <button id="ckBtn" class="btn ghost" type="button">Get ready for parent meetings</button>
@@ -35,6 +43,7 @@
     <script src="store.js" defer></script>
     <script src="capture.js" defer></script>
     <script src="export.js" defer></script>
+    <script src="levels.js" defer></script>
     <script src="class.js" defer></script>
   </body>
 </html>

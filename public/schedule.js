@@ -73,6 +73,13 @@
     minGapMinutes: 10,
     // How many days before a meeting the app starts saying what you have.
     meetingLeadDays: 5,
+    // Work owed to a block: how far ahead tasks are made, when they ping, and
+    // what they're called. A week out, not a term out — a repeating lesson
+    // would otherwise make 180 identical tasks. All three are yours to change;
+    // "{block}" is just where the block's own label goes.
+    prepHorizonDays: 7,
+    prepRemindAt: "17:00",
+    prepTitle: "Plan: {block}",
     plans: {}, // iso date → { builtAt, acceptedAt, slots:[], dropped:[] }
     learned: {}, // effort key → observed minutes (a SOFT assumption, always)
   };
@@ -94,6 +101,10 @@
     if (g >= 0 && g <= 120) out.minGapMinutes = Math.round(g);
     const lead = Number(c.meetingLeadDays);
     if (lead >= 0 && lead <= 60) out.meetingLeadDays = Math.round(lead);
+    const horizon = Number(c.prepHorizonDays);
+    if (horizon >= 1 && horizon <= 28) out.prepHorizonDays = Math.round(horizon);
+    if (toMin(c.prepRemindAt) !== null) out.prepRemindAt = c.prepRemindAt;
+    if (typeof c.prepTitle === "string" && c.prepTitle.trim()) out.prepTitle = c.prepTitle.trim().slice(0, 80);
     if (c.plans && typeof c.plans === "object") out.plans = c.plans;
     if (c.learned && typeof c.learned === "object") out.learned = c.learned;
     return out;
@@ -125,6 +136,14 @@
       about: Array.isArray(b.about) ? b.about.map((x) => String(x).trim()).filter(Boolean) : [],
       // Whole day unavailable (a holiday, an INSET day). Nothing is planned into it.
       blocksDay: !!b.blocksDay,
+      // DOES THIS BLOCK NEED WORK DOING BEFORE IT? Off by default, always —
+      // switching it on for everything would bury you, and most blocks (a
+      // break, a duty, a meeting someone else runs) need nothing.
+      // leadDays: how far ahead it should be ready. 1 = by the end of the day
+      // before.
+      prep: b.prep && typeof b.prep === "object" && b.prep.on
+        ? { on: true, leadDays: Math.max(0, Math.min(14, Math.round(Number(b.prep.leadDays)) || 1)) }
+        : { on: false, leadDays: 1 },
       source: ["hand", "paste", "ics", "learned"].includes(b.source) ? b.source : "hand",
       note: (b.note || "").toString().trim(),
     };
@@ -261,7 +280,127 @@
     return c;
   }
 
+  // ---- WORK THAT'S OWED TO A BLOCK ------------------------------------------
+  //
+  // THE GAP THIS CLOSES: the app can only track what got captured. A lesson that
+  // exists on your timetable but was never typed in as a task is invisible to
+  // every safety net here — it has no deadline, it isn't an unfinished loop, and
+  // nobody is waiting on it. So the thing that actually goes wrong (turning up
+  // to a lesson you never planned) was the one thing nothing could catch.
+  //
+  // Now that the schedule knows Monday period 3 exists, the task can come from
+  // the block instead of from your memory.
+  //
+  // THREE RULES THAT KEEP THIS FROM BECOMING A FLOOD:
+  //   1. Off by default, per block. You say which blocks you actually prepare —
+  //      some are shared with a partner, some run off a scheme of work, some
+  //      need nothing at all.
+  //   2. Generated a WEEK out, not a term out. A repeating lesson would
+  //      otherwise produce 180 identical tasks and drown everything else.
+  //   3. One per occurrence, keyed to the block and date, so opening the app
+  //      twice can't make two.
+  function occurrencesOf(block, fromISO, days) {
+    const out = [];
+    const start = new Date(fromISO + "T12:00:00");
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      const iso = isoOf(d);
+      if (appliesOn(block, iso)) out.push(iso);
+    }
+    return out;
+  }
+  function prepKey(blockId, iso) {
+    return blockId + "|" + iso;
+  }
+  function prepTitle(cfg, block) {
+    const c = normaliseConfig(cfg);
+    return c.prepTitle.replace("{block}", block.label);
+  }
+  // Returns what to add and what to quietly drop. Pure — the caller decides
+  // whether to save, so nothing is written just by looking.
+  function prepPlan(schedule, cfg, items, from) {
+    const c = normaliseConfig(cfg);
+    const blocks = normalise(schedule).filter((b) => b.prep && b.prep.on && !b.blocksDay);
+    const today = isoOf(from instanceof Date ? from : new Date());
+    const existing = new Map();
+    (items || []).forEach((it) => {
+      if (it && it.prepFor) existing.set(it.prepFor, it);
+    });
+
+    const add = [];
+    blocks.forEach((b) => {
+      occurrencesOf(b, today, c.prepHorizonDays).forEach((iso) => {
+        const key = prepKey(b.id, iso);
+        if (existing.has(key)) return;
+        // Due `leadDays` before the lesson — but never dated in the past, or it
+        // would arrive already overdue, which is a lie about what happened.
+        const due = addDaysISO(iso, -b.prep.leadDays);
+        const dueDate = due < today ? today : due;
+        add.push({
+          prepFor: key,
+          autoPrep: true,
+          title: prepTitle(c, b),
+          type: "task",
+          date: dueDate,
+          time: "",
+          // The lesson happens whether or not the work is done — that's a real
+          // external deadline, not a preference.
+          deadlineType: "hard",
+          importance: "normal",
+          effort: "medium",
+          tags: [],
+          whenText: `for ${b.label}, ${fmtTime(b.start)} on ${new Date(iso + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}`,
+          goalId: "",
+          standardId: "",
+          openLoop: false,
+          promisedTo: "",
+          remindAt: dueDate + "T" + c.prepRemindAt,
+          remindedAt: null,
+          lessonAt: iso + "T" + b.start,
+          done: false,
+        });
+      });
+    });
+
+    // Past and never touched → let it go. The lesson has happened; a pile of
+    // untouched auto-made tasks accusing you afterwards is exactly the wall the
+    // restart guard exists to prevent. Anything you DID engage with — snoozed,
+    // renamed, given your own date — is yours now and is kept.
+    const drop = [];
+    existing.forEach((it, key) => {
+      if (it.done) return;
+      const iso = key.split("|")[1] || "";
+      if (!iso || iso >= today) return;
+      const untouched = it.autoPrep && !it.snoozes && !it.edited;
+      if (untouched) drop.push(it);
+    });
+    return { add, drop };
+  }
+  function addDaysISO(iso, n) {
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return isoOf(d);
+  }
+  // When is the block this task was made for? Used to stop a prep task being
+  // pushed past the thing it's for.
+  function lessonMomentOf(item) {
+    if (!item || !item.lessonAt) return null;
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(item.lessonAt);
+    if (!m) return null;
+    const d = new Date(m[1] + "T12:00:00");
+    const mins = toMin(m[2]);
+    d.setHours(Math.floor(mins / 60), mins % 60, 0, 0);
+    return d;
+  }
+
   window.OrganiserSchedule = {
+    occurrencesOf,
+    prepKey,
+    prepTitle,
+    prepPlan,
+    lessonMomentOf,
+    addDaysISO,
     DEFAULT_CONFIG,
     normalise,
     normaliseBlock,

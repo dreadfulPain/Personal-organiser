@@ -119,6 +119,20 @@ Every page has a capture box, so you never navigate somewhere to add something.
   *unimportant* — deleting would be the wrong move.
 - **Past a deadline** — one missed deadline at a time, with three ways out: new
   date, make it soft, or handled. Never a red graveyard.
+- **Work a block owes you.** The app can only ever track what got captured — so
+  a lesson that exists on your timetable but was never typed in as a task was
+  invisible to every safety net here. Now any block can be marked *"I have to
+  get something ready before this one"*, and the task comes from the block
+  instead of from your memory: due a set number of days before, pinging the
+  evening it's due. Three guards keep it from becoming a flood — **off by
+  default per block** (plenty are shared, covered, or need nothing), generated
+  **a week ahead rather than a term** (a repeating lesson would otherwise make
+  180 identical tasks), and one per occurrence so opening the app twice can't
+  make two. **"Not now" won't push one past the thing it's for** — if there's no
+  free time left before it starts, it says so instead of agreeing to a "later"
+  that can't happen. And one whose moment has passed untouched is quietly let
+  go; anything you engaged with — pushed back, edited, ticked — is yours and
+  stays.
 
 ### The shape of the day
 - **Your week, once a term.** Paste your timetable in any layout and the local
@@ -259,6 +273,11 @@ Every page has a capture box, so you never navigate somewhere to add something.
   progress bar that can't fill.
 - It **can't make you do things.** It removes friction and forgetting; the doing
   is still yours.
+- It **can tell you a plan is missing. It cannot tell you a plan is thin** —
+  written, ticked, and not actually good enough. Only you, or a colleague
+  reading it, can judge that, and no amount of building changes it. The app can
+  hold you to a standard once you know what the standard is; it can't invent
+  one for you.
 
 ---
 

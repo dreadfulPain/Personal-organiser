@@ -260,6 +260,16 @@ overwritten. Level names, and a description of what each level looks like per
 skill, are both optional — and writing only the target box is a complete
 approach in its own right. A skill carries any number of framework codes, so
 changing school means re-tagging rather than rewriting.
+Any block on your week can be marked **"I have to get something ready before
+this one"** — then the task comes from the timetable instead of from your
+memory, due a set number of days before and pinging the evening it's due. This
+is the one gap nothing else could close: a lesson you never typed in was
+invisible to every other safety net, because it had no deadline, wasn't an
+unfinished loop, and nobody was waiting on it. It's **off by default per block**
+(plenty are shared or run off a scheme), generated **a week ahead not a term**,
+and one per occurrence. "Not now" won't push one past the lesson it's for — if
+there's no free time left before it starts it says so, rather than agreeing to a
+later that can't happen.
 Put a **meeting** on your week and name who it's about, and the home page
 starts telling you — days ahead, without being asked — what you actually have
 for those people, listing what you have and what you haven't separately, and

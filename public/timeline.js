@@ -45,6 +45,18 @@
   function persist() {
     OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg });
   }
+
+  // Make the tasks a block owes, and let go of the ones whose moment has passed.
+  // Idempotent: keyed to block+date, so running it on every open can't double up.
+  function syncPrep() {
+    const { add, drop } = S().prepPlan(schedule, cfg, items, new Date());
+    if (!add.length && !drop.length) return false;
+    const gone = new Set(drop.map((d) => d.id));
+    items = items.filter((i) => !gone.has(i.id));
+    add.forEach((t) => items.push({ ...t, id: uid(), createdAt: new Date().toISOString() }));
+    persist();
+    return true;
+  }
   function goalTitleById(id) {
     const g = goals.find((x) => x.id === id);
     return g ? g.title : "";
@@ -589,6 +601,9 @@
       <div class="bf-days">${DAY_LETTERS.map((l, i) => `<label class="bf-day"><input type="checkbox" value="${i}" ${b.days.includes(i) ? "checked" : ""} /><span>${l}</span></label>`).join("")}</div>
       <label class="bf-onedate">or one date only <input type="date" class="bf-date" value="${escapeHtml(b.date || "")}" /></label>
       <label class="bf-soft"><input type="checkbox" class="bf-softbox" ${b.soft ? "checked" : ""} /> this one's a guess, not a fixed thing</label>
+      <label class="bf-soft"><input type="checkbox" class="bf-prep" ${b.prep && b.prep.on ? "checked" : ""} /> I have to get something ready before this one</label>
+      <label class="bf-lead">ready by <input type="number" class="bf-leaddays" min="0" max="14" value="${b.prep && b.prep.leadDays ? b.prep.leadDays : 1}" /> day(s) before
+        <span class="bf-hint">A task appears for each time this comes round, a week ahead — not the whole term. Leave the box unticked for anything you don't prepare yourself.</span></label>
       <label class="bf-about">about (ids, comma separated — leave empty unless it's a meeting)
         <input type="text" class="bf-aboutbox" value="${escapeHtml((b.about || []).join(", "))}" /></label>
       <div class="su-row">
@@ -610,6 +625,10 @@
         days,
         date: form.querySelector(".bf-date").value,
         soft: form.querySelector(".bf-softbox").checked,
+        prep: {
+          on: form.querySelector(".bf-prep").checked,
+          leadDays: Number(form.querySelector(".bf-leaddays").value) || 1,
+        },
         about: form.querySelector(".bf-aboutbox").value.split(",").map((s) => s.trim()).filter(Boolean),
         source: "hand",
       });
@@ -621,9 +640,10 @@
       addingBlock = false;
       editingBlockId = null;
       persist();
+      syncPrep(); // switching it on should take effect now, not tomorrow
       renderSetup();
       render();
-      setSuStatus("Saved. ✓");
+      setSuStatus(made.prep.on ? "Saved — its tasks are on your list. ✓" : "Saved. ✓");
     });
     return form;
   }
@@ -647,7 +667,7 @@
       row.className = "su-brow" + (b.soft ? " soft" : "");
       row.innerHTML = `
         <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
-        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}</span>`;
+        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "link";
@@ -681,6 +701,7 @@
     goals = data.goals || [];
     schedule = data.schedule || [];
     cfg = data.scheduleConfig || null;
+    syncPrep();
     $("#setupToggle").addEventListener("click", () => {
       setupOpen = !setupOpen;
       renderSetup();

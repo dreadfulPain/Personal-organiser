@@ -1353,6 +1353,35 @@ body {
   color: var(--ink-soft);
   font-style: italic;
 }
+.su-preptag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+}
+.bf-lead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.bf-lead input[type="number"] {
+  width: 62px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.bf-hint {
+  flex: 1 0 100%;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
 
 /* ---- before a meeting ---- */
 .meetings {

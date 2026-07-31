@@ -186,6 +186,18 @@
     OrganiserStore.save({ items, waiting });
   }
 
+  // Blocks you marked as needing work get their tasks made here too. Keyed to
+  // block+date, so Home and the Day tab both running this can't make two.
+  function syncPrep() {
+    if (!window.OrganiserSchedule) return;
+    const { add, drop } = OrganiserSchedule.prepPlan(schedule, scheduleConfig, items, new Date());
+    if (!add.length && !drop.length) return;
+    const gone = new Set(drop.map((d) => d.id));
+    items = items.filter((i) => !gone.has(i.id));
+    add.forEach((t) => items.push({ ...t, id: uid(), createdAt: new Date().toISOString() }));
+    persist();
+  }
+
   // ---------- adding things ----------
   // A route-returned task item is already in the app's own shape; finish it for
   // the check-back (propose a reminder for open loops / hard deadlines).
@@ -547,6 +559,13 @@
   function itemEditor(it) {
     const card = document.createElement("div");
     card.className = "cb-card item-editor";
+    // Opening the editor on an auto-made task makes it YOURS. That matters:
+    // auto-made tasks whose moment has passed untouched are quietly let go, and
+    // anything you actually engaged with must survive that.
+    if (it.autoPrep && !it.edited) {
+      it.edited = true;
+      persist();
+    }
     card.innerHTML = `
       <div class="cb-head">
         <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
@@ -1203,6 +1222,16 @@
   }
   function notNow(it) {
     const next = OrganiserSchedule.nextFreeMoment(schedule, scheduleConfig, new Date());
+    // A task that exists FOR a block can't be pushed past that block — "later"
+    // would land after the thing it was for. nextFreeMoment already returns the
+    // EARLIEST free moment, so if even that is too late, there is no free time
+    // left before it starts. Saying so is more use than quietly agreeing to a
+    // "later" that can't happen.
+    const lesson = OrganiserSchedule.lessonMomentOf(it);
+    if (lesson && next.at >= lesson) {
+      setStatus("No free time left before this one starts — worth cutting it down, or going with what you've got.");
+      return; // no snooze recorded: you asked, the app said there's nowhere to put it
+    }
     it.snoozes = (Number(it.snoozes) || 0) + 1; // a plain count, kept on the task
     snoozeTo(it, fmtLocalDT(next.at), next.why);
   }
@@ -1751,6 +1780,7 @@
     contacts = data.contacts || [];
     schedule = data.schedule || [];
     scheduleConfig = data.scheduleConfig || null;
+    syncPrep(); // the tasks a block owes shouldn't wait for a visit to the Day tab
 
     $("#sortBtn").addEventListener("click", onSort);
     $("#dump").addEventListener("keydown", (e) => {

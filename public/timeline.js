@@ -29,6 +29,7 @@
   let cfg = null;
   let setupOpen = false;
   let pastedBlocks = null; // AI-read timetable rows, waiting to be checked
+  let unreadableRows = []; // rows it couldn't make sense of — shown, never dropped
   let addingBlock = false;
   let movingId = null; // which planned task is having its slot changed
 
@@ -465,6 +466,7 @@
       renderSetup();
     });
     if (addingBlock) $("#blockAdd").appendChild(blockForm());
+    if (unreadableRows.length) $("#ttReview").appendChild(unreadableBox());
     if (pastedBlocks) $("#ttReview").appendChild(reviewTable());
     renderBlockList();
   }
@@ -492,10 +494,18 @@
         return;
       }
       if (!d.blocks || !d.blocks.length) {
-        setSuStatus("Nothing in there looked like a timed block. Try adding one by hand to see the shape.");
+        unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
+        pastedBlocks = null;
+        renderSetup();
+        setSuStatus(
+          unreadableRows.length
+            ? `Nothing came out whole — but ${unreadableRows.length} row${unreadableRows.length === 1 ? " is" : "s are"} listed below so you can see what it stumbled on.`
+            : "Nothing in there looked like a timed block. Try adding one by hand to see the shape."
+        );
         return;
       }
       pastedBlocks = d.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+      unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
       setSuStatus("");
       renderSetup();
     } catch {
@@ -587,6 +597,31 @@
     });
     actions.append(save, cancel);
     box.appendChild(actions);
+    return box;
+  }
+
+  // A ROW THAT VANISHED IS INVISIBLE. You can check a table for what's WRONG,
+  // but never for what ISN'T THERE — so a row the reader couldn't parse is
+  // listed here rather than quietly dropped, with what tripped it up. Add it by
+  // hand, or fix the paste and read it again; either way you know it existed.
+  function unreadableBox() {
+    const box = document.createElement("div");
+    box.className = "su-unreadable";
+    box.innerHTML =
+      `<h3>${unreadableRows.length} row${unreadableRows.length === 1 ? "" : "s"} it couldn't read</h3>` +
+      `<p class="muted">Not saved and not thrown away — here they are so nothing goes missing without you seeing it.</p>` +
+      `<ul>${unreadableRows
+        .map((r) => `<li><span class="su-badlabel">${escapeHtml(r.label)}</span> <span class="su-badwhy">${escapeHtml(r.why)}</span>${r.start || r.end ? ` <span class="su-badtime">${escapeHtml(String(r.start || "?"))}–${escapeHtml(String(r.end || "?"))}</span>` : ""}</li>`)
+        .join("")}</ul>`;
+    const hide = document.createElement("button");
+    hide.type = "button";
+    hide.className = "link";
+    hide.textContent = "I've dealt with these";
+    hide.addEventListener("click", () => {
+      unreadableRows = [];
+      renderSetup();
+    });
+    box.appendChild(hide);
     return box;
   }
 

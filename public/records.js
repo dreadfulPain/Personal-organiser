@@ -28,6 +28,7 @@
   let pending = null; // AI-understood records awaiting the glance-and-tap
   let descSkill = ""; // which skill's descriptors are open in the config panel
   let openHistory = ""; // "<who>|<skill>" whose full level trail is showing
+  let openSource = ""; // which record is showing what it was translated from
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -604,9 +605,23 @@
   // One student, one self-contained page: parent words only, confirmed evidence
   // only, work images embedded. The status tells the teacher what was left out
   // AND which skills' newest evidence is still unconfirmed (freshness honesty).
-  async function exportParentSummary() {
+  // The single-student export goes through the same read as the class-wide
+  // ones. It's the only text in this app that leaves the building with a
+  // child's name on it, so it's the only place the cheap confirm isn't enough.
+  function exportParentSummary() {
     const who = filters.who;
     if (!who) return;
+    const host = $("#recStatus").parentElement || document.body;
+    const panel = OrganiserExport.reviewPanel([who], records, config, (go) => {
+      panel.remove();
+      if (go) doExportParentSummary(who);
+      else setStatus("Left it for now — nothing was written.");
+    });
+    host.insertBefore(panel, $("#recStatus").nextSibling);
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function doExportParentSummary(who) {
     setStatus("Preparing the export…");
     const s = await OrganiserExport.studentSection(who, records, config);
     OrganiserExport.download(`${who}-progress-${todayISO()}.html`, OrganiserExport.docShell(`${who} — progress summary`, s.html));
@@ -1006,7 +1021,14 @@
           ${fileCount ? `<span class="files-chip">${fileCount} piece${fileCount === 1 ? "" : "s"} of work</span>` : ""}
           ${(rec.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}
           ${fuLabel ? `<span class="rec-fu-chip ${open ? "open" : "closed"}">${fuLabel}</span>` : ""}
-          ${unchecked ? `<button class="ai-chip" type="button" title="The AI heard this from your words — worth a quick check">AI-sorted · check me</button>` : ""}
+          ${
+            unchecked
+              ? (rec.ungrounded || []).length
+                ? `<button class="ai-chip ungrounded" type="button" title="The ${escapeHtml((rec.ungrounded || []).join(" and "))} here isn't in the words you wrote — the AI produced it and I can't tell where from. Worth more than a glance.">check the ${escapeHtml((rec.ungrounded || []).join(" & "))} · not in your words</button>`
+                : `<button class="ai-chip" type="button" title="The AI heard this from your words — worth a quick check">AI-sorted · check me</button>`
+              : ""
+          }
+          ${rec.sourceText ? `<button class="src-chip" type="button" title="Show what this was translated from">original</button>` : ""}
         </div>
         <input class="rec-summary-input" type="text" value="${escapeHtml(rec.summary)}" aria-label="What happened (editable)" />
         ${filledExtra.length ? `<div class="rec-extra-line">${filledExtra.map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")}</div>` : ""}
@@ -1025,6 +1047,18 @@
         <button class="link rec-fu-btn" type="button">${rec.followUp ? "clear follow-up" : "needs follow-up"}</button>
         <button class="x-del" type="button" title="Delete record">×</button>
       </div>`;
+    const srcChip = row.querySelector(".src-chip");
+    if (srcChip)
+      srcChip.addEventListener("click", () => {
+        openSource = openSource === rec.id ? "" : rec.id;
+        render();
+      });
+    if (openSource === rec.id && rec.sourceText) {
+      const orig = document.createElement("div");
+      orig.className = "rec-source";
+      orig.innerHTML = `<span class="rec-extra-k">it read this:</span> ${escapeHtml(rec.sourceText)}`;
+      row.querySelector(".rec-main").appendChild(orig);
+    }
     if (expandedId === rec.id) row.querySelector(".rec-main").appendChild(detailArea(rec));
     const summaryInput = row.querySelector(".rec-summary-input");
     summaryInput.addEventListener("change", (e) => {

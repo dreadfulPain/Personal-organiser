@@ -199,6 +199,67 @@ export function looksNonEnglish(text) {
   return hits / s.length > 0.15;
 }
 
+// ---------------------------------------------------- GROUNDING (no model)
+//
+// The most common way a small model fails is not refusing — it's inventing
+// something plausible. A date that was never mentioned. A name nobody said. And
+// invention is exactly the failure you cannot spot by reading the output,
+// because plausible is what it's optimised for.
+//
+// So before a field that CLAIMS to come from your text gets filed, the code goes
+// and looks for it. No second model call: a search cannot hallucinate, costs
+// nothing, and can't fail in the same direction as the thing it's checking.
+//
+// What is NOT grounded, deliberately:
+//   - titles and summaries. Those are paraphrases; that's their job. Demanding
+//     a summary appear verbatim would fail on every correct answer.
+//   - ids, skills, levels. Those are checked against your lists instead, which
+//     is stronger than a text search.
+//
+// And when grounding FAILS, the value is not thrown away and not guessed at. It
+// gets filed wearing a louder chip, because it may well be right — it just
+// wasn't traceable, and you're the one who should decide.
+
+// Anything in the text that could legitimately have produced a date. We can't
+// verify WHICH date "Friday" meant, but we can verify that something date-shaped
+// was said at all — and "nothing date-shaped was said" is the case that matters.
+const DATE_HINT =
+  /\b(mon|tues?|wed|thur?s?|fri|sat|sun)(day)?\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\b(today|tonight|tomorrow|tmrw|yesterday|weekend|asap|eod|eow)\b|\bnext (week|month|term|monday|tuesday|wednesday|thursday|friday)\b|\bthis (week|month|term|morning|afternoon|evening|friday|monday)\b|\bend of (the )?(day|week|month|term)\b|\bin (a|two|three|\d+) (day|days|week|weeks)\b|\b\d{1,2}(st|nd|rd|th)\b|\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b|[今明昨][天日]|下?周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号]|本周|下周|月底|周末/i;
+
+export function hasDateHint(source) {
+  return DATE_HINT.test(String(source || ""));
+}
+
+// A name should actually appear. People write names as written, so a substring
+// match is fair — and a name the model produced from nowhere is exactly what
+// this is for.
+export function nameAppears(name, source) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n) return true; // an empty field claims nothing, so there's nothing to ground
+  const hay = String(source || "").toLowerCase();
+  if (hay.includes(n)) return true;
+  // "Wei Zhang" is grounded by "Wei" — a first name alone is still traceable.
+  return n.split(/\s+/).filter((p) => p.length > 1).some((p) => hay.includes(p));
+}
+
+// Returns the list of field names that could NOT be traced back to the text.
+// An empty list means everything checkable was checkable.
+export function ungroundedFields(entry, source) {
+  const out = [];
+  if (!entry || !source) return out;
+  if (entry.kind === "task" && entry.item) {
+    if (entry.item.date && !hasDateHint(source)) out.push("date");
+    if (entry.item.promisedTo && !nameAppears(entry.item.promisedTo, source)) out.push("promised to");
+  }
+  if (entry.kind === "handover" && entry.handover) {
+    if (!nameAppears(entry.handover.person, source)) out.push("person");
+  }
+  if (entry.kind === "record" && entry.record) {
+    if (entry.record.followUpDate && !hasDateHint(source)) out.push("follow-up date");
+  }
+  return out;
+}
+
 // ------------------------------------------------------------- THE SCHEMAS
 // Each one asks for the least it can. Never one schema with fifteen optional
 // fields — optional fields are exactly where a small model starts inventing.
@@ -329,14 +390,34 @@ const COVERAGE_PROMPT = `You compare an original message against a list of thing
 
 Return short QUOTES from the original — exact fragments of its text. You are NOT creating tasks or items and you must not write any. You are pointing at text that nobody handled.
 
-DO NOT report any of these — they are meant to be left out:
-- greetings, goodbyes, thanks, apologies, pleasantries
-- small talk, emoji, reactions
-- things addressed to somebody other than the reader
+DO NOT report any of these:
+- greetings, goodbyes, thanks, apologies
+- emoji and one-word reactions
 - anything already represented in the list, even if worded differently
-- general chat with nothing to do or remember
+
+When you are unsure whether something was handled, REPORT IT. A borderline thing reported is a two-second glance; a borderline thing swallowed is gone.
 
 If everything meaningful is represented, return an empty list. An empty list is the normal, good answer — do not invent something to report.`;
+
+// WHY THAT LIST IS SHORTER THAN IT LOOKS.
+//
+// Step 1 and this step are not independent. They are the same model, and if the
+// exclusion list here repeats step 1's question — "is this addressed to someone
+// else?", "is this just chat with nothing to do?" — then a request wrongly read
+// as a pleasantry at step 1 gets read the same way here, and nothing is flagged.
+// Correlated failures do not cross-check each other.
+//
+// So the judgement calls have been REMOVED from this prompt and moved into code
+// below. What's left in the prompt is only the unambiguous: a greeting is a
+// greeting. Everything debatable is now told to err towards reporting, and the
+// code — not the model — decides whether a flagged quote is pure pleasantry.
+// A regex cannot be wrong in the same direction as the model that made the
+// mistake, which is the whole point.
+const SOCIAL_ONLY =
+  /^[\s\p{P}\p{S}]*(hi|hey|hello|morning|good morning|good afternoon|evening|thanks|thank you|thx|ta|cheers|ok|okay|sure|no worries|np|bye|goodbye|see you|welcome|sorry|np|yes|yeah|no|👍|😊|早上好|你好|谢谢|多谢|再见|好的|好|辛苦了|不客气)[\s\p{P}\p{S}]*$/iu;
+function isSocialOnly(quote) {
+  return SOCIAL_ONLY.test(String(quote || "").trim());
+}
 
 // ------------------------------------------------------------- THE PIPELINE
 
@@ -418,15 +499,31 @@ export async function runPipeline(text, ctx, deps) {
       // only if it needs it. Greetings were dropped at step 1, so this is a
       // fraction of the original volume; that IS why the quality improves.
       let body = f.text;
+      let sourceText = "";
       if (looksNonEnglish(body)) {
         const t = await ask(TRANSLATE_PROMPT, body, TRANSLATE_SCHEMA, "translate");
-        if (t && typeof t.english === "string" && t.english.trim()) body = t.english.trim();
+        if (t && typeof t.english === "string" && t.english.trim()) {
+          // NEVER LOSE THE SOURCE. Translation is the one step here with no
+          // possible check: you can't verify a translation of something you
+          // couldn't read, and the mistake is silent and permanent. Keeping the
+          // original costs nothing and makes it recoverable forever — by you
+          // later, or by anyone who reads the language.
+          sourceText = body;
+          body = t.english.trim();
+        }
       }
 
       // step 3 — a tight schema per kind
       const entry = await extract(ask, ctx, kind, { ...f, text: body });
-      if (entry) entries.push(entry);
-      else park(f, "couldn't make anything of this one");
+      if (entry) {
+        // Grounding, in code: does what it claims to have read actually appear?
+        // Checked against the ORIGINAL where there was one, not the translation.
+        const against = sourceText ? sourceText + " " + body : body;
+        const missing = ungroundedFields(entry, against);
+        if (missing.length) entry.ungrounded = missing;
+        if (sourceText) entry.sourceText = sourceText;
+        entries.push(entry);
+      } else park(f, "couldn't make anything of this one");
     } catch (e) {
       if (e && e.message === "call_cap") {
         park(f, "too much in one paste — sort this by hand");
@@ -455,6 +552,9 @@ export async function runPipeline(text, ctx, deps) {
       // It must POINT AT the original. A "quote" that isn't in the text is the
       // model inventing, and inventing is the one thing this step can't do.
       .filter((m) => m.quote && text.toLowerCase().includes(m.quote.toLowerCase().slice(0, 24)))
+      // And pure pleasantries are filtered HERE rather than by the prompt, so
+      // this step isn't re-running step 1's judgement with step 1's blind spots.
+      .filter((m) => !isSocialOnly(m.quote))
       .slice(0, 6);
     coverage = { checked: true, missed };
   } catch {

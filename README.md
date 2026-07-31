@@ -241,7 +241,18 @@ import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
 guess), a rough **effort** (quick / draining — handy for picking light things on a
 low-energy day), **category tags**, and whether a date is a **deadline** — shown
-lightly in the zones. Long pastes are sorted **one job at a time**. Asking a local model to split a
+lightly in the zones. Wherever the AI claims to have read something off your text, **the app checks
+in code rather than asking another AI**: a date needs something date-shaped in
+what you wrote, a name needs to appear. Ungrounded values aren't discarded —
+they're filed with a louder chip that names the field, because "read off your
+words" and "produced, and I can't tell where from" are different risks.
+Translations always keep the original alongside them, so a wrong one is
+recoverable forever. And the parent export shows you the real sentences at full
+size before it writes anything — the only place in the app where a one-tap
+confirm isn't enough, because it's the only text that leaves the building with a
+child's name on it.
+
+Long pastes are sorted **one job at a time**. Asking a local model to split a
 thread, label every part, translate it and find the dates in a single call is
 where a 14B model falls over — and it falls over *silently*, returning valid
 JSON with half the items quietly missing. Above a configurable length the app
@@ -383,5 +394,5 @@ system.
 - `public/` — the screen you see (`index.html`, `style.css`, `app.js`) plus
   `store.js`, the one place that knows *where* data lives (the seam that lets
   sync be added later).
-- The AI step, when turned on, lives behind `/api/understand` and is completely
+- The AI step, when turned on, lives behind the sorting endpoints and is completely
   optional.

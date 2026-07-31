@@ -433,13 +433,33 @@
     $("#exportAllBtn").hidden = false;
     $("#folderBtn").hidden = false;
   }
+  // One read before anything leaves the building. Not a new habit — the page
+  // you were going to read anyway, at the moment it matters.
+  function readFirst(students, then) {
+    const box = $("#checklist");
+    box.hidden = false;
+    box.innerHTML = "";
+    box.appendChild(
+      OrganiserExport.reviewPanel(students, records, config, (go) => {
+        box.innerHTML = "";
+        if (go) then();
+        else setClStatus("Left it for now — nothing was written.");
+      })
+    );
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
   async function exportAll() {
-    setClStatus("Preparing everyone's summaries — a moment…");
     const withEvidence = (config.whoIds || []).filter((w) => records.some((r) => r.who === w && r.topic && !OrganiserExport.needsCheck(r)));
     if (!withEvidence.length) {
       setClStatus("No confirmed evidence to export yet.");
       return;
     }
+    readFirst(withEvidence, () => doExportAll(withEvidence));
+  }
+
+  async function doExportAll(withEvidence) {
+    setClStatus("Preparing everyone's summaries — a moment…");
     let inner = "";
     let excluded = 0;
     let staleStudents = 0;
@@ -465,7 +485,19 @@
   // Mirrors data/files/ so the shape is guessable: results at the top, a page
   // per student in the same folder their work samples already live in. Dated,
   // so nothing you've hand-edited in Excel is ever overwritten.
-  async function saveIntoFolders() {
+  function saveIntoFolders() {
+    const X = OrganiserExport;
+    const withEvidence = (config.whoIds || []).filter((w) =>
+      records.some((r) => r.who === w && r.topic && !X.needsCheck(r))
+    );
+    if (!withEvidence.length) {
+      setClStatus("No confirmed evidence to write yet.");
+      return;
+    }
+    readFirst(withEvidence, () => doSaveIntoFolders(withEvidence));
+  }
+
+  async function doSaveIntoFolders(withEvidence) {
     const X = OrganiserExport;
     setClStatus("Writing the files…");
     const day = X.stamp();
@@ -476,9 +508,6 @@
     const r1 = await X.saveToFolder(`results-${day}.csv`, csv, { bom: true });
     r1.ok ? written.push(r1.fallback ? "results (downloaded)" : r1.path) : failed.push(r1.message);
 
-    const withEvidence = (config.whoIds || []).filter((w) =>
-      records.some((r) => r.who === w && r.topic && !X.needsCheck(r))
-    );
     for (const who of withEvidence) {
       const s = await X.studentSection(who, records, config);
       const html = X.docShell(`${who} — progress summary`, s.html);

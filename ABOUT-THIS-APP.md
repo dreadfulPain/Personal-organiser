@@ -249,6 +249,29 @@ Every page has a capture box, so you never navigate somewhere to add something.
   confirm it. It never blocks anything; it just means you always know which
   lines were heard rather than written by you. Unconfirmed records are excluded
   from parent exports.
+- **It checks its own claims against your words — in code, not with another AI
+  call.** Before a date, a name, or a "promised to" is filed, the app searches
+  your text for something that could have produced it. If it can't find one, the
+  value is *kept* (it may well be right) but the chip gets louder: **"check the
+  date · not in your words"**. That's a different sentence from the ordinary
+  chip, because "the AI read this off your text" and "the AI produced this and I
+  can't tell where from" are different risks and used to look identical. A
+  search can't hallucinate, costs nothing, and can't fail the same way as the
+  thing it's checking — which a second AI call could.
+- **A translation never loses its original.** Translation is the one step with
+  no possible check: you can't verify a translation of something you couldn't
+  read, and the mistake is silent and permanent. So the source is kept, stored
+  alongside — tap **original** on any record to see exactly what it read. A
+  wrong translation stays recoverable forever, by you or by anyone who reads the
+  language.
+- **A row the timetable reader couldn't parse is shown, not dropped.** You can
+  check a table for what's *wrong*, but never for what *isn't there*. Anything
+  it stumbled on is listed with the reason.
+- **Nothing about a named child leaves unread.** Everywhere else a one-tap
+  confirm is right. The parent export is the exception: before it writes, it
+  shows you the actual sentences that will appear, at full size. Not a new
+  habit — one read of a page you were going to read anyway, at the moment it
+  matters.
 - **Nothing files silently** that would be costly to get wrong: an unrecognised
   student ID comes back blank rather than guessed.
 

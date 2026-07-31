@@ -3201,3 +3201,129 @@ body {
 .cmp-fixtures h2 {
   font-size: 1.05rem;
 }
+
+/* ---- grounding, kept sources, and the louder chip ---- */
+.cap-flags {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+.cap-ungrounded {
+  font-size: 0.78rem;
+  color: #8d6c39;
+}
+.cap-source {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+/* The ordinary chip says "I heard this". This one says "I produced this and
+   can't show you where from" — a different risk, so a different look. */
+.ai-chip.ungrounded {
+  background: #f7e6e2;
+  color: #8d4a39;
+  border-color: #e6c9c1;
+  font-weight: 600;
+}
+.src-chip {
+  padding: 1px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.rec-source {
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  background: var(--bg);
+  border-left: 2px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+/* ---- rows the timetable reader couldn't parse ---- */
+.su-unreadable {
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: var(--reminder);
+  border-radius: var(--radius);
+}
+.su-unreadable h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.su-unreadable ul {
+  margin: 8px 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+  line-height: 1.7;
+}
+.su-badlabel {
+  font-weight: 600;
+}
+.su-badwhy {
+  color: var(--reminder-ink);
+}
+.su-badtime {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- read it before it leaves the building ---- */
+.xp-review {
+  margin: 16px 0;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.xp-review h3 {
+  margin: 0 0 6px;
+  font-size: 1.1rem;
+}
+.xp-why {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.xp-student {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.xp-student h4 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+/* Full size on purpose: this is the read that counts, so it is not squeezed
+   into a summary row like every other confirm in the app. */
+.xp-levels,
+.xp-said {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+.xp-said {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+.xp-none {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.xp-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}

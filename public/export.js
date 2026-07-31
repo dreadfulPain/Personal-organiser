@@ -223,8 +223,71 @@ ${inner}
     return toCsv(rows);
   }
 
+  // ---- READ IT BEFORE IT LEAVES THE BUILDING -------------------------------
+  //
+  // Everywhere else in this app a one-tap confirm is right: the cost of a small
+  // mistake is a small correction, and a heavier ritual would just train you to
+  // click past it. Exactly one place is different — the page you hand to a
+  // parent. That text was confirmed weeks ago on a narrow row, in passing, and
+  // it's now about to leave the building with a child's name on it.
+  //
+  // So this is not a new confirmation habit. It's one read of a page you were
+  // going to read anyway, shown at the size it will be read at, at the moment
+  // it matters. The sentences are the actual sentences that will appear.
+  function reviewPanel(students, records, config, onConfirm) {
+    const box = document.createElement("div");
+    box.className = "xp-review";
+    const lines = [];
+    students.forEach((who) => {
+      const mine = records.filter((r) => r.who === who && r.topic && !needsCheck(r));
+      const lv = latestLevels(mine);
+      const per = [];
+      (config.topics || []).forEach((t) => {
+        const v = lv.get(t);
+        if (v) per.push({ topic: t, words: parentWord(config, v.level) });
+      });
+      const said = mine.sort(newestFirst).slice(0, 6);
+      lines.push({ who, per, said });
+    });
+
+    box.innerHTML =
+      `<h3>Read this before it goes out</h3>` +
+      `<p class="xp-why">These are the exact words that will appear, about a named child. Everything here was
+        confirmed by you at some point — this is the read that counts, because after this it's out of your hands.</p>` +
+      lines
+        .map(
+          (l) =>
+            `<section class="xp-student"><h4>${escapeHtml(l.who)}</h4>` +
+            (l.per.length
+              ? `<ul class="xp-levels">${l.per.map((p) => `<li><b>${escapeHtml(p.topic)}</b> — ${escapeHtml(p.words)}</li>`).join("")}</ul>`
+              : `<p class="xp-none">no levels will be shown</p>`) +
+            (l.said.length
+              ? `<ul class="xp-said">${l.said.map((r) => `<li>${escapeHtml(friendlyDate(r.date))} — ${escapeHtml(r.summary)}</li>`).join("")}</ul>`
+              : `<p class="xp-none">no dated notes will be shown</p>`) +
+            `</section>`
+        )
+        .join("");
+
+    const actions = document.createElement("div");
+    actions.className = "xp-actions";
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "btn";
+    go.textContent = "I've read it — export";
+    go.addEventListener("click", () => onConfirm(true));
+    const stop = document.createElement("button");
+    stop.type = "button";
+    stop.className = "link";
+    stop.textContent = "not yet";
+    stop.addEventListener("click", () => onConfirm(false));
+    actions.append(go, stop);
+    box.appendChild(actions);
+    return box;
+  }
+
   window.OrganiserExport = {
     studentSection,
+    reviewPanel,
     staleTopics,
     oldTopics,
     oldCutoffISO,

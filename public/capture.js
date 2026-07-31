@@ -143,6 +143,14 @@
       promisedTo: item.promisedTo || "",
       remindAt,
       remindedAt: null,
+      // What the model read it off, when it wasn't English. A translation is the
+      // one step with no possible check — you can't verify a translation of
+      // something you couldn't read — so the source is kept forever and a wrong
+      // one stays recoverable by anyone who reads the language.
+      sourceText: item.sourceText || "",
+      // Fields that couldn't be traced back to your text. Not wrong, just
+      // untraceable — and the chip says so more loudly.
+      ungrounded: Array.isArray(item.ungrounded) ? item.ungrounded : [],
       done: false,
       createdAt: nowISO(),
       completedAt: null,
@@ -159,7 +167,7 @@
     const n = { tasks: 0, records: 0, goals: 0, handovers: 0 };
     entries.forEach((e) => {
       if (e.kind === "task" && e.item) {
-        state.items.push(finishItem(e.item));
+        state.items.push(finishItem({ ...e.item, sourceText: e.sourceText || "", ungrounded: e.ungrounded || [] }));
         n.tasks++;
       } else if (e.kind === "record" && e.record) {
         const rec = {
@@ -176,6 +184,8 @@
           followUp: e.record.follow_up === true,
           taskId: "",
           files: [],
+          sourceText: e.sourceText || "", // the original, when it wasn't English
+          ungrounded: Array.isArray(e.ungrounded) ? e.ungrounded : [],
           src: "ai",
           checkedAt: null,
           createdAt: nowISO(),
@@ -264,6 +274,11 @@
       `<p class="cap-hint">Here's where each will go — tweak or drop any, then add.</p>` +
       pending
         .map((e, i) => {
+          const flags =
+            (e.ungrounded && e.ungrounded.length
+              ? `<span class="cap-ungrounded" title="This wasn't in what you wrote, as far as I can tell — worth a look">couldn't find the ${escapeHtml(e.ungrounded.join(" or "))} in your words</span>`
+              : "") +
+            (e.sourceText ? `<span class="cap-source" title="What it was translated from">${escapeHtml(e.sourceText.slice(0, 60))}</span>` : "");
           let mid = "";
           if (e.kind === "task") mid = escapeHtml(e.item.title) + (e.item.date ? ` <span class="cap-when">${escapeHtml(e.item.date)}</span>` : "");
           else if (e.kind === "record")
@@ -272,7 +287,7 @@
           else if (e.kind === "handover")
             mid = `<span class="cap-who">${escapeHtml(e.handover.person)}</span> ${e.handover.dir === "out" ? "← you passed on" : "→ passed to you"}${e.handover.note ? ` <span class="cap-when">${escapeHtml(e.handover.note)}</span>` : ""}`;
           else mid = escapeHtml(e.goal.title);
-          return `<div class="cap-row"><span class="cap-dest">${dest[e.kind]}</span><span class="cap-mid">${mid}</span><button class="link cap-drop" data-i="${i}" type="button">drop</button></div>`;
+          return `<div class="cap-row"><span class="cap-dest">${dest[e.kind]}</span><span class="cap-mid">${mid}${flags ? `<span class="cap-flags">${flags}</span>` : ""}</span><button class="link cap-drop" data-i="${i}" type="button">drop</button></div>`;
         })
         .join("") +
       `<div class="cap-actions"><button id="capAdd" class="btn" type="button">Add all</button><button id="capCancel" class="btn ghost" type="button">Cancel</button></div>`;

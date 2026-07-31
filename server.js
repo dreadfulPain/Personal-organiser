@@ -7,10 +7,10 @@
 //   SEEING + SAVING  = static files in /public + the /api/data store below.
 //                      Fully offline, no AI, never pauses. This is the
 //                      trustworthy half this build is about.
-//   PUTTING IN (AI)  = the optional /api/understand endpoint. It loads the
-//                      Anthropic SDK lazily, so it only matters once you choose
-//                      to set up AI later (a separate hill). The app works
-//                      completely without it.
+//   PUTTING IN (AI)  = the optional sorting endpoints (/api/route for a short
+//                      capture, /api/pipeline for a long paste, plus the
+//                      per-page helpers). All optional: the app works
+//                      completely without any of them.
 
 import http from "node:http";
 import fs from "node:fs";
@@ -20,7 +20,7 @@ import { spawn } from "node:child_process";
 // The paste pipeline lives in its own module with a single entry point, so the
 // capture box, the Day tab and anything later all call the SAME thing. Two
 // copies of this would drift, exactly like two copies of the scoring would.
-import { runPipeline, splitFragments, estimateCalls } from "./pipeline.js";
+import { runPipeline, splitFragments, estimateCalls, ungroundedFields } from "./pipeline.js";
 
 const __dirname = dirname(fileURLToPathSafe(import.meta.url));
 
@@ -232,38 +232,6 @@ function pruneBackups() {
 
 const MODEL = "claude-opus-4-8"; // swap to a smaller model id for faster/cheaper sorting
 
-const SCHEMA = {
-  type: "object",
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          type: { type: "string", enum: ["task", "appointment", "reminder", "note"] },
-          date: { type: "string" },
-          time: { type: "string" },
-          deadlineType: { type: "string", enum: ["hard", "soft"] },
-          importance: { type: "string", enum: ["high", "normal", "low"] },
-          effort: { type: "string", enum: ["quick", "medium", "draining"] },
-          tags: { type: "array", items: { type: "string" } },
-          when_text: { type: "string" },
-          goal: { type: "string" },
-          open_loop: { type: "boolean" },
-          promised_to: { type: "string" },
-        },
-        required: ["title", "type", "date", "time", "deadlineType", "importance", "effort", "tags", "when_text", "goal", "open_loop", "promised_to"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["items"],
-  additionalProperties: false,
-};
-
-// Goal breakdown (§9 milestones slice 2): a goal title → a few SMALL milestones,
-// each with a couple of concrete first steps. Same strict-shape discipline.
 const BREAKDOWN_SCHEMA = {
   type: "object",
   properties: {
@@ -296,61 +264,6 @@ const CLUSTER_SCHEMA = {
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `You are the "understanding" engine inside a calm personal organiser. It was built for someone with dyslexia and dyscalculia. Your whole job is to take one messy, possibly misspelled line — which may contain several different things jumbled together — and turn it into clean, sorted entries.
-
-Follow these rules without exception:
-- Spelling never matters. Silently fix all typos and misspellings. Never comment on them.
-- Split the input into separate items when it contains more than one thing.
-- Never ask the user to clarify. Make a sensible, generous call and move on.
-- Keep each title short and clear. For tasks, start with a verb ("Call dentist", "Buy milk"). For everything else, name the thing plainly ("Mum's birthday").
-
-For each item decide a "type":
-- "task" — an action to do (call, buy, email, fix, finish).
-- "appointment" — something tied to a specific day/time or event, including birthdays and meetings.
-- "reminder" — a nudge to remember something, often phrased "remind me", "don't forget".
-- "note" — information or an idea to keep, with no action ("idea: ...", a password, a thought).
-
-For each item resolve the timing into "date" and "when_text":
-- "date": a real calendar date in YYYY-MM-DD format, ONLY when you can pin a specific day. Use the "today" you are given to resolve words like "today", "tomorrow", "tuesday" (the next upcoming Tuesday), "this friday", or explicit dates. If no specific day is implied, use an empty string "".
-- "when_text": the human time phrase as the user meant it ("Tuesday", "soon", "coming up", "next week"), or an empty string "" if there was none. Keep this even when you also set a date, so the user recognises their own words.
-- Do not invent dates the user did not imply. Vague timing ("soon", "next week", "coming up", "sometime") means date "" with the phrase kept in when_text.
-
-Also set "time":
-- "time": a 24-hour clock time "HH:MM" ONLY when a specific time is given or clearly implied ("3pm" -> "15:00", "at 9" -> "09:00", "half seven" -> "19:30").
-- Vague parts of the day ("tonight", "this morning", "this afternoon") are NOT specific times -> leave time "" and keep the phrase in when_text.
-- No time mentioned -> "".
-
-Also set "deadlineType", "importance", "effort" and "tags":
-- "deadlineType": "hard" when the date is a REAL deadline with consequences ("by Friday", "due Monday", "before the 5th"). "soft" for a preferred or vague date, a scheduled time or appointment ("on Friday", "at 3pm", "dentist Tuesday"), or no date at all. When unsure use "soft".
-- "importance": your best STARTING GUESS of how much this matters to the user — "high", "normal", or "low" — judged from their words (e.g. "really need to", "important", or a big consequence -> high; a routine errand -> low). When unsure use "normal". It is only a suggestion the user can change.
-- "effort": your best STARTING GUESS of how much energy the task takes — "quick" (a couple of minutes, light: a short email, a quick call), "medium" (normal), or "draining" (long or heavy: a big report, a hard conversation). Judge it from the task SIZE; you cannot know what personally tires the user, so this is only a starting guess they can change. When unsure use "medium".
-- "tags": 0-3 short lower-case CATEGORY labels for the life-area or kind of thing (e.g. "work", "family", "health", "home", "money", "social", "admin", "fun"). Use whatever fits; you are not limited to that list.
-- CRUCIAL: a tag is a CATEGORY, never an importance level. Do NOT raise importance just because something is "work", nor lower it because it is "fun". Importance and category are judged separately.
-
-Also set "goal":
-- A list of the user's existing goals may be given at the end of their message. If an item CLEARLY and confidently belongs to one of those goals, set "goal" to that goal's EXACT title (copied character-for-character).
-- Otherwise — if you are not sure, or no goals are listed — use an empty string "". Most items belong to no goal; only link an obvious, confident match.
-- NEVER invent a goal title that is not in the list. A wrong link is worse than no link.
-
-Also set "open_loop" and "promised_to":
-- "open_loop": true ONLY when the words say the thing is already started or prepared but not finished or sent — "drafted", "wrote it but haven't sent it", "half done", "still need to send / submit / hand in". A brand-new task is false. When unsure use false.
-- "promised_to": the NAME of a person this has been committed to ("told Sam I'd send it", "promised mum", "Sarah is waiting on it"), else "". A person merely mentioned is NOT a promise — only a stated commitment or someone clearly waiting.
-
-Return only the structured result.
-
-Example — if today is Sunday, 2026-06-07, and the user dumps:
-"tysday i gotta call the denist at 3pm and also mums bday is comin up and rly need to send the rent by friday. also i drafted the trip email for sarah but havnt sent it, she needs it thursday"
-you return:
-{"items":[
-  {"title":"Call dentist","type":"task","date":"2026-06-09","time":"15:00","deadlineType":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday 3pm","goal":"","open_loop":false,"promised_to":""},
-  {"title":"Mum's birthday","type":"appointment","date":"","time":"","deadlineType":"soft","importance":"normal","effort":"medium","tags":["family"],"when_text":"coming up","goal":"","open_loop":false,"promised_to":""},
-  {"title":"Send the rent","type":"task","date":"2026-06-12","time":"","deadlineType":"hard","importance":"high","effort":"quick","tags":["money","home"],"when_text":"by Friday","goal":"","open_loop":false,"promised_to":""},
-  {"title":"Send trip email to Sarah","type":"task","date":"2026-06-11","time":"","deadlineType":"hard","importance":"normal","effort":"quick","tags":["social"],"when_text":"by Thursday","goal":"","open_loop":true,"promised_to":"Sarah"}
-]}`;
-
-// Goal breakdown prompt (§9 slice 2). Carves a goal into SMALL, soon-reachable
-// milestones — the opposite of the overwhelm reflex. Domain-agnostic (§0.2): it
-// must work for any goal without knowing what the goal is "about".
 const BREAKDOWN_PROMPT = `You break a big goal into small milestones for a calm organiser built for someone with dyslexia and dyscalculia who is easily overwhelmed by the scale of a plan.
 
 Your whole job: take one goal, written in plain words, and carve it into a few SMALL, reachable milestones — each one a real checkpoint the person could finish and feel a little proud of, even though the whole goal continues.
@@ -526,18 +439,6 @@ function aiConfig() {
 // Prompt rule 1 (§0.3): the model has no clock and no memory, so every request
 // states the date and time. Rule 2 (fixed JSON shape) and rule 3 (no
 // think-aloud) are handled per engine below.
-function userTurn(nowLabel, today, text, goals) {
-  let s = `Right now it is ${nowLabel} (today's date is ${today}).\n\nHere is what I dumped. Sort it:\n"""\n${text}\n"""`;
-  const titles = Array.isArray(goals)
-    ? goals.map((g) => (g && g.title ? String(g.title).trim() : "")).filter(Boolean)
-    : [];
-  if (titles.length) {
-    s +=
-      `\n\nMy existing goals (only set an item's "goal" to one of these EXACT titles if it clearly belongs, otherwise ""):\n` +
-      titles.map((t) => `- ${t}`).join("\n");
-  }
-  return s;
-}
 
 // Build the user turn for a goal breakdown, with a learned granularity nudge
 // (§9: the AI learns the user's preferred milestone size from how they edit).
@@ -727,39 +628,6 @@ function normaliseMilestones(arr) {
     .slice(0, 6);
 }
 
-async function handleUnderstand(res, body) {
-  const text = (body?.text || "").toString().trim();
-  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
-
-  const cfg = aiConfig();
-  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
-
-  const today = ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10);
-  const nowLabel = typeof body?.now === "string" && body.now.trim() ? body.now.trim() : `${weekdayName(today)}, ${today}`;
-  const goals = Array.isArray(body?.goals) ? body.goals : [];
-
-  try {
-    const parsed = await runEngine(cfg, SYSTEM_PROMPT, userTurn(nowLabel, today, text, goals), SCHEMA);
-    const items = (Array.isArray(parsed.items) ? parsed.items : []).map((it) => linkGoal(it, goals));
-    sendJson(res, 200, { items });
-  } catch (e) {
-    const detail = e?.message || String(e);
-    console.error("[understand] failed:", detail);
-    let friendly = e?.friendly;
-    if (!friendly) {
-      if (cfg.engine === "ollama")
-        friendly = "Can't reach your local AI. Make sure Ollama is running and the model is installed, then try again.";
-      else if (cfg.engine === "anthropic") friendly = "I couldn't sort that just now.";
-      else friendly = "Can't reach your local AI. In LM Studio, load your model and click Start Server, then try again.";
-    }
-    sendJson(res, 502, { error: "sort_failed", message: friendly });
-  }
-}
-
-// Goal breakdown (§9 slice 2): a typed goal → a few small AI-proposed milestones.
-// This is the goals usability unlock — the user names a goal in a sentence and the
-// app does the carving (manual entry was only scaffolding). Graceful: 503 when AI
-// is off / 502 when it fails, so the page just keeps the goal empty for hand-entry.
 async function handleBreakdown(res, body) {
   const title = (body?.title || "").toString().trim();
   if (!title) return sendJson(res, 400, { error: "empty", message: "There was no goal to break down." });
@@ -1067,18 +935,35 @@ async function handleTimetable(res, body) {
   try {
     const parsed = await runEngine(cfg, TIMETABLE_PROMPT, `Turn this timetable into blocks:\n"""\n${text.slice(0, 8000)}\n"""`, TIMETABLE_SCHEMA);
     const blocks = [];
+    // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
+    // FIXABLE. Rows that don't validate used to be silently dropped, which is
+    // the one failure the human gate can't catch — you can only check a table
+    // for what's wrong, never for what isn't there. Now they come back too,
+    // named, so the missing row is in front of you.
+    const unreadable = [];
     (Array.isArray(parsed.blocks) ? parsed.blocks : []).slice(0, 200).forEach((b) => {
       const label = (b.label || "").toString().trim().slice(0, 80);
       const start = tidyHM(b.start);
       const end = tidyHM(b.end);
-      if (!label || !start || !end || end <= start) return; // a block with no width isn't a block
       const days = (Array.isArray(b.days) ? b.days : [])
         .map((d) => Number(d))
         .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-      if (!days.length) return;
+      const why = !label
+        ? "no name"
+        : !start || !end
+          ? "couldn't read the times"
+          : end <= start
+            ? "ends before it starts"
+            : !days.length
+              ? "no days"
+              : "";
+      if (why) {
+        unreadable.push({ label: label || "(no name)", start: b.start || "", end: b.end || "", why });
+        return;
+      }
       blocks.push({ label, start, end, days, soft: false, source: "paste" });
     });
-    return sendJson(res, 200, { blocks });
+    return sendJson(res, 200, { blocks, unreadable });
   } catch (e) {
     console.warn("[timetable] failed:", e?.message || e);
     return sendJson(res, 502, { error: "ai_failed", message: "Couldn't read that just now — you can still type the blocks in by hand." });
@@ -1334,6 +1219,14 @@ async function handleRoute(res, body) {
           promisedTo: (e.promised_to || "").toString().trim().slice(0, 40),
         },
       });
+    });
+    // GROUNDING, in code, before any of it is offered for filing. The same
+    // check the pipeline runs, applied to the single-call path so both roads
+    // into the app have it. A field that couldn't be traced back to the text
+    // isn't discarded — it's marked, and the chip gets louder.
+    entries.forEach((entry) => {
+      const missing = ungroundedFields(entry, text);
+      if (missing.length) entry.ungrounded = missing;
     });
     sendJson(res, 200, { entries });
   } catch (e) {
@@ -1867,17 +1760,6 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/transcribe" && req.method === "POST") {
       return handleTranscribe(req, res, reqUrl.searchParams);
-    }
-
-    if (pathname === "/api/understand" && req.method === "POST") {
-      const body = await readBody(req);
-      let parsed = {};
-      try {
-        parsed = JSON.parse(body || "{}");
-      } catch {
-        /* leave empty */
-      }
-      return handleUnderstand(res, parsed);
     }
 
     if (pathname === "/api/breakdown" && req.method === "POST") {

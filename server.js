@@ -17,6 +17,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+// The paste pipeline lives in its own module with a single entry point, so the
+// capture box, the Day tab and anything later all call the SAME thing. Two
+// copies of this would drift, exactly like two copies of the scoring would.
+import { runPipeline, splitFragments, estimateCalls } from "./pipeline.js";
 
 const __dirname = dirname(fileURLToPathSafe(import.meta.url));
 
@@ -1081,6 +1085,152 @@ async function handleTimetable(res, body) {
   }
 }
 
+// ---- THE PASTE PIPELINE ---------------------------------------------------
+// Small jobs instead of one big one (see pipeline.js for why). It is slower and
+// costs more model calls, so it does NOT replace the single call for everything:
+// short pastes keep the proven one-shot path, long ones — where the silent
+// truncation actually bites — go through the pipeline.
+//
+// PIPELINE_MIN_CHARS is a PROVISIONAL default. It has not been measured against
+// a real model; /compare.html exists to measure it, and this number should be
+// set from what that shows rather than from anyone's intuition.
+const PIPELINE_MIN_CHARS = Math.max(0, Number(process.env.PIPELINE_MIN_CHARS) || 500);
+const PIPELINE_MAX_CALLS = Math.max(4, Number(process.env.PIPELINE_MAX_CALLS) || 40);
+
+// Jobs live in memory only. A pipeline run is a few seconds of work, not a
+// record — if the server restarts mid-run the paste is still in the box.
+const jobs = new Map();
+function reapJobs() {
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  for (const [id, j] of jobs) if (j.at < cutoff) jobs.delete(id);
+}
+
+function engineCaller(cfg) {
+  return (system, user, schema) => runEngine(cfg, system, user, schema);
+}
+
+function pipelineCtx(body) {
+  const clean = (v) => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : []);
+  const whoIds = clean(body?.config?.whoIds).slice(0, 100);
+  const topics = whoIds.length ? clean(body?.config?.topics).slice(0, 300) : [];
+  // The label set comes from what this app can actually FILE something into,
+  // and the record kinds inside it are the user's own words — no vocabulary
+  // list is written into the pipeline itself.
+  const kinds = ["task", "goal", "handover"];
+  if (whoIds.length) kinds.splice(1, 0, "record");
+  return {
+    today: ISO.test(body?.today) ? body.today : new Date().toISOString().slice(0, 10),
+    me: (body?.me || "").toString().trim().slice(0, 40),
+    kinds,
+    kindHints:
+      `"task" = something for the reader to do.` +
+      (whoIds.length ? ` "record" = something that happened involving one of: ${whoIds.slice(0, 40).join(", ")}.` : "") +
+      ` "goal" = something the reader wants to get better at over time.` +
+      ` "handover" = work being passed between the reader and another person.`,
+    whoIds,
+    types: clean(body?.config?.types).slice(0, 40),
+    topics,
+    levels: topics.length ? clean(body?.config?.levels).slice(0, 10) : [],
+  };
+}
+
+async function handlePipelineStart(res, body) {
+  const text = (body?.text || "").toString();
+  if (!text.trim()) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+
+  reapJobs();
+  const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  const est = estimateCalls(text, { maxCalls: PIPELINE_MAX_CALLS });
+  const job = { at: Date.now(), done: false, step: "split", doneCount: 0, total: est.fragments, result: null, error: null };
+  jobs.set(id, job);
+
+  // Answer NOW. The work runs behind this, so nothing waits at the door.
+  sendJson(res, 200, { id, fragments: est.fragments, estimate: est });
+
+  runPipeline(text, pipelineCtx(body), {
+    call: engineCaller(cfg),
+    maxCalls: PIPELINE_MAX_CALLS,
+    onProgress: (p) => {
+      job.step = p.step;
+      job.doneCount = p.done;
+      job.total = p.total;
+    },
+  })
+    .then((out) => {
+      job.result = out;
+      job.done = true;
+    })
+    .catch((e) => {
+      console.warn("[pipeline] failed:", e?.message || e);
+      // Even a total failure loses nothing: the whole paste is parked.
+      job.result = { entries: [], parked: [{ text, start: 0, end: text.length, why: "the sorter couldn't run — here it is to sort by hand" }], coverage: { checked: false, missed: [] }, calls: 0, fragments: 0, capped: false };
+      job.done = true;
+    });
+}
+
+function handlePipelineStatus(res, id) {
+  const job = jobs.get(String(id || ""));
+  if (!job) return sendJson(res, 404, { error: "no_job", message: "That sort has expired — paste it again." });
+  return sendJson(res, 200, {
+    done: job.done,
+    step: job.step,
+    doneCount: job.doneCount,
+    total: job.total,
+    ...(job.done ? job.result : {}),
+  });
+}
+
+// The comparison harness. Runs the SAME text through both paths so the
+// difference can be seen rather than assumed. It is entirely plausible that the
+// single call is fine for short pastes and the pipeline only earns its cost on
+// long ones — this is how that gets decided.
+async function handleCompare(res, body) {
+  const text = (body?.text || "").toString();
+  if (!text.trim()) return sendJson(res, 400, { error: "empty" });
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+
+  const started = Date.now();
+  let single = { entries: [], ms: 0, error: null };
+  try {
+    const t0 = Date.now();
+    const parsed = await runEngine(cfg, ROUTE_PROMPT, routeTurn(
+      `${weekdayName(body.today || new Date().toISOString().slice(0, 10))}, ${body.today || ""}`,
+      body.today || new Date().toISOString().slice(0, 10),
+      text,
+      body.goals || [],
+      (body?.config?.whoIds || []).map(String),
+      (body?.config?.types || []).map(String),
+      (body?.config?.topics || []).map(String),
+      (body?.config?.levels || []).map(String),
+      []
+    ), ROUTE_SCHEMA);
+    single = { entries: Array.isArray(parsed.entries) ? parsed.entries : [], ms: Date.now() - t0, calls: 1, error: null };
+  } catch (e) {
+    single = { entries: [], ms: Date.now() - started, calls: 1, error: e?.message || "failed" };
+  }
+
+  let piped = { entries: [], ms: 0, error: null };
+  try {
+    const t0 = Date.now();
+    const out = await runPipeline(text, pipelineCtx(body), { call: engineCaller(cfg), maxCalls: PIPELINE_MAX_CALLS });
+    piped = { ...out, ms: Date.now() - t0, error: null };
+  } catch (e) {
+    piped = { entries: [], parked: [], ms: Date.now() - started, error: e?.message || "failed" };
+  }
+
+  return sendJson(res, 200, {
+    chars: text.length,
+    threshold: PIPELINE_MIN_CHARS,
+    wouldUsePipeline: text.length >= PIPELINE_MIN_CHARS,
+    fragments: splitFragments(text).map((f) => ({ text: f.text, speaker: f.speaker, when: f.when })),
+    single,
+    pipeline: piped,
+  });
+}
+
 async function handleRoute(res, body) {
   const text = (body?.text || "").toString().trim();
   if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
@@ -1674,7 +1824,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/health") {
       const cfg = aiConfig();
       const stt = sttConfig();
-      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, stt: stt ? "local" : "off", dataFile: DATA_FILE });
+      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, stt: stt ? "local" : "off", dataFile: DATA_FILE, pipelineMinChars: PIPELINE_MIN_CHARS });
     }
 
     // Cheap freshness check for the shared-folder poll: just the version stamp.
@@ -1776,6 +1926,32 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/export" && req.method === "POST") {
       return handleExport(req, res);
+    }
+
+    if (pathname === "/api/pipeline" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handlePipelineStart(res, parsed);
+    }
+
+    if (pathname === "/api/pipeline" && req.method === "GET") {
+      return handlePipelineStatus(res, reqUrl.searchParams.get("id"));
+    }
+
+    if (pathname === "/api/compare" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleCompare(res, parsed);
     }
 
     if (pathname === "/api/route" && req.method === "POST") {

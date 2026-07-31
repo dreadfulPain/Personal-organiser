@@ -241,7 +241,22 @@ import/export. The AI also
 flags each item's **importance** (you can change it — it's only a starting
 guess), a rough **effort** (quick / draining — handy for picking light things on a
 low-energy day), **category tags**, and whether a date is a **deadline** — shown
-lightly in the zones. Assessment is built around **marking a whole class in one pass**: pick the skill
+lightly in the zones. Long pastes are sorted **one job at a time**. Asking a local model to split a
+thread, label every part, translate it and find the dates in a single call is
+where a 14B model falls over — and it falls over *silently*, returning valid
+JSON with half the items quietly missing. Above a configurable length the app
+splits the text **in plain code** (no model, so nothing can be dropped at the
+one step that can't be recovered from), asks one short question per piece, and
+translates only what survived. It then **checks its own work**: a final pass
+compares the original against what came out and quotes anything nobody handled —
+it points at your text and is not allowed to invent items. Greetings and small
+talk are explicitly ignorable so it doesn't cry wolf. There's a hard ceiling on
+model calls per paste; past it the rest is parked for you to sort by hand.
+Open `/compare.html` to run the same paste through both the old single call and
+the new pipeline and see which actually did better — the threshold is meant to
+be set from that, not guessed.
+
+Assessment is built around **marking a whole class in one pass**: pick the skill
 once on the Class tab, its description stays on screen while you judge, and it's
 one tap per child (a photo optional, one tap away). Recording the **same level
 again is a confirmation, not new evidence** — it stamps the record already there

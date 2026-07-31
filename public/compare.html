@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One call vs. the pipeline</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="top">
+        <h1>One call vs. the pipeline</h1>
+        <p class="sub">
+          Paste the same thing through both and see what each one actually finds. This page isn't in the tab
+          bar on purpose — it's a workbench, not a room.
+        </p>
+      </header>
+
+      <div class="cmp-note">
+        <p>
+          <strong>What to look for.</strong> Not speed — the pipeline is slower and always will be. Look at
+          whether the single call <em>quietly missed something</em>. Count the items each side found, then read
+          the fragments list: every one of those is a piece of your text, so anything real that appears in the
+          fragments and in neither result is a genuine miss.
+        </p>
+        <p>
+          It's entirely possible the single call is fine for short pastes and the pipeline only earns its cost
+          on long ones. If that's what you see, set <code>PIPELINE_MIN_CHARS</code> in your
+          <code>.env</code> to roughly where it starts to matter.
+        </p>
+      </div>
+
+      <textarea id="cmpText" rows="8" placeholder="Paste a WeChat thread, an email chain, or a messy brain-dump…"></textarea>
+      <div class="cmp-actions">
+        <button id="cmpRun" class="btn" type="button">Run both</button>
+        <span id="cmpMeta" class="muted"></span>
+      </div>
+      <p id="cmpStatus" class="status" hidden></p>
+
+      <div id="cmpOut" class="cmp-out"></div>
+
+      <section class="cmp-fixtures">
+        <h2>Keep the awkward ones</h2>
+        <p class="muted">
+          When a real paste catches something out, keep it. A handful of genuine examples — a chat thread, an
+          email chain, a one-paragraph brain-dump — is worth more than any amount of guessing about what the
+          model does.
+        </p>
+        <div class="cmp-actions">
+          <button id="cmpSave" class="btn ghost" type="button">Save this paste as a fixture</button>
+          <span id="cmpSaved" class="muted"></span>
+        </div>
+      </section>
+    </main>
+
+    <script src="store.js" defer></script>
+    <script src="compare.js" defer></script>
+  </body>
+</html>

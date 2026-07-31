@@ -83,6 +83,20 @@ Every page has a capture box, so you never navigate somewhere to add something.
   said what, turns what *you* were asked or promised into your tasks with the
   person's name attached, logs anything about a student as a record, ignores the
   greetings, and writes it in English even if the chat wasn't.
+- **Long pastes are sorted one job at a time.** Asking a local model to split,
+  label, translate and date a whole thread in one go is where it fails — and it
+  fails *silently*, returning perfectly valid JSON with two of the four items
+  quietly missing. Above a set length the app switches to small steps instead:
+  the text is split **in plain code** (no model, so a dropped line is
+  impossible), each piece is asked one short question at a time, and only the
+  pieces that survive get translated. It's slower, so it says which step it's
+  on.
+- **And then it checks its own work.** One last pass compares the original
+  against what came out and reports anything not represented — as a **quote from
+  your text**, never as an item it made up. Greetings and small talk are
+  explicitly ignorable, so it doesn't cry wolf. If it finds nothing it says so
+  quietly; if it finds something, that's the one line worth reading out of a
+  long paste.
 - **Nothing is ever lost.** If the AI is off or unreachable, whatever you typed
   is kept as a plain task or parked to sort later.
 
@@ -296,6 +310,14 @@ Every page has a capture box, so you never navigate somewhere to add something.
   survive that by staying two-thirds full.
 - **The AI is a local model.** It's good at sorting and extraction, not perfect —
   which is exactly why the check-back and the "check me" chips exist.
+- **The step-by-step sorter costs time and calls.** A long thread is dozens of
+  model calls rather than one. There's a hard ceiling: past it, the rest is
+  parked for you to sort by hand — a big paste becoming "here's a pile" is a
+  fine outcome, a frozen app is not.
+- **The length threshold is a guess until you measure it.** `/compare.html` runs
+  the same paste through both the old single call and the new pipeline side by
+  side. That's how the number gets set — not by anyone's intuition, including
+  mine.
 - **Sync isn't live.** Close it on one machine, let the folder sync, open it on
   the other.
 - **Exports are copies, not the truth.** `organiser-data.json` is the real thing.

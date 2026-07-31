@@ -67,6 +67,48 @@
     return Array.isArray(d.entries) ? d.entries : [];
   }
 
+  // THE PIPELINE PATH — for pastes long enough that one big call starts
+  // silently dropping items. Kicks off, then polls: the work runs behind an
+  // immediate answer, so nothing waits at the door.
+  //
+  // Slower by design, so it SAYS what it's doing. Silence during a slow
+  // operation reads as broken, and a spinner with no words is silence.
+  const STEP_WORDS = {
+    split: "Breaking it into pieces…",
+    mine: "Working out which bits are for you…",
+    detail: "Reading each one properly…",
+    coverage: "Checking nothing was missed…",
+  };
+  async function routeViaPipeline(text, vocab, onStep) {
+    const r = await fetch("/api/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        today: todayISO(),
+        config: (vocab && vocab.config) || {},
+        me: (vocab && vocab.me) || "",
+      }),
+    });
+    if (!r.ok) throw new Error("pipeline " + r.status);
+    const { id } = await r.json();
+    if (!id) throw new Error("pipeline no id");
+
+    for (let tick = 0; tick < 600; tick++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      const s = await fetch("/api/pipeline?id=" + encodeURIComponent(id));
+      if (!s.ok) throw new Error("pipeline status " + s.status);
+      const d = await s.json();
+      if (!d.done) {
+        const word = STEP_WORDS[d.step] || "Working…";
+        onStep(d.total > 1 ? `${word} (${Math.min(d.doneCount, d.total)} of ${d.total})` : word);
+        continue;
+      }
+      return d;
+    }
+    throw new Error("pipeline timeout");
+  }
+
   // Follow-up task spawned from a record — rides the normal reminders (s28).
   function spawnFollowUp(rec, followDate, items) {
     const date = /^\d{4}-\d{2}-\d{2}$/.test(followDate || "") ? followDate : addDaysISO(todayISO(), 1);
@@ -178,6 +220,7 @@
   // ---------- the standalone bar (view-only pages) ----------
   let barState = null; // the loaded owned state {items, waiting, goals, records, recordConfig}
   let pending = null;
+  let lastRun = null; // the pipeline's own report — coverage + what it parked
 
   async function saveAndReload(msg) {
     try {
@@ -185,7 +228,7 @@
     } catch {}
     // Go through the store so the write carries the shared-folder version guard;
     // flush() forces it out and waits, so the reload can't outrun the save.
-    OrganiserStore.save({ items: barState.items, goals: barState.goals, records: barState.records, contacts: barState.contacts });
+    OrganiserStore.save({ items: barState.items, waiting: barState.waiting, goals: barState.goals, records: barState.records, contacts: barState.contacts });
     try {
       await OrganiserStore.flush();
     } catch {}
@@ -201,7 +244,23 @@
     }
     box.hidden = false;
     const dest = { task: "→ Tasks", record: "→ Students", goal: "→ Goals", handover: "→ People" };
+    // THE COVERAGE LINE. A long paste's one genuinely useful sentence: either
+    // "nothing was left behind", said quietly, or the bit that wasn't picked up
+    // — quoted from what you pasted, never turned into an item on its own.
+    let cover = "";
+    if (lastRun && lastRun.coverage) {
+      const c = lastRun.coverage;
+      if (!c.checked) cover = `<p class="cap-cover unsure">Couldn't double-check this one for missed bits — worth a skim.</p>`;
+      else if (!c.missed.length) cover = `<p class="cap-cover clean">Checked the whole thing — nothing else in there needed you. ✓</p>`;
+      else
+        cover =
+          `<p class="cap-cover flagged">Not picked up${c.missed.length > 1 ? ` (${c.missed.length})` : ""} — worth a look:</p>` +
+          `<ul class="cap-missed">` +
+          c.missed.map((m) => `<li>“${escapeHtml(m.quote)}”${m.why ? ` <span class="cap-why">${escapeHtml(m.why)}</span>` : ""}</li>`).join("") +
+          `</ul>`;
+    }
     box.innerHTML =
+      cover +
       `<p class="cap-hint">Here's where each will go — tweak or drop any, then add.</p>` +
       pending
         .map((e, i) => {
@@ -263,8 +322,30 @@
       const stds = barState.portfolio && Array.isArray(barState.portfolio.points)
         ? barState.portfolio.points.map((p) => ({ id: p.id, code: p.code }))
         : [];
-      const entries = await route(text, { goals: barState.goals, config: barState.recordConfig || {}, standards: stds });
-      if (!entries.length) {
+      const vocab = { goals: barState.goals, config: barState.recordConfig || {}, standards: stds };
+      // Short pastes keep the proven one-shot call. Long ones — where a single
+      // call starts quietly losing items — go through the pipeline. The
+      // threshold is a setting, not a belief: /compare.html is how it's set.
+      const long = barState.pipelineMinChars > 0 && text.length >= barState.pipelineMinChars;
+      let entries = [];
+      if (long) {
+        const out = await routeViaPipeline(text, vocab, setCapStatus);
+        entries = out.entries || [];
+        lastRun = out;
+        // Anything the pipeline couldn't read goes to the sort-later pile as
+        // plain text — the one fallback, same as everywhere else. Saved RIGHT
+        // NOW rather than when the check-back is confirmed: cancelling the
+        // check-back must never throw away the bits that couldn't be read.
+        if ((out.parked || []).length) {
+          barState.waiting = barState.waiting || [];
+          out.parked.forEach((p) => barState.waiting.push({ id: uid(), text: p.text, at: nowISO(), why: p.why || "" }));
+          OrganiserStore.save({ waiting: barState.waiting });
+        }
+      } else {
+        entries = await route(text, vocab);
+        lastRun = null;
+      }
+      if (!entries.length && !(lastRun && lastRun.parked && lastRun.parked.length)) {
         setCapStatus("I couldn't find anything to add there — a few more words?");
         return;
       }
@@ -313,6 +394,7 @@
         const h = await fetch("/api/health");
         const j = await h.json();
         barState.aiAvailable = !!j.hasAI;
+        barState.pipelineMinChars = Number(j.pipelineMinChars) || 0;
         if (barState.aiAvailable) fetch("/api/warm", { method: "POST" }).catch(() => {});
       } catch {}
     }

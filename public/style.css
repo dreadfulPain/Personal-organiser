@@ -3091,3 +3091,113 @@ body {
     padding: 28px 16px 64px;
   }
 }
+
+/* ---- the coverage line: a long paste's one useful sentence ---- */
+.cap-cover {
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+}
+.cap-cover.clean {
+  color: var(--accent-dark);
+}
+.cap-cover.flagged,
+.cap-cover.unsure {
+  color: #8d6c39;
+}
+.cap-missed {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  font-size: 0.88rem;
+}
+.cap-missed li {
+  margin-bottom: 3px;
+}
+.cap-why {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+/* ---- the comparison workbench ---- */
+.cmp-note {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+.cmp-note p {
+  margin: 0 0 8px;
+}
+.cmp-note p:last-child {
+  margin-bottom: 0;
+}
+#cmpText {
+  width: 100%;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+.cmp-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.cmp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.cmp-col {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.cmp-col h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.cmp-stat {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.cmp-err {
+  font-size: 0.85rem;
+  color: #8d4a39;
+}
+.cmp-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+.cmp-cover {
+  margin: 12px 0 4px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.cmp-frags {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+.cmp-fixtures {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.cmp-fixtures h2 {
+  font-size: 1.05rem;
+}

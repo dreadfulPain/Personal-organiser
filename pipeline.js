@@ -13,18 +13,24 @@
 // THE STEPS
 //   0. Split the text        — plain code, NO model. The most important step.
 //   1. Is this for me?       — yes/no, batched, kills most of the volume
-//   2. What kind of thing?   — one label, survivors only
-//   3. Pull out the details  — a tight schema per kind
-//   4. Translate             — only what survived, only if needed
+//   2. Render into English   — survivors only, once, KEEPING BOTH versions
+//   3. What kind of thing?   — one label, read off the SOURCE
+//   4. Pull out the details  — a tight schema per kind, read off the SOURCE
 //   5. Coverage check        — "what in the original isn't represented here?"
 //
-// THREE RULES THAT HOLD THROUGHOUT
+// FOUR RULES THAT HOLD THROUGHOUT
 //   - Nothing is ever dropped. A failed step parks its fragment as plain text
 //     for you to glance at. There is one fallback in this whole file and that
 //     is it.
 //   - There is a hard ceiling on model calls. A huge paste degrading into "here
 //     is a pile to sort" is a fine outcome; a frozen app is not.
 //   - The coverage check POINTS AT TEXT. It is not allowed to create anything.
+//   - UNDERSTANDING HAPPENS IN THE SOURCE LANGUAGE. Translation is a rendering
+//     step for what you read, never a preprocessing step for what the app
+//     decides. The model reads Chinese natively; putting a translation in front
+//     of it would only add a lossy layer that every later step then reasons
+//     about — and a garbled sentence would corrupt the label, the extraction
+//     and the coverage check at once, invisibly.
 //
 // Testable without a GPU: every model call arrives through the injected `call`,
 // so the whole pipeline can be driven by a fake in tests.
@@ -349,11 +355,15 @@ Answer "mine": true only if the line contains an action, a commitment, a fact wo
 
 Answer false for: greetings, goodbyes, thanks, small talk, emoji-only lines, someone else's task that doesn't involve the reader, general announcements with nothing to do, and anything purely social.
 
-Answer for EVERY number you are given. Do not skip any. Do not add numbers you weren't given.`;
+Answer for EVERY number you are given. Do not skip any. Do not add numbers you weren't given.
+
+Lines may be in any language. Judge them as written.`;
 
 const KIND_PROMPT = `You give ONE label to one short piece of text. Nothing else.
 
-Choose the single label that best fits what the reader would need to do with it. If two could fit, choose the one the text is most directly about.`;
+Choose the single label that best fits what the reader would need to do with it. If two could fit, choose the one the text is most directly about.
+
+The text may not be in English. Read it exactly as it is — a label is a judgement about meaning, and meaning lives in the words that were actually written.`;
 
 const TASK_PROMPT = `Pull out ONE thing to do from this text.
 
@@ -361,7 +371,9 @@ const TASK_PROMPT = `Pull out ONE thing to do from this text.
 - "date": only if the text states or clearly implies one. Use YYYY-MM-DD. If not stated, leave it empty. Never guess a date.
 - "promised_to": only if the text names the person it's owed to. Otherwise empty.
 
-Never invent detail that isn't there. Empty is always a valid answer for a field.`;
+Never invent detail that isn't there. Empty is always a valid answer for a field.
+
+The text may not be in English. Read it exactly as it is — do not translate it in your head first — and write your answer in English.`;
 
 const RECORD_PROMPT = `Pull out ONE note about a person from this text.
 
@@ -370,15 +382,21 @@ const RECORD_PROMPT = `Pull out ONE note about a person from this text.
 - "summary": one plain line about what happened.
 - "topic" and "level": ONLY if the text explicitly states one from the lists you are given. Otherwise empty.
 
-Empty fields are correct answers. Inventing is not.`;
+Empty fields are correct answers. Inventing is not.
 
-const GOAL_PROMPT = `Turn this text into ONE short goal title — something the reader is trying to get better at or reach. Keep it to a few words.`;
+The text may not be in English. Read it exactly as it is — do not translate it in your head first — and write your answer in English.`;
+
+const GOAL_PROMPT = `Turn this text into ONE short goal title — something the reader is trying to get better at or reach. Keep it to a few words.
+
+The text may not be in English. Read it exactly as it is — do not translate it in your head first — and write your answer in English.`;
 
 const HANDOVER_PROMPT = `Work out ONE transfer of work from this text.
 
 - "person": who it involves.
 - "direction": "to_me" if work is being passed TO the reader, "from_me" if the reader is passing it to someone else.
-- "note": a few words on what the work is.`;
+- "note": a few words on what the work is.
+
+The text may not be in English. Read it exactly as it is — do not translate it in your head first — and write your answer in English.`;
 
 const TRANSLATE_PROMPT = `Translate the text into natural English. Return only the translation. If it is already English, return it unchanged. Keep names, times and numbers exactly as they are.`;
 
@@ -491,37 +509,59 @@ export async function runPipeline(text, ctx, deps) {
     const f = survivors[i];
     progress({ step: "detail", done: i, total: survivors.length });
     try {
-      // step 2 — one label
-      const k = await ask(KIND_PROMPT, kindQuestion(ctx, kinds, f), kindSchema(kinds), "kind");
-      const kind = kinds.includes(k.kind) ? k.kind : kinds[0];
-
-      // step 4 (early, so extraction reads English) — only what survived, and
-      // only if it needs it. Greetings were dropped at step 1, so this is a
-      // fraction of the original volume; that IS why the quality improves.
-      let body = f.text;
-      let sourceText = "";
-      if (looksNonEnglish(body)) {
-        const t = await ask(TRANSLATE_PROMPT, body, TRANSLATE_SCHEMA, "translate");
-        if (t && typeof t.english === "string" && t.english.trim()) {
-          // NEVER LOSE THE SOURCE. Translation is the one step here with no
-          // possible check: you can't verify a translation of something you
-          // couldn't read, and the mistake is silent and permanent. Keeping the
-          // original costs nothing and makes it recoverable forever — by you
-          // later, or by anyone who reads the language.
-          sourceText = body;
-          body = t.english.trim();
+      // TRANSLATION IS A RENDERING STEP, NOT A PREPROCESSING STEP.
+      //
+      // The model does not need English in order to understand Chinese — that's
+      // a job it does natively. Translating first doesn't help it think; it
+      // inserts a LOSSY STEP BEFORE COMPREHENSION, and then every later step
+      // reasons about the translation instead of what was actually said. A
+      // garbled sentence would corrupt the label, the extraction and the
+      // coverage check at once, and not one of them could see it.
+      //
+      // Translating for output only keeps the blast radius to what you READ,
+      // never to what the app DECIDED.
+      //
+      // So: translate each surviving fragment ONCE, here, and keep both versions
+      // side by side. Everything that reasons below reads the source. Grounding
+      // and display read the English. Nothing already discarded is translated,
+      // because the code-split and step 1 both ran first — which also means the
+      // most expensive call in the chain is never spent on a greeting.
+      let english = "";
+      if (looksNonEnglish(f.text)) {
+        try {
+          const t = await ask(TRANSLATE_PROMPT, f.text, TRANSLATE_SCHEMA, "translate");
+          if (t && typeof t.english === "string" && t.english.trim()) english = t.english.trim();
+        } catch (e) {
+          if (e && e.message === "call_cap") throw e; // the ceiling still binds
+          // A failed rendering costs you the English, and NOTHING ELSE. Nothing
+          // below reads it, so there is no reason to lose the fragment over it.
         }
       }
 
-      // step 3 — a tight schema per kind
-      const entry = await extract(ask, ctx, kind, { ...f, text: body });
+      // step 2 — one label, read off the SOURCE
+      const k = await ask(KIND_PROMPT, kindQuestion(ctx, kinds, f), kindSchema(kinds), "kind");
+      const kind = kinds.includes(k.kind) ? k.kind : kinds[0];
+
+      // step 3 — a tight schema per kind, also read off the SOURCE. The prompts
+      // ask for the answer in English, so the reading and the rendering happen
+      // together over the original rather than across a lossy copy of it.
+      const entry = await extract(ask, ctx, kind, f);
       if (entry) {
         // Grounding, in code: does what it claims to have read actually appear?
-        // Checked against the ORIGINAL where there was one, not the translation.
-        const against = sourceText ? sourceText + " " + body : body;
+        // Searched across BOTH, because an English value extracted from Chinese
+        // can only be found in the English rendering of that Chinese.
+        const against = english ? f.text + " " + english : f.text;
         const missing = ungroundedFields(entry, against);
         if (missing.length) entry.ungrounded = missing;
-        if (sourceText) entry.sourceText = sourceText;
+        if (english) {
+          // NEVER LOSE THE SOURCE. Translation is the one step with no possible
+          // check — you can't verify a translation of something you couldn't
+          // read, so the mistake is silent AND permanent. Both are kept, so the
+          // whole chain stays readable: what it read, what that says, what it
+          // filed.
+          entry.sourceText = f.text;
+          entry.sourceEnglish = english;
+        }
         entries.push(entry);
       } else park(f, "couldn't make anything of this one");
     } catch (e) {

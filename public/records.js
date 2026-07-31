@@ -1056,7 +1056,12 @@
     if (openSource === rec.id && rec.sourceText) {
       const orig = document.createElement("div");
       orig.className = "rec-source";
-      orig.innerHTML = `<span class="rec-extra-k">it read this:</span> ${escapeHtml(rec.sourceText)}`;
+      orig.innerHTML =
+        `<div><span class="rec-extra-k">it read this:</span> ${escapeHtml(rec.sourceText)}</div>` +
+        (rec.sourceEnglish
+          ? `<div><span class="rec-extra-k">which says:</span> ${escapeHtml(rec.sourceEnglish)}</div>`
+          : "") +
+        `<div class="rec-source-note">The record above was worked out from the original, not from this translation — so a wobbly translation here doesn't mean the record is wrong. It's here so you can check either.</div>`;
       row.querySelector(".rec-main").appendChild(orig);
     }
     if (expandedId === rec.id) row.querySelector(".rec-main").appendChild(detailArea(rec));

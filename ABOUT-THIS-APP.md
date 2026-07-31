@@ -258,12 +258,20 @@ Every page has a capture box, so you never navigate somewhere to add something.
   can't tell where from" are different risks and used to look identical. A
   search can't hallucinate, costs nothing, and can't fail the same way as the
   thing it's checking — which a second AI call could.
-- **A translation never loses its original.** Translation is the one step with
-  no possible check: you can't verify a translation of something you couldn't
-  read, and the mistake is silent and permanent. So the source is kept, stored
-  alongside — tap **original** on any record to see exactly what it read. A
-  wrong translation stays recoverable forever, by you or by anyone who reads the
-  language.
+- **Understanding happens in the language it was written in.** The local model
+  reads Chinese natively — it doesn't need an English copy to think with, and
+  handing it one would only add a lossy layer that every later step then reasons
+  about. So the sorting, the labelling and the extraction all read your actual
+  WeChat message; translation is a **rendering step for what you read**, not a
+  preprocessing step for what the app decides. The practical effect: a wobbly
+  translation changes what's on your screen and nothing else — it can't corrupt
+  which student a note was filed against.
+- **And a translation never loses its original.** Translation is the one step
+  with no possible check: you can't verify a translation of something you
+  couldn't read, and the mistake is silent and permanent. Tap **original** on
+  any record to see all three links — what it read, what that says, and what it
+  filed. A wrong translation stays recoverable forever, by you or by anyone who
+  reads the language.
 - **A row the timetable reader couldn't parse is shown, not dropped.** You can
   check a table for what's *wrong*, but never for what *isn't there*. Anything
   it stumbled on is listed with the reason.

@@ -3238,11 +3238,17 @@ body {
 }
 .rec-source {
   margin: 4px 0 0;
-  padding: 6px 10px;
+  padding: 8px 10px;
   background: var(--bg);
   border-left: 2px solid var(--line);
   border-radius: 6px;
   font-size: 0.88rem;
+  line-height: 1.6;
+}
+.rec-source-note {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
 }
 
 /* ---- rows the timetable reader couldn't parse ---- */

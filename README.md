@@ -246,8 +246,11 @@ in code rather than asking another AI**: a date needs something date-shaped in
 what you wrote, a name needs to appear. Ungrounded values aren't discarded —
 they're filed with a louder chip that names the field, because "read off your
 words" and "produced, and I can't tell where from" are different risks.
-Translations always keep the original alongside them, so a wrong one is
-recoverable forever. And the parent export shows you the real sentences at full
+Understanding happens in the language things were written in — the model reads
+Chinese natively, so the sorting, labelling and extraction all read your actual
+message and translation is only a rendering step for what you read. A wobbly
+translation changes your screen and nothing the app decided. Both versions are
+kept, so a wrong one is recoverable forever. And the parent export shows you the real sentences at full
 size before it writes anything — the only place in the app where a one-tap
 confirm isn't enough, because it's the only text that leaves the building with a
 child's name on it.

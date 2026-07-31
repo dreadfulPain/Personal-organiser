@@ -148,6 +148,7 @@
       // something you couldn't read — so the source is kept forever and a wrong
       // one stays recoverable by anyone who reads the language.
       sourceText: item.sourceText || "",
+      sourceEnglish: item.sourceEnglish || "", // what that source says, plainly
       // Fields that couldn't be traced back to your text. Not wrong, just
       // untraceable — and the chip says so more loudly.
       ungrounded: Array.isArray(item.ungrounded) ? item.ungrounded : [],
@@ -167,7 +168,7 @@
     const n = { tasks: 0, records: 0, goals: 0, handovers: 0 };
     entries.forEach((e) => {
       if (e.kind === "task" && e.item) {
-        state.items.push(finishItem({ ...e.item, sourceText: e.sourceText || "", ungrounded: e.ungrounded || [] }));
+        state.items.push(finishItem({ ...e.item, sourceText: e.sourceText || "", sourceEnglish: e.sourceEnglish || "", ungrounded: e.ungrounded || [] }));
         n.tasks++;
       } else if (e.kind === "record" && e.record) {
         const rec = {
@@ -185,6 +186,7 @@
           taskId: "",
           files: [],
           sourceText: e.sourceText || "", // the original, when it wasn't English
+          sourceEnglish: e.sourceEnglish || "", // and what it says, plainly
           ungrounded: Array.isArray(e.ungrounded) ? e.ungrounded : [],
           src: "ai",
           checkedAt: null,

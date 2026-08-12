@@ -1093,6 +1093,38 @@ function portOpen(host, port, ms) {
   });
 }
 
+// IS IT EVEN INSTALLED? "Start Ollama" is a dead end if there's nothing to
+// start, and "it isn't running" and "it isn't here" need completely different
+// answers. Checked by looking for the file — no process spawned, no shell.
+function findOllama() {
+  const win = process.platform === "win32";
+  const exe = win ? "ollama.exe" : "ollama";
+  const guesses = win
+    ? [
+        path.join(process.env.LOCALAPPDATA || "", "Programs", "Ollama", exe),
+        path.join(process.env.PROGRAMFILES || "", "Ollama", exe),
+        path.join(process.env["PROGRAMFILES(X86)"] || "", "Ollama", exe),
+      ]
+    : ["/usr/local/bin/ollama", "/usr/bin/ollama", "/opt/homebrew/bin/ollama", "/Applications/Ollama.app"];
+  for (const g of guesses) {
+    try {
+      if (g && fs.existsSync(g)) return g;
+    } catch {
+      /* keep looking */
+    }
+  }
+  // Then anywhere on PATH, for a non-standard install.
+  const parts = (process.env.PATH || "").split(win ? ";" : ":");
+  for (const dir of parts) {
+    try {
+      if (dir && fs.existsSync(path.join(dir, exe))) return path.join(dir, exe);
+    } catch {
+      /* keep looking */
+    }
+  }
+  return "";
+}
+
 function folderSize(dir) {
   let bytes = 0;
   const walk = (d, depth) => {
@@ -1180,18 +1212,38 @@ async function handleDiagnose(res) {
     add("Smart sorting", live.ok ? "ok" : "problem", live.ok ? `Working (${cfg.engine}).` : live.note, "");
   } else {
     const u = new URL(cfg.baseUrl);
+    const local = ["localhost", "127.0.0.1", "::1"].includes(u.hostname);
     const open = await portOpen(u.hostname, Number(u.port) || 11434, 1500);
     if (!open) {
-      // The distinction that matters: nothing is listening at all. On Windows
-      // this is nearly always the Ollama app simply not being started.
-      add(
-        "Smart sorting",
-        "problem",
-        `Nothing is answering at ${cfg.baseUrl}, so messages are saved as you typed them instead of being sorted.`,
-        process.platform === "win32"
-          ? "Open the Start menu, type Ollama and run it. Wait for the llama icon to appear near the clock (bottom-right), then press “Check again”. If it was already running, right-click that icon, Quit, and start it once more."
-          : "Start Ollama, then press “Check again”."
-      );
+      const found = local ? findOllama() : "not-checked";
+      if (local && !found) {
+        // NOT INSTALLED is a different problem from NOT RUNNING, and telling
+        // someone to start a program that isn't there is a dead end.
+        add(
+          "Smart sorting",
+          "problem",
+          "Ollama doesn't seem to be on this computer — that's the free program that does the sorting. Without it, messages are saved exactly as you typed them.",
+          `Download it from https://ollama.com/download and install it (the defaults are fine). Then open a terminal once and run:  ollama pull ${cfg.model}  — it's a big download, so leave it running. After that, press “Check again”.`
+        );
+        add(
+          "Which model to install",
+          "info",
+          `The app is set to "${cfg.model}". That one wants a desktop graphics card with plenty of memory.`,
+          "On a laptop without a dedicated graphics card, use a smaller one instead: pull qwen3:4b, then change AI_MODEL in the .env file to qwen3:4b. It sorts a little less well and a lot faster."
+        );
+      } else {
+        // Installed (or remote) but nothing listening — on Windows this is
+        // nearly always the tray app simply not being started.
+        add(
+          "Smart sorting",
+          "problem",
+          `Nothing is answering at ${cfg.baseUrl}, so messages are saved as you typed them instead of being sorted.` +
+            (found && found !== "not-checked" ? " Ollama IS installed on this computer, it just isn't running." : ""),
+          process.platform === "win32"
+            ? "Open the Start menu, type Ollama and run it. Wait for the llama icon to appear near the clock (bottom-right), then press “Check again”. If it was already running, right-click that icon, Quit, and start it once more."
+            : "Start Ollama, then press “Check again”."
+        );
+      }
     } else {
       const live = await engineLive(cfg);
       add(

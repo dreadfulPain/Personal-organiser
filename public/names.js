@@ -18,12 +18,30 @@
 (function () {
   "use strict";
 
+  // Titles people actually type in front of a name. Stripped so "Dr Patel"
+  // finds "Patel" — a school runs on Mr/Ms/Dr, and the name underneath is the
+  // same person. Purely linguistic, not domain vocabulary.
+  const TITLES = /^(mr|mrs|ms|miss|mx|dr|prof|professor|sir|madam|madame|mme|herr|frau|señor|senor|señora|senora)\.?\s+/i;
+
   const norm = (s) =>
     String(s || "")
+      // Accent-folding: "José" and "Jose" are one person spelled two ways, and
+      // in an international school they will be spelled both ways.
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
+      .replace(TITLES, "")
       .replace(/[^\p{L}\p{N}\s]/gu, "")
       .replace(/\s+/g, " ")
       .trim();
+
+  // Chinese and Japanese names are written without spaces, so the same name
+  // typed "王 伟" and "王伟" must not read as two people.
+  const tight = (s) => norm(s).replace(/\s+/g, "");
+  // Scripts with no word separator. Only for THESE is "one name inside another"
+  // evidence of the same person — in Latin script it usually isn't: "Ivanov"
+  // sits inside "Ivanova" and they are two people, not a typo.
+  const UNSPACED = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/;
 
   // Ordinary edit distance, capped — we only care about "one or two slips".
   function distance(a, b) {
@@ -64,6 +82,12 @@
     const exact = list.find((c) => norm(c.name) === wanted);
     if (exact) return { state: "matched", contact: exact, suggestions: [] };
 
+    // Same name, different spacing — the unspaced-script case.
+    const packed = tight(name);
+    const spaced = list.filter((c) => tight(c.name) === packed);
+    if (spaced.length === 1) return { state: "matched", contact: spaced[0], suggestions: [] };
+    if (spaced.length > 1) return { state: "nearly", contact: null, suggestions: spaced.slice(0, 4) };
+
     // "Helen" matching "Helen Zhou" — a first name is how people actually
     // write, and it's a match, not a near-miss.
     const byFirst = list.filter((c) => {
@@ -71,6 +95,15 @@
       return parts.includes(wanted) || norm(c.name).startsWith(wanted + " ");
     });
     if (byFirst.length === 1) return { state: "matched", contact: byFirst[0], suggestions: [] };
+    // Part of an unspaced name — "王伟" inside "王伟民". Two characters minimum,
+    // because one is too ambiguous to act on and would match half the roster.
+    if (!byFirst.length && packed.length >= 2 && UNSPACED.test(packed)) {
+      const inside = list.filter(
+        (c) => UNSPACED.test(tight(c.name)) && (tight(c.name).includes(packed) || packed.includes(tight(c.name)))
+      );
+      if (inside.length === 1) return { state: "matched", contact: inside[0], suggestions: [] };
+      if (inside.length > 1) return { state: "nearly", contact: null, suggestions: inside.slice(0, 4) };
+    }
     // Two people called Helen is exactly when you must be asked, not guessed at.
     if (byFirst.length > 1) return { state: "nearly", contact: null, suggestions: byFirst.slice(0, 4) };
 

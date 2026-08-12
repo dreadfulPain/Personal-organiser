@@ -80,10 +80,34 @@
     if (!out.note) out.note = DEFAULT_CONFIG.note;
     return out;
   }
+  // Everything the app knows this person is called. Shown on their card so the
+  // learning is visible and correctable — a spelling it picked up wrongly must
+  // be as easy to remove as it was to add.
+  function akaLine(person) {
+    const wrap = document.createElement("label");
+    wrap.className = "cb-field ppl-aka";
+    wrap.innerHTML = `<span class="cb-lbl">Also written as (pinyin, characters, a nickname — comma separated)</span>`;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = (person.aka || []).join(", ");
+    input.placeholder = "picked up automatically when you confirm a spelling";
+    input.addEventListener("change", (e) => {
+      person.aka = e.target.value.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 8);
+      persist();
+      render();
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
   function normaliseContacts(list) {
     return (Array.isArray(list) ? list : []).map((c) => ({
       id: c && c.id ? String(c.id) : uid(),
       name: (c && c.name ? String(c.name) : "").trim(),
+      // Other ways this person gets written — pinyin against characters, a
+      // nickname, a maiden name. Mostly learned from your own confirmations
+      // rather than typed, but editable here like everything else.
+      aka: (Array.isArray(c && c.aka) ? c.aka : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 8),
       group: (c && c.group ? String(c.group) : "").trim(),
       details: c && c.details && typeof c.details === "object" ? c.details : {},
       workLog: (Array.isArray(c && c.workLog) ? c.workLog : [])
@@ -196,6 +220,7 @@
     card.innerHTML = `
       <div class="ppl-head">
         <button class="ppl-name" type="button">${escapeHtml(person.name)}</button>
+        ${(person.aka || []).length ? `<span class="ppl-aka-chip" title="Other ways this name gets written">${(person.aka || []).map(escapeHtml).join(" · ")}</span>` : ""}
         <span class="ppl-group">${escapeHtml(person.group || "")}</span>
         ${wIn || wOut ? `<span class="work-chip" title="Work passed between you in ${escapeHtml(RANGE_WORDS[range])}">${wIn} to you · ${wOut} from you</span>` : ""}
         ${promises.length ? `<span class="promise-chip">${promises.length} promised to them</span>` : ""}
@@ -234,6 +259,7 @@
       });
       gl.appendChild(gsel);
       grid.appendChild(gl);
+      grid.appendChild(akaLine(person));
       fields.forEach((f) => {
         const label = document.createElement("label");
         label.className = "cb-field";

@@ -335,18 +335,26 @@
       wrap.className = "cb-newperson";
       wrap.textContent = `${label} ${name} — `;
       if (found.state === "nearly") {
-        // The valuable question. Offer the near matches by name, and keep
-        // "no, it's someone else" as a real answer.
-        wrap.append(document.createTextNode("did you mean "));
+        // The valuable question. Offer the candidates by name, and keep "no,
+        // it's someone else" as a real answer. When the two are in different
+        // scripts the question is a different one — not "did you misspell it"
+        // but "are these the same person" — so it's worded that way.
+        wrap.append(document.createTextNode(found.bridge ? "same person as " : "did you mean "));
         found.suggestions.forEach((c, n) => {
           const b = document.createElement("button");
           b.type = "button";
           b.className = "link";
           b.textContent = c.name;
           b.addEventListener("click", () => {
+            // You've just told it that this spelling means this person. Keep
+            // that — it's how "Wang Wei" finds 王伟 instantly next time, and
+            // it's knowledge no built-in table could have.
+            const learned = OrganiserNames.remember(c, name);
             it[field] = c.name;
             it.contactId = c.id || "";
+            if (learned) OrganiserStore.save({ contacts });
             renderCheckback();
+            if (learned) setStatus(`Noted — “${name}” means ${c.name}. I'll know next time. ✓`);
           });
           wrap.append(n ? " / " : "", b);
         });

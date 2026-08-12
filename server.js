@@ -1203,6 +1203,26 @@ async function handleDiagnose(res) {
     }
   }
 
+  // --- can this folder receive updates? -----------------------------------
+  // A folder unzipped from GitHub has no .git, so every update means ANOTHER
+  // new folder — and the writing stays behind in the old one. Harmless while
+  // it's empty; a real way to lose work once it isn't. So the warning grows
+  // teeth only when there's something to strand.
+  const connected = fs.existsSync(path.join(__dirname, ".git"));
+  const hasWriting = !!doc && (doc.items.length || doc.records.length || doc.goals.length || doc.contacts.length);
+  if (connected) {
+    add("Updates", "ok", "This folder is connected, so updating is just double-clicking Update.");
+  } else if (hasWriting) {
+    add(
+      "Updates",
+      "problem",
+      "This folder can't receive updates, so the next one would mean downloading a whole new folder — and everything you've written would stay behind in this one.",
+      "Double-click “Update” in the app folder and say yes when it offers to connect this folder up. It keeps everything you've written exactly as it is."
+    );
+  } else {
+    add("Updates", "info", "This folder isn't connected for updates yet.", "Double-click “Update” in the app folder to connect it — it takes a moment and only needs doing once.");
+  }
+
   // --- sorting ------------------------------------------------------------
   const cfg = aiConfig();
   if (!cfg) {

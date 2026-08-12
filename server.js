@@ -1717,7 +1717,14 @@ function serveStatic(pathname, res) {
       res.writeHead(404, { "Content-Type": "text/plain" });
       return res.end("Not found");
     }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream" });
+    // NEVER LET THE BROWSER SERVE A STALE APP. Without this the browser caches
+    // these files on its own guess, so after an update you'd get the OLD app and
+    // reasonably conclude the update didn't work. Everything here comes off
+    // localhost, so there is no bandwidth worth saving by caching it.
+    res.writeHead(200, {
+      "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store, must-revalidate",
+    });
     res.end(buf);
   });
 }

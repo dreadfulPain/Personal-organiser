@@ -12,6 +12,18 @@ organiser fully by hand right now.
 
 ---
 
+## Getting updates
+
+**You don't need to download anything again.** Double-click **Update** (`Update.bat`
+on Windows, `update.command` on Mac), then stop and restart the app.
+
+Your own writing lives in the `data` folder, which updates never touch — it's
+excluded from the repository on purpose, so a pull cannot overwrite it.
+
+The one thing to avoid: re-downloading the folder as a ZIP and replacing your
+existing one. That *would* destroy your `data` folder. If you ever do it, copy
+`data` somewhere safe first and put it back afterwards.
+
 ## Start here
 
 You need [Node.js](https://nodejs.org/) (the free "LTS" download). Nothing else

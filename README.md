@@ -12,6 +12,13 @@ organiser fully by hand right now.
 
 ---
 
+## If something looks wrong
+
+Open the **Working?** tab. The app checks itself and says, in plain words, what's
+working and what isn't — with the fix written under anything that needs one, and
+a **Copy all of this** button if you'd rather just send it to someone. No
+terminal, no config files, nothing to look up.
+
 ## Getting updates
 
 **You don't need to download anything again.** Double-click **Update** (`Update.bat`

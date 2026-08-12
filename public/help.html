@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Is everything working?</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Is everything working?</h1>
+        <p class="sub">
+          The app checks itself and writes the answers here. Nothing to type, nothing to look up.
+        </p>
+      </header>
+
+      <div class="hc-actions">
+        <button id="hcAgain" class="btn">Check again</button>
+        <button id="hcCopy" class="btn ghost">Copy all of this</button>
+        <span id="hcWhen" class="muted"></span>
+      </div>
+
+      <div id="hcList" class="hc-list"><p class="muted">Checking…</p></div>
+
+      <section class="hc-foot">
+        <h2>If something's wrong</h2>
+        <p class="muted">
+          Anything with a fix written under it can be sorted out from here — you shouldn't ever need a
+          terminal. If you're stuck, press <strong>Copy all of this</strong> and paste it into a message;
+          it's everything anyone would ask you for.
+        </p>
+        <p class="muted">
+          <strong>Nothing you've written is ever at risk from these problems.</strong> If sorting is
+          unavailable, the app just saves your words exactly as you typed them.
+        </p>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="help.js" defer></script>
+  </body>
+</html>

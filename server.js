@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import net from "node:net";
 // The paste pipeline lives in its own module with a single entry point, so the
 // capture box, the Day tab and anything later all call the SAME thing. Two
 // copies of this would drift, exactly like two copies of the scoring would.
@@ -1065,6 +1066,160 @@ function pipelineCtx(body) {
   };
 }
 
+// ---- WHAT'S WRONG: the checks, so nobody has to open a terminal -----------
+//
+// Everything here was already findable — in a JSON endpoint, a PowerShell
+// command, a file path you'd have to know to look for. That is a developer's
+// answer to a question anyone can have, and it means the moment something
+// breaks you're stuck until someone technical is available.
+//
+// So the app runs its own checks and writes the answers in plain words, with
+// what to do about each one, and a button that copies the lot.
+function portOpen(host, port, ms) {
+  return new Promise((resolve) => {
+    const sock = new net.Socket();
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      sock.destroy();
+      resolve(v);
+    };
+    sock.setTimeout(ms);
+    sock.once("connect", () => finish(true));
+    sock.once("timeout", () => finish(false));
+    sock.once("error", () => finish(false));
+    sock.connect(port, host);
+  });
+}
+
+function folderSize(dir) {
+  let bytes = 0;
+  const walk = (d, depth) => {
+    if (depth > 6) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, depth + 1);
+      else
+        try {
+          bytes += fs.statSync(p).size;
+        } catch {
+          /* skip */
+        }
+    }
+  };
+  walk(dir, 0);
+  return bytes;
+}
+function human(bytes) {
+  if (bytes < 1024) return bytes + " bytes";
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+  return (bytes / 1024 / 1024).toFixed(1) + " MB";
+}
+
+async function handleDiagnose(res) {
+  const checks = [];
+  const add = (name, state, detail, fix) => checks.push({ name, state, detail, fix: fix || "" });
+
+  // --- the app itself -----------------------------------------------------
+  add("The app", "ok", `Running on Node ${process.version}, ${process.platform}.`);
+
+  // --- your writing -------------------------------------------------------
+  let doc = null;
+  try {
+    doc = readData();
+  } catch {
+    /* reported below */
+  }
+  if (!doc) {
+    add("Your writing", "problem", `Couldn't read ${DATA_FILE}.`, "There may be a usable copy in the data/backups folder next to it.");
+  } else {
+    const counts = [
+      [doc.items.length, "task"],
+      [doc.records.length, "record"],
+      [doc.goals.length, "goal"],
+      [doc.contacts.length, "person"],
+      [doc.schedule.length, "timetable block"],
+    ]
+      .filter(([n]) => n)
+      .map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
+    let backups = 0;
+    try {
+      backups = fs.readdirSync(BACKUP_DIR).filter((f) => f.endsWith(".json")).length;
+    } catch {
+      /* none yet */
+    }
+    add(
+      "Your writing",
+      "ok",
+      `${counts.length ? counts.join(", ") : "nothing saved yet"} · last saved ${doc.savedAt ? new Date(doc.savedAt).toLocaleString() : "never"} · ${backups} backup${backups === 1 ? "" : "s"} · ${human(folderSize(DATA_DIR))} in total.`
+    );
+    add("Where it lives", "info", DATA_FILE);
+    if (/onedrive|dropbox|google ?drive|icloud/i.test(DATA_FILE)) {
+      add(
+        "This folder syncs to the cloud",
+        "info",
+        "Your data folder is inside a syncing folder, so it reaches your other computer by itself — and a copy sits on the provider's servers.",
+        "That's fine for ordinary notes. Check your school's data policy before real names or medical details go in."
+      );
+    }
+  }
+
+  // --- sorting ------------------------------------------------------------
+  const cfg = aiConfig();
+  if (!cfg) {
+    add("Smart sorting", "info", "Not switched on. The app works fully by hand without it.", "To turn it on, copy .env.example to .env in the app folder.");
+  } else if (cfg.engine !== "ollama") {
+    const live = await engineLive(cfg);
+    add("Smart sorting", live.ok ? "ok" : "problem", live.ok ? `Working (${cfg.engine}).` : live.note, "");
+  } else {
+    const u = new URL(cfg.baseUrl);
+    const open = await portOpen(u.hostname, Number(u.port) || 11434, 1500);
+    if (!open) {
+      // The distinction that matters: nothing is listening at all. On Windows
+      // this is nearly always the Ollama app simply not being started.
+      add(
+        "Smart sorting",
+        "problem",
+        `Nothing is answering at ${cfg.baseUrl}, so messages are saved as you typed them instead of being sorted.`,
+        process.platform === "win32"
+          ? "Open the Start menu, type Ollama and run it. Wait for the llama icon to appear near the clock (bottom-right), then press “Check again”. If it was already running, right-click that icon, Quit, and start it once more."
+          : "Start Ollama, then press “Check again”."
+      );
+    } else {
+      const live = await engineLive(cfg);
+      add(
+        "Smart sorting",
+        live.ok ? "ok" : "problem",
+        live.ok ? `Working — ${cfg.model} at ${cfg.baseUrl}.` : live.note,
+        live.ok ? "" : `In a terminal: ollama pull ${cfg.model}`
+      );
+    }
+  }
+
+  // --- reminders and dictation -------------------------------------------
+  add(
+    "Pop-up reminders",
+    "ok",
+    process.platform === "win32"
+      ? "Windows notifications — they appear while this app's black window is open."
+      : "Desktop notifications — they appear while the app is running."
+  );
+  add("Dictation", "info", sttConfig() ? "On, and staying on this computer." : "Off. There's no cloud dictation in this app on purpose.");
+
+  const stamp = new Date().toLocaleString();
+  const copyText =
+    `Organiser check — ${stamp}\n` +
+    checks.map((c) => `[${c.state}] ${c.name}: ${c.detail}${c.fix ? `\n      fix: ${c.fix}` : ""}`).join("\n");
+  return sendJson(res, 200, { checks, copyText, at: stamp });
+}
+
 async function handlePipelineStart(res, body) {
   const text = (body?.text || "").toString();
   if (!text.trim()) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
@@ -1876,6 +2031,10 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/export" && req.method === "POST") {
       return handleExport(req, res);
+    }
+
+    if (req.method === "GET" && pathname === "/api/diagnose") {
+      return handleDiagnose(res);
     }
 
     if (pathname === "/api/pipeline" && req.method === "POST") {

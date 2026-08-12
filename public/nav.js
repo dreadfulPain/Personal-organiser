@@ -1,6 +1,10 @@
 // The tab bar — one room per question, so each page can stay focused (and the
-// home stays the surfacing hub). Injected by script so eight pages share one
+// home stays the surfacing hub). Injected by script so every page shares one
 // list. Plain script; works under file:// too.
+//
+// "Working?" is last and deliberately plain: when something breaks you need to
+// find it without knowing what it's called, and "Help" or "Diagnostics" are
+// both worse names for the question you'd actually be asking.
 (function () {
   "use strict";
   var TABS = [
@@ -14,6 +18,7 @@
     ["portfolio.html", "Portfolio"],
     ["goals.html", "Goals"],
     ["looking-back.html", "Looking back"],
+    ["help.html", "Working?"],
   ];
   var here = location.pathname.split("/").pop() || "index.html";
   var el = document.getElementById("tabs");

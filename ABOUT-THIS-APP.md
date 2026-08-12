@@ -65,6 +65,7 @@ One question per room, so no page becomes a wall.
 | **Portfolio** | What proof do I have against each professional standard? |
 | **Goals** | What am I working towards, and what's the next step? |
 | **Looking back** | Where has my time and attention actually gone? |
+| **Working?** | Is anything broken, and how do I fix it? |
 
 Every page has a capture box, so you never navigate somewhere to add something.
 
@@ -330,6 +331,13 @@ Every page has a capture box, so you never navigate somewhere to add something.
 
 - **Reminders reach one computer** — the one running the app. Nothing reaches
   your phone. That's the price of no cloud.
+- **There's a page that checks the app for you.** The **Working?** tab runs its
+  own checks and writes the answers in plain words: whether the app is running,
+  what you've got saved and where, whether sorting is available and — if not —
+  exactly what to do about it. **Copy all of this** puts the lot on your
+  clipboard in one press, so if you ever need to ask someone for help, that's
+  everything they'd ask you for. You should never need a terminal to find out
+  what's wrong.
 - **Sorting needs Ollama actually running.** Being set up in `.env` isn't the
   same as being switched on, and the app now checks rather than assuming: it
   will tell you *"Ollama isn't answering at http://localhost:11434 — is it

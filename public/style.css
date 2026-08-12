@@ -3363,3 +3363,86 @@ body {
 .ai-banner .btn {
   flex: 0 0 auto;
 }
+
+/* ---- "Is everything working?" ---- */
+.hc-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.hc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hc-row {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: var(--radius);
+}
+.hc-row.ok {
+  border-left-color: var(--accent);
+}
+/* Amber, not red. Nothing here loses your work, so nothing here should look
+   like an emergency — it's a thing to fix, not a disaster. */
+.hc-row.problem {
+  border-left-color: #c99a3f;
+  background: var(--reminder);
+}
+.hc-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.hc-name {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.hc-state {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.hc-row.ok .hc-state {
+  color: var(--accent-dark);
+}
+.hc-detail {
+  margin-top: 4px;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.hc-fix {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.hc-fallback {
+  width: 100%;
+  height: 140px;
+  margin-bottom: 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.hc-foot {
+  margin-top: 30px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.hc-foot h2 {
+  font-size: 1.05rem;
+}
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}

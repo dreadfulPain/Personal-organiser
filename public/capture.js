@@ -62,7 +62,14 @@
         standards: (vocab && vocab.standards ? vocab.standards : []).map((s) => ({ id: s.id, code: s.code })),
       }),
     });
-    if (!r.ok) throw new Error("route " + r.status);
+    if (!r.ok) {
+      // Carry the server's own explanation up. It knows WHY — "Ollama isn't
+      // answering at …" is worth a hundred "something went wrong"s.
+      const d = await r.json().catch(() => ({}));
+      const err = new Error(d.message || "The sorter didn't answer (" + r.status + ").");
+      err.code = d.error || "http_" + r.status;
+      throw err;
+    }
     const d = await r.json();
     return Array.isArray(d.entries) ? d.entries : [];
   }
@@ -90,7 +97,12 @@
         me: (vocab && vocab.me) || "",
       }),
     });
-    if (!r.ok) throw new Error("pipeline " + r.status);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      const err = new Error(d.message || "The sorter didn't answer (" + r.status + ").");
+      err.code = d.error || "http_" + r.status;
+      throw err;
+    }
     const { id } = await r.json();
     if (!id) throw new Error("pipeline no id");
 
@@ -326,10 +338,14 @@
     const btn = document.getElementById("capBtn");
     if (!barState.aiAvailable) {
       // No AI: capture is sacred — save it as a plain task so nothing is lost.
+      // "Off" and "set up but not running" are different problems with
+      // different fixes, so they get different sentences.
       barState.items = barState.items || [];
       barState.items.push(finishItem({ title: text, type: "task" }));
       input.value = "";
-      await saveAndReload("Saved it as a task (AI sorting is off). ✓");
+      await saveAndReload(
+        barState.engineNote ? `Saved it as a task. ${barState.engineNote}` : "Saved it as a task (AI sorting is off). ✓"
+      );
       return;
     }
     btn.disabled = true;
@@ -371,12 +387,13 @@
       input.style.height = "auto";
       setCapStatus("");
       renderPending();
-    } catch {
-      // Unreachable AI: still don't lose it.
+    } catch (err) {
+      // Unreachable AI: still don't lose it, and say what's actually wrong.
       barState.items = barState.items || [];
       barState.items.push(finishItem({ title: text, type: "task" }));
       input.value = "";
-      await saveAndReload("Couldn't reach the AI — saved it as a task to sort later. ✓");
+      const why = err && err.code ? err.message : "Couldn't reach the sorter.";
+      await saveAndReload(why + " Saved it as a task instead. ✓");
     } finally {
       btn.disabled = false;
       btn.textContent = "Sort it";
@@ -411,6 +428,7 @@
         const h = await fetch("/api/health");
         const j = await h.json();
         barState.aiAvailable = !!j.hasAI;
+        barState.engineNote = j.configured && !j.hasAI ? j.engineNote || "" : "";
         barState.pipelineMinChars = Number(j.pipelineMinChars) || 0;
         if (barState.aiAvailable) fetch("/api/warm", { method: "POST" }).catch(() => {});
       } catch {}

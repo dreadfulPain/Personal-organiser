@@ -330,6 +330,12 @@ Every page has a capture box, so you never navigate somewhere to add something.
 
 - **Reminders reach one computer** — the one running the app. Nothing reaches
   your phone. That's the price of no cloud.
+- **Sorting needs Ollama actually running.** Being set up in `.env` isn't the
+  same as being switched on, and the app now checks rather than assuming: it
+  will tell you *"Ollama isn't answering at http://localhost:11434 — is it
+  running?"* or *"Ollama is running, but qwen3:14b isn't pulled. Run: ollama
+  pull qwen3:14b"*. Either way capture still works and nothing you typed is
+  lost — it's saved to sort later.
 - **Importance pings once, and only once.** A task marked "matters a lot" with
   no date gets a single nudge after ten quiet days, then never asks again. It
   still sits high on the shortlist.

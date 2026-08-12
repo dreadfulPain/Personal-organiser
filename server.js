@@ -588,6 +588,51 @@ async function callAnthropic(cfg, system, user, schema) {
 }
 
 // Dispatch to whichever engine is configured. The rest of the app never cares.
+// A local model that isn't running is the single most likely reason sorting
+// stops working, and it used to surface as "I can't reach the app" — which
+// points at the wrong thing entirely. The app was fine; Ollama was off. So:
+// name the real cause, and say what to do about it.
+function offlineReason(cfg, e) {
+  const m = (e && e.message) || "";
+  const looksOffline = /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|timed? out/i.test(m);
+  if (!looksOffline || !cfg || !cfg.baseUrl) return "";
+  const name = cfg.engine === "ollama" ? "Ollama" : "your local AI";
+  return `${name} isn't answering at ${cfg.baseUrl} — is it running?`;
+}
+
+// Ask the engine whether it's actually there. Cached briefly: every page load
+// hits /api/health, and this must not become a per-page round trip.
+let liveCache = { at: 0, ok: false, note: "" };
+async function engineLive(cfg) {
+  if (!cfg) return { ok: false, note: "AI sorting isn't switched on." };
+  if (cfg.engine === "anthropic") return { ok: true, note: "" }; // a key is all there is to check
+  if (Date.now() - liveCache.at < 10000) return { ok: liveCache.ok, note: liveCache.note };
+  let out = { ok: false, note: "" };
+  try {
+    const ctl = new AbortController();
+    const bail = setTimeout(() => ctl.abort(), 2000);
+    const r = await fetch(cfg.baseUrl.replace(/\/+$/, "") + (cfg.engine === "ollama" ? "/api/tags" : "/models"), {
+      signal: ctl.signal,
+    });
+    clearTimeout(bail);
+    if (!r.ok) throw new Error("status " + r.status);
+    // It answered — but the model it's meant to use may not be pulled, which
+    // fails later with a message nobody would connect back to here.
+    if (cfg.engine === "ollama") {
+      const d = await r.json().catch(() => ({}));
+      const names = (d.models || []).map((m) => String(m.name || m.model || ""));
+      const base = (n) => n.split(":")[0];
+      if (names.length && !names.some((n) => n === cfg.model || base(n) === base(cfg.model))) {
+        out = { ok: false, note: `Ollama is running, but "${cfg.model}" isn't pulled. Run: ollama pull ${cfg.model}` };
+      } else out = { ok: true, note: "" };
+    } else out = { ok: true, note: "" };
+  } catch (e) {
+    out = { ok: false, note: offlineReason(cfg, e) || "The local AI isn't answering just now." };
+  }
+  liveCache = { at: Date.now(), ...out };
+  return out;
+}
+
 function runEngine(cfg, system, user, schema) {
   if (cfg.engine === "anthropic") return callAnthropic(cfg, system, user, schema);
   if (cfg.engine === "ollama") return callOllama(cfg, system, user, schema);
@@ -966,7 +1011,8 @@ async function handleTimetable(res, body) {
     return sendJson(res, 200, { blocks, unreadable });
   } catch (e) {
     console.warn("[timetable] failed:", e?.message || e);
-    return sendJson(res, 502, { error: "ai_failed", message: "Couldn't read that just now — you can still type the blocks in by hand." });
+    const why = offlineReason(cfg, e);
+    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + "you can still type the blocks in by hand." });
   }
 }
 
@@ -1231,7 +1277,7 @@ async function handleRoute(res, body) {
     sendJson(res, 200, { entries });
   } catch (e) {
     console.error("[route] failed:", e?.message || e);
-    sendJson(res, 502, { error: "sort_failed", message: "I couldn't sort that just now." });
+    sendJson(res, 502, { error: "sort_failed", message: offlineReason(cfg, e) || "I couldn't sort that just now." });
   }
 }
 
@@ -1717,7 +1763,22 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/health") {
       const cfg = aiConfig();
       const stt = sttConfig();
-      return sendJson(res, 200, { ok: true, hasAI: !!cfg, engine: cfg ? cfg.engine : null, stt: stt ? "local" : "off", dataFile: DATA_FILE, pipelineMinChars: PIPELINE_MIN_CHARS });
+      // CONFIGURED IS NOT THE SAME AS RUNNING. aiConfig() only reads .env, so it
+      // said "yes, AI" while Ollama was switched off — and the app then tried,
+      // failed, and blamed itself. Actually asking makes the three states
+      // distinguishable: off, configured-but-not-answering, and working.
+      const live = await engineLive(cfg);
+      return sendJson(res, 200, {
+        ok: true,
+        hasAI: !!cfg && live.ok,
+        configured: !!cfg,
+        engine: cfg ? cfg.engine : null,
+        engineNote: live.note,
+        engineUrl: cfg && cfg.baseUrl ? cfg.baseUrl : "",
+        stt: stt ? "local" : "off",
+        dataFile: DATA_FILE,
+        pipelineMinChars: PIPELINE_MIN_CHARS,
+      });
     }
 
     // Cheap freshness check for the shared-folder poll: just the version stamp.

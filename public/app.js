@@ -21,7 +21,8 @@
   let schedule = []; // the day's fixed blocks + soft assumptions (the Day tab owns these)
   let scheduleConfig = null; // day window, effort→minutes, learned durations, plans
   let pending = null; // the batch currently shown in the check-back
-  let aiAvailable = false; // is AI sorting set up? (off during the storage phase)
+  let aiAvailable = false; // is AI sorting set up AND answering?
+  let engineNote = ""; // set up but not answering — says which, so you can fix it
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
   const LS_DISMISSED_CLUSTERS = "organiser.dismissedClusters.v1"; // UI-only: don't re-nag
   let editingTimeId = null; // which Today item's time is being set right now (inline timeline)
@@ -236,7 +237,7 @@
       $("#dump").style.height = "auto";
       $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
       renderCheckback();
-      setStatus("");
+      setStatus(engineNote); // "" when AI was simply never switched on
       return;
     }
 
@@ -283,8 +284,11 @@
       persist();
       $("#dump").value = "";
       $("#dump").style.height = "auto";
-      const msg = err && err.code ? err.message : "I can't reach the app right now.";
-      setStatus(msg + " Saved below to sort later.");
+      // NOT "I can't reach the app" — the app is running; it just drew this
+      // page and saved your words. Blaming itself sends you looking in the
+      // wrong place. The server says what actually failed; pass that on.
+      const msg = err && err.code ? err.message : "The sorter didn't answer.";
+      setStatus(msg + " Saved below to sort later — nothing is lost.");
       renderWaiting();
     } finally {
       setBusy(false);

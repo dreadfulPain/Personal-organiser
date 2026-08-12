@@ -1693,9 +1693,44 @@
   function applyMode() {
     const btn = $("#sortBtn");
     btn.textContent = aiAvailable ? "Sort it" : "Add";
+    // Three states, three hints. "Never set up" and "set up but not running"
+    // are different problems with different fixes, and until now the app said
+    // the same thing for both — which is why it looked like it had simply
+    // decided to stop sorting.
     $("#dumpHint").textContent = aiAvailable
       ? "or press ⌘/Ctrl + Enter"
-      : "Type one thing and add it — smart sorting is a later step.";
+      : engineNote
+        ? "Saved as you typed it — sorting is unavailable just now."
+        : "Type one thing and add it — smart sorting is a later step.";
+    const banner = $("#aiBanner");
+    if (!banner) return;
+    banner.hidden = !engineNote;
+    if (engineNote) $("#aiBannerWhy").textContent = engineNote;
+  }
+
+  // Once you've started Ollama you shouldn't have to work out that the page
+  // needs reloading. Ask again, in place.
+  async function recheckEngine() {
+    const btn = $("#aiRecheck");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Checking…";
+    }
+    try {
+      const j = await (await fetch("/api/health")).json();
+      aiAvailable = !!j.hasAI;
+      engineNote = j.configured && !j.hasAI ? j.engineNote || "" : "";
+      applyMode();
+      setStatus(aiAvailable ? "Sorting is back on. ✓" : engineNote || "Still not answering.");
+      if (aiAvailable) fetch("/api/warm", { method: "POST" }).catch(() => {});
+    } catch {
+      setStatus("Couldn't check just now.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Check again";
+      }
+    }
   }
 
   async function checkHealth() {
@@ -1787,6 +1822,8 @@
     syncPrep(); // the tasks a block owes shouldn't wait for a visit to the Day tab
 
     $("#sortBtn").addEventListener("click", onSort);
+    const recheck = $("#aiRecheck");
+    if (recheck) recheck.addEventListener("click", recheckEngine);
     $("#dump").addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();

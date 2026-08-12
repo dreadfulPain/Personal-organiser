@@ -21,6 +21,19 @@
         <strong>Start Organiser</strong>. You can still use <strong>Back up now</strong> below.
       </div>
 
+      <!-- SET UP BUT NOT ANSWERING. The app quietly drops to hand-entry when the
+           local AI is unreachable, and used to say so only in a status line you'd
+           blink and miss — so it looked like the app had just decided to stop
+           sorting. This states it plainly and stays until it's actually fixed. -->
+      <div id="aiBanner" class="ai-banner" hidden>
+        <div>
+          <strong>Sorting is off right now.</strong>
+          <span id="aiBannerWhy"></span>
+          <span class="ai-banner-calm">Everything you type is still saved — it just isn't sorted for you.</span>
+        </div>
+        <button id="aiRecheck" class="btn ghost" type="button">Check again</button>
+      </div>
+
       <!-- THE DUMP: one box, no fields -->
       <section class="dumpbox">
         <textarea id="dump" rows="3" placeholder="e.g. call the dentist on tuesday — or paste a whole conversation"></textarea>

@@ -3333,3 +3333,33 @@ body {
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
+
+/* ---- set up, but not answering ----
+   Deliberately calm: this is information, not an alarm. Nothing is broken and
+   nothing is lost — the app has simply dropped to hand-entry, and until now it
+   said so only in a status line you could blink and miss. */
+.ai-banner {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--reminder);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.ai-banner strong {
+  margin-right: 4px;
+}
+.ai-banner-calm {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+.ai-banner .btn {
+  flex: 0 0 auto;
+}

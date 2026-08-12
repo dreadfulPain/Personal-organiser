@@ -17,6 +17,12 @@ organiser fully by hand right now.
 **You don't need to download anything again.** Double-click **Update** (`Update.bat`
 on Windows, `update.command` on Mac), then stop and restart the app.
 
+**If you got this folder as a ZIP**, the first run will notice and offer to
+connect it up — once. Say yes and it keeps your `data` folder and your `.env`
+exactly as they are, replaces the app's own files with the latest, and from then
+on updating is just double-clicking. Say no and nothing at all is changed.
+(It needs git installed: https://git-scm.com/download/win on Windows.)
+
 Your own writing lives in the `data` folder, which updates never touch — it's
 excluded from the repository on purpose, so a pull cannot overwrite it.
 

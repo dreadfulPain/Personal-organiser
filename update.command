@@ -1,25 +1,63 @@
 #!/bin/bash
-# Mac / Linux twin of Update.bat. Your own data lives in data/, which git never
-# touches — updates cannot overwrite what you've written.
+# Mac / Linux twin of Update.bat. Your writing lives in data/ and your settings
+# in .env — both are excluded from the repository, so updates cannot touch them.
 cd "$(dirname "$0")" || exit 1
+
+REPO="https://github.com/dreadfulPain/Personal-organiser.git"
+BRANCH="claude/friendly-hawking-0mVNx"
+
 echo
 echo "  Getting the latest version..."
 echo
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "  This folder wasn't set up with git, so there's nothing to pull."
-  echo "  You can download it again from GitHub — but COPY YOUR data FOLDER"
-  echo "  SOMEWHERE SAFE FIRST and put it back afterwards."
-  echo
-  read -r -p "  Press enter to close."
-  exit 1
+echo "  Your own writing is NOT touched by this — it lives in the data folder,"
+echo "  and your settings in .env. Updates never overwrite either."
+echo
+
+finish() { echo; read -r -p "  Press enter to close."; exit "${1:-0}"; }
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "  Git isn't installed, so updates can't be fetched."
+  echo "  On a Mac, running  xcode-select --install  will add it."
+  finish 1
 fi
-if git pull; then
+
+if [ ! -d .git ]; then
+  echo "  --------------------------------------------------------------"
+  echo "  This folder was downloaded as a ZIP, so there's nothing to pull"
+  echo "  from yet. I can connect it up now, once."
   echo
-  echo "  Up to date. Stop the app if it's running, then start it again."
-else
+  echo "    KEEPS    your data folder — every task, record and photo"
+  echo "    KEEPS    your .env settings"
+  echo "    REPLACES the app's own files with the latest versions"
+  echo
+  echo "  Only say yes if you haven't edited the app's code yourself."
+  echo "  --------------------------------------------------------------"
+  echo
+  read -r -p "  Connect it up now? (type y then Enter): " ANSWER
+  case "$ANSWER" in
+    y | Y) ;;
+    *) echo; echo "  Left everything as it is. Nothing was changed."; finish 0 ;;
+  esac
+  echo
+  echo "  Connecting..."
+  git init &&
+    { git remote remove origin >/dev/null 2>&1 || true; } &&
+    git remote add origin "$REPO" &&
+    git fetch origin &&
+    git checkout -f -B "$BRANCH" "origin/$BRANCH" || {
+      echo
+      echo "  Couldn't finish. Your data and settings are untouched."
+      finish 1
+    }
+  echo
+  echo "  Connected. From now on, updating is just running this file."
+elif ! git pull; then
   echo
   echo "  Couldn't get the update — usually no internet, or a file you edited."
   echo "  Nothing was changed and your data is untouched."
+  finish 1
 fi
+
 echo
-read -r -p "  Press enter to close."
+echo "  Up to date. Stop the app if it's running, then start it again."
+finish 0

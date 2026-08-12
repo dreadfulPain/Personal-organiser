@@ -256,6 +256,7 @@ export function ungroundedFields(entry, source) {
   if (entry.kind === "task" && entry.item) {
     if (entry.item.date && !hasDateHint(source)) out.push("date");
     if (entry.item.promisedTo && !nameAppears(entry.item.promisedTo, source)) out.push("promised to");
+    if (entry.item.waitingOn && !nameAppears(entry.item.waitingOn, source)) out.push("who you're waiting on");
   }
   if (entry.kind === "handover" && entry.handover) {
     if (!nameAppears(entry.handover.person, source)) out.push("person");
@@ -296,8 +297,13 @@ const kindSchema = (kinds) => ({
 
 const TASK_SCHEMA = {
   type: "object",
-  properties: { title: { type: "string" }, date: { type: "string" }, promised_to: { type: "string" } },
-  required: ["title", "date", "promised_to"],
+  properties: {
+    title: { type: "string" },
+    date: { type: "string" },
+    promised_to: { type: "string" },
+    waiting_on: { type: "string" },
+  },
+  required: ["title", "date", "promised_to", "waiting_on"],
   additionalProperties: false,
 };
 const RECORD_SCHEMA = {
@@ -369,7 +375,8 @@ const TASK_PROMPT = `Pull out ONE thing to do from this text.
 
 - "title": what to do, in plain words, as short as possible. Imperative if you can.
 - "date": only if the text states or clearly implies one. Use YYYY-MM-DD. If not stated, leave it empty. Never guess a date.
-- "promised_to": only if the text names the person it's owed to. Otherwise empty.
+- "promised_to": only if the text names the person the reader OWES it to. Otherwise empty.
+- "waiting_on": only if the reader has done their part and is waiting to hear back from someone named. The ball is in that person's court, not the reader's. Otherwise empty. Never fill both this and "promised_to".
 
 Never invent detail that isn't there. Empty is always a valid answer for a field.
 
@@ -672,6 +679,7 @@ async function extract(ask, ctx, kind, f) {
   const title = String(out.title || "").trim().slice(0, 160);
   if (!title) return null;
   const promisedTo = String(out.promised_to || "").trim().slice(0, 40);
+  const waitingOn = String(out.waiting_on || "").trim().slice(0, 40);
   return {
     kind: "task",
     item: {
@@ -688,6 +696,7 @@ async function extract(ask, ctx, kind, f) {
       standardId: "",
       openLoop: false,
       promisedTo,
+      waitingOn,
     },
   };
 }

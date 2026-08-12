@@ -132,6 +132,20 @@ Every page has a capture box, so you never navigate somewhere to add something.
   task, stops the pinging), or **break it up** (the pieces inherit its date,
   tags, goal and standard). Three pushes usually means *too big*, not
   *unimportant* — deleting would be the wrong move.
+- **Waiting to hear back.** "I've sent it to Helen, waiting for her reply" is a
+  different shape from everything else: you can't finish it, because the next
+  move is someone else's. So it gets its own quiet section — never "Needs
+  finishing", which would blame you for their silence — and a **rhythm** rather
+  than a deadline: every few days it comes back and asks. Four answers, always:
+  *it came · nudge them · still waiting · stop asking*. "Nudge them" makes a
+  real task for today rather than a feeling. And it counts its own asks out loud
+  and **stops by itself** after six, so it can never become endless.
+- **Names get checked against People.** When something names a person, the app
+  looks them up — in code, not by asking the AI. Already there: linked quietly.
+  **Nearly** there — you wrote "Helen" and People has "Helena" — you get asked,
+  because a one-letter slip files work against the wrong person and neither of
+  you ever finds out. Not there at all: it offers to add them, and never adds
+  anyone silently, because a typo would otherwise become a permanent contact.
 - **Past a deadline** — one missed deadline at a time, with three ways out: new
   date, make it soft, or handled. Never a red graveyard.
 - **Work a block owes you.** The app can only ever track what got captured — so

@@ -153,6 +153,13 @@
       standardId: item.standardId || "",
       openLoop: item.openLoop === true,
       promisedTo: item.promisedTo || "",
+      // THE BALL IS IN SOMEONE ELSE'S COURT. Different from promisedTo, which
+      // means you owe them — here you've done your part and are waiting. It
+      // can't be finished by you doing something, so it needs a rhythm rather
+      // than a deadline.
+      waitingOn: item.waitingOn || "",
+      waitingSince: item.waitingOn ? todayISO() : "",
+      contactId: item.contactId || "",
       remindAt,
       remindedAt: null,
       // What the model read it off, when it wasn't English. A translation is the

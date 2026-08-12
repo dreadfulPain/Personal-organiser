@@ -3458,3 +3458,77 @@ a.btn {
   display: inline-block;
   text-decoration: none;
 }
+
+/* ---- waiting to hear back ---- */
+.waiting-on {
+  margin-bottom: 26px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.waiting-on h2 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+}
+.waiting-on .muted {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+.wo-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.wo-title {
+  font-size: 0.98rem;
+}
+.wo-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.wo-who {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--appointment);
+  color: var(--appointment-ink);
+}
+/* A count, not a telling-off — the same rule as the snooze counter. */
+.wo-asked {
+  font-style: italic;
+}
+.wo-acts {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.wo-stopped {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.cb-people {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.cb-known {
+  color: var(--accent-dark);
+}
+.cb-newperson {
+  color: var(--ink-soft);
+}

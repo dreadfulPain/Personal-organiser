@@ -23,6 +23,7 @@
   let pending = null; // the batch currently shown in the check-back
   let aiAvailable = false; // is AI sorting set up AND answering?
   let engineNote = ""; // set up but not answering — says which, so you can fix it
+  let namePrompt = null; // {index, field, name, look} — a name worth asking about
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
   const LS_DISMISSED_CLUSTERS = "organiser.dismissedClusters.v1"; // UI-only: don't re-nag
   let editingTimeId = null; // which Today item's time is being set right now (inline timeline)
@@ -221,6 +222,13 @@
       remindedAt: null,
     };
     if (out.openLoop || (out.deadlineType === "hard" && out.date)) out.remindAt = proposeRemindAt(out);
+    // A thing you're waiting on starts its own rhythm rather than a deadline.
+    if (out.waitingOn && !out.remindAt) {
+      const d = new Date();
+      d.setDate(d.getDate() + ASK_EVERY_DAYS);
+      d.setHours(9, 0, 0, 0);
+      out.remindAt = fmtLocalDT(d);
+    }
     return out;
   }
 
@@ -293,6 +301,71 @@
     } finally {
       setBusy(false);
     }
+  }
+
+  // A NAME IS A FACT YOU CAN CHECK BY LOOKING. So this is code, not a call.
+  // Matched → linked quietly, nothing asked. Nearly → the one worth asking
+  // about, because a one-letter slip files work against the wrong person and
+  // nobody ever finds out. New → offered, never added silently, because a typo
+  // would otherwise become a permanent contact.
+  function peopleRow(it, i) {
+    if (!window.OrganiserNames) return null;
+    const fields = [
+      ["promisedTo", it.promisedTo, "promised to"],
+      ["waitingOn", it.waitingOn, "waiting on"],
+    ].filter(([, v]) => v);
+    if (!fields.length) return null;
+
+    const row = document.createElement("div");
+    row.className = "cb-people";
+    let shown = false;
+    fields.forEach(([field, name, label]) => {
+      const found = OrganiserNames.look(name, contacts);
+      if (found.state === "matched") {
+        it.contactId = found.contact.id || "";
+        const chip = document.createElement("span");
+        chip.className = "cb-known";
+        chip.textContent = `${label} ${found.contact.name} · in People ✓`;
+        row.appendChild(chip);
+        shown = true;
+        return;
+      }
+      shown = true;
+      const wrap = document.createElement("span");
+      wrap.className = "cb-newperson";
+      wrap.textContent = `${label} ${name} — `;
+      if (found.state === "nearly") {
+        // The valuable question. Offer the near matches by name, and keep
+        // "no, it's someone else" as a real answer.
+        wrap.append(document.createTextNode("did you mean "));
+        found.suggestions.forEach((c, n) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "link";
+          b.textContent = c.name;
+          b.addEventListener("click", () => {
+            it[field] = c.name;
+            it.contactId = c.id || "";
+            renderCheckback();
+          });
+          wrap.append(n ? " / " : "", b);
+        });
+        wrap.append(document.createTextNode("? "));
+      }
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "link";
+      add.textContent = found.state === "nearly" ? `no — add ${name}` : `add ${name} to People`;
+      add.addEventListener("click", () => {
+        contacts.push({ id: uid(), name, group: "", note: "", createdAt: new Date().toISOString(), workLog: [] });
+        OrganiserStore.save({ contacts });
+        renderCheckback();
+        setStatus(`${name} is in People now. ✓`);
+      });
+      wrap.appendChild(add);
+      row.appendChild(wrap);
+    });
+    return shown ? row : null;
   }
 
   // ---------- the check-back: a glance, not a form ----------
@@ -376,6 +449,7 @@
     pending.forEach((it, i) => {
       const card = document.createElement("div");
       card.className = "cb-card";
+      // (the People row is appended after the card is built, below)
       card.innerHTML = `
         <div class="cb-head">
           <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
@@ -495,6 +569,8 @@
         adjustBtn.setAttribute("aria-expanded", String(opening));
         adjustBtn.textContent = opening ? "Hide details" : "Adjust details";
       });
+      const people = peopleRow(it, i);
+      if (people) card.appendChild(people);
       list.appendChild(card);
     });
 
@@ -894,6 +970,7 @@
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
 
     renderLoops();
+    renderWaitingOn();
     renderMeetings();
     renderOverdue();
     renderShortlist();
@@ -1559,6 +1636,128 @@
     persist();
     renderZones();
     setStatus(`Added “${title}” for the day before. ✓`);
+  }
+
+  // ---------- waiting to hear back ----------
+  //
+  // "I've sent it, waiting for their reply" is a genuinely different shape from
+  // everything else here. You can't finish it — the next move is theirs — so it
+  // has no deadline you could meet, and putting it in "Needs finishing" would
+  // blame you for someone else's silence.
+  //
+  // What it needs is a RHYTHM: come back every few days and ask. Which sounds
+  // like nagging, and the rule against nagging is real — so the difference
+  // matters. Nagging is the app deciding something should bother you. This is
+  // the app holding a thing YOU said you were waiting for, and every single
+  // time it comes back there are four answers, one of which ends it for good.
+  // It also counts how many times it has asked, out loud, and stops on its own.
+  const ASK_EVERY_DAYS = 5; // how long a silence sits before it's worth a nudge
+  const ASK_AT_MOST = 6; // then it stops by itself and says so — never endless
+
+  function waitingDays(it) {
+    if (!it.waitingSince) return 0;
+    return Math.max(0, Math.round((new Date() - new Date(it.waitingSince + "T12:00:00")) / 86400000));
+  }
+  function armWaiting(it, days) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(9, 0, 0, 0);
+    it.remindAt = fmtLocalDT(d);
+    it.remindedAt = null;
+  }
+  function renderWaitingOn() {
+    const section = $("#waitingOn");
+    const listEl = $("#waitingOnList");
+    if (!section || !listEl) return;
+    const list = items
+      .filter((i) => !i.done && i.waitingOn)
+      .sort((a, b) => (a.waitingSince || "").localeCompare(b.waitingSince || ""));
+    section.hidden = !list.length;
+    listEl.innerHTML = "";
+    if (!list.length) return;
+
+    list.forEach((it) => {
+      const days = waitingDays(it);
+      const asked = Number(it.asked) || 0;
+      const row = document.createElement("div");
+      row.className = "wo-row";
+      row.innerHTML = `
+        <div class="wo-main">
+          <div class="wo-title">${escapeHtml(it.title)}</div>
+          <div class="wo-meta">
+            <span class="wo-who">${escapeHtml(it.waitingOn)}</span>
+            <span class="wo-since">${days === 0 ? "since today" : days === 1 ? "1 day" : `${days} days`}</span>
+            ${asked ? `<span class="wo-asked">asked you ${asked}×</span>` : ""}
+            ${it.remindAt && !it.remindedAt ? `<span class="ping-info">${escapeHtml(fmtRemind(it))}</span>` : ""}
+          </div>
+        </div>`;
+      const acts = document.createElement("div");
+      acts.className = "wo-acts";
+      const mk = (label, fn, cls) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = cls || "link";
+        b.textContent = label;
+        b.addEventListener("click", fn);
+        acts.appendChild(b);
+      };
+      mk("it came", () => complete(it.id), "btn tiny");
+      mk("nudge them", () => nudge(it));
+      mk("still waiting", () => {
+        it.asked = 0; // you answered, so the count of unanswered asks resets
+        armWaiting(it, ASK_EVERY_DAYS);
+        persist();
+        renderZones();
+        setStatus(`Kept waiting on ${it.waitingOn} — back in ${ASK_EVERY_DAYS} days. ✓`);
+      });
+      mk("stop asking", () => {
+        it.waitingOn = "";
+        it.remindAt = "";
+        it.remindedAt = null;
+        persist();
+        renderZones();
+        setStatus("Won't ask about that again — the task is still on your list.");
+      });
+      row.appendChild(acts);
+      listEl.appendChild(row);
+      if (asked >= ASK_AT_MOST) {
+        const done = document.createElement("p");
+        done.className = "wo-stopped";
+        done.textContent = `I've asked about this ${asked} times and I'll stop now. It stays here either way.`;
+        listEl.appendChild(done);
+      }
+    });
+  }
+
+  // Chasing is a real, separate job — so it becomes a real, separate task
+  // rather than a feeling. The waiting item stays waiting.
+  function nudge(it) {
+    items.push({
+      id: uid(),
+      title: `Nudge ${it.waitingOn} about ${it.title.replace(/^(waiting for|waiting on)\s+/i, "")}`,
+      type: "task",
+      date: todayISO(),
+      time: "",
+      deadlineType: "soft",
+      importance: "normal",
+      effort: "quick",
+      tags: [],
+      whenText: "",
+      goalId: "",
+      standardId: "",
+      openLoop: false,
+      promisedTo: "",
+      waitingOn: "",
+      remindAt: "",
+      remindedAt: null,
+      createdAt: new Date().toISOString(),
+      done: false,
+    });
+    it.asked = 0;
+    armWaiting(it, ASK_EVERY_DAYS);
+    persist();
+    renderZones();
+    setStatus(`Added a nudge to today's list. ✓`);
   }
 
   // ---------- past a deadline: recover gently (§s21 safety net) ----------

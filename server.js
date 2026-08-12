@@ -816,12 +816,13 @@ PASTED CONVERSATIONS: the note may be a copied chat rather than the user's own w
 - Read it as messages between the USER and other people, and extract ONLY what the user must do, chase, or remember. Never turn the other person's own to-do into a task for the user.
 - If someone ASKS the user for something ("could you send the report by Friday?"), that is a task for the user with promised_to set to that person's name.
 - If the USER commits to something ("I'll get it to you Friday"), that is also a task with promised_to set to the person they told.
+- WAITING ON SOMEONE ELSE is different from both. "I've sent it to Helen, waiting for her reply", "asked the office, no answer yet", "chased Wei about the trip money" — the user has DONE their part and the next move is someone else's. Set waiting_on to that person's name (and leave promised_to empty). The ball is in their court, not the user's.
 - Ignore greetings, thanks, small talk, and anything already settled or already done.
 - If a message shows its own date/time, resolve "Friday"/"tomorrow" against THAT message's date; otherwise use the today you are given.
 - Write every title and summary in ENGLISH even when the conversation is in another language — translate the essential action; the user reads their list in English. Keep a person's name as written.
 - If nothing in the conversation needs the user to act or remember, return no entries at all.
 
-For a "task" entry set: title (short, verb-first for to-dos), item_type (task | appointment | reminder | note), date (YYYY-MM-DD or "" — resolve "tuesday"/"tomorrow" from the given today), time ("HH:MM" or ""), deadline ("hard" for a real deadline with consequences, else "soft"), importance ("high"/"normal"/"low"), effort ("quick"/"medium"/"draining"), tags (0-3 lowercase categories), when_text (the user's own time phrase, or ""), goal_link (the EXACT title of one listed goal it clearly belongs to, else ""), open_loop (true only if already started/prepped but not sent/finished), promised_to (a person's name it's committed to, else ""), standard (the EXACT code of one listed standard the task EXPLICITLY names, e.g. "TS4" in "prep TS4 display" — else ""; never guess a standard from the topic).
+For a "task" entry set: title (short, verb-first for to-dos), item_type (task | appointment | reminder | note), date (YYYY-MM-DD or "" — resolve "tuesday"/"tomorrow" from the given today), time ("HH:MM" or ""), deadline ("hard" for a real deadline with consequences, else "soft"), importance ("high"/"normal"/"low"), effort ("quick"/"medium"/"draining"), tags (0-3 lowercase categories), when_text (the user's own time phrase, or ""), goal_link (the EXACT title of one listed goal it clearly belongs to, else ""), open_loop (true only if already started/prepped but not sent/finished), promised_to (a person's name it's committed to, else ""), waiting_on (a person's name the user is waiting to hear back from, else ""), standard (the EXACT code of one listed standard the task EXPLICITLY names, e.g. "TS4" in "prep TS4 display" — else ""; never guess a standard from the topic).
 
 For a "record" entry set: who (EXACTLY one ID from the list, or "" if unsure — never invent one), note_type (the best-fitting kind from the list), summary (one clean line), topic (an EXACT skill from the list if it's clearly evidence of one, else ""), level (an EXACT level from the list only if a judgement is stated, else ""), tags, follow_up (true if it needs chasing later), follow_up_date (YYYY-MM-DD when implied, else "").
 
@@ -835,11 +836,11 @@ Example — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, p
 "s3 realy struggled with full stops in writing, chase his mum friday. also book the dentist for tuesday, prep the TS4 display, and i want to get fit"
 you return:
 {"entries":[
-  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":"","person":"","direction":"","note":""},
-  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":"","person":"","direction":"","note":""},
-  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""},
-  {"kind":"task","title":"Prep the display","item_type":"task","date":"","time":"","deadline":"soft","importance":"normal","effort":"medium","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"TS4","person":"","direction":"","note":""},
-  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""}
+  {"kind":"record","who":"S03","note_type":"assessment","summary":"Struggled with full stops in writing","topic":"","level":"","tags":["writing"],"follow_up":false,"follow_up_date":"","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"record","who":"S03","note_type":"parent","summary":"Chase mum about full stops","topic":"","level":"","tags":[],"follow_up":true,"follow_up_date":"2026-09-11","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"task","title":"Book the dentist","item_type":"task","date":"2026-09-08","time":"","deadline":"soft","importance":"normal","effort":"quick","tags":["health"],"when_text":"Tuesday","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"task","title":"Prep the display","item_type":"task","date":"","time":"","deadline":"soft","importance":"normal","effort":"medium","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"TS4","person":"","direction":"","note":""},
+  {"kind":"goal","title":"Get fit","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""}
 ]}
 
 Example of a PASTED CONVERSATION — today is Monday 2026-09-07; IDs: S01, S02, S03; kinds: assessment, parent. Note:
@@ -848,15 +849,15 @@ Example of a PASTED CONVERSATION — today is Monday 2026-09-07; IDs: S01, S02, 
 [Mon 09:20] Me: Of course, I'll email it Thursday. I'll keep an eye on him."
 you return:
 {"entries":[
-  {"kind":"task","title":"Email the reading list to Wang Li","item_type":"task","date":"2026-09-10","time":"","deadline":"hard","importance":"normal","effort":"quick","tags":[],"when_text":"Thursday","goal_link":"","open_loop":false,"promised_to":"Wang Li","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""},
-  {"kind":"record","who":"S02","note_type":"parent","summary":"Mum says he was upset about the seating change","topic":"","level":"","tags":["pastoral"],"follow_up":true,"follow_up_date":"2026-09-08","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","standard":"","person":"","direction":"","note":""}
+  {"kind":"task","title":"Email the reading list to Wang Li","item_type":"task","date":"2026-09-10","time":"","deadline":"hard","importance":"normal","effort":"quick","tags":[],"when_text":"Thursday","goal_link":"","open_loop":false,"promised_to":"Wang Li","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":"","person":"","direction":"","note":""},
+  {"kind":"record","who":"S02","note_type":"parent","summary":"Mum says he was upset about the seating change","topic":"","level":"","tags":["pastoral"],"follow_up":true,"follow_up_date":"2026-09-08","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","standard":"","person":"","direction":"","note":""}
 ]}
 (The greeting and the thanks produced nothing; the mother's own words became a record about her child, and the two things the user committed to became one dated task promised to her.)
 
 Example of a HANDOVER — "sarah's passed me the year 4 display board, and i gave the trip forms to tom" becomes:
 {"entries":[
-  {"kind":"handover","person":"Sarah","direction":"to_me","note":"Year 4 display board","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
-  {"kind":"handover","person":"Tom","direction":"from_me","note":"Trip forms","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
+  {"kind":"handover","person":"Sarah","direction":"to_me","note":"Year 4 display board","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""},
+  {"kind":"handover","person":"Tom","direction":"from_me","note":"Trip forms","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
 ]}`;
 
 const ROUTE_SCHEMA = {
@@ -880,6 +881,7 @@ const ROUTE_SCHEMA = {
           goal_link: { type: "string" },
           open_loop: { type: "boolean" },
           promised_to: { type: "string" },
+          waiting_on: { type: "string" },
           who: { type: "string" },
           note_type: { type: "string" },
           summary: { type: "string" },
@@ -894,7 +896,7 @@ const ROUTE_SCHEMA = {
         },
         required: [
           "kind", "title", "item_type", "date", "time", "deadline", "importance", "effort", "tags",
-          "when_text", "goal_link", "open_loop", "promised_to", "who", "note_type", "summary",
+          "when_text", "goal_link", "open_loop", "promised_to", "waiting_on", "who", "note_type", "summary",
           "topic", "level", "follow_up", "follow_up_date", "standard", "person", "direction", "note",
         ],
         additionalProperties: false,
@@ -1490,6 +1492,7 @@ async function handleRoute(res, body) {
           standardId: stdMatch ? stdMatch.id : "",
           openLoop: e.open_loop === true,
           promisedTo: (e.promised_to || "").toString().trim().slice(0, 40),
+          waitingOn: (e.waiting_on || "").toString().trim().slice(0, 40),
         },
       });
     });
@@ -1731,6 +1734,41 @@ function fixedBlockAt(schedule, now) {
   return null;
 }
 
+// WAITING ON SOMEONE ELSE gets a rhythm rather than a single ping, because a
+// silence doesn't resolve itself and one forgotten nudge is how a thing quietly
+// dies. This is not the nagging the app forbids: it re-asks only about
+// something YOU said you were waiting for, it says how long it's been rather
+// than passing judgement, every ping carries a way to end it, and it counts its
+// own asks and stops by itself. Nagging has no exit; this is mostly exit.
+const ASK_EVERY_DAYS = Math.max(1, Number(process.env.WAITING_ASK_DAYS) || 5);
+const ASK_AT_MOST = Math.max(1, Number(process.env.WAITING_ASK_TIMES) || 6);
+
+function rearmWaiting(it, now) {
+  const asked = (Number(it.asked) || 0) + 1;
+  it.asked = asked;
+  if (asked >= ASK_AT_MOST) {
+    it.remindAt = ""; // it has said its piece; it stays on the page, silently
+    it.remindedAt = null;
+    return false;
+  }
+  const next = new Date(now);
+  next.setDate(next.getDate() + ASK_EVERY_DAYS);
+  next.setHours(9, 0, 0, 0);
+  const p2 = (n) => String(n).padStart(2, "0");
+  it.remindAt = `${next.getFullYear()}-${p2(next.getMonth() + 1)}-${p2(next.getDate())}T${p2(next.getHours())}:${p2(next.getMinutes())}`;
+  it.remindedAt = null; // re-armed, so it comes back rather than going quiet
+  return true;
+}
+function waitingText(it, now) {
+  const since = it.waitingSince ? new Date(it.waitingSince + "T12:00:00") : null;
+  const days = since ? Math.max(0, Math.round((now - since) / 86400000)) : 0;
+  const how = days <= 1 ? "since yesterday" : `${days} days now`;
+  return {
+    title: `Still waiting on ${it.waitingOn}`,
+    body: `${it.title} — ${how}. Nudge them, or let it go?`,
+  };
+}
+
 function checkReminders() {
   try {
     const now = new Date();
@@ -1751,13 +1789,23 @@ function checkReminders() {
         titles.join(" · ") + (extra ? ` · and ${extra} more` : "")
       );
       const stamp = new Date().toISOString();
-      due.forEach((it) => (it.remindedAt = stamp));
+      due.forEach((it) => {
+        if (it.waitingOn) rearmWaiting(it, now); // keeps its rhythm even in a batch
+        else it.remindedAt = stamp;
+      });
       aged.forEach((it) => (it.agedAt = stamp));
       console.log(`[remind] batched ${due.length + aged.length}`);
       writeData(doc, { baseSavedAt: doc.savedAt });
       return;
     }
     due.forEach((it) => {
+      if (it.waitingOn) {
+        const w = waitingText(it, now);
+        notify(w.title, w.body);
+        const again = rearmWaiting(it, now);
+        console.log(`[remind:waiting] ${w.title}${again ? "" : " (last time)"}`);
+        return;
+      }
       const t = reminderText(it);
       notify(t.title, t.body);
       it.remindedAt = new Date().toISOString();

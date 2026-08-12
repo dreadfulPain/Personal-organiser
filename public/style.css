@@ -28,6 +28,18 @@
   box-sizing: border-box;
 }
 
+/* THE hidden ATTRIBUTE MUST ALWAYS WIN.
+   "hidden" works through the browser's own [hidden]{display:none}, and ANY
+   class rule in this file that sets a display beats it — so an element the code
+   had carefully hidden stayed on screen anyway. That is how a "Sorting is off
+   right now" banner appeared while sorting was working perfectly: the code set
+   hidden, the stylesheet ignored it.
+   Seven elements were affected before it was spotted, so it is settled here
+   once, for everything, rather than class by class. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }

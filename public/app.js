@@ -257,24 +257,7 @@
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
-      // NO MODEL — but most of what anyone types isn't messy. Patterns read the
-      // date, the time, the urgency, and anyone already in your People list,
-      // instantly and offline. What they can't see is left blank rather than
-      // guessed, and it all lands in the same check-back, so the only real
-      // difference from the AI path is how much arrives already filled in.
-      const guess = window.OrganiserQuickParse
-        ? OrganiserQuickParse.parse(text, { contacts })
-        : { title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null };
-      pending = [guess];
-      proposed = [JSON.parse(JSON.stringify(guess))];
-      $("#dump").value = "";
-      $("#dump").style.height = "auto";
-      const read = window.OrganiserQuickParse && OrganiserQuickParse.foundAnything(guess);
-      $("#checkbackHeading").textContent = read
-        ? "Read what I could — check it and add."
-        : "Add this — tweak anything, then add.";
-      renderCheckback();
-      setStatus(engineNote); // "" when AI was simply never switched on
+      await addWithoutAI(text);
       return;
     }
 
@@ -621,6 +604,50 @@
 
     if (pending.length === 0) cancelCheckback();
     else $("#checkback").hidden = false;
+  }
+
+  // NO MODEL — but that's no reason to hand back one lump. The splitter is
+  // plain code, so a pasted thread still becomes separate lines; then patterns
+  // read the date, time, urgency and anyone already in People off each one.
+  // What they can't see is left blank rather than guessed, and it all lands in
+  // the same check-back — so the only real difference from the AI path is how
+  // much arrives already filled in.
+  async function addWithoutAI(text) {
+    let parts = [text];
+    if (/[\n。！？!?]/.test(text) && text.length > 40) {
+      try {
+        const r = await fetch("/api/split", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          const got = (d.fragments || []).map((f) => f.text).filter((t) => t && t.length > 1);
+          if (got.length > 1) parts = got;
+        }
+      } catch {
+        /* one lump is still better than nothing lost */
+      }
+    }
+    const made = parts.map((t) =>
+      window.OrganiserQuickParse
+        ? OrganiserQuickParse.parse(t, { contacts })
+        : { title: t, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }
+    );
+    pending = made;
+    proposed = made.map((m) => JSON.parse(JSON.stringify(m)));
+    $("#dump").value = "";
+    $("#dump").style.height = "auto";
+    const readAny = window.OrganiserQuickParse && made.some((m) => OrganiserQuickParse.foundAnything(m));
+    $("#checkbackHeading").textContent =
+      made.length > 1
+        ? `Split into ${made.length} — drop any that aren't things to do.`
+        : readAny
+          ? "Read what I could — check it and add."
+          : "Add this — tweak anything, then add.";
+    renderCheckback();
+    setStatus(engineNote); // "" when AI was simply never switched on
   }
 
   const WATCHED = ["title", "date", "time", "importance", "effort", "deadlineType", "promisedTo", "waitingOn", "goalId", "standardId", "tags"];

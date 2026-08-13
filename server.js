@@ -2492,6 +2492,25 @@ const server = http.createServer(async (req, res) => {
       return handleDiagnose(res);
     }
 
+    // Splitting is PURE CODE and deliberately needs no engine. It sat behind the
+    // pipeline, which meant a machine with no model got a whole pasted thread as
+    // one task title — when the app could always have broken it into lines.
+    if (pathname === "/api/split" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      const frags = splitFragments((parsed.text || "").toString()).map((f) => ({
+        text: f.text,
+        speaker: f.speaker,
+        when: f.when,
+      }));
+      return sendJson(res, 200, { fragments: frags });
+    }
+
     if (pathname === "/api/pipeline" && req.method === "POST") {
       const body = await readBody(req);
       let parsed = {};

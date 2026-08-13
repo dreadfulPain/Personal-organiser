@@ -64,10 +64,21 @@
     });
     slots.forEach((s) => carve(gaps, s.start, s.end));
 
+    // What the week says to get on with today, including work not due until
+    // later. Without this the day plan can only see work whose date has already
+    // arrived, so a quiet Monday goes on the stockroom while the big thing due
+    // Friday waits for a Friday that turns out to have no room in it.
+    const WP = window.OrganiserWeekPlan;
+    const startNow = WP ? WP.startToday(items, schedule, c, iso, ctx) : new Set();
+
     // forPlanning, not ordered: the pressing things first, then ordinary work to
     // fill what's left. See priority.js — the nag list makes a poor day plan.
     const candidates = window.OrganiserPriority.forPlanning(items, ctx).filter(
-      (i) => !dropped.has(i.id) && !i.time && (!i.date || i.date <= iso) && !i.openLoop
+      (i) =>
+        !dropped.has(i.id) &&
+        !i.time &&
+        !i.openLoop &&
+        (!i.date || i.date <= iso || startNow.has(i.id))
     );
 
     let used = 0;

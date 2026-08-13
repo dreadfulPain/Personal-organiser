@@ -7,6 +7,8 @@
   "use strict";
 
   let items = [];
+  let schedule = [];
+  let cfg = null;
   let offset = 0; // months from the current one
 
   const $ = (sel) => document.querySelector(sel);
@@ -41,11 +43,40 @@
     const daysIn = new Date(y, m + 1, 0).getDate();
     const lead = (start.getDay() + 6) % 7;
     const total = Math.ceil((lead + daysIn) / 7) * 7;
+    // A month is the same question as a week, asked over more days: not "when
+    // is this due" but "when is there actually room to do it". Work shows on
+    // the day it's planned for, which for anything big is before its deadline.
+    // Days already gone keep showing the due date — there's nothing left to
+    // plan into them, and pretending otherwise would rewrite history.
+    // Each entry carries the minute it's planned for, so the day reads in the
+    // order it will actually happen. A planned start isn't written onto the
+    // item — the item keeps your deadline, the plan is worked out fresh.
     const byIso = new Map();
+    const push = (iso, it, start) => {
+      if (!byIso.has(iso)) byIso.set(iso, []);
+      const day = byIso.get(iso);
+      if (!day.some((e) => e.it === it)) day.push({ it, start });
+    };
+    const today = todayISO();
+    const first = isoOf(new Date(y, m, 1 - lead));
+    const from = first > today ? first : today;
+    const span = Math.max(1, Math.round((new Date(y, m, 1 - lead + total) - new Date(from + "T12:00:00")) / 86400000));
+    const WP = window.OrganiserWeekPlan;
+    const plan = WP ? WP.spread(list, schedule, cfg, from, span, { today, goalTitle: () => "" }) : null;
+    const planned = new Set();
+    if (plan) {
+      plan.placements.forEach((p) => {
+        const it = list.find((x) => x.id === p.itemId);
+        if (!it) return;
+        planned.add(it.id);
+        push(p.iso, it, p.start);
+      });
+    }
+    // Anything the planner didn't place — undated, already past, or won't fit —
+    // still belongs on its own date. Nothing disappears because it can't be fitted.
     list.forEach((it) => {
-      if (it.done || !it.date) return;
-      if (!byIso.has(it.date)) byIso.set(it.date, []);
-      byIso.get(it.date).push(it);
+      if (it.done || !it.date || planned.has(it.id)) return;
+      push(it.date, it, null);
     });
     const cells = [];
     for (let i = 0; i < total; i++) {
@@ -55,7 +86,9 @@
         iso,
         day: d.getDate(),
         inMonth: d.getMonth() === m,
-        items: (byIso.get(iso) || []).slice().sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99")),
+        items: (byIso.get(iso) || [])
+          .slice()
+          .sort((a, b) => minuteOf(a) - minuteOf(b)),
       });
     }
     return { cells, label: start.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
@@ -70,6 +103,14 @@
       names.push(d.toLocaleDateString(undefined, { weekday: "short" }));
     }
     return names;
+  }
+
+  // Sort key for a cell: the planned minute if there is one, then a hand-set
+  // time, then everything else after both.
+  function minuteOf(e) {
+    if (e.start !== null && e.start !== undefined) return e.start;
+    const m = /^(\d{2}):(\d{2})$/.exec((e.it && e.it.time) || "");
+    return m ? +m[1] * 60 + +m[2] : 24 * 60 + 1;
   }
 
   const SHOW = 3; // item lines per cell before "+N more"
@@ -101,12 +142,18 @@
       num.className = "mo-daynum";
       num.textContent = cell.day;
       el.appendChild(num);
-      cell.items.slice(0, SHOW).forEach((it) => {
+      cell.items.slice(0, SHOW).forEach(({ it, start }) => {
         const line = document.createElement("div");
         line.className = "mo-ev" + (it.deadlineType === "hard" ? " hard" : "");
-        const t = shortTime(it.time);
+        const t = shortTime(
+          start !== null && start !== undefined && window.OrganiserSchedule
+            ? OrganiserSchedule.toHM(start)
+            : it.time
+        );
         line.textContent = (t ? t + " " : "") + it.title;
-        line.title = it.title;
+        // The plan may put it before its deadline; say so rather than let the
+        // grid quietly imply the date moved.
+        line.title = it.date && start !== null && it.date !== cell.iso ? `${it.title} — due ${it.date}` : it.title;
         el.appendChild(line);
       });
       if (cell.items.length > SHOW) {
@@ -123,6 +170,8 @@
   async function init() {
     const data = await OrganiserStore.load();
     items = data.items || [];
+    schedule = data.schedule || [];
+    cfg = data.scheduleConfig || null;
     $("#moPrev").addEventListener("click", () => {
       offset--;
       render();

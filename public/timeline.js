@@ -460,21 +460,26 @@
   }
 
   // Look forward for the first day with a stretch long enough, and offer it.
+  // Move one job to the next day that can genuinely hold it.
+  //
+  // This used to search the raw timetable — the lessons and nothing else — so it
+  // was blind to every other thing already booked. Move three jobs after a bad
+  // morning and all three landed on the same day at the same minute, on top of
+  // each other, and the app looked like it had sorted you out. nextDayWithRoom
+  // counts what's already committed, including what the week has planned.
   function findADay(it, fromISO) {
     const c = S().normaliseConfig(cfg);
     const est = S().estimateMinutes(it, c);
-    for (let i = 1; i <= 21; i++) {
-      const iso = S().isoOf(new Date(new Date(fromISO + "T12:00:00").getTime() + i * 86400000));
-      const gap = S().gapsOn(schedule, c, iso).find((g) => g.end - g.start >= est.minutes);
-      if (!gap) continue;
-      it.date = iso;
-      it.time = S().toHM(gap.start);
-      persist();
-      render();
-      setTlStatus(`Moved “${it.title}” to ${S().dayWord(new Date(iso + "T12:00:00"))} at ${S().fmtTime(it.time)} — the first real stretch it fits in. ✓`);
+    const spot = window.OrganiserWeekPlan.nextDayWithRoom(it, items, schedule, c, fromISO, 21);
+    if (!spot) {
+      setTlStatus(`No day in the next three weeks has a ${S().durationWords(est.minutes)} stretch free. It may want breaking up.`);
       return;
     }
-    setTlStatus(`No day in the next three weeks has a ${S().durationWords(est.minutes)} stretch free. It may want breaking up.`);
+    it.date = spot.iso;
+    it.time = S().toHM(spot.start);
+    persist();
+    render();
+    setTlStatus(`Moved “${it.title}” to ${S().dayWord(new Date(spot.iso + "T12:00:00"))} at ${S().fmtTime(it.time)} — the first real stretch it fits in. ✓`);
   }
 
   function renderUnplanned(iso, plan) {

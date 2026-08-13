@@ -428,9 +428,15 @@
   function flaggedBox(plan, iso) {
     const box = document.createElement("div");
     box.className = "dp-flagged";
+    // Never say the same thing twice. After a long interruption a big job is
+    // both "pushed out" AND "wouldn't have fitted" — both true, but printing it
+    // in two boxes with two explanations reads as two jobs, at the exact moment
+    // you have least patience for working out that it's one. "Pushed out" wins:
+    // it names the cause and it's the box with somewhere to put it.
+    const alreadyShown = new Set(plan.displaced || []);
     const names = plan.flagged
       .map((f) => itemById(f.itemId))
-      .filter((x) => x && !x.done)
+      .filter((x) => x && !x.done && !alreadyShown.has(x.id))
       .slice(0, 4);
     if (!names.length) return box;
     box.innerHTML = `<h3>Needs a proper slot</h3>

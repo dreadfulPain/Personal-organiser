@@ -170,7 +170,12 @@
     return out;
   }
 
-  const HIGH = /\b(urgent|urgently|asap|important|critical|priority|must|deadline|重要|紧急|急)\b/i;
+  // The Chinese words sit OUTSIDE the \b(...)\b group on purpose. \b is an ASCII
+  // word boundary: it needs a letter/digit on one side, so it never matches next
+  // to 重/紧/急 and every Chinese urgency word here silently read as "normal".
+  // Same shape as the date patterns above — English inside the boundaries, CJK
+  // as plain alternatives.
+  const HIGH = /\b(urgent|urgently|asap|important|critical|priority|must|deadline)\b|重要|紧急|急/i;
   const LOW = /\b(sometime|someday|whenever|no rush|if i (?:get|have) time|eventually|low priority)\b/i;
   const HARD = /\b(deadline|due|must be|has to be|no later than|by end of|cut off|cutoff)\b/i;
   const QUICK = /\b(quick|quickly|just|briefly|two minutes|5 ?min)\b/i;
@@ -200,6 +205,18 @@
         .replace(/\s{2,}/g, " ")
         .trim();
     }
+    // "urgent: send the form" — the "urgent" has already been READ, into
+    // importance. Leaving it in the title says it twice, and the title is what
+    // follows the task into every reminder, every export, every printed list.
+    // Only a PREFIX label goes: "this one is urgent" is a sentence you wrote,
+    // and cutting a word out of the middle of it would leave nonsense.
+    // A colon is unambiguous, so no space is needed after it — Chinese doesn't
+    // put one. A dash does need one, or "re-do the display" loses its "re".
+    const label = /^\s*(\p{L}+)\s*(?:[:：]\s*|[-–—]\s+)/u.exec(title);
+    if (label && (HIGH.test(label[1]) || LOW.test(label[1])) && title.slice(label[0].length).trim()) {
+      title = title.slice(label[0].length).trim();
+    }
+
     title = title.replace(/^[\s,;:-]+|[\s,;:-]+$/g, "");
     if (!title) title = raw;
 

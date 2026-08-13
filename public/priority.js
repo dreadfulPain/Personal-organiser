@@ -67,5 +67,27 @@
       );
   }
 
-  window.OrganiserPriority = { eligible, rank, reason, ordered };
+  // FILLING A DAY IS A DIFFERENT QUESTION FROM WHAT TO NAG ABOUT.
+  //
+  // Home asks "what should I put in front of you?" — and "order whiteboard pens"
+  // is rightly not that. The day plan asks something else: "there's an hour and
+  // fifty minutes free, what could go in it?" Answering that with ordered() —
+  // the nag list — means undated ordinary work is never offered any of the free
+  // time, so the plan looks sparse while the backlog quietly grows. Measured on
+  // a normal week that was two hours a day left blank with four real jobs
+  // waiting, and the two-thirds comfort limit never once reached.
+  //
+  // So: the pressing things first, in pressing order, then everything else to
+  // fill what's left. The limit still stops it, and nothing here changes what
+  // Home shows.
+  function forPlanning(items, ctx) {
+    const first = ordered(items, ctx);
+    const taken = new Set(first.map((i) => i.id));
+    const rest = (items || [])
+      .filter((i) => !i.done && !i.openLoop && !taken.has(i.id))
+      .sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+    return first.concat(rest);
+  }
+
+  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning };
 })();

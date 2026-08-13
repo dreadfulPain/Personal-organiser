@@ -325,17 +325,20 @@
       <div class="dp-main">
         <div class="dp-title">${escapeHtml(it.title)}</div>
         <div class="dp-meta">
-          <span class="dp-est${slot.pinned ? "" : " guess"}">${escapeHtml(S().durationWords(est.minutes))}${slot.pinned ? "" : " — a guess"}</span>
+          <span class="dp-est${slot.pinned ? "" : " guess"}">${escapeHtml(S().durationWords(est.minutes))}${est.spent ? " left" : ""}${slot.pinned ? "" : " — a guess"}</span>
+          ${est.spent ? `<span class="dp-sofar">${escapeHtml(S().durationWords(est.spent))} already in</span>` : ""}
           ${slot.why ? `<span class="dp-why">${escapeHtml(slot.why)}</span>` : ""}
           ${again >= 2 ? `<span class="dp-again">on the plan ${again} days running — it may want a proper slot, or breaking up</span>` : ""}
         </div>
       </div>
       <div class="dp-actions">
         <button type="button" class="tick" aria-label="Done" title="Done"></button>
+        <button type="button" class="link dp-part">got part way</button>
         <button type="button" class="link dp-move">move</button>
         <button type="button" class="link dp-remove">not today</button>
       </div>`;
     el.querySelector(".tick").addEventListener("click", () => completeFromPlan(it, slot));
+    el.querySelector(".dp-part").addEventListener("click", () => partWayThrough(it, slot));
     el.querySelector(".dp-remove").addEventListener("click", () => {
       const p = planFor(iso);
       p.dropped = (p.dropped || []).concat([it.id]);
@@ -408,13 +411,77 @@
     // Wall clock minus the lessons in between — the app knows the timetable, so
     // a lesson that happened mid-job is not counted as part of the job.
     const elapsed = S().workingMinutesBetween(schedule, iso, began, nowMin);
-    const est = S().estimateMinutes(it, cfg).minutes;
-    if (elapsed >= 1 && elapsed <= Math.max(4 * est, 120)) cfg = S().learn(cfg, it, elapsed);
+    // What the job cost ALTOGETHER, including the sittings before today —
+    // otherwise a three-hour job done over three days teaches the app it takes
+    // an hour, which is how the estimates drifted down in the first place.
+    const est = S().estimateMinutes(it, cfg);
+    const total = elapsed + (Math.round(Number(it.spentMinutes) || 0));
+    if (total >= 1 && total <= Math.max(4 * est.full, 120)) cfg = S().learn(cfg, it, total);
 
     p.lastTickMin = nowMin;
     savePlan(iso, p);
     persist();
     render();
+    offerFollowUp(it);
+  }
+
+  // GOT PART WAY. The middle state the app had no word for.
+  //
+  // A job you got half through isn't done and isn't untouched. With nowhere to
+  // put that, the minutes vanished: the plan asked for the whole thing again
+  // tomorrow. Over a test month that was four and a half hours of real work
+  // thrown away — and a pile of marking bigger than one day's free time could
+  // never be finished at all, forty hours at the desk over ten days with
+  // nothing to show, because every morning it started again from nothing.
+  //
+  // Costs one tap, and only when you want it. Nothing is ever assumed.
+  function partWayThrough(it, slot) {
+    const now = new Date();
+    const iso = todayISO();
+    const p = planFor(iso);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const lastTick = Number.isFinite(p.lastTickMin) ? p.lastTickMin : -1;
+    const began = Math.max(slot.start, lastTick);
+    const mins = S().workingMinutesBetween(schedule, iso, began, nowMin);
+    if (mins >= 1) it.spentMinutes = Math.round(Number(it.spentMinutes) || 0) + mins;
+
+    // It's had its turn today; the rest of the day belongs to other things.
+    p.dropped = (p.dropped || []).concat([it.id]);
+    p.slots = (p.slots || []).filter((s2) => s2.itemId !== it.id);
+    p.lastTickMin = nowMin;
+    savePlan(iso, p);
+    persist();
+    render();
+    const left = S().estimateMinutes(it, cfg).minutes;
+    setTlStatus(
+      mins >= 1
+        ? `${S().durationWords(mins)} on “${it.title}” — kept. About ${S().durationWords(left)} left, and it'll come round again. ✓`
+        : `“${it.title}” put down for today — it'll come round again.`
+    );
+  }
+
+  // WORK THAT MAKES MORE WORK. Finishing something is exactly when you find out
+  // it wasn't the end of it — and exactly when you're least likely to stop and
+  // write the next bit down, because it feels finished. Offered, never asked:
+  // ignore it and it goes on the next render. One tap if you need it.
+  function offerFollowUp(it) {
+    const bar = $("#tlStatus");
+    if (!bar) return;
+    bar.hidden = false;
+    bar.textContent = `Done: ${it.title}. `;
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "link";
+    link.textContent = "anything follow from it?";
+    link.addEventListener("click", () => {
+      const box = document.querySelector("#capture textarea, #capture input[type=text]");
+      if (box) {
+        box.focus();
+        box.scrollIntoView({ block: "center" });
+      }
+      bar.textContent = "Say it however it comes out — it'll be sorted.";
+    });
+    bar.appendChild(link);
   }
 
   // Pushed out by something that actually happened. The wording matters: these

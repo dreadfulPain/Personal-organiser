@@ -234,6 +234,9 @@
       goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
       standardId: standardLabelById(it.standardId) ? it.standardId : "",
       openLoop: it.openLoop === true,
+      // Earliest this could possibly be done — NOT the same as when it's due.
+      // Both readers produce it; it has to survive the trip into storage.
+      notBefore: /^\d{4}-\d{2}-\d{2}$/.test(it.notBefore || "") ? it.notBefore : "",
       promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
       remindAt: "",
       remindedAt: null,
@@ -687,6 +690,9 @@
         goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
         standardId: standardLabelById(it.standardId) ? it.standardId : "",
         openLoop: it.openLoop === true,
+        // Earliest this could possibly be done — NOT the same as when it's due.
+        // Both readers produce it; it has to survive the trip into storage.
+        notBefore: /^\d{4}-\d{2}-\d{2}$/.test(it.notBefore || "") ? it.notBefore : "",
         promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
         remindAt: typeof it.remindAt === "string" ? it.remindAt : "",
         remindedAt: null,

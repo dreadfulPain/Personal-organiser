@@ -152,6 +152,9 @@
       goalId: item.goalId || "",
       standardId: item.standardId || "",
       openLoop: item.openLoop === true,
+      // Earliest this could possibly be done — NOT the same as when it's due.
+      // Both readers produce it; it has to survive the trip into storage.
+      notBefore: /^\d{4}-\d{2}-\d{2}$/.test(item.notBefore || "") ? item.notBefore : "",
       promisedTo: item.promisedTo || "",
       // THE BALL IS IN SOMEONE ELSE'S COURT. Different from promisedTo, which
       // means you owe them — here you've done your part and are waiting. It

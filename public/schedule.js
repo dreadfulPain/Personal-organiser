@@ -270,12 +270,25 @@
   // Never by asking. The effort field gives a usable answer on day one; what the
   // app already records (created / touched / ticked) sharpens it for free. Every
   // number that comes out of here is a SOFT assumption and must display as one.
+  // How much of this is LEFT — which is not the same as how big it is.
+  //
+  // A job you got half way through is a smaller job now. Without this the app
+  // plans the whole thing again every morning, and the minutes you put in
+  // vanish. Over a simulated month that was four and a half hours of real work
+  // thrown away — and worse, anything bigger than one day's free time could
+  // never be finished at all. Six hours of marking against four hours free a
+  // day: forty hours at the desk over ten days and still nothing to show for
+  // it, because every morning it started again from nothing. With the minutes
+  // kept, the same pile is done in six hours across two days.
   function estimateMinutes(item, cfg) {
     const c = normaliseConfig(cfg);
     const effort = ["quick", "medium", "draining"].includes(item && item.effort) ? item.effort : "medium";
     const learned = Number(c.learned[effort]);
-    const base = learned > 0 ? learned : c.effortMinutes[effort];
-    return { minutes: Math.max(5, Math.round(base)), soft: true, from: learned > 0 ? "learned" : "effort" };
+    const base = Math.round(learned > 0 ? learned : c.effortMinutes[effort]);
+    const spent = Math.max(0, Math.round(Number(item && item.spentMinutes) || 0));
+    // Never zero, however much is in: something still has to be finished off.
+    const left = Math.max(5, base - spent);
+    return { minutes: left, soft: true, from: learned > 0 ? "learned" : "effort", spent, full: base };
   }
   // Minutes between two points in a day that you could actually have been
   // working — the wall clock, minus anything the timetable says you were doing

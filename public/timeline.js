@@ -80,65 +80,10 @@
     return buildPlan(iso, store);
   }
 
+  // The planner itself lives in dayplan.js so it can be driven and tested
+  // without a browser — this page just supplies the data and shows the result.
   function buildPlan(iso, previous, notBefore) {
-    const c = S().normaliseConfig(cfg);
-    const dropped = new Set((previous && previous.dropped) || []);
-    const gaps = S().gapsOn(schedule, c, iso, notBefore).map((g) => ({ ...g }));
-    const freeTotal = gaps.reduce((n, g) => n + (g.end - g.start), 0);
-    const budget = Math.floor(freeTotal * c.fillFraction);
-
-    // Anything already given a real time by hand keeps it — a decision you made
-    // is never quietly overwritten by a plan the app made.
-    const pinned = items.filter((i) => !i.done && i.date === iso && i.time);
-    const slots = pinned.map((i) => {
-      const start = S().toMin(i.time);
-      const est = S().estimateMinutes(i, c);
-      return { itemId: i.id, start, end: Math.min(start + est.minutes, 24 * 60 - 1), pinned: true, soft: false };
-    });
-    slots.forEach((s) => carve(gaps, s.start, s.end));
-
-    const candidates = OrganiserPriority.ordered(items, ctx()).filter(
-      (i) => !dropped.has(i.id) && !i.time && (!i.date || i.date <= iso) && !i.openLoop
-    );
-
-    let used = 0;
-    const flagged = [];
-    for (const it of candidates) {
-      const est = S().estimateMinutes(it, c);
-      const hardToday = it.deadlineType === "hard" && it.date && it.date <= iso;
-      // The two-thirds rule — but a hard deadline that's due is never left out
-      // of the day it's due. That would make the plan quietly wrong.
-      if (used >= budget && !hardToday) break;
-      const gap = fitIn(gaps, est.minutes);
-      if (!gap) {
-        // No stretch big enough. Say so rather than chopping it into a gap it
-        // doesn't fit — "needs a proper slot" is real information.
-        if (est.minutes > c.minGapMinutes) flagged.push({ itemId: it.id, minutes: est.minutes });
-        continue;
-      }
-      slots.push({ itemId: it.id, start: gap.start, end: gap.start + est.minutes, soft: true, why: OrganiserPriority.reason(it, ctx()) });
-      carve(gaps, gap.start, gap.start + est.minutes);
-      used += est.minutes;
-    }
-    slots.sort((a, b) => a.start - b.start);
-    return { builtAt: new Date().toISOString(), acceptedAt: null, slots, dropped: [...dropped], flagged, freeTotal, used, accepted: false };
-  }
-
-  // First gap this many minutes will fit into, earliest first.
-  function fitIn(gaps, minutes) {
-    return gaps.find((g) => g.end - g.start >= minutes) || null;
-  }
-  // Remove a used stretch from the remaining free space.
-  function carve(gaps, start, end) {
-    for (let i = gaps.length - 1; i >= 0; i--) {
-      const g = gaps[i];
-      if (end <= g.start || start >= g.end) continue;
-      const left = { start: g.start, end: Math.max(g.start, start) };
-      const right = { start: Math.min(g.end, end), end: g.end };
-      gaps.splice(i, 1);
-      if (right.end - right.start > 0) gaps.splice(i, 0, right);
-      if (left.end - left.start > 0) gaps.splice(i, 0, left);
-    }
+    return window.OrganiserDayPlan.build(items, schedule, cfg, iso, { previous, notBefore, ctx: ctx() });
   }
 
   function savePlan(iso, plan) {

@@ -31,6 +31,16 @@
   function fitIn(gaps, minutes) {
     return gaps.find((g) => g.end - g.start >= minutes) || null;
   }
+  // LAST gap this many minutes will fit into. For work that's waiting on
+  // something happening at an unknown point during the day: the app can't know
+  // when the meeting is, but it knows that later in the day is likelier to be
+  // after it than eight in the morning is.
+  function fitLast(gaps, minutes) {
+    for (let i = gaps.length - 1; i >= 0; i--) {
+      if (gaps[i].end - gaps[i].start >= minutes) return gaps[i];
+    }
+    return null;
+  }
   // Remove a used stretch from the remaining free space.
   function carve(gaps, start, end) {
     for (let i = gaps.length - 1; i >= 0; i--) {
@@ -87,19 +97,25 @@
       const est = S.estimateMinutes(it, c);
       const hardToday = it.deadlineType === "hard" && it.date && it.date <= iso;
       if (used >= budget && !hardToday) break;
-      const gap = fitIn(gaps, est.minutes);
+      // Today is the day the wait clears — put it as late as it will go. Same
+      // reasoning as weekplan.js: the thing it's waiting on happens at some
+      // unknown point today, and first thing this morning is the one time it
+      // definitely hasn't happened yet.
+      const waitClears = !!it.notBefore && it.notBefore === iso;
+      const gap = waitClears ? fitLast(gaps, est.minutes) : fitIn(gaps, est.minutes);
       if (!gap) {
         if (est.minutes > c.minGapMinutes) flagged.push({ itemId: it.id, minutes: est.minutes });
         continue;
       }
+      const at = waitClears ? gap.end - est.minutes : gap.start;
       slots.push({
         itemId: it.id,
-        start: gap.start,
-        end: gap.start + est.minutes,
+        start: at,
+        end: at + est.minutes,
         soft: true,
         why: window.OrganiserPriority.reason(it, ctx),
       });
-      carve(gaps, gap.start, gap.start + est.minutes);
+      carve(gaps, at, at + est.minutes);
       used += est.minutes;
     }
     slots.sort((a, b) => a.start - b.start);
@@ -115,5 +131,5 @@
     };
   }
 
-  window.OrganiserDayPlan = { build, fitIn, carve };
+  window.OrganiserDayPlan = { build, fitIn, fitLast, carve };
 })();

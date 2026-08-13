@@ -23,9 +23,26 @@
     return it.importance === "high";
   }
 
+  // CAN THIS EVEN BE STARTED YET?
+  //
+  // Some work is genuinely impossible before a date: you cannot write up the
+  // notes from a meeting that hasn't happened. Without this the app will
+  // cheerfully put "write up the parent meeting notes" in front of you three
+  // days before the parent meeting — which is worse than useless, because it
+  // looks like being on top of things right up until someone asks for it.
+  //
+  // A notBefore later than the deadline is a contradiction — almost always a
+  // misread phrase — so it's ignored rather than allowed to strand the task.
+  function blocked(it, ctx) {
+    if (!it.notBefore) return false;
+    if (it.date && it.notBefore > it.date) return false; // can't both be true; trust the deadline
+    return it.notBefore > ctx.today;
+  }
+
   // Is this worth putting in front of someone today at all?
   function eligible(it, ctx) {
     if (it.openLoop) return false; // open loops have their own louder home — no double-shouting
+    if (blocked(it, ctx)) return false; // not yet possible is not the same as not important
     const dueNow = it.date && it.date <= ctx.today;
     if (it.deadlineType === "hard" && dueNow) return true;
     if (isHigh(it)) return true;
@@ -84,10 +101,10 @@
     const first = ordered(items, ctx);
     const taken = new Set(first.map((i) => i.id));
     const rest = (items || [])
-      .filter((i) => !i.done && !i.openLoop && !taken.has(i.id))
+      .filter((i) => !i.done && !i.openLoop && !taken.has(i.id) && !blocked(i, ctx))
       .sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
     return first.concat(rest);
   }
 
-  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning };
+  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning, blocked };
 })();

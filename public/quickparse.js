@@ -116,6 +116,36 @@
     return { date, time, matched, timeText: tm ? tm[0].trim() : "" };
   }
 
+  // "after the parent meeting on friday", "not before monday" — the earliest
+  // this could POSSIBLY be done, which is a different fact from when it's due.
+  // Without it the app will happily plan you to write up a meeting three days
+  // before the meeting happens.
+  //
+  // Deliberately narrow: the phrase has to be a real lead-in AND there has to be
+  // a real date within reach of it. Getting this wrong only ever delays a job,
+  // never hides a deadline — and a notBefore later than the deadline is treated
+  // as a misread and ignored downstream.
+  const LEADIN = /\b(?:after|once|not before|no earlier than|following)\s+|之后|以后|過後/i;
+  function readNotBefore(text) {
+    const s = String(text || "");
+    const m = LEADIN.exec(s);
+    if (!m) return { date: "", matched: "" };
+    // CJK lead-ins trail the date ("周五之后"); English ones lead it.
+    const cjk = /之后|以后|過後/.test(m[0]);
+    const from = cjk ? Math.max(0, m.index - 20) : m.index + m[0].length;
+    const span = cjk ? s.slice(from, m.index) : s.slice(from, from + 40);
+    const w = readWhen(span);
+    if (!w.date) return { date: "", matched: "" };
+    // Take the WHOLE phrase, not just the lead-in plus the date. "after the
+    // parent meeting on friday" has to come out in one piece, or that friday is
+    // still sitting there for the date reader to pick up as the deadline.
+    const rel = span.indexOf(w.matched);
+    const matched = cjk
+      ? s.slice(rel >= 0 ? from + rel : from, m.index + m[0].length)
+      : s.slice(m.index, from + (rel >= 0 ? rel + w.matched.length : 0));
+    return { date: w.date, matched: matched.trim() };
+  }
+
   // Only ever people you already have. It cannot invent a colleague, which is
   // the whole reason this is safe to run without anyone checking a model.
   function readPeople(text, contacts) {
@@ -187,7 +217,11 @@
   function parse(text, ctx) {
     const raw = String(text || "").trim();
     const contacts = (ctx && ctx.contacts) || [];
-    const when = readWhen(raw);
+    // Read "after friday" FIRST and take it out of the way, or the date reader
+    // grabs that friday as the deadline — the exact opposite of what was meant.
+    const not = readNotBefore(raw);
+    const forWhen = not.matched ? raw.replace(not.matched, " ") : raw;
+    const when = readWhen(forWhen);
     const who = readPeople(raw, contacts);
 
     // Strip the time phrase out of the title — "call the dentist on tuesday"
@@ -224,6 +258,9 @@
       title: title.slice(0, 160),
       type: "task",
       date: when.date,
+      // Earliest it could happen. Never later than the deadline — if reading it
+      // produced a contradiction, the reading was wrong, so it's dropped.
+      notBefore: not.date && !(when.date && not.date > when.date) ? not.date : "",
       time: when.time,
       deadlineType: HARD.test(raw) && when.date ? "hard" : "soft",
       importance: HIGH.test(raw) ? "high" : LOW.test(raw) ? "low" : "normal",

@@ -300,10 +300,11 @@ const TASK_SCHEMA = {
   properties: {
     title: { type: "string" },
     date: { type: "string" },
+    not_before: { type: "string" },
     promised_to: { type: "string" },
     waiting_on: { type: "string" },
   },
-  required: ["title", "date", "promised_to", "waiting_on"],
+  required: ["title", "date", "not_before", "promised_to", "waiting_on"],
   additionalProperties: false,
 };
 const RECORD_SCHEMA = {
@@ -374,7 +375,8 @@ The text may not be in English. Read it exactly as it is — a label is a judgem
 const TASK_PROMPT = `Pull out ONE thing to do from this text.
 
 - "title": what to do, in plain words, as short as possible. Imperative if you can.
-- "date": only if the text states or clearly implies one. Use YYYY-MM-DD. If not stated, leave it empty. Never guess a date.
+- "date": when it is DUE, only if the text states or clearly implies one. Use YYYY-MM-DD. If not stated, leave it empty. Never guess a date.
+- "not_before": the earliest it could POSSIBLY be done, if the text says the thing depends on something happening first — "after the parent meeting on Friday", "once the visit is over". This is not the same as the due date. Use YYYY-MM-DD, and only when a real date can be worked out. Otherwise empty.
 - "promised_to": only if the text names the person the reader OWES it to. Otherwise empty.
 - "waiting_on": only if the reader has done their part and is waiting to hear back from someone named. The ball is in that person's court, not the reader's. Otherwise empty. Never fill both this and "promised_to".
 
@@ -686,6 +688,14 @@ async function extract(ask, ctx, kind, f) {
       title,
       type: "task",
       date: ISO_DATE.test(out.date || "") ? out.date : "",
+      // Earliest possible, which is a different fact from when it's due. A
+      // not_before after the deadline is a contradiction, so it's dropped
+      // rather than allowed to strand the task.
+      notBefore:
+        ISO_DATE.test(out.not_before || "") &&
+        !(ISO_DATE.test(out.date || "") && out.not_before > out.date)
+          ? out.not_before
+          : "",
       time: "",
       deadlineType: "soft",
       importance: "normal",

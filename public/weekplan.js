@@ -114,9 +114,15 @@
       // Already overdue? Then the deadline is "as soon as there is room".
       const limit = hard ? (it.date < fromISO ? lastISO : it.date) : lastISO;
 
+      // The earliest this could possibly happen. A notBefore later than the
+      // deadline is a contradiction, so the deadline wins — see priority.js.
+      const earliest =
+        it.notBefore && !(it.date && it.notBefore > it.date) ? it.notBefore : "";
+
       let placed = null;
       for (const iso of dates) {
         if (iso > limit) break;
+        if (earliest && iso < earliest) continue;
         const r = room.get(iso);
         if (!r) continue;
         // Don't blow past the day's ceiling — unless it's due that day and
@@ -127,12 +133,20 @@
         // to stop. The rest come back as "won't fit", which is the truth.
         const mustToday = hard && iso === it.date && !r.overran;
         if (r.used >= r.budget && !mustToday) continue;
-        const gap = window.OrganiserDayPlan.fitIn(r.gaps, est.minutes);
+        // On the very day the wait clears, book as LATE as it will fit. The
+        // thing being waited on happens at some unknown point that day, and
+        // putting the follow-up work at eight in the morning would put it
+        // before the meeting it depends on — which was the whole bug.
+        const onUnblockDay = !!earliest && iso === earliest;
+        const gap = onUnblockDay
+          ? window.OrganiserDayPlan.fitLast(r.gaps, est.minutes)
+          : window.OrganiserDayPlan.fitIn(r.gaps, est.minutes);
         if (!gap) continue;
-        window.OrganiserDayPlan.carve(r.gaps, gap.start, gap.start + est.minutes);
+        const at = onUnblockDay ? gap.end - est.minutes : gap.start;
+        window.OrganiserDayPlan.carve(r.gaps, at, at + est.minutes);
         r.used += est.minutes;
         if (r.used >= r.budget) r.overran = true;
-        placed = { itemId: it.id, iso, start: gap.start, minutes: est.minutes, early: !!(it.date && iso < it.date) };
+        placed = { itemId: it.id, iso, start: at, minutes: est.minutes, early: !!(it.date && iso < it.date) };
         break;
       }
 

@@ -2093,6 +2093,9 @@ function checkReminders() {
     // Inside a lesson, meeting, or anything else you called fixed: hold everything.
     const busy = fixedBlockAt(doc.schedule, now);
     if (busy) return;
+    // And while something has taken the day over — a crisis is the worst
+    // possible moment to be told about a report that's due on Friday.
+    if (doc.scheduleConfig && doc.scheduleConfig.away && doc.scheduleConfig.away.startedAt) return;
     const due = dueReminders(doc.items, now);
     const aged = agedImportant(doc.items, now);
     if (!due.length && !aged.length) return;

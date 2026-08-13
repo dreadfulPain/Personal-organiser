@@ -3570,3 +3570,71 @@ a.btn {
   white-space: pre;
   overflow: auto;
 }
+
+/* ---- something's come up ---- */
+.away-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+/* Quiet when nothing's wrong — it's a door, not an alarm. */
+.away-bar:not(.active) {
+  justify-content: flex-start;
+  color: var(--ink-soft);
+}
+.away-bar.active {
+  padding: 14px 18px;
+  background: var(--appointment);
+  border-radius: var(--radius);
+}
+.away-main strong {
+  font-size: 1.05rem;
+}
+.away-since {
+  margin-left: 10px;
+  font-size: 0.85rem;
+  color: var(--appointment-ink);
+  font-variant-numeric: tabular-nums;
+}
+.away-calm {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.away-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.away-what {
+  flex: 1 1 240px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+/* Amber, never red: the time went somewhere real. Nothing here is a failure. */
+.dp-displaced {
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  background: var(--appointment);
+  border-radius: var(--radius);
+}
+.dp-displaced h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.dp-displaced .muted {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+}

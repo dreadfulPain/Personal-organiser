@@ -80,10 +80,10 @@
     return buildPlan(iso, store);
   }
 
-  function buildPlan(iso, previous) {
+  function buildPlan(iso, previous, notBefore) {
     const c = S().normaliseConfig(cfg);
     const dropped = new Set((previous && previous.dropped) || []);
-    const gaps = S().gapsOn(schedule, c, iso).map((g) => ({ ...g }));
+    const gaps = S().gapsOn(schedule, c, iso, notBefore).map((g) => ({ ...g }));
     const freeTotal = gaps.reduce((n, g) => n + (g.end - g.start), 0);
     const budget = Math.floor(freeTotal * c.fillFraction);
 
@@ -152,6 +152,132 @@
     persist();
   }
 
+  // ---------- when the day is taken away from you ----------
+  //
+  // A meeting appears. A child needs you. The plan you accepted this morning is
+  // now fiction, and the worst thing an organiser can do at that moment is
+  // nothing — you come back at two o'clock to a day that still claims you were
+  // going to do all of it, and every single item silently becomes a small
+  // failure.
+  //
+  // So: say it's happening, and the app steps back completely — no plan, no
+  // pings. Say you're back, and it works out what's actually left and rebuilds
+  // around it. What can't fit today is MOVED, not marked missed: the time went
+  // somewhere real and the app knows where, because you told it.
+  function startAway(label) {
+    const c = S().normaliseConfig(cfg);
+    c.away = { label: (label || "").trim().slice(0, 80), startedAt: new Date().toISOString() };
+    cfg = c;
+    persist();
+    render();
+  }
+
+  function comeBack() {
+    const c = S().normaliseConfig(cfg);
+    if (!c.away) return;
+    const started = new Date(c.away.startedAt);
+    const now = new Date();
+    const iso = todayISO();
+    const mins = S().awayMinutes(c, now);
+
+    // Write down what actually happened. Not an estimate — the real span, kept
+    // as a block, so the day is an honest record and tomorrow's planning knows
+    // this time was genuinely gone.
+    if (mins >= 2 && S().isoOf(started) === iso) {
+      const b = S().normaliseBlock({
+        label: c.away.label || "Something came up",
+        start: S().toHM(started.getHours() * 60 + started.getMinutes()),
+        end: S().toHM(Math.min(now.getHours() * 60 + now.getMinutes(), 24 * 60 - 1)),
+        date: iso,
+        source: "interruption",
+      });
+      if (b) schedule = S().normalise(schedule).concat([b]);
+    }
+
+    // What the day USED to say, so the rebuild can name what moved.
+    const before = (c.plans[iso] && c.plans[iso].slots ? c.plans[iso].slots : []).map((s2) => s2.itemId);
+    c.away = null;
+    delete c.plans[iso]; // the old plan described a day that didn't happen
+    cfg = c;
+
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const rebuilt = buildPlan(iso, null, nowMins);
+    rebuilt.rebuiltAt = now.toISOString();
+    rebuilt.awayMinutes = mins;
+    const nowIn = new Set(rebuilt.slots.map((s2) => s2.itemId));
+    rebuilt.displaced = before.filter((id) => !nowIn.has(id) && !(items.find((i) => i.id === id) || {}).done);
+    savePlan(iso, rebuilt);
+    persist();
+    render();
+    setTlStatus(
+      `Back after ${S().durationWords(mins)}. ${
+        rebuilt.displaced.length
+          ? `${rebuilt.displaced.length} thing${rebuilt.displaced.length === 1 ? "" : "s"} didn't fit what's left — ${rebuilt.displaced.length === 1 ? "it's" : "they're"} below.`
+          : "Everything still fits."
+      }`
+    );
+  }
+
+  function renderAway() {
+    const c = S().normaliseConfig(cfg);
+    const bar = $("#awayBar");
+    if (!bar) return false;
+    if (!c.away) {
+      bar.className = "away-bar";
+      bar.hidden = false;
+      bar.innerHTML = "";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "link away-start";
+      btn.textContent = "something's come up";
+      btn.addEventListener("click", () => {
+        bar.innerHTML = "";
+        const form = document.createElement("div");
+        form.className = "away-form";
+        form.innerHTML = `<input type="text" class="away-what" placeholder="what is it? (optional)" aria-label="What's come up" />`;
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = "btn";
+        go.textContent = "I'm on it";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "link";
+        cancel.textContent = "never mind";
+        const input = form.querySelector(".away-what");
+        go.addEventListener("click", () => startAway(input.value));
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") startAway(input.value);
+        });
+        cancel.addEventListener("click", renderAway);
+        form.append(go, cancel);
+        bar.appendChild(form);
+        setTimeout(() => input.focus(), 0);
+      });
+      bar.append(btn);
+      return false;
+    }
+
+    // Away: the plan is deliberately gone from the screen. Looking at a list of
+    // things you can't do, while dealing with something you must, is the exact
+    // pressure this app exists to take off you.
+    const since = new Date(c.away.startedAt);
+    bar.className = "away-bar active";
+    bar.hidden = false;
+    bar.innerHTML = `
+      <div class="away-main">
+        <strong>${escapeHtml(c.away.label || "Something came up")}</strong>
+        <span class="away-since">since ${escapeHtml(S().fmtTime(S().toHM(since.getHours() * 60 + since.getMinutes())))} · ${escapeHtml(S().durationWords(S().awayMinutes(c, new Date())))}</span>
+        <span class="away-calm">Your day's on hold and nothing will ping you. Come back when you're done.</span>
+      </div>`;
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "btn";
+    back.textContent = "I'm back";
+    back.addEventListener("click", comeBack);
+    bar.appendChild(back);
+    return true;
+  }
+
   // ---------- rendering ----------
   function itemById(id) {
     return items.find((i) => i.id === id);
@@ -164,6 +290,13 @@
 
     const wrap = $("#timeline");
     wrap.innerHTML = "";
+
+    if (renderAway()) {
+      // Nothing else on the page while you're in it. Come back and it rebuilds.
+      renderAccept(null);
+      renderUnplanned(iso, null);
+      return;
+    }
 
     if (S().dayIsBlocked(schedule, iso)) {
       wrap.innerHTML = `<p class="empty">Today's marked as a whole-day block — nothing planned into it.</p>`;
@@ -206,6 +339,7 @@
     });
     wrap.appendChild(list);
 
+    if (plan.displaced && plan.displaced.length) wrap.appendChild(displacedBox(plan, iso));
     if (plan.flagged && plan.flagged.length) wrap.appendChild(flaggedBox(plan, iso));
     renderAccept(plan, iso);
     renderUnplanned(iso, plan);
@@ -304,6 +438,46 @@
     if (elapsed > 0 && elapsed <= (slot.end - slot.start) * 2) cfg = S().learn(cfg, it, elapsed);
     persist();
     render();
+  }
+
+  // Pushed out by something that actually happened. The wording matters: these
+  // did not slip and you did not fail to do them — the time went somewhere real,
+  // and the app knows where because you told it.
+  function displacedBox(plan, iso) {
+    const box = document.createElement("div");
+    box.className = "dp-displaced";
+    const names = plan.displaced.map((id) => itemById(id)).filter((x) => x && !x.done);
+    if (!names.length) return box;
+    box.innerHTML =
+      `<h3>Pushed out by ${escapeHtml(plan.awayMinutes ? S().durationWords(plan.awayMinutes) : "what came up")}</h3>` +
+      `<p class="muted">Not missed — there just isn't room left today. Move them, or leave them and they'll come round again.</p>`;
+    const list = document.createElement("div");
+    list.className = "dp-flaglist";
+    names.forEach((it) => {
+      const row = document.createElement("div");
+      row.className = "dp-flagrow";
+      row.innerHTML = `<span class="dp-flagtitle">${escapeHtml(it.title)}</span>`;
+      const a = document.createElement("button");
+      a.type = "button";
+      a.className = "link";
+      a.textContent = "find it a day";
+      a.addEventListener("click", () => findADay(it, iso));
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "link";
+      b.textContent = "tomorrow";
+      b.addEventListener("click", () => {
+        it.date = S().addDaysISO(iso, 1);
+        it.time = "";
+        persist();
+        render();
+        setTlStatus(`Moved “${it.title}” to tomorrow. ✓`);
+      });
+      row.append(a, b);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    return box;
   }
 
   function flaggedBox(plan, iso) {

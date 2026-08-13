@@ -178,6 +178,16 @@ Every page has a capture box, so you never navigate somewhere to add something.
   effort matched to the size of the gap, then whatever else matters. Move
   things, drop things, add things, then press **"That's my day"**. Nothing locks
   after that; days move.
+- **When something takes the day over.** A meeting appears; a child needs you.
+  Tap **something's come up**, say what it is if you want, and the app steps
+  back completely — the plan comes off the screen and **nothing will ping you**,
+  because the middle of a crisis is the worst moment to be told about Friday's
+  report. Tap **I'm back** and it writes down what actually happened as a real
+  block, works out the time that's genuinely left, and rebuilds the rest of the
+  day around it — hard deadlines first, as always. Anything that no longer fits
+  is listed as **pushed out**, not missed: the time went somewhere real and the
+  app knows where, because you told it. Each one gets *find it a day* or
+  *tomorrow*.
 - **About two thirds full, on purpose.** A day packed wall to wall collapses at
   the first interruption, and then the plan is a liar.
 - **"Needs a proper slot."** A draining task isn't crammed into fifteen minutes.

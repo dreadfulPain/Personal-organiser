@@ -80,6 +80,11 @@
     prepHorizonDays: 7,
     prepRemindAt: "17:00",
     prepTitle: "Plan: {block}",
+    // WHEN SOMETHING SUDDENLY TAKES OVER. Set the moment you say it has, cleared
+    // when you say you're back. While it's set the app plans nothing and pings
+    // nothing — the middle of a crisis is the worst possible time to be told
+    // about a report that's due.
+    away: null, // { label, startedAt } while it's happening, null the rest of the time
     plans: {}, // iso date → { builtAt, acceptedAt, slots:[], dropped:[] }
     learned: {}, // effort key → observed minutes (a SOFT assumption, always)
   };
@@ -105,6 +110,9 @@
     if (horizon >= 1 && horizon <= 28) out.prepHorizonDays = Math.round(horizon);
     if (toMin(c.prepRemindAt) !== null) out.prepRemindAt = c.prepRemindAt;
     if (typeof c.prepTitle === "string" && c.prepTitle.trim()) out.prepTitle = c.prepTitle.trim().slice(0, 80);
+    if (c.away && typeof c.away === "object" && c.away.startedAt) {
+      out.away = { label: String(c.away.label || "").slice(0, 80), startedAt: String(c.away.startedAt) };
+    }
     if (c.plans && typeof c.plans === "object") out.plans = c.plans;
     if (c.learned && typeof c.learned === "object") out.learned = c.learned;
     return out;
@@ -144,7 +152,7 @@
       prep: b.prep && typeof b.prep === "object" && b.prep.on
         ? { on: true, leadDays: Math.max(0, Math.min(14, Math.round(Number(b.prep.leadDays)) || 1)) }
         : { on: false, leadDays: 1 },
-      source: ["hand", "paste", "ics", "learned"].includes(b.source) ? b.source : "hand",
+      source: ["hand", "paste", "ics", "learned", "interruption"].includes(b.source) ? b.source : "hand",
       note: (b.note || "").toString().trim(),
     };
   }
@@ -186,10 +194,12 @@
   }
 
   // The free stretches of a day, in minutes-from-midnight.
-  function gapsOn(schedule, cfg, iso) {
+  function gapsOn(schedule, cfg, iso, notBefore) {
     const c = normaliseConfig(cfg);
     if (dayIsBlocked(schedule, iso)) return [];
-    const from = toMin(c.dayStart);
+    // notBefore lets a rebuild plan only the time that's actually LEFT. Without
+    // it, coming back at two o'clock would re-plan the whole morning.
+    const from = Math.max(toMin(c.dayStart), Number.isFinite(notBefore) ? notBefore : 0);
     const to = toMin(c.dayEnd);
     const gaps = [];
     let cursor = from;
@@ -394,7 +404,18 @@
     return d;
   }
 
+  // How long you've been away, in minutes. Used to write the real block on your
+  // return — the app records what ACTUALLY happened, never an estimate of it.
+  function awayMinutes(cfg, now) {
+    const c = normaliseConfig(cfg);
+    if (!c.away) return 0;
+    const started = new Date(c.away.startedAt);
+    if (isNaN(started)) return 0;
+    return Math.max(0, Math.round(((now instanceof Date ? now : new Date()) - started) / 60000));
+  }
+
   window.OrganiserSchedule = {
+    awayMinutes,
     occurrencesOf,
     prepKey,
     prepTitle,

@@ -1148,6 +1148,13 @@ body {
 .dp-est.guess {
   font-style: italic;
 }
+/* Been on the plan and not got done. Stated, not shouted — no red, no alarm.
+   It's information about the size of the job, not a mark against the day. */
+.dp-again {
+  flex-basis: 100%;
+  color: var(--ink-soft);
+  font-style: italic;
+}
 .dp-actions {
   display: flex;
   gap: 12px;

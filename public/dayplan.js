@@ -131,5 +131,23 @@
     };
   }
 
-  window.OrganiserDayPlan = { build, fitIn, fitLast, carve };
+  // HOW MANY DAYS RUNNING HAS THIS BEEN ON THE PLAN AND NOT GOT DONE?
+  //
+  // Over a simulated month the same job was planned on Monday, not reached,
+  // planned again Tuesday, not reached — and nothing anywhere noticed. It just
+  // reappeared each morning looking like a fresh intention. That's the quiet
+  // accumulating failure this app exists to prevent: not a missed deadline, but
+  // a thing that silently becomes evidence you can't get anything done.
+  //
+  // The answer is already sitting in the saved plans, which are kept for a
+  // fortnight. Nothing new to store — just look.
+  function carriedOver(cfg, itemId, iso) {
+    const c = window.OrganiserSchedule.normaliseConfig(cfg);
+    const plans = c.plans || {};
+    return Object.keys(plans).filter(
+      (k) => k < iso && ((plans[k] || {}).slots || []).some((s) => s.itemId === itemId)
+    ).length;
+  }
+
+  window.OrganiserDayPlan = { build, fitIn, fitLast, carve, carriedOver };
 })();

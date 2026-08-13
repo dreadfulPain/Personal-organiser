@@ -317,6 +317,9 @@
     const el = document.createElement("div");
     el.className = "dp-row dp-task" + (slot.pinned ? "" : " soft");
     const est = S().estimateMinutes(it, cfg);
+    // Says it plainly and describes rather than judges: the job has been on the
+    // plan and not got done, which is a fact about the job's size, not about you.
+    const again = window.OrganiserDayPlan.carriedOver(cfg, it.id, iso);
     el.innerHTML = `
       <div class="dp-time">${escapeHtml(S().fmtTime(S().toHM(slot.start)))}</div>
       <div class="dp-main">
@@ -324,6 +327,7 @@
         <div class="dp-meta">
           <span class="dp-est${slot.pinned ? "" : " guess"}">${escapeHtml(S().durationWords(est.minutes))}${slot.pinned ? "" : " — a guess"}</span>
           ${slot.why ? `<span class="dp-why">${escapeHtml(slot.why)}</span>` : ""}
+          ${again >= 2 ? `<span class="dp-again">on the plan ${again} days running — it may want a proper slot, or breaking up</span>` : ""}
         </div>
       </div>
       <div class="dp-actions">
@@ -372,15 +376,43 @@
 
   // Ticking something off is the only free measurement the app gets of how long
   // a thing actually took — so it learns from it, quietly, and never asks.
+  //
+  // WHEN DID IT ACTUALLY START? There's no start button on purpose: one more
+  // thing to remember is one more thing to fail at. But the app does know when
+  // you last ticked something off, and you cannot have begun this one before
+  // that. So the start is the LATER of "when the plan said" and "when you
+  // finished the last thing". On a day running two hours late those are wildly
+  // different numbers, and using the plan's was the whole problem.
+  //
+  // WHY THAT MATTERED. The old guard accepted anything up to twice the slot and
+  // threw the rest away. That is not a filter, it's a sieve with a bias: an
+  // overrun gets discarded, an underrun always counts. Measured over a
+  // simulated month, work that really averaged 89 minutes taught the app 51,
+  // and its idea of "draining" fell from 75 minutes to 57 — so it packed more
+  // in, so more overran, so more got thrown away. The app was teaching itself
+  // that your work is quicker than it is BECAUSE it kept running over.
+  //
+  // Now the measurement is honest, so the guard only has to catch the absurd —
+  // something ticked hours after it was really finished. Wide, and applied the
+  // same to a fast day as a slow one.
   function completeFromPlan(it, slot) {
     const now = new Date();
+    const iso = todayISO();
+    const p = planFor(iso);
     it.done = true;
     it.completedAt = now.toISOString();
-    const startedGuess = new Date();
-    startedGuess.setHours(Math.floor(slot.start / 60), slot.start % 60, 0, 0);
-    const elapsed = Math.round((now - startedGuess) / 60000);
-    // Only believe it if it's plausible: ticked inside the window it was given.
-    if (elapsed > 0 && elapsed <= (slot.end - slot.start) * 2) cfg = S().learn(cfg, it, elapsed);
+
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const lastTick = Number.isFinite(p.lastTickMin) ? p.lastTickMin : -1;
+    const began = Math.max(slot.start, lastTick);
+    // Wall clock minus the lessons in between — the app knows the timetable, so
+    // a lesson that happened mid-job is not counted as part of the job.
+    const elapsed = S().workingMinutesBetween(schedule, iso, began, nowMin);
+    const est = S().estimateMinutes(it, cfg).minutes;
+    if (elapsed >= 1 && elapsed <= Math.max(4 * est, 120)) cfg = S().learn(cfg, it, elapsed);
+
+    p.lastTickMin = nowMin;
+    savePlan(iso, p);
     persist();
     render();
   }

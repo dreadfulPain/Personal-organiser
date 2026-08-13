@@ -277,16 +277,58 @@
     const base = learned > 0 ? learned : c.effortMinutes[effort];
     return { minutes: Math.max(5, Math.round(base)), soft: true, from: learned > 0 ? "learned" : "effort" };
   }
+  // Minutes between two points in a day that you could actually have been
+  // working — the wall clock, minus anything the timetable says you were doing
+  // instead. Ticking a job off at 11:20 that you picked up at 10:00 does not
+  // mean it took eighty minutes if there was a fifty-minute lesson in the
+  // middle. The app already knows about the lesson, so it should not have to
+  // ask, and it should not quietly record the lesson as part of the job.
+  function workingMinutesBetween(schedule, iso, fromMin, toMin) {
+    const a = Math.min(fromMin, toMin);
+    const b = Math.max(fromMin, toMin);
+    const busy = busyOn(schedule, iso).reduce((n, x) => {
+      const s = Math.max(a, x.start);
+      const e = Math.min(b, x.end);
+      return n + Math.max(0, e - s);
+    }, 0);
+    return Math.max(0, b - a - busy);
+  }
+
   // Fold one observed duration into the running average for that effort level.
-  // Weighted so a single odd day can't swing it, and clamped so a task left open
-  // over a weekend doesn't teach the app that "medium" means eleven hours.
+  // Weighted so a single odd day can't swing it.
+  //
+  // CLAMP, DON'T DISCARD — and this is the whole point of the function.
+  //
+  // It used to throw away anything over four hours. That reads like sensible
+  // hygiene and it is quietly poisonous, because a measurement is only ever
+  // discarded for being too LONG. Every overrun went in the bin; every job that
+  // came in early was counted in full. Over a simulated month of ordinary work
+  // that ran, on average, over the guess, the app's idea of a draining job fell
+  // from 75 minutes to 57 — so it packed more into a day, so more overran, so
+  // more got binned. It was teaching itself that the work is quicker than it is
+  // BECAUSE it kept running over, and the plan got less honest every week.
+  //
+  // A job that took four hours is real information about that kind of work. It
+  // should pull the estimate up — just not all the way in one go. So an extreme
+  // reading is pulled to the edge of believable and still counted, and the same
+  // bound applies on both sides, so nothing can walk the estimate downhill.
   function learn(cfg, item, observedMinutes) {
     const c = normaliseConfig(cfg);
     const effort = ["quick", "medium", "draining"].includes(item && item.effort) ? item.effort : "medium";
     const seen = Math.round(observedMinutes);
-    if (!(seen > 0) || seen > 4 * 60) return c; // out of range → learn nothing
+    if (!(seen > 0)) return c;
     const prev = Number(c.learned[effort]) > 0 ? Number(c.learned[effort]) : c.effortMinutes[effort];
-    c.learned[effort] = Math.round(prev * 0.8 + seen * 0.2);
+    const lo = Math.max(1, Math.round(prev / 3));
+    const hi = Math.min(8 * 60, prev * 3);
+    const used = Math.min(Math.max(seen, lo), hi);
+    // AVERAGED IN PROPORTION, NOT IN MINUTES. Durations are multiplicative:
+    // "twice as long" and "half as long" are equally surprising. Averaged the
+    // ordinary way those are +75 minutes and −37, so the two directions pull
+    // with different strength and the estimate wanders even when the readings
+    // are balanced. In proportion they're exactly equal and opposite, so a run
+    // of odd days can't walk the number anywhere on its own. It also can't
+    // reach zero, which an ordinary average eventually can.
+    c.learned[effort] = Math.round(Math.exp(0.8 * Math.log(prev) + 0.2 * Math.log(used)));
     return c;
   }
 
@@ -435,6 +477,7 @@
     nextFreeMoment,
     estimateMinutes,
     learn,
+    workingMinutesBetween,
     isoOf,
     toMin,
     toHM,

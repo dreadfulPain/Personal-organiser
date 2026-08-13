@@ -146,6 +146,7 @@ function writeData(input, opts) {
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
+      logEvent("save", { ok: false, why: "shared-folder-conflict" });
     } catch (e) {
       console.warn("[data] conflict copy warning:", e.message);
     }
@@ -634,10 +635,87 @@ async function engineLive(cfg) {
   return out;
 }
 
-function runEngine(cfg, system, user, schema) {
-  if (cfg.engine === "anthropic") return callAnthropic(cfg, system, user, schema);
-  if (cfg.engine === "ollama") return callOllama(cfg, system, user, schema);
-  return callOpenAI(cfg, system, user, schema);
+// ---- THE FLIGHT RECORDER --------------------------------------------------
+//
+// A rolling log of what HAPPENED, kept so a problem can be described to someone
+// who wasn't there. It is content-free BY CONSTRUCTION, and that is not a
+// promise in a comment — it is the shape of the data. Every entry is a kind, a
+// duration, and a short code. There is no field a task title, a student's name
+// or a line you wrote could travel in, so none can leak into a message you paste
+// somewhere.
+//
+// Error text is the one risk, because a model or a filesystem will happily echo
+// your words back inside an error. So errors are reduced to a CLASS before they
+// are written down, never stored raw.
+const APP_VERSION = "0.2.0";
+const LOG_FILE = path.join(DATA_DIR, "events.jsonl");
+const LOG_KEEP = 400;
+
+function errorClass(e) {
+  const m = ((e && e.message) || String(e || "")).toLowerCase();
+  if (/fetch failed|econnrefused|enotfound|eai_again/.test(m)) return "engine-unreachable";
+  if (/abort|timed? ?out|etimedout/.test(m)) return "timeout";
+  if (/socket hang up|econnreset|epipe/.test(m)) return "connection-dropped";
+  if (/json|unexpected token|schema|parse/.test(m)) return "bad-answer-shape";
+  if (/enospc/.test(m)) return "disk-full";
+  if (/eacces|eperm/.test(m)) return "permission-denied";
+  if (/enoent/.test(m)) return "file-missing";
+  if (/conflict/.test(m)) return "shared-folder-conflict";
+  if (/call_cap/.test(m)) return "hit-the-call-ceiling";
+  const status = /\b(4\d\d|5\d\d)\b/.exec(m);
+  if (status) return "engine-said-" + status[1];
+  return "other";
+}
+
+function logEvent(kind, fields) {
+  try {
+    ensureDirs();
+    const row = { at: new Date().toISOString(), kind, ...(fields || {}) };
+    fs.appendFileSync(LOG_FILE, JSON.stringify(row) + "\n");
+    // Keep it small and bounded — this is a diary, not an archive.
+    const lines = fs.readFileSync(LOG_FILE, "utf8").split("\n").filter(Boolean);
+    if (lines.length > LOG_KEEP * 1.5) fs.writeFileSync(LOG_FILE, lines.slice(-LOG_KEEP).join("\n") + "\n");
+  } catch {
+    /* the log must never be the thing that breaks the app */
+  }
+}
+function readEvents() {
+  try {
+    return fs
+      .readFileSync(LOG_FILE, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// Every model call is timed and its outcome recorded — no prompt, no answer,
+// just "which job, how long, did it work". That is the single most useful thing
+// for working out whether a setup is healthy or the model is struggling.
+async function runEngine(cfg, system, user, schema, label) {
+  const t0 = Date.now();
+  try {
+    const out =
+      cfg.engine === "anthropic"
+        ? await callAnthropic(cfg, system, user, schema)
+        : cfg.engine === "ollama"
+          ? await callOllama(cfg, system, user, schema)
+          : await callOpenAI(cfg, system, user, schema);
+    logEvent("ai", { job: label || "sort", ms: Date.now() - t0, ok: true });
+    return out;
+  } catch (e) {
+    logEvent("ai", { job: label || "sort", ms: Date.now() - t0, ok: false, why: errorClass(e) });
+    throw e;
+  }
 }
 
 // Map the AI's free-text "goal" (a copied title) to a real goal id — but only on
@@ -682,7 +760,7 @@ async function handleBreakdown(res, body) {
   if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI breakdown isn't switched on yet." });
 
   try {
-    const parsed = await runEngine(cfg, BREAKDOWN_PROMPT, breakdownTurn(title, body?.priorCounts), BREAKDOWN_SCHEMA);
+    const parsed = await runEngine(cfg, BREAKDOWN_PROMPT, breakdownTurn(title, body?.priorCounts), BREAKDOWN_SCHEMA, "goal-breakdown");
     sendJson(res, 200, { milestones: normaliseMilestones(parsed.milestones) });
   } catch (e) {
     console.error("[breakdown] failed:", e?.message || e);
@@ -705,7 +783,7 @@ async function handleCluster(res, body) {
   if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI isn't switched on yet." });
 
   try {
-    const parsed = await runEngine(cfg, CLUSTER_PROMPT, clusterTurn(tasks), CLUSTER_SCHEMA);
+    const parsed = await runEngine(cfg, CLUSTER_PROMPT, clusterTurn(tasks), CLUSTER_SCHEMA, "goal-cluster");
     const title = (parsed && parsed.title ? String(parsed.title) : "").trim();
     const idxs = Array.isArray(parsed && parsed.tasks) ? parsed.tasks : [];
     const ids = [];
@@ -981,7 +1059,7 @@ async function handleTimetable(res, body) {
   const cfg = aiConfig();
   if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
   try {
-    const parsed = await runEngine(cfg, TIMETABLE_PROMPT, `Turn this timetable into blocks:\n"""\n${text.slice(0, 8000)}\n"""`, TIMETABLE_SCHEMA);
+    const parsed = await runEngine(cfg, TIMETABLE_PROMPT, `Turn this timetable into blocks:\n"""\n${text.slice(0, 8000)}\n"""`, TIMETABLE_SCHEMA, "timetable");
     const blocks = [];
     // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
     // FIXABLE. Rows that don't validate used to be silently dropped, which is
@@ -1040,7 +1118,7 @@ function reapJobs() {
 }
 
 function engineCaller(cfg) {
-  return (system, user, schema) => runEngine(cfg, system, user, schema);
+  return (system, user, schema, label) => runEngine(cfg, system, user, schema, "paste-" + (label || "step"));
 }
 
 function pipelineCtx(body) {
@@ -1294,6 +1372,174 @@ async function handleDiagnose(res) {
   return sendJson(res, 200, { checks, copyText, at: stamp });
 }
 
+// ---- THE REPORT YOU CAN SEND SOMEONE --------------------------------------
+//
+// The self-check answers "is it working". This answers the harder question:
+// "here is everything about how this is going, so someone can find problems I
+// can't see, and tell me what to build next."
+//
+// THE RULE THAT SHAPES ALL OF IT: not one word you have written appears here.
+// No task titles, no student ids, no names, no note text, no file names. Only
+// SHAPES — how many, how long, how often, what failed. That isn't a policy
+// applied at the end; it's why the flight recorder stores classes rather than
+// messages. You can paste this into a message to a stranger and lose nothing.
+//
+// It is also deliberately a text file rather than JSON: you should be able to
+// read every line of it yourself before you send it.
+function whichVersion() {
+  // Reading .git directly — no process spawned. "Which version are you running"
+  // has been the ambiguity behind more than one confusing report.
+  try {
+    const head = fs.readFileSync(path.join(__dirname, ".git", "HEAD"), "utf8").trim();
+    const m = /^ref: (.+)$/.exec(head);
+    if (!m) return { branch: "(detached)", commit: head.slice(0, 8) };
+    const branch = m[1].replace("refs/heads/", "");
+    let commit = "";
+    try {
+      commit = fs.readFileSync(path.join(__dirname, ".git", m[1]), "utf8").trim().slice(0, 8);
+    } catch {
+      const packed = fs.readFileSync(path.join(__dirname, ".git", "packed-refs"), "utf8");
+      const line = packed.split("\n").find((l) => l.endsWith(" " + m[1]));
+      commit = line ? line.slice(0, 8) : "";
+    }
+    return { branch, commit };
+  } catch {
+    return { branch: "(not a git folder — downloaded as a zip)", commit: "" };
+  }
+}
+
+function bucket(ms) {
+  if (ms < 1000) return "under 1s";
+  if (ms < 3000) return "1-3s";
+  if (ms < 10000) return "3-10s";
+  if (ms < 30000) return "10-30s";
+  return "over 30s";
+}
+
+async function handleReport(res) {
+  const L = [];
+  const line = (x) => L.push(x === undefined ? "" : x);
+  const now = new Date();
+  const v = whichVersion();
+  const cfg = aiConfig();
+  const doc = (() => {
+    try {
+      return readData();
+    } catch {
+      return null;
+    }
+  })();
+
+  line(`ORGANISER REPORT — ${now.toLocaleString()}`);
+  line("Counts and timings only. Nothing you have written appears below:");
+  line("no task titles, no names, no student ids, no note text, no file names.");
+  line();
+  line("── VERSION ─────────────────────────────────────────────");
+  line(`app        ${APP_VERSION}`);
+  line(`branch     ${v.branch}${v.commit ? "  commit " + v.commit : ""}`);
+  line(`node       ${process.version} on ${process.platform} (${process.arch})`);
+  line(`updates    ${fs.existsSync(path.join(__dirname, ".git")) ? "connected" : "NOT connected — a new download would strand the data"}`);
+  line();
+
+  line("── SETUP ───────────────────────────────────────────────");
+  if (!cfg) line("sorting    off (no AI configured)");
+  else {
+    const live = await engineLive(cfg);
+    line(`sorting    ${cfg.engine}${cfg.model ? " / " + cfg.model : ""} — ${live.ok ? "answering" : "NOT answering: " + live.note}`);
+  }
+  line(`long paste switches to step-by-step above ${PIPELINE_MIN_CHARS} characters, ceiling ${PIPELINE_MAX_CALLS} calls`);
+  line(`waiting    re-asks every ${ASK_EVERY_DAYS} days, at most ${ASK_AT_MOST} times`);
+  line(`ageing     one nudge after ${AGE_DAYS} untouched days`);
+  line(`dictation  ${sttConfig() ? "on (local)" : "off"}`);
+  line(`data       ${/onedrive|dropbox|google ?drive|icloud/i.test(DATA_FILE) ? "inside a syncing folder" : "local folder"}`);
+  line();
+
+  line("── WHAT'S IN USE ───────────────────────────────────────");
+  if (!doc) line("could not read the data file");
+  else {
+    const items = doc.items || [];
+    const open = items.filter((i) => !i.done);
+    const has = (n) => (n ? String(n) : "none");
+    line(`tasks      ${has(open.length)} open, ${has(items.length - open.length)} done`);
+    line(`  of those: ${open.filter((i) => i.date).length} dated, ${open.filter((i) => i.deadlineType === "hard").length} hard deadlines,`);
+    line(`            ${open.filter((i) => i.openLoop).length} unfinished loops, ${open.filter((i) => i.waitingOn).length} waiting on someone,`);
+    line(`            ${open.filter((i) => i.promisedTo).length} promised to someone, ${open.filter((i) => i.autoPrep).length} auto-made from the timetable`);
+    line(`  reminders ${open.filter((i) => i.remindAt).length} armed, ${open.filter((i) => Number(i.snoozes) > 0).length} pushed back at least once`);
+    line(`records    ${has((doc.records || []).length)}${(doc.records || []).length ? `, ${(doc.records || []).filter((r) => r.src === "ai" && !r.checkedAt).length} still unconfirmed` : ""}`);
+    line(`  evidence ${(doc.records || []).reduce((n, r) => n + ((r.files || []).length), 0)} files attached, ${(doc.records || []).filter((r) => r.level).length} carry a level`);
+    line(`goals      ${has((doc.goals || []).length)}`);
+    line(`people     ${has((doc.contacts || []).length)}, ${(doc.contacts || []).filter((c) => (c.aka || []).length).length} with learned spellings`);
+    line(`timetable  ${has((doc.schedule || []).length)} blocks${(doc.schedule || []).length ? `, ${(doc.schedule || []).filter((b) => b.prep && b.prep.on).length} set to make prep tasks` : " — the day plan, lesson-time quiet and prep tasks all wait on this"}`);
+    const rc = doc.recordConfig || {};
+    line(`skills     ${has((rc.topics || []).length)} tracked, ${Object.keys(rc.descriptors || {}).length} with descriptions written`);
+    line(`portfolio  ${doc.portfolio && doc.portfolio.evidence ? doc.portfolio.evidence.length : 0} pieces of evidence`);
+    line(`last saved ${doc.savedAt ? new Date(doc.savedAt).toLocaleString() : "never"}`);
+  }
+  line();
+
+  const events = readEvents();
+  const ai = events.filter((e) => e.kind === "ai");
+  line("── HOW THE SORTING IS ACTUALLY GOING ───────────────────");
+  if (!ai.length) line("no sorting attempted yet");
+  else {
+    const okCalls = ai.filter((e) => e.ok);
+    const bad = ai.filter((e) => !e.ok);
+    line(`${ai.length} calls recorded, ${bad.length} failed`);
+    const byJob = {};
+    okCalls.forEach((e) => {
+      byJob[e.job] = byJob[e.job] || [];
+      byJob[e.job].push(e.ms);
+    });
+    Object.entries(byJob).forEach(([job, all]) => {
+      const sorted = all.slice().sort((a, b) => a - b);
+      const mid = sorted[Math.floor(sorted.length / 2)];
+      line(`  ${job.padEnd(18)} ${all.length}x  typical ${bucket(mid)}  slowest ${bucket(sorted[sorted.length - 1])}`);
+    });
+    if (bad.length) {
+      // Broken down BY JOB as well as by reason: "the timetable read fails but
+      // ordinary sorting is fine" is a completely different problem from "none
+      // of it works", and the count alone can't tell them apart.
+      line("  failures:");
+      const byWhy = {};
+      bad.forEach((e) => {
+        const k = `${e.job || "?"} — ${e.why || "?"}`;
+        byWhy[k] = (byWhy[k] || 0) + 1;
+      });
+      Object.entries(byWhy).forEach(([k, n]) => line(`    ${k} × ${n}`));
+      const never = [...new Set(bad.map((e) => e.job))].filter((j) => !okCalls.some((e) => e.job === j));
+      if (never.length) line(`    never once succeeded: ${never.join(", ")}`);
+    }
+  }
+  line();
+
+  const problems = events.filter((e) => e.ok === false);
+  line("── PROBLEMS RECORDED ───────────────────────────────────");
+  if (!problems.length) line("none");
+  else
+    problems.slice(-15).forEach((e) => line(`  ${new Date(e.at).toLocaleString()}  ${e.kind}${e.job ? "/" + e.job : ""}  ${e.why || ""}`));
+  line();
+
+  line("── WHAT'S NOT BEING USED ───────────────────────────────");
+  line("(untouched features — useful for deciding what to improve or drop)");
+  if (doc) {
+    const unused = [];
+    if (!(doc.schedule || []).length) unused.push("the timetable — so no day plan, no lesson-time quiet, no prep tasks");
+    if (!(doc.records || []).length) unused.push("student records");
+    if (!((doc.recordConfig || {}).topics || []).length) unused.push("skills and levels");
+    if (!(doc.contacts || []).length) unused.push("People");
+    if (!(doc.goals || []).length) unused.push("goals");
+    if (!(doc.portfolio && (doc.portfolio.evidence || []).length)) unused.push("the portfolio");
+    if (!(doc.items || []).some((i) => i.waitingOn)) unused.push("waiting-on-someone");
+    if (!ai.some((e) => String(e.job).startsWith("paste-"))) unused.push("long-paste sorting");
+    line(unused.length ? unused.map((u) => "  never used: " + u).join("\n") : "  everything has been used at least once");
+  }
+  line();
+  line("── END. Nothing above identifies anyone. ───────────────");
+
+  const text = L.join("\n");
+  return sendJson(res, 200, { text, at: now.toLocaleString() });
+}
+
 async function handlePipelineStart(res, body) {
   const text = (body?.text || "").toString();
   if (!text.trim()) return sendJson(res, 400, { error: "empty", message: "There was nothing to sort." });
@@ -1423,7 +1669,8 @@ async function handleRoute(res, body) {
       cfg,
       ROUTE_PROMPT,
       routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels, standardCodes),
-      ROUTE_SCHEMA
+      ROUTE_SCHEMA,
+      "sort"
     );
     const entries = [];
     (Array.isArray(parsed.entries) ? parsed.entries : []).forEach((e) => {
@@ -2151,6 +2398,10 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/export" && req.method === "POST") {
       return handleExport(req, res);
+    }
+
+    if (req.method === "GET" && pathname === "/api/report") {
+      return handleReport(res);
     }
 
     if (req.method === "GET" && pathname === "/api/diagnose") {

@@ -24,6 +24,24 @@
 
       <div id="hcList" class="hc-list"><p class="muted">Checking…</p></div>
 
+      <!-- THE REPORT. Deliberately shown in full before it can be sent: you
+           should be able to read every line of what you're about to hand over. -->
+      <section class="hc-report">
+        <h2>Send it for help</h2>
+        <p class="muted">
+          If something's wrong that this page can't fix, or you want someone to suggest what to improve,
+          this gathers everything useful into one file. <strong>It contains counts and timings only</strong> —
+          no task titles, no names, no student ids, nothing you've written. You can read all of it below
+          before you send anything.
+        </p>
+        <div class="hc-actions">
+          <button id="hcBuild" class="btn">Make a report</button>
+          <button id="hcSave" class="btn ghost" hidden>Save it as a file</button>
+          <button id="hcCopyReport" class="btn ghost" hidden>Copy it</button>
+        </div>
+        <textarea id="hcReport" class="hc-reportbox" readonly hidden aria-label="The report"></textarea>
+      </section>
+
       <section class="hc-foot">
         <h2>If something's wrong</h2>
         <p class="muted">

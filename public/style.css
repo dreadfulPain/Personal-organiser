@@ -3545,3 +3545,28 @@ a.btn {
 .ppl-aka input {
   width: 100%;
 }
+
+.hc-report {
+  margin-top: 30px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.hc-report h2 {
+  font-size: 1.05rem;
+}
+/* Shown in full on purpose: you read what you're about to hand over. */
+.hc-reportbox {
+  width: 100%;
+  height: 320px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  white-space: pre;
+  overflow: auto;
+}

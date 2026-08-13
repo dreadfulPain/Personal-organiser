@@ -77,6 +77,60 @@
     setTimeout(() => (btn.textContent = "Copy all of this"), 2500);
   }
 
+  // THE REPORT. Built on the server, shown here in full, and only then
+  // downloadable — you read what you're sending before you send it.
+  let report = "";
+  async function buildReport() {
+    const btn = $("#hcBuild");
+    btn.disabled = true;
+    btn.textContent = "Gathering…";
+    try {
+      const d = await (await fetch("/api/report")).json();
+      report = d.text || "";
+      const box = $("#hcReport");
+      box.value = report;
+      box.hidden = false;
+      $("#hcSave").hidden = false;
+      $("#hcCopyReport").hidden = false;
+      btn.textContent = "Make it again";
+    } catch {
+      $("#hcReport").value = "Couldn't gather it — is the app still running?";
+      $("#hcReport").hidden = false;
+      btn.textContent = "Try again";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  function saveReport() {
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const blob = new Blob([report], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `organiser-report-${stamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $("#hcSave").textContent = "Saved to Downloads ✓";
+    setTimeout(() => ($("#hcSave").textContent = "Save it as a file"), 2500);
+  }
+  async function copyReport() {
+    const btn = $("#hcCopyReport");
+    try {
+      await navigator.clipboard.writeText(report);
+      btn.textContent = "Copied ✓";
+    } catch {
+      $("#hcReport").select();
+      btn.textContent = "Select it and copy";
+    }
+    setTimeout(() => (btn.textContent = "Copy it"), 2500);
+  }
+
+  $("#hcBuild").addEventListener("click", buildReport);
+  $("#hcSave").addEventListener("click", saveReport);
+  $("#hcCopyReport").addEventListener("click", copyReport);
   $("#hcAgain").addEventListener("click", run);
   $("#hcCopy").addEventListener("click", copyAll);
   run();

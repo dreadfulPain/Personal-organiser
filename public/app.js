@@ -257,10 +257,22 @@
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
-      pending = [{ title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }];
+      // NO MODEL — but most of what anyone types isn't messy. Patterns read the
+      // date, the time, the urgency, and anyone already in your People list,
+      // instantly and offline. What they can't see is left blank rather than
+      // guessed, and it all lands in the same check-back, so the only real
+      // difference from the AI path is how much arrives already filled in.
+      const guess = window.OrganiserQuickParse
+        ? OrganiserQuickParse.parse(text, { contacts })
+        : { title: text, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null };
+      pending = [guess];
+      proposed = [JSON.parse(JSON.stringify(guess))];
       $("#dump").value = "";
       $("#dump").style.height = "auto";
-      $("#checkbackHeading").textContent = "Add this — tweak anything, then add.";
+      const read = window.OrganiserQuickParse && OrganiserQuickParse.foundAnything(guess);
+      $("#checkbackHeading").textContent = read
+        ? "Read what I could — check it and add."
+        : "Add this — tweak anything, then add.";
       renderCheckback();
       setStatus(engineNote); // "" when AI was simply never switched on
       return;

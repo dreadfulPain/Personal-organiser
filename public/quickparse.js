@@ -1,0 +1,236 @@
+// THE FRONT DOOR, WITHOUT A MODEL.
+//
+// Almost the whole app is plain code — the zones, the day plan, the levels, the
+// exports, the reminders. The AI is only the way things get IN: "say it messily
+// and it sorts itself". On a machine that can't run a model, that one promise
+// is what breaks, and the app drops to "here's your sentence as a task title,
+// fill the rest in yourself".
+//
+// But most of what anyone types is not messy at all. "call the dentist tuesday"
+// or "email Wei about the trip by friday" is a small, regular grammar, and a
+// regex reads it perfectly in no time at all. This handles that — so a laptop
+// with no AI keeps most of the front door, and even a machine WITH one doesn't
+// wait three seconds for something a pattern could answer instantly.
+//
+// TWO RULES, the same ones the AI half lives under:
+//   - It never files anything. Everything it finds lands in the check-back for
+//     you to glance at, exactly like a model's answer.
+//   - It never invents. A person only comes from YOUR People list; a date only
+//     from words that are actually in the text. What it can't see, it leaves
+//     empty rather than guessing.
+//
+// No domain words: nothing here knows what a lesson or a student is.
+//
+// Plain script (works under file://), like everything else.
+
+(function () {
+  "use strict";
+
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const isoOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const plus = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return isoOf(d);
+  };
+
+  const DAYS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+  const SHORT = { sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, weds: 3, thu: 4, thur: 4, thurs: 5 - 1, fri: 5, sat: 6 };
+  const CN_DAYS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 0, 天: 0 };
+  const MONTHS = "jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+
+  function nextWeekday(dow, forceNext) {
+    const d = new Date();
+    const delta = (dow - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + (delta === 0 && !forceNext ? 0 : delta === 0 ? 7 : delta) + (forceNext && delta !== 0 ? 0 : 0));
+    if (forceNext && delta === 0) d.setDate(d.getDate());
+    return isoOf(d);
+  }
+
+  // Returns { date, time, matched } — matched is the exact text it read it off,
+  // so the caller can strip it out of the title.
+  function readWhen(text) {
+    const t = " " + text.toLowerCase() + " ";
+    let date = "";
+    let matched = "";
+    const take = (re, fn) => {
+      if (date) return;
+      const m = re.exec(t);
+      if (!m) return;
+      const got = fn(m);
+      if (got) {
+        date = got;
+        matched = m[0].trim();
+      }
+    };
+
+    take(/\b(today|tonight|this evening)\b|今天|今晚|今日/, () => plus(0));
+    take(/\bday after tomorrow\b|后天|後天/, () => plus(2));
+    take(/\b(tomorrow|tmrw|tmw)\b|明天|明日/, () => plus(1));
+    take(/\byesterday\b|昨天/, () => plus(-1));
+    take(/\bin (\d+) days?\b/, (m) => plus(Math.min(365, +m[1])));
+    take(/\bin (a|one|\d+) weeks?\b/, (m) => plus(7 * (m[1] === "a" || m[1] === "one" ? 1 : Math.min(52, +m[1]))));
+    take(/\bnext week\b|下周|下週|下星期/, () => plus(7));
+    take(/\bend of (the )?week\b/, () => nextWeekday(5));
+    // "next friday" / "on friday" / "fri"
+    take(/\b(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/, (m) => nextWeekday(DAYS[m[2]], !!m[1]));
+    take(/\b(next\s+)?(sun|mon|tues?|weds?|thur?s?|fri|sat)\b/, (m) => {
+      const d = SHORT[m[2]];
+      return d === undefined ? "" : nextWeekday(d, !!m[1]);
+    });
+    take(/(下)?(周|週|星期)([一二三四五六日天])/, (m) => nextWeekday(CN_DAYS[m[3]], !!m[1]));
+    take(/\b(\d{4})-(\d{2})-(\d{2})\b/, (m) => `${m[1]}-${m[2]}-${m[3]}`);
+    take(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/, (m) => `${new Date().getFullYear()}-${pad2(+m[1])}-${pad2(+m[2])}`);
+    // "14 sep" / "sep 14" / "14th september"
+    take(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTHS.join("|")})[a-z]*\\b`), (m) => {
+      const mo = MONTHS.indexOf(m[2]) + 1;
+      return `${new Date().getFullYear()}-${pad2(mo)}-${pad2(+m[1])}`;
+    });
+    take(new RegExp(`\\b(${MONTHS.join("|")})[a-z]*\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`), (m) => {
+      const mo = MONTHS.indexOf(m[1]) + 1;
+      return `${new Date().getFullYear()}-${pad2(mo)}-${pad2(+m[2])}`;
+    });
+    // Bare numbers: day-first, which is how it's written outside the US. Only
+    // when it can't be anything else, so a wrong reading is rare and visible.
+    take(/\b(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\b/, (m) => {
+      const day = +m[1];
+      const mo = +m[2];
+      if (day > 31 || mo > 12) return "";
+      const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear();
+      return `${yr}-${pad2(mo)}-${pad2(day)}`;
+    });
+
+    let time = "";
+    const tm =
+      /\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?\b/.exec(t) ||
+      /\b(?:at\s+)(\d{1,2})\s*(am|pm)\b/.exec(t) ||
+      /\b(\d{1,2})\s*(am|pm)\b/.exec(t);
+    if (tm) {
+      let h = +tm[1];
+      const mins = /^\d{2}$/.test(tm[2] || "") ? +tm[2] : 0;
+      const ap = (tm[3] || tm[2] || "").toString();
+      if (/pm/.test(ap) && h < 12) h += 12;
+      if (/am/.test(ap) && h === 12) h = 0;
+      if (h <= 23) time = `${pad2(h)}:${pad2(mins)}`;
+    }
+    return { date, time, matched, timeText: tm ? tm[0].trim() : "" };
+  }
+
+  // Only ever people you already have. It cannot invent a colleague, which is
+  // the whole reason this is safe to run without anyone checking a model.
+  function readPeople(text, contacts) {
+    const out = { person: "", waitingOn: "" };
+    const N = window.OrganiserNames;
+    if (!N || !Array.isArray(contacts) || !contacts.length) return out;
+    // Ordinary words that turn up inside names ("Dave THE plumber") and would
+    // otherwise match half the roster.
+    const SKIP = new Set(
+      ("the a an and or of for to at in on by with about from is was be do did get got put "
+        + "my me you your it this that then them they we us our new old all any some not no yes")
+        .split(" ")
+    );
+    const words = String(text)
+      .split(/[^\p{L}\p{N}一-鿿]+/u)
+      .filter((w) => w.length > 1 && !SKIP.has(w.toLowerCase()));
+    // Try two-word runs first, so "Helen Zhou" beats "Helen".
+    const tries = [];
+    for (let i = 0; i < words.length; i++) {
+      if (words[i + 1]) tries.push(words[i] + " " + words[i + 1]);
+      tries.push(words[i]);
+    }
+    for (const t of tries) {
+      const found = N.look(t, contacts);
+      if (found.state !== "matched") continue;
+      // It must be who they're CALLED, not a word buried in their name.
+      const whole = N.norm(found.contact.name);
+      const asked = N.norm(t);
+      // Chinese has no spaces, so "给王伟发消息" arrives as one token and the
+      // name sits inside it. For those scripts containment IS the match — the
+      // guard above exists to stop English middle-words, not this.
+      const unspaced = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(asked);
+      const inside = unspaced && asked.replace(/\s/g, "").includes(whole.replace(/\s/g, ""));
+      if (whole === asked || whole.startsWith(asked + " ") || inside || (N.formsOf(found.contact) || []).some((f) => N.norm(f) === asked)) {
+        out.person = found.contact.name;
+        break;
+      }
+    }
+    // "waiting for X" / "waiting to hear from X" / "chasing X"
+    const w = /(?:waiting (?:for|on)|waiting to hear (?:back )?from|chasing|chased|asked)\s+(.+)/i.exec(text);
+    if (w) {
+      const rest = w[1].trim().split(/\s+/);
+      const clean = (x) => (x || "").replace(/[,.;:!?'"]+$/, "");
+      let who = clean(rest[0]);
+      // A second word only if it's genuinely a name — capitalised, or CJK.
+      if (rest[1] && /^[A-Z\u4e00-\u9fff]/.test(rest[1])) who += " " + clean(rest[1]);
+      const found = N.look(who, contacts);
+      out.waitingOn = found.state === "matched" ? found.contact.name : /^[A-Z一-鿿]/.test(who) ? who : "";
+    } else if (out.person && /\bwaiting\b|\bno (?:reply|answer|response)\b|hasn't (?:replied|got back)/i.test(text)) {
+      out.waitingOn = out.person;
+    }
+    return out;
+  }
+
+  const HIGH = /\b(urgent|urgently|asap|important|critical|priority|must|deadline|重要|紧急|急)\b/i;
+  const LOW = /\b(sometime|someday|whenever|no rush|if i (?:get|have) time|eventually|low priority)\b/i;
+  const HARD = /\b(deadline|due|must be|has to be|no later than|by end of|cut off|cutoff)\b/i;
+  const QUICK = /\b(quick|quickly|just|briefly|two minutes|5 ?min)\b/i;
+  const BIG = /\b(whole|all of|write up|draft|plan out|big|entire|redo)\b/i;
+
+  // One line of plain text → the same shape the AI half returns, so both roads
+  // into the app produce the identical thing and the check-back can't tell them
+  // apart. Fields it can't see are left empty; nothing is ever guessed.
+  function parse(text, ctx) {
+    const raw = String(text || "").trim();
+    const contacts = (ctx && ctx.contacts) || [];
+    const when = readWhen(raw);
+    const who = readPeople(raw, contacts);
+
+    // Strip the time phrase out of the title — "call the dentist on tuesday"
+    // should become "call the dentist", not repeat itself.
+    let title = raw;
+    if (when.timeText) {
+      title = title
+        .replace(new RegExp(`\\b(at|from)?\\s*${when.timeText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"), " ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+    }
+    if (when.matched) {
+      title = title
+        .replace(new RegExp(`\\b(on|by|before|for)?\\s*${when.matched.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), " ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+    }
+    title = title.replace(/^[\s,;:-]+|[\s,;:-]+$/g, "");
+    if (!title) title = raw;
+
+    return {
+      title: title.slice(0, 160),
+      type: "task",
+      date: when.date,
+      time: when.time,
+      deadlineType: HARD.test(raw) && when.date ? "hard" : "soft",
+      importance: HIGH.test(raw) ? "high" : LOW.test(raw) ? "low" : "normal",
+      effort: QUICK.test(raw) ? "quick" : BIG.test(raw) ? "draining" : "medium",
+      tags: [],
+      whenText: when.matched || "",
+      goalId: "",
+      standardId: "",
+      openLoop: false,
+      promisedTo: who.waitingOn ? "" : who.person,
+      waitingOn: who.waitingOn,
+      remindAt: "",
+      remindedAt: null,
+      // Says plainly where this came from, so the check-back can be honest
+      // about how much thought went into it.
+      by: "patterns",
+    };
+  }
+
+  // Did it actually find anything, or is this just the raw sentence back? Used
+  // to word the check-back honestly rather than implying it understood.
+  function foundAnything(item) {
+    return !!(item.date || item.time || item.promisedTo || item.waitingOn || item.importance !== "normal");
+  }
+
+  window.OrganiserQuickParse = { parse, readWhen, readPeople, foundAnything };
+})();

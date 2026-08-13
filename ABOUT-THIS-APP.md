@@ -341,7 +341,36 @@ Every page has a capture box, so you never navigate somewhere to add something.
 
 ---
 
-## 6. Honest limits
+## 6. On a machine that can't run the AI
+
+Worth knowing exactly how much this costs, because it's less than it sounds.
+**Eighteen of the app's twenty-three parts never touch the AI at all** — the
+zones, the day plan, the levels and marking, the exports, the reminders, the
+meeting readiness, the People matching. Everything you *see and do* is plain
+code. The AI is only the **front door**: the "say it messily and it sorts
+itself" promise.
+
+So on a laptop with no model:
+
+- **Everything still works**, and nothing is ever lost.
+- **The front door still reads the everyday things** — patterns pull out the
+  date, the time, the urgency, and anyone already in your People list, offline
+  and instantly. *"call the dentist tuesday"* still becomes a dated task with a
+  clean title. It leaves blank what it can't see rather than guessing, and it
+  goes through the same check-back, so the only real difference is how much
+  arrives pre-filled.
+- **What you actually lose** is the messy end: pasting a whole WeChat thread and
+  having it split into separate items, translation, and the coverage check.
+- **Those can wait for the desktop.** Anything typed on the laptop syncs through
+  the folder, so a long paste can be dropped into the box at home where the
+  model lives.
+
+If the laptop turns out to manage a small model, the **Working?** page tells you
+which one to try and exactly how.
+
+---
+
+## 7. Honest limits
 
 - **Reminders reach one computer** — the one running the app. Nothing reaches
   your phone. That's the price of no cloud.
@@ -394,7 +423,7 @@ Every page has a capture box, so you never navigate somewhere to add something.
 
 ---
 
-## 7. The rules it was built under
+## 8. The rules it was built under
 
 Kept here because they explain nearly every design choice:
 
@@ -417,7 +446,7 @@ Kept here because they explain nearly every design choice:
 
 ---
 
-## 8. Where things live
+## 9. Where things live
 
 ```
 Start Organiser.bat        ← double-click to run it

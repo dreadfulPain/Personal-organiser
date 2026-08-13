@@ -344,14 +344,18 @@
     if (!text) return;
     const btn = document.getElementById("capBtn");
     if (!barState.aiAvailable) {
-      // No AI: capture is sacred — save it as a plain task so nothing is lost.
-      // "Off" and "set up but not running" are different problems with
-      // different fixes, so they get different sentences.
+      // No AI: capture is sacred, and patterns still read the everyday parts —
+      // the date, the time, anyone already in People. Offline and instant.
       barState.items = barState.items || [];
-      barState.items.push(finishItem({ title: text, type: "task" }));
+      const guess = window.OrganiserQuickParse
+        ? OrganiserQuickParse.parse(text, { contacts: barState.contacts || [] })
+        : { title: text, type: "task" };
+      barState.items.push(finishItem(guess));
       input.value = "";
+      const read = window.OrganiserQuickParse && OrganiserQuickParse.foundAnything(guess);
       await saveAndReload(
-        barState.engineNote ? `Saved it as a task. ${barState.engineNote}` : "Saved it as a task (AI sorting is off). ✓"
+        (read ? "Saved, with the date and details I could read. ✓" : "Saved it as a task. ✓") +
+          (barState.engineNote ? " " + barState.engineNote : "")
       );
       return;
     }

@@ -667,6 +667,42 @@ function errorClass(e) {
   return "other";
 }
 
+// ---- DID THE ANSWER TURN OUT TO BE ANY GOOD? ------------------------------
+//
+// Timings only say whether the call worked. A sort that confidently files a
+// task against the wrong person is a SUCCESS by that measure — which makes the
+// app's most important failure mode invisible.
+//
+// The truest signal available is what you CHANGE before accepting: if the date
+// gets corrected on half the sorts, the date extraction is bad, and no amount
+// of timing data would ever say so. That signal is completely content-free —
+// "the date was corrected" carries no date.
+//
+// AND IT IS ENFORCED BY AN ALLOWLIST, NOT BY GOOD INTENTIONS. The endpoint
+// accepts only these exact strings. A future bug that tried to send a task
+// title through here could not: there is no shape for it to arrive in.
+const EVENT_WHAT = ["corrected", "dropped", "cancelled", "accepted", "name-question", "record-confirmed"];
+const EVENT_FIELDS = [
+  "title", "date", "time", "importance", "effort", "tags", "deadline",
+  "promisedTo", "waitingOn", "goal", "standard", "who", "level", "topic",
+  "kind", "summary", "person", "direction", "none",
+];
+const EVENT_VALUES = ["task", "record", "goal", "handover", "matched", "nearly", "new", "accepted", "rejected", "added"];
+
+function handleEvent(res, body) {
+  const what = String(body?.what || "");
+  if (!EVENT_WHAT.includes(what)) return sendJson(res, 400, { error: "unknown_kind" });
+  const row = { what };
+  const field = String(body?.field || "");
+  if (field && EVENT_FIELDS.includes(field)) row.field = field;
+  const value = String(body?.value || "");
+  if (value && EVENT_VALUES.includes(value)) row.value = value;
+  const n = Number(body?.n);
+  if (Number.isFinite(n) && n >= 0 && n < 1000) row.n = Math.round(n);
+  logEvent("use", row); // anything not on the lists above simply never arrives
+  return sendJson(res, 200, { ok: true });
+}
+
 function logEvent(kind, fields) {
   try {
     ensureDirs();
@@ -1508,6 +1544,40 @@ async function handleReport(res) {
       Object.entries(byWhy).forEach(([k, n]) => line(`    ${k} × ${n}`));
       const never = [...new Set(bad.map((e) => e.job))].filter((j) => !okCalls.some((e) => e.job === j));
       if (never.length) line(`    never once succeeded: ${never.join(", ")}`);
+    }
+  }
+  line();
+
+  const use = events.filter((e) => e.kind === "use");
+  line("── IS THE SORTING ANY GOOD? ────────────────────────────");
+  line("(what you change before accepting — the only real measure of quality. A call");
+  line(" that worked but guessed wrong looks perfect in the section above.)");
+  if (!use.length) line("nothing recorded yet — accept or correct a few sorts and this fills in");
+  else {
+    const acceptedRows = use.filter((e) => e.what === "accepted");
+    const accepted = acceptedRows.reduce((n, e) => n + (e.n || 1), 0);
+    const dropped = use.filter((e) => e.what === "dropped").length;
+    const cancelled = use.filter((e) => e.what === "cancelled").reduce((n, e) => n + (e.n || 1), 0);
+    line(`${accepted} entries accepted, ${dropped} dropped from the check-back, ${cancelled} whole batches cancelled`);
+
+    const byField = {};
+    use.filter((e) => e.what === "corrected" && e.field).forEach((e) => (byField[e.field] = (byField[e.field] || 0) + 1));
+    const rows = Object.entries(byField).sort((a2, b2) => b2[1] - a2[1]);
+    if (rows.length) {
+      line("  corrected before filing:");
+      rows.forEach(([f, n]) => {
+        const pct = accepted ? Math.round((n / Math.max(accepted, n)) * 100) : 0;
+        line(`    ${f.padEnd(14)} ${String(n).padStart(3)}${accepted ? `   ~${pct}% of accepted entries` : ""}`);
+      });
+      line("  ^ anything high here is a field the sorting gets wrong often — worth fixing first");
+    } else line("  nothing has needed correcting");
+
+    const names = use.filter((e) => e.what === "name-question");
+    if (names.length) {
+      const yes = names.filter((e) => e.value === "matched" || e.value === "accepted").length;
+      const added = names.filter((e) => e.value === "added").length;
+      line(`  name questions: asked ${names.length}, right ${yes}, a new person ${added}`);
+      if (names.length >= 5 && yes / names.length < 0.5) line("  ^ it's guessing the wrong person more often than not");
     }
   }
   line();
@@ -2398,6 +2468,17 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/export" && req.method === "POST") {
       return handleExport(req, res);
+    }
+
+    if (pathname === "/api/event" && req.method === "POST") {
+      const body = await readBody(req);
+      let parsed = {};
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        /* leave empty */
+      }
+      return handleEvent(res, parsed);
     }
 
     if (req.method === "GET" && pathname === "/api/report") {

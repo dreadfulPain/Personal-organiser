@@ -24,6 +24,7 @@
   let aiAvailable = false; // is AI sorting set up AND answering?
   let engineNote = ""; // set up but not answering — says which, so you can fix it
   let namePrompt = null; // {index, field, name, look} — a name worth asking about
+  let proposed = []; // what the AI first suggested, to compare against what you accept
   let clusterSuggestion = null; // a gentle "make this a goal?" offer, when the AI spots one
   const LS_DISMISSED_CLUSTERS = "organiser.dismissedClusters.v1"; // UI-only: don't re-nag
   let editingTimeId = null; // which Today item's time is being set right now (inline timeline)
@@ -188,6 +189,22 @@
     OrganiserStore.save({ items, waiting });
   }
 
+  // WHAT YOU CHANGED, NEVER WHAT YOU CHANGED IT TO. "the date was corrected"
+  // is the single most useful thing anyone could know about how well the
+  // sorting works, and it carries no date. Fire-and-forget: this must never
+  // slow anything down or matter if it fails.
+  function noteUse(what, field, value, n) {
+    try {
+      fetch("/api/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ what, field: field || "", value: value || "", n: n || 0 }),
+      }).catch(() => {});
+    } catch {
+      /* never worth interrupting anything for */
+    }
+  }
+
   // Blocks you marked as needing work get their tasks made here too. Keyed to
   // block+date, so Home and the Day tab both running this can't make two.
   function syncPrep() {
@@ -278,6 +295,9 @@
       }
       if (taskEntries.length) {
         pending = taskEntries.map((e) => fromRouteItem(e.item));
+      // Kept so that, at the moment you accept, the app can see WHICH fields
+      // you altered. Never what you altered them to.
+      proposed = pending.map((p) => JSON.parse(JSON.stringify(p)));
         $("#checkbackHeading").textContent = "Here's what I understood — look right?";
         renderCheckback();
         setStatus(filed);
@@ -349,6 +369,7 @@
             // You've just told it that this spelling means this person. Keep
             // that — it's how "Wang Wei" finds 王伟 instantly next time, and
             // it's knowledge no built-in table could have.
+            noteUse("name-question", "", found.bridge ? "matched" : "accepted");
             const learned = OrganiserNames.remember(c, name);
             it[field] = c.name;
             it.contactId = c.id || "";
@@ -365,6 +386,7 @@
       add.className = "link";
       add.textContent = found.state === "nearly" ? `no — add ${name}` : `add ${name} to People`;
       add.addEventListener("click", () => {
+        noteUse("name-question", "", found.state === "nearly" ? "rejected" : "added");
         contacts.push({ id: uid(), name, group: "", note: "", createdAt: new Date().toISOString(), workLog: [] });
         OrganiserStore.save({ contacts });
         renderCheckback();
@@ -566,7 +588,10 @@
         });
       wireLoopControls(card, pending[i], refreshSummary);
       card.querySelector(".cb-remove").addEventListener("click", () => {
+        // Dropping an entry outright is the strongest "this was wrong" there is.
+        noteUse("dropped", "", "dropped");
         pending.splice(i, 1);
+        proposed.splice(i, 1);
         renderCheckback();
       });
       const adjustBtn = card.querySelector(".cb-adjust");
@@ -586,8 +611,24 @@
     else $("#checkback").hidden = false;
   }
 
+  const WATCHED = ["title", "date", "time", "importance", "effort", "deadlineType", "promisedTo", "waitingOn", "goalId", "standardId", "tags"];
+  const FIELD_NAME = { deadlineType: "deadline", goalId: "goal", standardId: "standard" };
+  function reportCorrections() {
+    pending.forEach((it, i) => {
+      const was = proposed[i];
+      if (!was) return;
+      WATCHED.forEach((f) => {
+        const a = Array.isArray(was[f]) ? was[f].join(",") : String(was[f] ?? "");
+        const b = Array.isArray(it[f]) ? it[f].join(",") : String(it[f] ?? "");
+        if (a !== b) noteUse("corrected", FIELD_NAME[f] || f);
+      });
+    });
+    noteUse("accepted", "", "accepted", pending.length);
+  }
+
   function confirmCheckback() {
     if (!pending) return;
+    reportCorrections();
     const now = new Date().toISOString();
     let added = 0;
     pending.forEach((it) => {
@@ -628,6 +669,7 @@
   }
 
   function cancelCheckback() {
+    if (pending && pending.length) noteUse("cancelled", "", "", pending.length);
     pending = null;
     $("#checkback").hidden = true;
     $("#checkbackList").innerHTML = "";

@@ -109,9 +109,17 @@
   // pings. Say you're back, and it works out what's actually left and rebuilds
   // around it. What can't fit today is MOVED, not marked missed: the time went
   // somewhere real and the app knows where, because you told it.
-  function startAway(label) {
+  // itemId/slotStart: what was in your hands when it happened. Without them the
+  // app knows the day stopped but not what it stopped in the middle of, so the
+  // minutes already put into that job are lost — see partWayThrough.
+  function startAway(label, itemId, slotStart) {
     const c = S().normaliseConfig(cfg);
-    c.away = { label: (label || "").trim().slice(0, 80), startedAt: new Date().toISOString() };
+    c.away = {
+      label: (label || "").trim().slice(0, 80),
+      startedAt: new Date().toISOString(),
+      itemId: itemId || "",
+      slotStart: Number.isFinite(slotStart) ? slotStart : null,
+    };
     cfg = c;
     persist();
     render();
@@ -139,6 +147,23 @@
       if (b) schedule = S().normalise(schedule).concat([b]);
     }
 
+    // WHATEVER YOU HAD IN YOUR HANDS. The minutes you'd put into it before the
+    // door went are kept, so the job comes back smaller rather than starting
+    // from nothing — the same reasoning as "got part way", except you shouldn't
+    // have to remember to press anything while a child is crying at you.
+    const paused = c.away.itemId ? items.find((i) => i.id === c.away.itemId) : null;
+    let banked = 0;
+    if (paused && !paused.done) {
+      const plan = c.plans[iso] || {};
+      const from = Math.max(
+        Number.isFinite(c.away.slotStart) ? c.away.slotStart : 0,
+        Number.isFinite(plan.lastTickMin) ? plan.lastTickMin : 0
+      );
+      const to = started.getHours() * 60 + started.getMinutes();
+      banked = S().workingMinutesBetween(schedule, iso, from, to);
+      if (banked >= 1) paused.spentMinutes = Math.round(Number(paused.spentMinutes) || 0) + banked;
+    }
+
     // What the day USED to say, so the rebuild can name what moved.
     const before = (c.plans[iso] && c.plans[iso].slots ? c.plans[iso].slots : []).map((s2) => s2.itemId);
     c.away = null;
@@ -155,12 +180,17 @@
     persist();
     render();
     setTlStatus(
-      `Back after ${S().durationWords(mins)}. ${
+      `Back after ${S().durationWords(mins)}.${
+        banked >= 1 ? ` The ${S().durationWords(banked)} you'd put into “${paused.title}” is kept.` : ""
+      } ${
         rebuilt.displaced.length
           ? `${rebuilt.displaced.length} thing${rebuilt.displaced.length === 1 ? "" : "s"} didn't fit what's left — ${rebuilt.displaced.length === 1 ? "it's" : "they're"} below.`
           : "Everything still fits."
       }`
     );
+    // What happened, and whether it started something. Offered, never demanded:
+    // ignore it and it's gone on the next render.
+    if (paused || mins >= 5) offerFollowUp({ title: label || "what came up" }, "did anything come out of that?");
   }
 
   function renderAway() {
@@ -284,6 +314,8 @@
     });
     wrap.appendChild(list);
 
+    const heads = troubleBox(iso);
+    if (heads) wrap.appendChild(heads);
     if (plan.displaced && plan.displaced.length) wrap.appendChild(displacedBox(plan, iso));
     if (plan.flagged && plan.flagged.length) wrap.appendChild(flaggedBox(plan, iso));
     renderAccept(plan, iso);
@@ -334,11 +366,16 @@
       <div class="dp-actions">
         <button type="button" class="tick" aria-label="Done" title="Done"></button>
         <button type="button" class="link dp-part">got part way</button>
+        <button type="button" class="link dp-stop">something's come up</button>
         <button type="button" class="link dp-move">move</button>
         <button type="button" class="link dp-remove">not today</button>
       </div>`;
     el.querySelector(".tick").addEventListener("click", () => completeFromPlan(it, slot));
     el.querySelector(".dp-part").addEventListener("click", () => partWayThrough(it, slot));
+    // THE INTERRUPTION BUTTON, on the thing you were actually doing. One tap
+    // when the door goes: the day goes quiet, and the minutes already in this
+    // job are held rather than lost. Say what it was when you come back.
+    el.querySelector(".dp-stop").addEventListener("click", () => startAway("", it.id, slot.start));
     el.querySelector(".dp-remove").addEventListener("click", () => {
       const p = planFor(iso);
       p.dropped = (p.dropped || []).concat([it.id]);
@@ -464,15 +501,16 @@
   // it wasn't the end of it — and exactly when you're least likely to stop and
   // write the next bit down, because it feels finished. Offered, never asked:
   // ignore it and it goes on the next render. One tap if you need it.
-  function offerFollowUp(it) {
+  function offerFollowUp(it, wording) {
     const bar = $("#tlStatus");
     if (!bar) return;
     bar.hidden = false;
-    bar.textContent = `Done: ${it.title}. `;
+    if (!wording) bar.textContent = `Done: ${it.title}. `;
+    else bar.textContent = bar.textContent ? bar.textContent + " " : "";
     const link = document.createElement("button");
     link.type = "button";
     link.className = "link";
-    link.textContent = "anything follow from it?";
+    link.textContent = wording || "anything follow from it?";
     link.addEventListener("click", () => {
       const box = document.querySelector("#capture textarea, #capture input[type=text]");
       if (box) {
@@ -487,6 +525,57 @@
   // Pushed out by something that actually happened. The wording matters: these
   // did not slip and you did not fail to do them — the time went somewhere real,
   // and the app knows where because you told it.
+  // HEADING FOR A CLASH — said while you can still do something about it.
+  //
+  // Everything else in this page is about today. This is the one thing that
+  // isn't: it looks weeks out and reports work that will not fit before it's
+  // due, and by how much. That number is the useful part — "two hours short" is
+  // something you can take to someone and ask for help, or for more time, or
+  // for permission to drop something else. "You've run out of time" on the
+  // morning of is not.
+  //
+  // Deliberately unexcited. No red, no count-down, no exclamation marks. The
+  // point is that you find out early, not that you feel bad early.
+  function troubleBox(iso) {
+    const WP = window.OrganiserWeekPlan;
+    if (!WP || !WP.trouble) return null;
+    const c = S().normaliseConfig(cfg);
+    const rows = WP.trouble(items, schedule, c, iso, Math.max(c.planHorizonDays, 28), ctx())
+      .filter((t) => t.short >= c.minSessionMinutes)
+      .slice(0, 3);
+    if (!rows.length) return null;
+
+    const box = document.createElement("div");
+    box.className = "dp-ahead";
+    box.innerHTML =
+      `<h3>Worth knowing now</h3>` +
+      `<p class="muted">There isn't room for ${rows.length === 1 ? "this" : "these"} before ${rows.length === 1 ? "it's" : "they're"} due, on the time you've actually got. Said now rather than on the day, while there's still something you can do about it.</p>`;
+    const list = document.createElement("div");
+    list.className = "dp-flaglist";
+    rows.forEach((t) => {
+      const row = document.createElement("div");
+      row.className = "dp-flagrow";
+      const when =
+        t.daysLeft === null ? "" :
+        t.daysLeft <= 0 ? "due today" :
+        t.daysLeft === 1 ? "due tomorrow" :
+        `${t.daysLeft} days away`;
+      row.innerHTML =
+        `<span class="dp-flagtitle">${escapeHtml(t.title)}</span>` +
+        `<span class="dp-shortby">${escapeHtml(S().durationWords(t.short))} short${when ? ` · ${escapeHtml(when)}` : ""}</span>`;
+      const a = document.createElement("button");
+      a.type = "button";
+      a.className = "link";
+      a.textContent = "find it a day";
+      const item = itemById(t.itemId);
+      a.addEventListener("click", () => item && findADay(item, iso));
+      row.appendChild(a);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
   function displacedBox(plan, iso) {
     const box = document.createElement("div");
     box.className = "dp-displaced";

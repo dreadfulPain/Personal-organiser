@@ -119,6 +119,28 @@
       const earliest =
         it.notBefore && !(it.date && it.notBefore > it.date) ? it.notBefore : "";
 
+      // A JOB TOO BIG FOR ONE DAY IS DONE IN SITTINGS.
+      //
+      // Without this, anything larger than the longest gap simply never got
+      // placed — and because the biggest size the app could express was about
+      // an hour, an eight-hour pile of reports looked like a one-hour job,
+      // fitted anywhere, was never flagged, and got left until four days before
+      // it was due. Then one Thursday absorbed six hours of it. That is the
+      // rush this whole thing exists to prevent.
+      //
+      // So: work out how many sittings it needs, book them from the earliest
+      // day that has room, and if the days before the deadline cannot hold it
+      // all, say by how much — that shortfall is the warning.
+      // ONLY chip a job you TOLD the app was that big. A "draining" job is
+      // draining because it wants one uninterrupted stretch — cutting that into
+      // twenty-five minute pieces is precisely what "needs a proper slot"
+      // exists to refuse. But sixty reports genuinely are done ten at a time,
+      // and the way the app knows the difference is that you said how long it
+      // needs. A stated size is a statement that it can be worked through.
+      const needsSittings = est.from === "yours";
+      let owed = est.minutes;
+      const sittings = [];
+
       let placed = null;
       for (const iso of dates) {
         if (iso > limit) break;
@@ -138,20 +160,51 @@
         // putting the follow-up work at eight in the morning would put it
         // before the meeting it depends on — which was the whole bug.
         const onUnblockDay = !!earliest && iso === earliest;
-        const gap = onUnblockDay
-          ? window.OrganiserDayPlan.fitLast(r.gaps, est.minutes)
-          : window.OrganiserDayPlan.fitIn(r.gaps, est.minutes);
+        // Whole thing in one go if it fits; otherwise the biggest sitting this
+        // day can hold, down to the smallest one worth getting the folder out for.
+        let take = owed;
+        let gap = onUnblockDay
+          ? window.OrganiserDayPlan.fitLast(r.gaps, take)
+          : window.OrganiserDayPlan.fitIn(r.gaps, take);
+        if (!gap && needsSittings) {
+          // No stretch holds the rest of it, so take the biggest sitting this
+          // day can give — bounded by the day's own ceiling, so chipping at a
+          // big job can't quietly fill a week wall to wall.
+          const roomLeft = mustToday ? owed : Math.max(0, r.budget - r.used);
+          const biggest = r.gaps.reduce((b, g) => Math.max(b, g.end - g.start), 0);
+          take = Math.min(owed, biggest, roomLeft);
+          if (take < c.minSessionMinutes) continue;
+          gap = onUnblockDay
+            ? window.OrganiserDayPlan.fitLast(r.gaps, take)
+            : window.OrganiserDayPlan.fitIn(r.gaps, take);
+        }
         if (!gap) continue;
-        const at = onUnblockDay ? gap.end - est.minutes : gap.start;
-        window.OrganiserDayPlan.carve(r.gaps, at, at + est.minutes);
-        r.used += est.minutes;
+        const at = onUnblockDay ? gap.end - take : gap.start;
+        window.OrganiserDayPlan.carve(r.gaps, at, at + take);
+        r.used += take;
         if (r.used >= r.budget) r.overran = true;
-        placed = { itemId: it.id, iso, start: at, minutes: est.minutes, early: !!(it.date && iso < it.date) };
-        break;
+        owed -= take;
+        const one = { itemId: it.id, iso, start: at, minutes: take, early: !!(it.date && iso < it.date) };
+        sittings.push(one);
+        if (!placed) placed = one;
+        if (owed <= 0) break;
       }
 
-      if (placed) placements.push(placed);
-      else wontFit.push({ itemId: it.id, minutes: est.minutes, date: it.date, hard });
+      // Every sitting is a real booking; the first is also "the" placement.
+      sittings.forEach((x) => placements.push({ ...x, sittings: sittings.length }));
+      if (owed > 0) {
+        // Some or all of it has nowhere to go before the deadline. `short` is
+        // the number that makes the warning actionable: this much time has to
+        // come from somewhere — an evening, someone else, or a later date.
+        wontFit.push({
+          itemId: it.id,
+          minutes: est.minutes,
+          short: owed,
+          booked: est.minutes - owed,
+          date: it.date,
+          hard,
+        });
+      }
     });
 
     const byDay = {};
@@ -165,9 +218,17 @@
   // Which jobs the week says to get on with today — including ones not due
   // until later. This is what stops a quiet Monday being spent on the stockroom
   // while Friday quietly becomes impossible.
+  // Returns itemId → MINUTES for today, not just a list of ids. The minutes
+  // matter: a big job is booked as a sitting, and if the day plan then went
+  // looking for a gap the size of the whole job it would find none and put the
+  // job off — which is exactly what happened. Eight hours of reports, twenty-
+  // five working days of warning, and not one minute of it ever started.
   function startToday(items, schedule, cfg, iso, ctx, days) {
-    const s = spread(items, schedule, cfg, iso, days || 7, ctx);
-    return new Set((s.byDay[iso] || []).map((p) => p.itemId));
+    const c = window.OrganiserSchedule.normaliseConfig(cfg);
+    const s = spread(items, schedule, cfg, iso, days || c.planHorizonDays, ctx);
+    const out = new Map();
+    (s.byDay[iso] || []).forEach((p) => out.set(p.itemId, (out.get(p.itemId) || 0) + p.minutes));
+    return out;
   }
 
   // The first day at or after `fromISO` with a real stretch free for this job,
@@ -193,5 +254,48 @@
     return null;
   }
 
-  window.OrganiserWeekPlan = { spread, startToday, nextDayWithRoom };
+  // TROUBLE YOU CAN STILL DO SOMETHING ABOUT.
+  //
+  // The Week tab looks seven days ahead, which is fine for ordinary work and
+  // useless for the thing that actually catches people out: a big commitment
+  // weeks away with a pile of work behind it. Measured over two months, an
+  // eight-hour set of reports for a parents evening sat untouched for fifteen
+  // working days and then swallowed a Thursday whole — and a seven-day check
+  // could not have said a word about it until it was far too late to ask for
+  // help or for more time.
+  //
+  // This asks the same question over a long horizon and reports each piece of
+  // work that cannot fit before it's due, HOW SHORT it is, and how many days
+  // are left. Short and early is a nudge; short and late is a problem you need
+  // to take to someone. The app's job is to make sure you find out while it's
+  // still the first one.
+  function trouble(items, schedule, cfg, fromISO, days, ctx) {
+    const S = window.OrganiserSchedule;
+    const horizon = Math.max(1, Math.min(180, Number(days) || 56));
+    const s = spread(items, schedule, cfg, fromISO, horizon, ctx);
+    const all = Array.isArray(items) ? items : [];
+    return s.wontFit
+      .map((w) => {
+        const it = all.find((i) => i && i.id === w.itemId);
+        if (!it) return null;
+        const daysLeft = it.date ? Math.round((new Date(it.date + "T12:00:00") - new Date(fromISO + "T12:00:00")) / 86400000) : null;
+        return {
+          itemId: w.itemId,
+          title: it.title || "",
+          date: it.date || "",
+          daysLeft,
+          hard: !!w.hard,
+          needs: w.minutes,
+          // How much of it the days before the deadline CAN hold, and what's
+          // left over. The leftover is the number worth acting on.
+          booked: w.booked || 0,
+          short: w.short || w.minutes,
+        };
+      })
+      .filter(Boolean)
+      // Soonest first — that's the one you can least afford to hear about late.
+      .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || b.short - a.short);
+  }
+
+  window.OrganiserWeekPlan = { spread, startToday, nextDayWithRoom, trouble };
 })();

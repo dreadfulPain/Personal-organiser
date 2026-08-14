@@ -71,6 +71,18 @@
     fillFraction: 0.66,
     // Gaps shorter than this aren't worth offering — they're corridor time.
     minGapMinutes: 10,
+    // A job too big for one day is done in sittings. This is the smallest
+    // sitting worth booking: below it you're not making progress, you're just
+    // getting the folder out and putting it away again.
+    minSessionMinutes: 25,
+    // HOW FAR AHEAD THE DAY PLAN LOOKS for work worth getting on with.
+    // A week is right for ordinary jobs and hopeless for a big one: eight hours
+    // of reports due in a month stayed invisible until it came inside seven
+    // days, and then took four days of scrambling. Four weeks lets a light week
+    // now absorb a heavy week later, which is the whole point of planning
+    // ahead. Yours to change — shorten it if the day starts feeling cluttered
+    // with things that aren't urgent yet.
+    planHorizonDays: 28,
     // How many days before a meeting the app starts saying what you have.
     meetingLeadDays: 5,
     // Work owed to a block: how far ahead tasks are made, when they ping, and
@@ -104,6 +116,10 @@
     if (f > 0 && f <= 1) out.fillFraction = f;
     const g = Number(c.minGapMinutes);
     if (g >= 0 && g <= 120) out.minGapMinutes = Math.round(g);
+    const ses = Number(c.minSessionMinutes);
+    if (ses >= 5 && ses <= 240) out.minSessionMinutes = Math.round(ses);
+    const ph = Number(c.planHorizonDays);
+    if (ph >= 1 && ph <= 180) out.planHorizonDays = Math.round(ph);
     const lead = Number(c.meetingLeadDays);
     if (lead >= 0 && lead <= 60) out.meetingLeadDays = Math.round(lead);
     const horizon = Number(c.prepHorizonDays);
@@ -284,11 +300,29 @@
     const c = normaliseConfig(cfg);
     const effort = ["quick", "medium", "draining"].includes(item && item.effort) ? item.effort : "medium";
     const learned = Number(c.learned[effort]);
-    const base = Math.round(learned > 0 ? learned : c.effortMinutes[effort]);
+    // A SIZE YOU GAVE IT BEATS ANY GUESS. The three effort levels top out at
+    // about an hour and a quarter, which cannot describe sixty reports. Left
+    // with only "draining", the app planned an eight-hour pile as seventy-five
+    // minutes: it fitted anywhere, was never flagged, and got left until four
+    // days before it was due and then crammed into one Thursday. Exactly the
+    // rush this is supposed to prevent. So a job can carry its own minutes.
+    const own = Math.max(0, Math.round(Number(item && item.plannedMinutes) || 0));
+    const base = own > 0 ? own : Math.round(learned > 0 ? learned : c.effortMinutes[effort]);
     const spent = Math.max(0, Math.round(Number(item && item.spentMinutes) || 0));
-    // Never zero, however much is in: something still has to be finished off.
-    const left = Math.max(5, base - spent);
-    return { minutes: left, soft: true, from: learned > 0 ? "learned" : "effort", spent, full: base };
+    // ALREADY PAST ITS OWN ESTIMATE. Saying "5 minutes left" here would be a
+    // lie the app tells confidently — it doesn't know how much is left, only
+    // that the guess was wrong. Assume it needs another proper sitting and say
+    // so, rather than dribbling out five-minute slots at something needing hours.
+    const overrun = spent >= base;
+    const left = overrun ? base : Math.max(5, base - spent);
+    return {
+      minutes: left,
+      soft: true,
+      from: own > 0 ? "yours" : learned > 0 ? "learned" : "effort",
+      spent,
+      full: base,
+      overrun,
+    };
   }
   // Minutes between two points in a day that you could actually have been
   // working — the wall clock, minus anything the timetable says you were doing

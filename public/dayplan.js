@@ -79,7 +79,9 @@
     // arrived, so a quiet Monday goes on the stockroom while the big thing due
     // Friday waits for a Friday that turns out to have no room in it.
     const WP = window.OrganiserWeekPlan;
-    const startNow = WP ? WP.startToday(items, schedule, c, iso, ctx) : new Set();
+    // itemId → minutes the week has set aside for it TODAY. For a big job
+    // that's one sitting, not the whole thing.
+    const startNow = WP ? WP.startToday(items, schedule, c, iso, ctx) : new Map();
 
     // forPlanning, not ordered: the pressing things first, then ordinary work to
     // fill what's left. See priority.js — the nag list makes a poor day plan.
@@ -94,7 +96,13 @@
     let used = 0;
     const flagged = [];
     for (const it of candidates) {
-      const est = S.estimateMinutes(it, c);
+      const full = S.estimateMinutes(it, c);
+      // A sitting the week booked for today, if there is one — otherwise the
+      // whole of what's left. Never smaller than a sitting is worth.
+      const booked = startNow.get(it.id);
+      const est = booked > 0 && booked < full.minutes
+        ? { ...full, minutes: Math.max(c.minSessionMinutes, Math.round(booked)), sitting: true }
+        : full;
       const hardToday = it.deadlineType === "hard" && it.date && it.date <= iso;
       if (used >= budget && !hardToday) break;
       // Today is the day the wait clears — put it as late as it will go. Same

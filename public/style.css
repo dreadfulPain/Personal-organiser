@@ -1148,6 +1148,24 @@ body {
 .dp-est.guess {
   font-style: italic;
 }
+/* Trouble weeks away. Same calm surface as everything else — no red, no alarm.
+   Finding out early should feel like being told, not like being warned. */
+.dp-ahead {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 10px);
+  background: var(--card, transparent);
+}
+.dp-ahead h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.dp-shortby {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
 /* Work already put in. Shown as credit, never as a debt. */
 .dp-sofar {
   color: var(--ink-soft);

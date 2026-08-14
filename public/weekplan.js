@@ -99,8 +99,11 @@
 
     // Only dated work gets spread. Something with no date has no deadline to
     // miss — it's what the day plan uses to fill whatever's left over.
+    // Optional work is deliberately NOT spread. Booking a nice-to-have into
+    // next Tuesday makes it a commitment by the back door, and the whole point
+    // is that it only ever gets what's genuinely left over on the day.
     const candidates = all.filter(
-      (i) => !i.done && !i.openLoop && !i.time && i.date && i.date <= lastISO
+      (i) => !i.done && !i.openLoop && !i.optional && !i.time && i.date && i.date <= lastISO
     );
 
     const placements = [];
@@ -297,5 +300,83 @@
       .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || b.short - a.short);
   }
 
-  window.OrganiserWeekPlan = { spread, startToday, nextDayWithRoom, trouble };
+  // HOW MUCH ROOM IS THERE, REALLY — and therefore how much more you can take on.
+  //
+  // Work splits into two kinds. There's what you're committed to: it has to
+  // happen, and if it doesn't there are consequences with other people in them.
+  // And there's everything else — the useful-but-not-required, the goal you'd
+  // like to get back to, the personal thing you put down when work got heavy.
+  //
+  // The second kind should only ever be offered out of what's genuinely spare
+  // AFTER the first kind is safe. And when work gets heavier it should withdraw
+  // by itself, quietly, without you having to notice and go round pruning — and
+  // come back on its own when the pressure lifts, without you having to remember
+  // it existed. That withdrawal is the whole point: the alternative is a list
+  // that keeps promising things it can no longer pay for.
+  //
+  // Nothing here knows which work is which. You mark a thing optional, or you
+  // don't; the code only counts minutes.
+  function pressure(items, schedule, cfg, fromISO, days, ctx) {
+    const S = window.OrganiserSchedule;
+    const c = S.normaliseConfig(cfg);
+    const span = Math.max(1, Math.min(180, Number(days) || c.planHorizonDays));
+    const all = (Array.isArray(items) ? items : []).filter((i) => i && typeof i === "object");
+    const committed = all.filter((i) => !i.done && !i.optional);
+
+    const s = spread(committed, schedule, cfg, fromISO, span, ctx);
+    let ceiling = 0;
+    let claimed = 0;
+    let daysWithRoom = 0;
+    s.dates.forEach((iso) => {
+      const free = S.gapsOn(schedule, c, iso).reduce((n, g) => n + (g.end - g.start), 0);
+      const cap = Math.floor(free * c.fillFraction);
+      const used = (s.byDay[iso] || []).reduce((n, p) => n + p.minutes, 0);
+      ceiling += cap;
+      claimed += used;
+      if (cap - used >= c.minSessionMinutes) daysWithRoom++;
+    });
+
+    // Committed work that already can't fit before its deadline. If any of that
+    // exists, there is no honest sense in which there's room for anything more.
+    const shortJobs = s.wontFit.length;
+    const headroom = Math.max(0, ceiling - claimed);
+    const perDay = s.dates.length ? Math.round(headroom / s.dates.length) : 0;
+
+    let verdict = "room";
+    if (shortJobs > 0) verdict = "over";
+    else if (perDay < c.minSessionMinutes || daysWithRoom < s.dates.length / 4) verdict = "full";
+
+    return {
+      days: s.dates.length,
+      ceiling,
+      claimed,
+      headroom,
+      perDay,
+      daysWithRoom,
+      shortJobs,
+      verdict,
+      // The plain-language reason, for showing rather than a colour.
+      because:
+        verdict === "over"
+          ? `${shortJobs} committed thing${shortJobs === 1 ? "" : "s"} won't fit before ${shortJobs === 1 ? "it's" : "they're"} due`
+          : verdict === "full"
+            ? "the committed work is using nearly all the room there is"
+            : `about ${S.durationWords(perDay)} a day spare once the committed work is in`,
+    };
+  }
+
+  // Should optional work be offered at all right now? One question, one answer,
+  // asked in the same way by the day plan and by whatever wants to explain it.
+  function roomForOptional(items, schedule, cfg, fromISO, ctx) {
+    return pressure(items, schedule, cfg, fromISO, null, ctx).verdict === "room";
+  }
+
+  window.OrganiserWeekPlan = {
+    spread,
+    startToday,
+    nextDayWithRoom,
+    trouble,
+    pressure,
+    roomForOptional,
+  };
 })();

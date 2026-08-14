@@ -82,6 +82,11 @@
     // itemId → minutes the week has set aside for it TODAY. For a big job
     // that's one sitting, not the whole thing.
     const startNow = WP ? WP.startToday(items, schedule, c, iso, ctx) : new Map();
+    // OPTIONAL WORK ONLY WHEN THERE'S GENUINELY ROOM. Not "room today" — room
+    // across the weeks ahead, once everything committed is safely in. So a quiet
+    // Tuesday inside a brutal fortnight doesn't tempt you into taking on more,
+    // and the tap opens again by itself when the pressure lifts.
+    const allowOptional = WP ? WP.roomForOptional(items, schedule, c, iso, ctx) : true;
 
     // forPlanning, not ordered: the pressing things first, then ordinary work to
     // fill what's left. See priority.js — the nag list makes a poor day plan.
@@ -90,6 +95,7 @@
         !dropped.has(i.id) &&
         !i.time &&
         !i.openLoop &&
+        (!i.optional || allowOptional) &&
         (!i.date || i.date <= iso || startNow.has(i.id))
     );
 

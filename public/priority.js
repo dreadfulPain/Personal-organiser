@@ -43,6 +43,9 @@
   function eligible(it, ctx) {
     if (it.openLoop) return false; // open loops have their own louder home — no double-shouting
     if (blocked(it, ctx)) return false; // not yet possible is not the same as not important
+    // Optional work is never NAGGED about. It gets offered when there's room —
+    // that's a different thing, and it happens in the day plan, not here.
+    if (it.optional) return false;
     const dueNow = it.date && it.date <= ctx.today;
     if (it.deadlineType === "hard" && dueNow) return true;
     if (isHigh(it)) return true;
@@ -60,6 +63,11 @@
     if (goalOf(it, ctx)) return 2; // then milestone-pull
     if (dueNow) return 3;
     return 4;
+  }
+  // Optional work always sorts behind committed work, whatever else is true of
+  // it. A nice-to-have with a date does not get to push a commitment down.
+  function tier(it) {
+    return it && it.optional ? 1 : 0;
   }
 
   // Why it's here, in plain words. Describes; never judges.
@@ -79,6 +87,7 @@
       .filter((i) => !i.done && eligible(i, ctx))
       .sort(
         (a, b) =>
+          tier(a) - tier(b) ||
           rank(a, ctx) - rank(b, ctx) ||
           (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99")
       );
@@ -102,9 +111,9 @@
     const taken = new Set(first.map((i) => i.id));
     const rest = (items || [])
       .filter((i) => !i.done && !i.openLoop && !taken.has(i.id) && !blocked(i, ctx))
-      .sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+      .sort((a, b) => tier(a) - tier(b) || (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
     return first.concat(rest);
   }
 
-  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning, blocked };
+  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning, blocked, tier };
 })();

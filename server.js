@@ -86,7 +86,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -99,6 +99,9 @@ function normaliseDoc(d) {
     recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
     portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
     contacts: Array.isArray(d.contacts) ? d.contacts : [],
+    pastoralTopics: Array.isArray(d.pastoralTopics) ? d.pastoralTopics : [],
+    pastoralNotes: Array.isArray(d.pastoralNotes) ? d.pastoralNotes : [],
+    toldLog: Array.isArray(d.toldLog) ? d.toldLog : [],
     contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
     schedule: Array.isArray(d.schedule) ? d.schedule : [],
     scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
@@ -116,7 +119,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], savedAt: null };
   try {
     current = readData();
   } catch {
@@ -143,6 +146,9 @@ function writeData(input, opts) {
         contactConfig: input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null,
         schedule: Array.isArray(input.schedule) ? input.schedule : current.schedule || [],
         scheduleConfig: input.scheduleConfig && typeof input.scheduleConfig === "object" ? input.scheduleConfig : current.scheduleConfig || null,
+        pastoralTopics: Array.isArray(input.pastoralTopics) ? input.pastoralTopics : current.pastoralTopics || [],
+        pastoralNotes: Array.isArray(input.pastoralNotes) ? input.pastoralNotes : current.pastoralNotes || [],
+        toldLog: Array.isArray(input.toldLog) ? input.toldLog : current.toldLog || [],
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -169,6 +175,13 @@ function writeData(input, opts) {
   const schedule = Array.isArray(input.schedule) ? input.schedule : current.schedule || [];
   const scheduleConfig =
     input.scheduleConfig && typeof input.scheduleConfig === "object" ? input.scheduleConfig : current.scheduleConfig || null;
+  // These three are preserved the same way as everything else a partial save
+  // leaves out. THE LIST IS AN ALLOWLIST: a new store that isn't named here is
+  // silently dropped on the next write by any page that doesn't send it, which
+  // is a very quiet way to lose someone's notes.
+  const pastoralTopics = Array.isArray(input.pastoralTopics) ? input.pastoralTopics : current.pastoralTopics || [];
+  const pastoralNotes = Array.isArray(input.pastoralNotes) ? input.pastoralNotes : current.pastoralNotes || [];
+  const toldLog = Array.isArray(input.toldLog) ? input.toldLog : current.toldLog || [];
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -180,6 +193,9 @@ function writeData(input, opts) {
     portfolio,
     contacts,
     contactConfig,
+    pastoralTopics,
+    pastoralNotes,
+    toldLog,
     schedule,
     scheduleConfig,
   };
@@ -1940,17 +1956,13 @@ $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
 $xml.LoadXml('<toast scenario="reminder"><visual><binding template="ToastText02"><text id="1">${xmlEscape(title).replace(/'/g, "''")}</text><text id="2">${xmlEscape(body).replace(/'/g, "''")}</text></binding></visual></toast>')
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Personal Organiser').Show((New-Object Windows.UI.Notifications.ToastNotification $xml))`;
       const encoded = Buffer.from(script, "utf16le").toString("base64");
-      spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], {
-        detached: true,
-        stdio: "ignore",
-      }).unref();
+      spawnQuietly("powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], "remind");
     } else if (process.platform === "darwin") {
-      spawn("osascript", ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`], {
-        detached: true,
-        stdio: "ignore",
-      }).unref();
+      spawnQuietly("osascript",
+        ["-e", `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`], "remind");
     } else {
-      spawn("notify-send", [title, body], { detached: true, stdio: "ignore" }).unref();
+      spawnQuietly("notify-send", [title, body], "remind");
     }
   } catch (e) {
     console.warn("[remind] couldn't show a notification:", e?.message || e);
@@ -2589,12 +2601,42 @@ server.listen(PORT, () => {
   setInterval(checkReminders, REMIND_INTERVAL_MS);
 });
 
+// LAUNCHING SOMETHING THAT MIGHT NOT BE THERE.
+//
+// spawn() does NOT throw when the command is missing — it emits an async
+// 'error' event, and a ChildProcess with no listener for that takes the whole
+// process down with it. So the try/catch that looks like it's handling this
+// handles nothing at all, and the server dies.
+//
+// It cost two real crashes. Opening the browser at startup kills the app on any
+// machine without an opener — you double-click the launcher and get nothing,
+// with no way to tell that the SERVER was fine and only the browser call
+// wasn't. And a missing notifier kills it later: it runs happily all day and
+// then vanishes the moment the first reminder fires, which is about the most
+// confusing failure this app could have.
+//
+// Neither of these is worth a crash. Both are conveniences.
+function spawnQuietly(cmd, args, label) {
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+    // THE LINE THAT MATTERS. Without it, "command not found" is fatal.
+    child.on("error", (e) => {
+      console.warn(`[${label || cmd}] couldn't run ${cmd}: ${e && e.message ? e.message : e}`);
+    });
+    child.unref();
+    return child;
+  } catch (e) {
+    console.warn(`[${label || cmd}] couldn't run ${cmd}: ${e && e.message ? e.message : e}`);
+    return null;
+  }
+}
+
 function openBrowser(url) {
   if (process.env.NO_OPEN) return;
   try {
-    if (process.platform === "win32") spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
-    else if (process.platform === "darwin") spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
-    else spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+    if (process.platform === "win32") spawnQuietly("cmd", ["/c", "start", "", url], "open");
+    else if (process.platform === "darwin") spawnQuietly("open", [url], "open");
+    else spawnQuietly("xdg-open", [url], "open");
   } catch {
     /* opening the browser is best-effort; the URL is printed above */
   }

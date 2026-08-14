@@ -152,6 +152,16 @@
       goalId: item.goalId || "",
       standardId: item.standardId || "",
       openLoop: item.openLoop === true,
+      // HOW BIG, and HOW MUCH OF IT IS DONE. Without these the planner sees a
+      // guess where you gave it a number, and forgets every minute you ever put
+      // in — which is how an eight-hour job got planned as an hour and a job
+      // bigger than a day could never finish.
+      plannedMinutes: Math.max(0, Math.round(Number(item.plannedMinutes) || 0)),
+      spentMinutes: Math.max(0, Math.round(Number(item.spentMinutes) || 0)),
+      // Where it came from, and whether you can still walk away from it. Two
+      // separate facts — see priority.js.
+      optional: item.optional === true,
+      committed: item.committed === true,
       // Earliest this could possibly be done — NOT the same as when it's due.
       // Both readers produce it; it has to survive the trip into storage.
       notBefore: /^\d{4}-\d{2}-\d{2}$/.test(item.notBefore || "") ? item.notBefore : "",

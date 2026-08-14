@@ -32,6 +32,13 @@
   const LS_CONTACTCONFIG = "organiser.contactconfig.v1";
   const LS_SCHEDULE = "organiser.schedule.v1";
   const LS_SCHEDULECONFIG = "organiser.scheduleconfig.v1";
+  // What you know about people besides their marks, and what you've told whom.
+  // Ordinary storage — the "never leaves" promise is enforced where the data is
+  // USED (no export path, no fetch), not by hiding it from the save file, which
+  // would only mean losing it.
+  const LS_PASTORALTOPICS = "organiser.pastoraltopics.v1";
+  const LS_PASTORALNOTES = "organiser.pastoralnotes.v1";
+  const LS_TOLD = "organiser.told.v1";
 
   let statusCb = null;
   let externalCb = null; // page refresh when the shared file changed elsewhere
@@ -39,7 +46,7 @@
   let pollTimer = null;
   let dirty = false;
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [] };
 
   function emit(s) {
     if (statusCb) statusCb(s);
@@ -65,6 +72,9 @@
       contactConfig: get(LS_CONTACTCONFIG, null),
       schedule: get(LS_SCHEDULE, []),
       scheduleConfig: get(LS_SCHEDULECONFIG, null),
+      pastoralTopics: get(LS_PASTORALTOPICS, []),
+      pastoralNotes: get(LS_PASTORALNOTES, []),
+      toldLog: get(LS_TOLD, []),
     };
   }
   function writeLegacy(state) {
@@ -78,6 +88,9 @@
       localStorage.setItem(LS_CONTACTS, JSON.stringify(state.contacts || []));
       localStorage.setItem(LS_CONTACTCONFIG, JSON.stringify(state.contactConfig || null));
       localStorage.setItem(LS_SCHEDULE, JSON.stringify(state.schedule || []));
+      localStorage.setItem(LS_PASTORALTOPICS, JSON.stringify(state.pastoralTopics || []));
+      localStorage.setItem(LS_PASTORALNOTES, JSON.stringify(state.pastoralNotes || []));
+      localStorage.setItem(LS_TOLD, JSON.stringify(state.toldLog || []));
       localStorage.setItem(LS_SCHEDULECONFIG, JSON.stringify(state.scheduleConfig || null));
     } catch {
       /* storage may be full or blocked; ignore */
@@ -92,7 +105,7 @@
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [] };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
@@ -198,7 +211,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 

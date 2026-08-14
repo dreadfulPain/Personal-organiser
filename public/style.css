@@ -1148,6 +1148,34 @@ body {
 .dp-est.guess {
   font-style: italic;
 }
+/* The whole goal, in minutes done. Fills for real — unlike the milestone bar
+   above it, which is deliberately short-range so there's always something
+   reachable. No red when the sums stop working: the number in the sentence
+   underneath is the message, not the colour. */
+.g-overall {
+  margin: 6px 0 14px;
+}
+.g-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.g-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent, var(--ink-soft));
+  border-radius: 999px;
+}
+.g-overall.stretched .g-bar > span {
+  opacity: 0.55;
+}
+.g-rate {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
 /* Trouble weeks away. Same calm surface as everything else — no red, no alarm.
    Finding out early should feel like being told, not like being warned. */
 .dp-ahead {

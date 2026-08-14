@@ -20,6 +20,8 @@
   let goals = [];
   let items = []; // the shared pool: tasks linked to a goal show under it here
   let celebrateTimer = null;
+  let schedule = [];
+  let scheduleConfig = null;
   let aiAvailable = false; // can the app propose milestones? (off in preview / no AI)
   const busyGoals = new Set(); // goals the AI is breaking down right now (transient)
 
@@ -31,6 +33,9 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
+
+  const todayISO = () =>
+    window.OrganiserSchedule ? OrganiserSchedule.isoOf(new Date()) : new Date().toISOString().slice(0, 10);
 
   function persist() {
     OrganiserStore.save({ goals });
@@ -287,6 +292,35 @@
     return row;
   }
 
+  // THE WHOLE THING, AND WHETHER THE SUMS STILL WORK.
+  //
+  // The milestone bar below this one is deliberately short-range: the next small
+  // finish, so there's always something reachable. This one answers the other
+  // question — how much of the whole is actually done, how long is left, and
+  // what that now works out at per day. That number climbing is the earliest
+  // honest sign something is turning into a rush, and it's far better to see it
+  // four weeks out than on the morning.
+  //
+  // Measured in MINUTES, not things ticked: ten small jobs done and one big one
+  // untouched is not ninety per cent, and a bar that says it is would be lying
+  // at exactly the moment it matters most.
+  function overallBar(goal) {
+    const wrap = document.createElement("div");
+    wrap.className = "g-overall";
+    const GP = window.OrganiserGoalPlan;
+    if (!GP) return wrap;
+    const r = GP.rate(goal, items, schedule, scheduleConfig, todayISO());
+    if (!r.total) return wrap;
+
+    const pct = Math.round(r.fraction * 100);
+    wrap.innerHTML =
+      `<div class="g-bar" role="img" aria-label="${pct}% of the work done">` +
+      `<span style="width:${pct}%"></span></div>` +
+      `<p class="g-rate">${escapeHtml(GP.words(r))}</p>`;
+    if (r.deadline && r.verdict === "more than the days can hold") wrap.classList.add("stretched");
+    return wrap;
+  }
+
   function renderGoal(goal) {
     const card = document.createElement("section");
     card.className = "goal-card";
@@ -302,6 +336,8 @@
     gdel.addEventListener("click", () => deleteGoal(goal.id));
     head.appendChild(gdel);
     card.appendChild(head);
+
+    card.appendChild(overallBar(goal));
 
     const ci = currentIndex(goal);
 
@@ -409,6 +445,8 @@
     const data = await OrganiserStore.load();
     goals = Array.isArray(data.goals) ? data.goals : [];
     items = Array.isArray(data.items) ? data.items : []; // shared pool, for tasks-under-goal
+    schedule = Array.isArray(data.schedule) ? data.schedule : [];
+    scheduleConfig = data.scheduleConfig || null;
     // Find out if the AI can propose milestones, and wake it so the first goal
     // isn't slow. Silent + best-effort; preview mode (file://) has no server.
     if (OrganiserStore.mode === "file") {

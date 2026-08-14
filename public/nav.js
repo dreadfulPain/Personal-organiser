@@ -14,6 +14,7 @@
     ["month.html", "Month"],
     ["class.html", "Class"],
     ["records.html", "Students"],
+    ["person.html", "One person"],
     ["people.html", "People"],
     ["portfolio.html", "Portfolio"],
     ["goals.html", "Goals"],

@@ -3695,3 +3695,44 @@ a.btn {
   margin: 0 0 8px;
   font-size: 0.85rem;
 }
+
+
+/* ---- ONE PERSON, ON ONE SCREEN -------------------------------------------
+   Built to be read in about two seconds with a phone against your ear, so:
+   facts big, scaffolding quiet, and nothing that needs interpreting. */
+.p-pick { display: block; margin: 4px 0 16px; color: var(--ink-soft); font-size: 0.9rem; }
+.p-pick select { display: block; margin-top: 4px; padding: 8px 10px; font: inherit;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); min-width: 220px; }
+.p-block { margin-top: 24px; }
+.p-block h2 { font-size: 1rem; margin: 0 0 8px; }
+
+/* The headline facts. A chart of one fact is worse than the fact. */
+.ch-tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+.ch-tile { flex: 1 1 140px; padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fff; }
+.ch-tval { font-size: 1.6rem; line-height: 1.1; color: var(--ink); }
+.ch-tlab { font-size: 0.8rem; color: var(--ink-soft); margin-top: 2px; }
+.ch-tnote { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.8; margin-top: 2px; }
+
+/* The chart. Grid and axes recede; the lines are the ink. */
+.ch { width: 100%; height: auto; display: block; }
+.ch-key { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px;
+  font-size: 0.8rem; color: var(--ink-soft); }
+.ch-k { display: inline-flex; align-items: center; gap: 6px; }
+.ch-k i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+/* The figures, always available: the version that works without colour, and
+   the version you read out when someone asks for the actual numbers. */
+.ch-table { margin-top: 8px; font-size: 0.85rem; }
+.ch-table summary { cursor: pointer; color: var(--ink-soft); }
+.ch-scroll { overflow-x: auto; }
+.ch-table table { border-collapse: collapse; margin-top: 6px; }
+.ch-table th, .ch-table td { padding: 4px 10px; text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--line); font-weight: normal; }
+.ch-table thead th { color: var(--ink-soft); font-size: 0.8rem; }
+
+/* What you know besides the marks. How old it is is part of the answer. */
+.p-topic, .p-told { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.p-topic.up .p-thead strong { font-size: 1.05rem; }
+.p-thead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.p-state { font-size: 0.78rem; color: var(--ink-soft); }
+.p-said { margin: 4px 0 0; }

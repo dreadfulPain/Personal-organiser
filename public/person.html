@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One person</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1 id="pTitle">One person</h1>
+        <p class="sub">Everything about one person on one screen — for when someone
+          is on the phone and you have about two seconds to find the answer. Nothing
+          here leaves the app.</p>
+      </header>
+
+      <label class="p-pick">Who
+        <select id="pWho"></select>
+      </label>
+
+      <!-- THE ANSWER TO THE FIRST QUESTION, before any chart. -->
+      <div id="pTiles" class="ch-tiles"></div>
+
+      <!-- HOW IT'S GONE, over time. -->
+      <section class="p-block">
+        <h2>How it's gone</h2>
+        <div id="pChart"></div>
+      </section>
+
+      <!-- WHAT YOU KNOW BESIDES THE MARKS, and how much of it you still believe. -->
+      <section class="p-block">
+        <h2>Besides the marks</h2>
+        <div id="pPastoral"></div>
+      </section>
+
+      <!-- WHAT YOU'VE ALREADY TOLD PEOPLE. Read here, never exported. -->
+      <section class="p-block">
+        <h2>What you've told people</h2>
+        <div id="pTold"></div>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="levels.js" defer></script>
+    <script src="chart.js" defer></script>
+    <script src="pastoral.js" defer></script>
+    <script src="told.js" defer></script>
+    <script src="person.js" defer></script>
+  </body>
+</html>

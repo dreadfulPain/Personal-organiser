@@ -99,11 +99,14 @@
 
     // Only dated work gets spread. Something with no date has no deadline to
     // miss — it's what the day plan uses to fill whatever's left over.
-    // Optional work is deliberately NOT spread. Booking a nice-to-have into
+    // Droppable work is deliberately NOT spread. Booking a nice-to-have into
     // next Tuesday makes it a commitment by the back door, and the whole point
-    // is that it only ever gets what's genuinely left over on the day.
+    // is that it only ever gets what's genuinely left over on the day. But an
+    // optional thing you HAVE committed to — the course you paid for, the
+    // appointment you made — is booked like anything else, because it is.
+    const droppable = window.OrganiserPriority.droppable;
     const candidates = all.filter(
-      (i) => !i.done && !i.openLoop && !i.optional && !i.time && i.date && i.date <= lastISO
+      (i) => !i.done && !i.openLoop && !droppable(i) && !i.time && i.date && i.date <= lastISO
     );
 
     const placements = [];
@@ -321,7 +324,7 @@
     const c = S.normaliseConfig(cfg);
     const span = Math.max(1, Math.min(180, Number(days) || c.planHorizonDays));
     const all = (Array.isArray(items) ? items : []).filter((i) => i && typeof i === "object");
-    const committed = all.filter((i) => !i.done && !i.optional);
+    const committed = all.filter((i) => !i.done && !window.OrganiserPriority.droppable(i));
 
     const s = spread(committed, schedule, cfg, fromISO, span, ctx);
     let ceiling = 0;

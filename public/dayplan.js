@@ -95,7 +95,7 @@
         !dropped.has(i.id) &&
         !i.time &&
         !i.openLoop &&
-        (!i.optional || allowOptional) &&
+        (!window.OrganiserPriority.droppable(i) || allowOptional) &&
         (!i.date || i.date <= iso || startNow.has(i.id))
     );
 

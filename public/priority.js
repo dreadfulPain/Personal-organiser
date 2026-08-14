@@ -44,8 +44,9 @@
     if (it.openLoop) return false; // open loops have their own louder home — no double-shouting
     if (blocked(it, ctx)) return false; // not yet possible is not the same as not important
     // Optional work is never NAGGED about. It gets offered when there's room —
-    // that's a different thing, and it happens in the day plan, not here.
-    if (it.optional) return false;
+    // that's a different thing, and it happens in the day plan, not here. But
+    // once you've committed to it, it belongs on the list like anything else.
+    if (droppable(it)) return false;
     const dueNow = it.date && it.date <= ctx.today;
     if (it.deadlineType === "hard" && dueNow) return true;
     if (isHigh(it)) return true;
@@ -64,10 +65,36 @@
     if (dueNow) return 3;
     return 4;
   }
+  // CAN THE APP QUIETLY DROP THIS?
+  //
+  // "Optional" describes where a thing CAME FROM — a nice-to-have, a goal you'd
+  // like to get back to. It does not describe whether you can still walk away
+  // from it, and treating those as the same thing is wrong in a way that costs
+  // other people.
+  //
+  // A course you'd like to do is optional. A course you have PAID FOR and
+  // enrolled on is not, even though the goal it came from was. An appointment
+  // you arranged with someone is not, however nice-to-have the reason for it
+  // was. The moment something acquires a person expecting you, a time you
+  // agreed, or money behind it, the honest options stop being "do it or drop
+  // it" and become "do it, or move it and TELL someone".
+  //
+  // So the app may only withhold work that nobody else is standing behind.
+  // Anything else it must keep in front of you — and if it genuinely cannot
+  // fit, say so out loud rather than letting it disappear.
+  function droppable(it) {
+    if (!it || !it.optional) return false;
+    if (it.committed) return false; // you said you're in
+    if (it.promisedTo) return false; // someone is expecting it
+    if (it.time) return false; // a time you set is a time you can be held to
+    return true;
+  }
+
   // Optional work always sorts behind committed work, whatever else is true of
   // it. A nice-to-have with a date does not get to push a commitment down.
+  // Something optional you've since committed to is NOT behind anything.
   function tier(it) {
-    return it && it.optional ? 1 : 0;
+    return droppable(it) ? 1 : 0;
   }
 
   // Why it's here, in plain words. Describes; never judges.
@@ -115,5 +142,5 @@
     return first.concat(rest);
   }
 
-  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning, blocked, tier };
+  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning, blocked, tier, droppable };
 })();

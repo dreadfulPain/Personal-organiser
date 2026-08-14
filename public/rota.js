@@ -41,8 +41,17 @@
         if (/^\d{4}-\d{2}-\d{2}$/.test(r.lastDone[k])) lastDone[k] = r.lastDone[k];
       });
     }
+    const tried = {};
+    if (r.tried && typeof r.tried === "object") {
+      Object.keys(r.tried).forEach((k) => {
+        const list = Array.isArray(r.tried[k]) ? r.tried[k] : [];
+        const clean = list.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+        if (clean.length) tried[k] = clean.slice(-10);
+      });
+    }
     return {
       id: r.id || "",
+      tried,
       title: (r.title || "").toString().trim().slice(0, 80),
       memberIds: ids,
       perDay: Math.max(1, Math.min(20, Math.round(Number(r.perDay) || 1))),
@@ -65,6 +74,7 @@
     return r.memberIds
       .map((id) => ({
         id,
+        tries: (r.tried[id] || []).length,
         last: r.lastDone[id] || "",
         waited: r.lastDone[id]
           ? Math.round((new Date(iso + "T12:00:00") - new Date(r.lastDone[id] + "T12:00:00")) / 86400000)
@@ -89,11 +99,54 @@
     return queue(r, iso).filter((x) => x.waited > r.everyDays);
   }
 
-  // A turn happened. The only mutation, and it's one line of state.
+  // A turn happened.
   function mark(rota, memberId, iso) {
     const r = normalise(rota);
     if (!r || !r.memberIds.includes(memberId)) return rota;
-    return { ...r, lastDone: { ...r.lastDone, [memberId]: iso } };
+    // Their turn happened, so any record of failed attempts is spent.
+    const tried = { ...r.tried };
+    delete tried[memberId];
+    return { ...r, tried, lastDone: { ...r.lastDone, [memberId]: iso } };
+  }
+
+  // YOU TRIED AND IT COULDN'T HAPPEN — because THEY weren't free.
+  //
+  // This is not the same as the turn being missed because your day fell apart.
+  // If it was your day, nothing is recorded at all: they were up, they're still
+  // up, and they stay at the front until it actually happens. That's the whole
+  // "don't punish someone for something that wasn't their doing" rule, and it
+  // needs no code — not marking them IS the rule.
+  //
+  // This is for the other case: you turned up and they couldn't. They still
+  // keep their place, because that wasn't their doing either. But the attempt
+  // is worth remembering, because three failed attempts in a row is not bad
+  // luck any more — it means the slot doesn't work for that person, and the
+  // useful thing is to notice and arrange a different one rather than keep
+  // offering a time that never works.
+  function tryFailed(rota, memberId, iso) {
+    const r = normalise(rota);
+    if (!r || !r.memberIds.includes(memberId)) return rota;
+    const was = r.tried[memberId] || [];
+    return { ...r, tried: { ...r.tried, [memberId]: [...was, iso].slice(-10) } };
+  }
+
+  // Who to ask instead, when the one who's up can't. The next in line — and
+  // taking their turn now does NOT cost them their place later, because the
+  // queue is ordered by how long since a turn, and they've just had one.
+  function insteadOf(rota, memberId, iso) {
+    const q = queue(rota, iso).filter((x) => x.id !== memberId);
+    return q.length ? q[0] : null;
+  }
+
+  // Anyone the slot repeatedly doesn't work for. Said as a fact about the time,
+  // not about the person.
+  function neverCatching(rota, times) {
+    const r = normalise(rota);
+    if (!r) return [];
+    const n = Math.max(2, Math.round(Number(times) || 3));
+    return Object.keys(r.tried)
+      .filter((id) => (r.tried[id] || []).length >= n)
+      .map((id) => ({ id, tries: r.tried[id].length }));
   }
 
   // Today's turn as an ordinary piece of work, so the day plan handles it like
@@ -144,5 +197,5 @@
     };
   }
 
-  window.OrganiserRota = { normalise, queue, due, overdue, mark, taskFor, state };
+  window.OrganiserRota = { normalise, queue, due, overdue, mark, tryFailed, insteadOf, neverCatching, taskFor, state };
 })();

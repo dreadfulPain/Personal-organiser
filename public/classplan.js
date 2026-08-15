@@ -69,6 +69,85 @@
     };
   }
 
+  // EVERY ANSWER, WITH THE NAMES UNDER IT — including the ones with one name.
+  //
+  // The counts alone quietly push you towards the majority every time: the
+  // biggest bar is the obvious thing to build the lesson round, and the person
+  // who is the only one who learns another way becomes a rounding error. Over a
+  // term that is the same child missing out every single lesson, and nobody
+  // notices, because each individual lesson looked sensible.
+  //
+  // So the small groups get names too, and are shown the same size as the big
+  // ones. A group of one is not a footnote — it's a person, and it's the group
+  // most likely to need something planned ON PURPOSE rather than by accident.
+  function whoAnswered(notes, topic, members) {
+    const P = window.OrganiserPastoral;
+    const t = P.normaliseTopic(topic);
+    if (!t || !t.options.length) return null;
+    const groups = {};
+    t.options.forEach((o) => (groups[o] = []));
+    const noAnswer = [];
+    members.forEach((m) => {
+      const latest = P.forPerson(notes, m.id, t.id).find((n) => n.choice);
+      if (!latest || !(latest.choice in groups)) {
+        noAnswer.push({ id: m.id, name: m.name || m.id });
+        return;
+      }
+      groups[latest.choice].push({ id: m.id, name: m.name || m.id });
+    });
+    return {
+      topic: t,
+      // Biggest first for reading, but every one is returned and the page shows
+      // them all — the ordering is a convenience, not a filter.
+      groups: Object.entries(groups)
+        .filter(([, who]) => who.length)
+        .sort((a, b) => b[1].length - a[1].length),
+      noAnswer,
+      // The ones it would be easiest to plan past without noticing.
+      smallest: Object.entries(groups)
+        .filter(([, who]) => who.length && who.length <= 2)
+        .map(([opt, who]) => ({ option: opt, who })),
+    };
+  }
+
+  // WHO HAS ACTUALLY HAD SOMETHING AIMED AT THEM, and who is still waiting.
+  //
+  // This is the half the counts can't answer. Planning for the majority is the
+  // right call most weeks; doing it every week without noticing is how someone
+  // goes a term without a single thing planned with them in mind. The app can
+  // keep that score, and it's the same score the rota already keeps: longest
+  // since their turn goes first, and a turn missed for reasons that weren't
+  // theirs costs them nothing.
+  function coverage(members, rota, iso) {
+    const R = window.OrganiserRota;
+    if (!R || !members.length) return { waiting: [], everSeen: 0, total: members.length };
+    const byId = new Map(members.map((m) => [m.id, m.name || m.id]));
+    const r = { id: (rota && rota.id) || "targeted", title: "", perDay: 1, minutes: 5,
+      everyDays: (rota && rota.everyDays) || 21,
+      memberIds: members.map((m) => m.id), lastDone: (rota && rota.lastDone) || {} };
+    const q = R.queue(r, iso).map((x) => ({ ...x, name: byId.get(x.id) || x.id }));
+    return {
+      waiting: q,
+      // Never had anything aimed at them at all — the ones that matter most.
+      never: q.filter((x) => !x.last),
+      overdue: R.overdue(r, iso).map((x) => ({ ...x, name: byId.get(x.id) || x.id })),
+      everSeen: q.filter((x) => x.last).length,
+      total: members.length,
+      everyDays: r.everyDays,
+    };
+  }
+
+  // Say it as a count and a list of names, never as a score out of the class.
+  function coverageWords(c) {
+    if (!c.total) return "";
+    if (!c.everSeen) return `Nobody has had anything aimed at them yet — that's a starting point, not a failing.`;
+    if (c.never.length)
+      return `${c.never.length} of ${c.total} haven't had anything planned with them in mind yet.`;
+    if (c.overdue.length)
+      return `${c.overdue.length} haven't had anything aimed at them in over ${c.everyDays} days.`;
+    return `Everyone has had something aimed at them within the last ${c.everyDays} days.`;
+  }
+
   // THE WHOLE PICTURE for one group.
   function picture(opts) {
     const o = opts || {};
@@ -91,6 +170,13 @@
           .sort((a, b) => b.answered - a.answered)
       : [];
 
+    // The same topics, but with the NAMES under every answer — see whoAnswered.
+    const answers = P
+      ? (o.pastoralTopics || [])
+          .map((t) => whoAnswered(o.pastoralNotes || [], t, members))
+          .filter((x) => x && x.groups.length)
+      : [];
+
     // Things you've written about individuals that are worth having to hand.
     // Only the recent ones — a note past its shelf life is a confident wrong
     // answer, and planning around one is worse than planning around nothing.
@@ -107,7 +193,9 @@
       members,
       skills: bySkills,
       tallies,
+      answers,
       notes,
+      coverage: coverage(members, o.targeted, o.today || ""),
       // Nobody has anything recorded at all — say that, rather than drawing an
       // empty page that looks like a class with no needs.
       empty: !members.length || (!bySkills.some((s) => s.rows.some((r) => r.level)) && !tallies.length),
@@ -133,5 +221,7 @@
     return `${t.counts[option]} of ${t.answered} — ${Math.round(share * 100)}%`;
   }
 
-  window.OrganiserClassPlan = { membersOf, bySkill, picture, skillWords, shareWords };
+  window.OrganiserClassPlan = {
+    membersOf, bySkill, whoAnswered, coverage, coverageWords, picture, skillWords, shareWords,
+  };
 })();

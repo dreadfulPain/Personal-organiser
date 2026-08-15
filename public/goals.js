@@ -311,7 +311,17 @@
     const GP = window.OrganiserGoalPlan;
     if (!GP) return wrap;
     const r = GP.rate(goal, items, schedule, scheduleConfig, todayISO());
-    if (!r.total) return wrap;
+    // A GOAL WITH NOTHING BEHIND IT. Typing one on Home makes the goal and
+    // nothing else — no pieces, no sizes, so the day plan never mentions it and
+    // there is nothing to measure. That's fine as a first step, but the app used
+    // to show literally nothing here, which reads as "all in hand" when it means
+    // "not started". Say what's missing, and point at the way to fix it.
+    if (!r.total) {
+      wrap.innerHTML =
+        `<p class="g-rate">Nothing behind this one yet, so there's nothing to plan or keep score of. ` +
+        `Break it into pieces below — or ask something better at planning than this app, and paste the answer in at the top.</p>`;
+      return wrap;
+    }
 
     const pct = Math.round(r.fraction * 100);
     wrap.innerHTML =

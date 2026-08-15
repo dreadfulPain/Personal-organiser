@@ -29,7 +29,13 @@
     const label = String(t.label || "").trim().slice(0, 60);
     if (!label) return null;
     return {
-      id: t.id || "",
+      // A TOPIC MUST HAVE AN ID, and a blank one is not a harmless blank.
+      // forPerson() reads a missing topic id as "any topic", so a topic saved
+      // without one would quietly show the newest note about that person under
+      // every heading — the same sentence four times, each under the wrong
+      // title, and no error anywhere. Derived from the label, so it's the same
+      // id every time rather than a new one on each read.
+      id: String(t.id || "").trim() || "t:" + label.toLowerCase(),
       label,
       // How long a note on this stays worth trusting. A month for the things
       // that change, a term for the things that don't.
@@ -84,11 +90,29 @@
     return (Array.isArray(notes) ? notes : []).concat([n]);
   }
 
+  // Newest first, and the tie-breaks are not a nicety.
+  //
+  // Correcting something you wrote an hour ago gives two notes with the SAME
+  // DATE. Sorting on the date alone leaves them in the order they were written,
+  // so the app keeps the answer you just changed — on the person's page, in
+  // every count, everywhere — and says nothing about it.
+  //
+  // So: the date, then `at` (the moment it was written, which is what "newest"
+  // actually means), then where it sits in the file. That last one is the only
+  // one that can never tie: notes are added to the end, so later in the list is
+  // later in life, and two taps inside the same millisecond still come out in
+  // the right order.
   function forPerson(notes, whoId, topicId) {
     return (Array.isArray(notes) ? notes : [])
-      .map(normaliseNote)
-      .filter((n) => n && n.who === whoId && (!topicId || n.topicId === topicId))
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      .map((n, i) => ({ n: normaliseNote(n), i }))
+      .filter((x) => x.n && x.n.who === whoId && (!topicId || x.n.topicId === topicId))
+      .sort(
+        (a, b) =>
+          (b.n.date || "").localeCompare(a.n.date || "") ||
+          (b.n.at || "").localeCompare(a.n.at || "") ||
+          b.i - a.i
+      )
+      .map((x) => x.n);
   }
 
   // The most recent thing you wrote under each topic, and whether it has gone

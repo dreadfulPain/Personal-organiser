@@ -137,6 +137,54 @@
     };
   }
 
+  // WHAT'S WORTH ASKING, AND WHO TO ASK.
+  //
+  // Every note has a shelf life, and the page that shows you it's gone stale is
+  // the one person's page — which you open when a parent is already on the
+  // phone. That is exactly too late. This is the same information the other way
+  // round: not "what do I know about her", but "who should I ask something,
+  // next time I'm in front of them".
+  //
+  // One line per person, their most-worth-asking heading only. A list of
+  // twenty-four people times five headings is a wall, and a wall is read as
+  // wallpaper. Must-haves first, then things never asked, because a heading you
+  // have never asked anyone is a different kind of empty from one that has
+  // simply aged.
+  function toAsk(notes, topics, members, iso, limit) {
+    const P = window.OrganiserPastoral;
+    if (!P || !(topics || []).length) return { rows: [], more: 0, people: 0 };
+    const rows = [];
+    members.forEach((m) => {
+      const g = P.gaps(notes || [], topics, m.id, iso);
+      if (!g.length) return;
+      const top = g[0];
+      rows.push({
+        id: m.id,
+        name: m.name || m.id,
+        topic: top.topic.label,
+        // Nothing at all, or something that has simply aged — not the same, and
+        // the words are the whole difference.
+        why: top.state === "never asked" ? "never asked" : `last asked ${top.ageDays} days ago`,
+        essential: top.topic.essential,
+        // Sorting key: must-have and never-asked first, then oldest.
+        rank: (top.topic.essential ? 0 : 2) + (top.state === "never asked" ? 0 : 1),
+        age: top.ageDays == null ? Infinity : top.ageDays,
+        others: g.length - 1,
+      });
+    });
+    rows.sort((a, b) => a.rank - b.rank || b.age - a.age || a.name.localeCompare(b.name));
+    const n = Math.max(1, Number(limit) || 6);
+    return { rows: rows.slice(0, n), more: Math.max(0, rows.length - n), people: rows.length };
+  }
+
+  // Plain words, and never a telling-off. Having gaps is the normal state of
+  // knowing twenty-four people; the list is a convenience, not a debt.
+  function toAskWords(a, total) {
+    if (!total) return "";
+    if (!a.people) return "Nothing needs asking — everything on file is still inside its shelf life.";
+    return `${a.people} of ${total} have something worth asking about next time you're with them.`;
+  }
+
   // Say it as a count and a list of names, never as a score out of the class.
   function coverageWords(c) {
     if (!c.total) return "";
@@ -196,6 +244,7 @@
       answers,
       notes,
       coverage: coverage(members, o.targeted, o.today || ""),
+      ask: toAsk(o.pastoralNotes || [], o.pastoralTopics || [], members, o.today || "", o.askLimit),
       // Nobody has anything recorded at all — say that, rather than drawing an
       // empty page that looks like a class with no needs.
       empty: !members.length || (!bySkills.some((s) => s.rows.some((r) => r.level)) && !tallies.length),
@@ -222,6 +271,7 @@
   }
 
   window.OrganiserClassPlan = {
-    membersOf, bySkill, whoAnswered, coverage, coverageWords, picture, skillWords, shareWords,
+    membersOf, bySkill, whoAnswered, coverage, coverageWords, toAsk, toAskWords,
+    picture, skillWords, shareWords,
   };
 })();

@@ -29,15 +29,57 @@
         <div id="pChart"></div>
       </section>
 
-      <!-- WHAT YOU KNOW BESIDES THE MARKS, and how much of it you still believe. -->
+      <!-- WHAT YOU KNOW BESIDES THE MARKS, and how much of it you still believe.
+           Each heading can be written on in place — the moment you find something
+           out is the only moment you'll reliably write it down. -->
       <section class="p-block">
         <h2>Besides the marks</h2>
         <div id="pPastoral"></div>
+
+        <!-- The headings themselves. Folded away, because during a phone call
+             this is the last thing you want on screen. -->
+        <details class="p-setup">
+          <summary>What you keep track of</summary>
+          <p class="muted">Your headings, not the app's. Each one says how long an
+            answer stays worth trusting — after that it asks again rather than
+            letting an old answer stand.</p>
+          <div id="pTopicList"></div>
+          <form id="pTopicForm" class="p-form">
+            <label>Heading
+              <input id="ptLabel" type="text" maxlength="60" placeholder="how they get on socially" />
+            </label>
+            <label>Stays true for
+              <input id="ptFresh" type="number" min="1" max="365" value="30" /> days
+            </label>
+            <label>Set answers, if it has any
+              <input id="ptOptions" type="text" maxlength="200"
+                placeholder="something to watch, reading it, doing it" />
+              <span class="muted">Separated by commas. Leave empty for a heading you
+                write a sentence under. Only headings with set answers can be
+                counted across a group.</span>
+            </label>
+            <label class="p-check"><input id="ptEssential" type="checkbox" /> I must have this</label>
+            <label class="p-check"><input id="ptUpFront" type="checkbox" /> Show at the top</label>
+            <button type="submit" class="btn">Add heading</button>
+          </form>
+        </details>
       </section>
 
       <!-- WHAT YOU'VE ALREADY TOLD PEOPLE. Read here, never exported. -->
       <section class="p-block">
         <h2>What you've told people</h2>
+        <form id="pToldForm" class="p-form">
+          <label>Who you told
+            <input id="ptdTo" type="text" maxlength="80" placeholder="his mum" />
+          </label>
+          <label>Roughly what you said
+            <textarea id="ptdSaid" rows="2" maxlength="600"></textarea>
+          </label>
+          <label>How
+            <input id="ptdHow" type="text" maxlength="40" placeholder="phone call" />
+          </label>
+          <button type="submit" class="btn">Add to the log</button>
+        </form>
         <div id="pTold"></div>
       </section>
     </main>

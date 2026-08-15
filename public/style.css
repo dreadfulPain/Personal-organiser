@@ -3737,6 +3737,44 @@ a.btn {
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
 
+/* Writing something in, under the heading it belongs to. Set answers are
+   buttons — one tap, no typing, and nothing to spell. */
+.p-add { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.p-opt { padding: 5px 12px; font: inherit; font-size: 0.85rem; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); }
+.p-opt:hover { border-color: var(--accent); }
+.p-opt.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.p-write { flex: 1 1 200px; min-width: 0; padding: 6px 10px; font: inherit;
+  font-size: 0.9rem; border: 1px solid var(--line); border-radius: 8px; }
+.p-save { padding: 5px 14px; font: inherit; font-size: 0.85rem; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+.p-save:hover { border-color: var(--accent); }
+
+/* The headings you keep. Folded away — during a call this is the last thing
+   you want on screen. */
+.p-setup { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); }
+.p-setup > summary { cursor: pointer; font-size: 0.9rem; color: var(--ink-soft); }
+.p-setup p.muted { margin: 8px 0; font-size: 0.85rem; }
+.p-trow { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--line); }
+.p-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px;
+  max-width: 34rem; }
+.p-form label { display: block; font-size: 0.85rem; color: var(--ink-soft); }
+.p-form input[type="text"], .p-form input[type="number"], .p-form textarea {
+  display: block; width: 100%; margin-top: 3px; padding: 7px 10px; font: inherit;
+  font-size: 0.95rem; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
+.p-form input[type="number"] { width: 6rem; display: inline-block; }
+.p-form label span.muted { display: block; margin-top: 3px; font-size: 0.78rem; }
+.p-check { display: flex; gap: 8px; align-items: center; }
+.p-check input { margin: 0; }
+.p-form button { align-self: flex-start; }
+
+/* The heading form is a form; on a narrow screen it must stack, not squeeze. */
+@media (max-width: 560px) {
+  .bp-ask { grid-template-columns: 1fr; gap: 2px; }
+  .p-trow { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+
 
 /* ---- PASTING IN A PLAN SOMEONE ELSE WROTE ---------------------------------
    Read it, show the whole thing, then ask. Never straight in. */
@@ -3814,4 +3852,7 @@ a.btn {
 .bp-cover { display: grid; grid-template-columns: 1fr auto auto; gap: 12px;
   align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 0.88rem; }
 .bp-cwhen { color: var(--ink-soft); font-size: 0.8rem; }
+.bp-ask { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px;
+  align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.bp-atopic { color: var(--ink); font-size: 0.9rem; }
 .bp-cover.never .bp-cwhen { font-style: italic; }

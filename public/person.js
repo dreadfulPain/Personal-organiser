@@ -147,10 +147,96 @@
           `<div class="p-topic${f.topic.upFront ? " up" : ""}">` +
           `<div class="p-thead"><strong>${esc(f.topic.label)}</strong>${when}</div>` +
           (note ? `<p class="p-said">${note}</p>` : `<p class="muted p-said">Nothing written down.</p>`) +
+          writeIn(f) +
           `</div>`
         );
       })
       .join("");
+  }
+
+  // HOW YOU PUT SOMETHING IN, right where you read it.
+  //
+  // A separate "add a note" screen would be the obvious build and it would go
+  // unused: you find these things out in the two seconds after someone tells
+  // you, not later at a desk. So the box is under the heading it belongs to.
+  //
+  // A topic with set answers gets buttons — one tap, no typing, no spelling.
+  // That's also the only kind that can be counted across a group later, so the
+  // cheapest thing to record is the most useful thing to have.
+  function writeIn(f) {
+    const t = f.topic;
+    if (t.options.length) {
+      const now = f.latest && f.latest.choice ? f.latest.choice : "";
+      return (
+        `<div class="p-add">` +
+        t.options
+          .map(
+            (o) =>
+              `<button type="button" class="p-opt${o === now ? " on" : ""}" ` +
+              `data-topic="${esc(t.id)}" data-choice="${esc(o)}"` +
+              `${o === now ? ' aria-pressed="true"' : ' aria-pressed="false"'}>${esc(o)}</button>`
+          )
+          .join("") +
+        `</div>`
+      );
+    }
+    return (
+      `<div class="p-add">` +
+      `<input type="text" class="p-write" maxlength="800" data-topic="${esc(t.id)}" ` +
+      `value="${esc(drafts[t.id] || "")}" ` +
+      `aria-label="What to write under ${esc(t.label)}" placeholder="what you noticed" />` +
+      `<button type="button" class="p-save" data-topic="${esc(t.id)}">Save</button>` +
+      `</div>`
+    );
+  }
+
+  // HALF-TYPED SENTENCES SURVIVE A REDRAW.
+  //
+  // Saving one note redraws the whole block, and anything typed into another
+  // box would go with it — start two, finish one, silently lose the other. So
+  // what's in the boxes is held here rather than only in the DOM, and put back
+  // every time. Losing a sentence you'd just written is the fastest way to stop
+  // trusting a place to put things.
+  let drafts = {};
+
+  // One tap on an answer, or a sentence typed under a heading. Both land in the
+  // same place: a note dated today, against this person and this heading.
+  function wireWriting() {
+    const el = $("#pPastoral");
+    if (!el) return;
+    el.addEventListener("input", (e) => {
+      const t = e.target;
+      if (t && t.classList && t.classList.contains("p-write")) drafts[t.dataset.topic] = t.value;
+    });
+    el.addEventListener("click", (e) => {
+      const opt = e.target.closest ? e.target.closest(".p-opt") : null;
+      if (opt) return writeNote(opt.dataset.topic, { choice: opt.dataset.choice });
+      const save = e.target.closest ? e.target.closest(".p-save") : null;
+      if (save) saveDraft(save.dataset.topic);
+    });
+    // Enter saves too — reaching for the mouse to finish a sentence is the step
+    // where it stops being worth writing down.
+    el.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || !e.target.classList || !e.target.classList.contains("p-write")) return;
+      e.preventDefault();
+      drafts[e.target.dataset.topic] = e.target.value;
+      saveDraft(e.target.dataset.topic);
+    });
+  }
+
+  function saveDraft(topicId) {
+    const said = String(drafts[topicId] || "").trim();
+    if (!said) return;
+    delete drafts[topicId];
+    writeNote(topicId, { said });
+  }
+
+  function writeNote(topicId, what) {
+    const P = window.OrganiserPastoral;
+    if (!P || !who || !topicId) return;
+    pastoralNotes = P.add(pastoralNotes, { who, topicId, ...what }, todayISO());
+    OrganiserStore.save({ pastoralNotes });
+    renderAll();
   }
 
   // ---- 4. what you've already said -------------------------------------
@@ -177,12 +263,114 @@
         .join("");
   }
 
+  // ---- the headings themselves ------------------------------------------
+  //
+  // These belong to you, not to the app, and they're the same for everyone —
+  // edited here because this is the page where you notice one is missing.
+  function renderTopics() {
+    const el = $("#pTopicList");
+    if (!el) return;
+    const P = window.OrganiserPastoral;
+    if (!P) return;
+    const list = (pastoralTopics || []).map((t) => P.normaliseTopic(t)).filter(Boolean);
+    if (!list.length) {
+      el.innerHTML = `<p class="muted">No headings yet. Two or three is plenty to start with.</p>`;
+      return;
+    }
+    el.innerHTML = list
+      .map(
+        (t) =>
+          `<div class="p-trow"><span><strong>${esc(t.label)}</strong> ` +
+          `<span class="p-state">${t.staysFreshDays} days` +
+          (t.essential ? " · must have" : "") +
+          (t.upFront ? " · at the top" : "") +
+          (t.options.length ? ` · ${esc(t.options.join(", "))}` : "") +
+          `</span></span>` +
+          `<button type="button" class="link p-tdel" data-topic="${esc(t.id)}">remove</button></div>`
+      )
+      .join("");
+  }
+
+  function wireTopics() {
+    const form = $("#pTopicForm");
+    if (form) {
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const P = window.OrganiserPastoral;
+        const label = ($("#ptLabel").value || "").trim();
+        if (!label) return;
+        const t = P.normaliseTopic({
+          label,
+          staysFreshDays: Number($("#ptFresh").value) || 30,
+          essential: $("#ptEssential").checked,
+          upFront: $("#ptUpFront").checked,
+          options: ($("#ptOptions").value || "").split(",").map((s) => s.trim()).filter(Boolean),
+        });
+        if (!t) return;
+        // Same heading twice is a mistake every time, and it splits the count.
+        if ((pastoralTopics || []).some((x) => P.normaliseTopic(x) && P.normaliseTopic(x).id === t.id)) {
+          $("#ptLabel").value = "";
+          return;
+        }
+        pastoralTopics = (pastoralTopics || []).concat([t]);
+        OrganiserStore.save({ pastoralTopics });
+        form.reset();
+        $("#ptFresh").value = "30";
+        renderTopics();
+        renderPastoral();
+      });
+    }
+    const list = $("#pTopicList");
+    if (list) {
+      list.addEventListener("click", (e) => {
+        const b = e.target.closest ? e.target.closest(".p-tdel") : null;
+        if (!b) return;
+        const P = window.OrganiserPastoral;
+        // The heading goes; anything written under it stays. Deleting a heading
+        // is tidying, and tidying should never throw away what people said.
+        pastoralTopics = (pastoralTopics || []).filter((x) => {
+          const n = P.normaliseTopic(x);
+          return !n || n.id !== b.dataset.topic;
+        });
+        OrganiserStore.save({ pastoralTopics });
+        renderTopics();
+        renderPastoral();
+      });
+    }
+  }
+
+  // ---- adding to the log -------------------------------------------------
+  function wireTold() {
+    const form = $("#pToldForm");
+    if (!form) return;
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const T = window.OrganiserTold;
+      if (!T || !who) return;
+      const said = ($("#ptdSaid").value || "").trim();
+      if (!said) return;
+      toldLog = T.add(
+        toldLog,
+        { who, said, to: ($("#ptdTo").value || "").trim(), how: ($("#ptdHow").value || "").trim() },
+        todayISO()
+      );
+      OrganiserStore.save({ toldLog });
+      form.reset();
+      renderTold();
+    });
+  }
+
   function renderAll() {
     const t = $("#pTitle");
     if (t) t.textContent = who ? nameOf(who) : "One person";
+    // Nothing to write on until you've said who — writing a note against nobody
+    // is the one way to lose one entirely.
+    const forms = [$("#pToldForm")];
+    forms.forEach((f) => { if (f) f.hidden = !who; });
     renderTiles();
     renderChart();
     renderPastoral();
+    renderTopics();
     renderTold();
   }
 
@@ -197,6 +385,10 @@
         .join("");
     sel.addEventListener("change", () => {
       who = sel.value;
+      // A half-typed sentence belongs to the person you were looking at. It
+      // must not follow you to the next one — that is the one mistake in here
+      // you could not undo, because you wouldn't see it happen.
+      drafts = {};
       renderAll();
     });
   }
@@ -214,6 +406,9 @@
     const hash = (location.hash || "").replace(/^#/, "");
     if (hash && contacts.some((c) => c && c.id === hash)) who = hash;
     renderPicker();
+    wireWriting();
+    wireTopics();
+    wireTold();
     renderAll();
   }
 

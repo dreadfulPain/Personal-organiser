@@ -57,11 +57,23 @@
     return (Array.isArray(log) ? log : []).concat([e]);
   }
 
+  // Newest first, and the tie-breaks matter: two conversations about the same
+  // person on the same day is an ordinary Tuesday, and on the date alone they
+  // come back in the order they were typed — so "what did I last tell them"
+  // answers with the earlier one, which is the one question this file exists to
+  // get right. Then `at`, then position, which can never tie because entries
+  // are added to the end.
   function forPerson(log, whoId) {
     return (Array.isArray(log) ? log : [])
-      .map(clean)
-      .filter((e) => e && e.who === whoId)
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      .map((e, i) => ({ e: clean(e), i }))
+      .filter((x) => x.e && x.e.who === whoId)
+      .sort(
+        (a, b) =>
+          (b.e.date || "").localeCompare(a.e.date || "") ||
+          (b.e.at || "").localeCompare(a.e.at || "") ||
+          b.i - a.i
+      )
+      .map((x) => x.e);
   }
 
   // When did you last tell anyone anything about this person? The one question
@@ -74,9 +86,15 @@
   // Everything on file, newest first, for reading on screen.
   function recent(log, limit) {
     return (Array.isArray(log) ? log : [])
-      .map(clean)
-      .filter(Boolean)
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+      .map((e, i) => ({ e: clean(e), i }))
+      .filter((x) => x.e)
+      .sort(
+        (a, b) =>
+          (b.e.date || "").localeCompare(a.e.date || "") ||
+          (b.e.at || "").localeCompare(a.e.at || "") ||
+          b.i - a.i
+      )
+      .map((x) => x.e)
       .slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
   }
 

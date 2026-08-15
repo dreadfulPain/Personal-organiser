@@ -47,7 +47,7 @@
         ? "Pick a group above."
         : "Nothing recorded for this group yet — no levels and no answers. This page fills itself in as you use the rest of the app.";
     }
-    ["#bpTallyBlock", "#bpCoverBlock", "#bpSkillBlock", "#bpNoteBlock"].forEach((sel) => {
+    ["#bpTallyBlock", "#bpCoverBlock", "#bpAskBlock", "#bpSkillBlock", "#bpNoteBlock"].forEach((sel) => {
       const el = $(sel);
       if (el) el.hidden = nothing;
     });
@@ -117,6 +117,31 @@
         row.appendChild(btn);
         cov.appendChild(row);
       });
+    }
+
+    // ---- what's gone stale ----------------------------------------------
+    //
+    // Told once, in the place where you can act on it: standing in front of the
+    // class. Each person's single most-worth-asking heading, never the whole
+    // grid — the point is one question you might actually ask today, not an
+    // inventory of everything you don't know.
+    const aw = $("#bpAskWords");
+    if (aw) aw.textContent = P.toAskWords(pic.ask, pic.members.length);
+    const ask = $("#bpAsk");
+    if (ask) {
+      ask.innerHTML = pic.ask.rows.length
+        ? pic.ask.rows
+            .map(
+              (r) =>
+                `<div class="bp-ask"><span class="bp-cname">${esc(r.name)}</span>` +
+                `<span class="bp-atopic">${esc(r.topic)}</span>` +
+                `<span class="bp-cwhen">${esc(r.why)}${r.essential ? " · must have" : ""}</span></div>`
+            )
+            .join("") +
+          (pic.ask.more
+            ? `<p class="muted">and ${pic.ask.more} more — these are the ones that have waited longest.</p>`
+            : "")
+        : "";
     }
 
     // ---- where people are ----------------------------------------------

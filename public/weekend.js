@@ -65,14 +65,23 @@
   }
 
   // Add minutes to a day's tally. The only writer.
-  function record(worked, iso, minutes, area) {
+  //
+  // A job in more than one area counts its FULL time under each — a training
+  // session is two hours of work and two hours of getting better at the job,
+  // not one hour of each. That means the areas can add up to more than the
+  // total, which is correct and is why the total is kept separately rather than
+  // summed from the parts.
+  function record(worked, iso, minutes, areas) {
     const w = normalise(worked);
     const mins = Math.max(0, Math.round(Number(minutes) || 0));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "") || mins < 1) return w;
     const day = w[iso] || { total: 0, areas: {} };
     day.total += mins;
-    const key = String(area || "").trim().slice(0, 40);
-    if (key) day.areas[key] = (day.areas[key] || 0) + mins;
+    const list = Array.isArray(areas) ? areas : areas ? [areas] : [];
+    list
+      .map((a) => String(a || "").trim().slice(0, 40))
+      .filter(Boolean)
+      .forEach((key) => { day.areas[key] = (day.areas[key] || 0) + mins; });
     w[iso] = day;
     return w;
   }
@@ -113,7 +122,9 @@
     }
     const areas = {};
     list.forEach((x) => Object.keys(x.areas).forEach((k) => (areas[k] = (areas[k] || 0) + x.areas[k])));
-    const labelled = Object.values(areas).reduce((n, v) => n + v, 0);
+    // Areas can overlap, so the labelled total is NOT their sum — it's the time
+    // that carried at least one label. Anything else would report 140%.
+    const labelled = list.reduce((n, x) => n + (Object.keys(x.areas).length ? x.total : 0), 0);
     // Which area is taking the most, and what share of the labelled time.
     const ranked = Object.entries(areas).sort((a, b) => b[1] - a[1]);
     const biggest = ranked.length ? { area: ranked[0][0], minutes: ranked[0][1] } : null;

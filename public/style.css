@@ -3772,3 +3772,17 @@ a.btn {
 .wk-amt { color: var(--ink-soft); white-space: nowrap; }
 /* The split wraps onto its own line — it's the interesting part, not a footnote. */
 .wk-split { grid-column: 2 / -1; color: var(--ink-soft); font-size: 0.78rem; }
+
+
+/* ---- WHICH PARTS OF LIFE A JOB BELONGS TO ---------------------------------
+   A quiet line on the job. Visible so it can be corrected, small so it never
+   competes with the work itself. */
+.dp-area { font-size: 0.78rem; }
+.dp-areabox { margin: 8px 0 2px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--bg); }
+.dp-areabox p { margin: 0 0 6px; font-size: 0.8rem; }
+.dp-arealist { display: flex; flex-wrap: wrap; gap: 12px; }
+.dp-areapick { font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
+.dp-areaadd { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.dp-areanew { font: inherit; font-size: 0.85rem; padding: 5px 8px; border: 1px solid var(--line);
+  border-radius: 6px; background: #fff; color: var(--ink); }

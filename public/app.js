@@ -234,10 +234,11 @@
       goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
       standardId: standardLabelById(it.standardId) ? it.standardId : "",
       openLoop: it.openLoop === true,
-      // WHICH PART OF YOUR LIFE THIS BELONGS TO. Yours to name — the app has no
-      // idea what any label means, it only groups by them. Used to answer "what
-      // has been eating my weekends", which a bare total can't.
-      area: ((it.area || "").toString().trim().slice(0, 40)),
+      // WHICH PARTS OF YOUR LIFE THIS BELONGS TO — a list, because a training
+      // session at school is work AND professional at once, and forcing a
+      // choice makes the answer wrong whichever way you pick. Yours to name;
+      // see areas.js, which has no idea what any of them mean.
+      areas: window.OrganiserAreas ? OrganiserAreas.on(it) : [],
       // HOW BIG, and HOW MUCH OF IT IS DONE. Without these the planner sees a
       // guess where you gave it a number, and forgets every minute you ever put
       // in — which is how an eight-hour job got planned as an hour and a job
@@ -704,10 +705,11 @@
         goalId: it.goalId && goalTitleById(it.goalId) ? it.goalId : "",
         standardId: standardLabelById(it.standardId) ? it.standardId : "",
         openLoop: it.openLoop === true,
-        // WHICH PART OF YOUR LIFE THIS BELONGS TO. Yours to name — the app has no
-        // idea what any label means, it only groups by them. Used to answer "what
-        // has been eating my weekends", which a bare total can't.
-        area: ((it.area || "").toString().trim().slice(0, 40)),
+        // WHICH PARTS OF YOUR LIFE THIS BELONGS TO — a list, because a training
+        // session at school is work AND professional at once, and forcing a
+        // choice makes the answer wrong whichever way you pick. Yours to name;
+        // see areas.js, which has no idea what any of them mean.
+        areas: window.OrganiserAreas ? OrganiserAreas.on(it) : [],
         // HOW BIG, and HOW MUCH OF IT IS DONE. Without these the planner sees a
         // guess where you gave it a number, and forgets every minute you ever put
         // in — which is how an eight-hour job got planned as an hour and a job

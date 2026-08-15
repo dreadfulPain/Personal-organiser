@@ -33,6 +33,12 @@
   let addingBlock = false;
   let movingId = null; // which planned task is having its slot changed
   let worked = {}; // minutes really put in, per day — see weekend.js
+  let areaList = []; // the parts of your life, as YOU named them — see areas.js
+  let areaEditId = null; // which job is having its areas corrected
+  const goalAreasById = (id) => {
+    const g = goals.find((x) => x.id === id);
+    return (g && (Array.isArray(g.areas) ? g.areas : [])) || [];
+  };
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -45,7 +51,7 @@
   const todayISO = () => S().isoOf(new Date());
 
   function persist() {
-    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked });
+    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList });
   }
 
   // Make the tasks a block owes, and let go of the ones whose moment has passed.
@@ -109,8 +115,88 @@
     const W = window.OrganiserWeekend;
     if (!W || !(minutes >= 1)) return;
     const c = S().normaliseConfig(cfg);
-    worked = W.record(worked, todayISO(), minutes, (it && it.area) || "");
+    // Every area the job belongs to — worked out from what it came from, or
+    // from words you've taught it, if it isn't labelled by hand.
+    const A = window.OrganiserAreas;
+    const areas = A ? A.areasFor(it, areaList, { goalAreas: goalAreasById }).areas : [];
+    worked = W.record(worked, todayISO(), minutes, areas);
     cfg = c;
+  }
+
+  // WHICH PARTS OF YOUR LIFE THIS BELONGS TO.
+  //
+  // Shown as a small line on the job, because a label you can't see is a label
+  // you can't correct — and correcting is the whole mechanism. It works one out
+  // from what the job came from, or from words you've taught it; you tap it to
+  // disagree, and disagreeing teaches it. Nothing has to be labelled and nothing
+  // nags: an unlabelled job is honest, and a wrongly labelled one quietly ruins
+  // the only measurement that can tell a chosen Sunday from a habit.
+  function areaLabel(it) {
+    const A = window.OrganiserAreas;
+    if (!A) return "";
+    const r = A.areasFor(it, areaList, { goalAreas: goalAreasById });
+    const names = r.areas.map((id) => {
+      const a = A.normalise(areaList).find((x) => x.id === id);
+      return (a && a.name) || id;
+    });
+    return names.length ? names.join(" + ") : "which part of life?";
+  }
+
+  function areaBox(it) {
+    const A = window.OrganiserAreas;
+    const box = document.createElement("div");
+    box.className = "dp-areabox";
+    const known = A ? A.normalise(areaList) : [];
+    const now = new Set(A ? A.areasFor(it, areaList, { goalAreas: goalAreasById }).areas : []);
+    box.innerHTML = `<p class="muted">Tick any that apply — a thing can be more than one. Correcting it teaches the words.</p>`;
+    const row = document.createElement("div");
+    row.className = "dp-arealist";
+    known.forEach((a) => {
+      const lab = document.createElement("label");
+      lab.className = "dp-areapick";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = now.has(a.id);
+      cb.addEventListener("change", () => setArea(it, a.id, cb.checked));
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(" " + a.name));
+      row.appendChild(lab);
+    });
+    box.appendChild(row);
+    const add = document.createElement("div");
+    add.className = "dp-areaadd";
+    add.innerHTML = `<input type="text" class="dp-areanew" placeholder="or name a new one" aria-label="New area" />`;
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "link";
+    go.textContent = "add";
+    const input = add.querySelector(".dp-areanew");
+    const make = () => {
+      const name = (input.value || "").trim();
+      if (!name) return;
+      const A2 = window.OrganiserAreas;
+      const id = name.toLowerCase();
+      if (!A2.normalise(areaList).some((a) => a.id === id)) areaList = areaList.concat([{ id, name, hints: [] }]);
+      setArea(it, id, true);
+    };
+    go.addEventListener("click", make);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") make(); });
+    add.appendChild(go);
+    box.appendChild(add);
+    return box;
+  }
+
+  // Setting a label by hand is the correction: it's remembered on the job AND
+  // the job's own words join that area's hints, so the next one lands right.
+  function setArea(it, areaId, on) {
+    const A = window.OrganiserAreas;
+    const cur = new Set(A.areasFor(it, areaList, { goalAreas: goalAreasById }).areas);
+    if (on) cur.add(areaId);
+    else cur.delete(areaId);
+    it.areas = [...cur];
+    areaList = on ? A.learn(areaList, areaId, it.title) : A.unlearn(areaList, areaId, it.title);
+    persist();
+    render();
   }
 
   // ---------- when the day is taken away from you ----------
@@ -380,6 +466,7 @@
           ${est.spent ? `<span class="dp-sofar">${escapeHtml(S().durationWords(est.spent))} already in</span>` : ""}
           ${slot.why ? `<span class="dp-why">${escapeHtml(slot.why)}</span>` : ""}
           ${again >= 2 ? `<span class="dp-again">on the plan ${again} days running — it may want a proper slot, or breaking up</span>` : ""}
+          <button type="button" class="link dp-area">${escapeHtml(areaLabel(it))}</button>
         </div>
       </div>
       <div class="dp-actions">
@@ -395,6 +482,11 @@
     // when the door goes: the day goes quiet, and the minutes already in this
     // job are held rather than lost. Say what it was when you come back.
     el.querySelector(".dp-stop").addEventListener("click", () => startAway("", it.id, slot.start));
+    el.querySelector(".dp-area").addEventListener("click", () => {
+      areaEditId = areaEditId === it.id ? null : it.id;
+      render();
+    });
+    if (areaEditId === it.id) el.appendChild(areaBox(it));
     el.querySelector(".dp-remove").addEventListener("click", () => {
       const p = planFor(iso);
       p.dropped = (p.dropped || []).concat([it.id]);
@@ -1076,6 +1168,7 @@
     schedule = data.schedule || [];
     cfg = data.scheduleConfig || null;
     worked = data.worked || {};
+    areaList = data.areas || [];
     syncPrep();
     $("#setupToggle").addEventListener("click", () => {
       setupOpen = !setupOpen;
@@ -1086,6 +1179,7 @@
       schedule = state.schedule || schedule;
       cfg = state.scheduleConfig || cfg;
       worked = state.worked || worked;
+      areaList = state.areas || areaList;
       render();
     });
     render();

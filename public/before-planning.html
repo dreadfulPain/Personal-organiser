@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Before you plan</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Before you plan</h1>
+        <p class="sub">Everything you already know about a class, laid out to plan against.
+          It doesn't write the lesson and it doesn't suggest anything — it just remembers
+          twenty-four people so you don't have to. Stays on this screen.</p>
+      </header>
+
+      <label class="p-pick">Which group
+        <select id="bpGroup"></select>
+      </label>
+
+      <div id="bpEmpty" class="muted" hidden></div>
+
+      <!-- HOW MANY are like this — the facts you can build a lesson around. -->
+      <section class="p-block" id="bpTallyBlock" hidden>
+        <h2>How the group splits</h2>
+        <div id="bpTallies"></div>
+      </section>
+
+      <!-- WHO needs what, so a plan can have a name in it. -->
+      <section class="p-block" id="bpSkillBlock" hidden>
+        <h2>Where people are</h2>
+        <div id="bpSkills"></div>
+      </section>
+
+      <!-- What you've written lately about individuals. -->
+      <section class="p-block" id="bpNoteBlock" hidden>
+        <h2>Worth remembering</h2>
+        <div id="bpNotes"></div>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="levels.js" defer></script>
+    <script src="pastoral.js" defer></script>
+    <script src="chart.js" defer></script>
+    <script src="classplan.js" defer></script>
+    <script src="before-planning.js" defer></script>
+  </body>
+</html>

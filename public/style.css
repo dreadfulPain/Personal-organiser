@@ -3786,3 +3786,21 @@ a.btn {
 .dp-areaadd { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .dp-areanew { font: inherit; font-size: 0.85rem; padding: 5px 8px; border: 1px solid var(--line);
   border-radius: 6px; background: #fff; color: var(--ink); }
+
+
+/* ---- BEFORE YOU PLAN ------------------------------------------------------
+   Group split first (what shape is the lesson), then individuals (what hangs
+   on that shape). No colour coding — "below target" is a fact about a moment,
+   not a warning, and red would make it into one. */
+.bp-tally, .bp-skill, .bp-note { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.bp-tally h3, .bp-skill h3 { font-size: 0.95rem; margin: 0 0 2px; }
+.bp-tally p, .bp-skill p.muted { margin: 0 0 6px; font-size: 0.8rem; }
+.bp-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px;
+  align-items: center; padding: 2px 0; font-size: 0.85rem; }
+.bp-opt { color: var(--ink); }
+.bp-bar { background: var(--line); border-radius: 999px; height: 8px; overflow: hidden; }
+.bp-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.bp-n { color: var(--ink-soft); white-space: nowrap; font-size: 0.8rem; }
+/* Names, so a plan can have one in it. */
+.bp-names { margin: 2px 0 0; font-size: 0.85rem; }
+.bp-names.unknown { color: var(--ink-soft); font-style: italic; }

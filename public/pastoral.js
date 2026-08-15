@@ -39,6 +39,20 @@
       essential: t.essential === true,
       // Shown at the top during a call, or kept a tap away.
       upFront: t.upFront === true,
+      // A TOPIC CAN BE A CHOICE RATHER THAN A SENTENCE.
+      //
+      // "How they get on socially" wants words. "How they learn best" wants one
+      // of a few answers — and the difference matters, because only the second
+      // can be COUNTED. "Nine of twenty-four do better with something to watch"
+      // is a fact you can plan a lesson around; twenty-four paragraphs saying
+      // roughly that are not, however true each one is.
+      //
+      // Empty means free text, which stays the default. The options are yours;
+      // this file has no idea what any of them mean.
+      options: (Array.isArray(t.options) ? t.options : [])
+        .map((o) => String(o || "").trim().slice(0, 40))
+        .filter(Boolean)
+        .slice(0, 12),
     };
   }
 
@@ -46,12 +60,17 @@
     if (!n || typeof n !== "object") return null;
     const who = String(n.who || "").trim().slice(0, 60);
     const said = String(n.said || "").trim().slice(0, 800);
-    if (!who || !said) return null;
+    // A choice on its own is a complete answer — you shouldn't have to write a
+    // sentence as well just to record which of four boxes someone is in.
+    if (!who || (!said && !String(n.choice || "").trim())) return null;
     return {
       id: n.id || "",
       who, // an id from your own list, never a name typed in here
       topicId: String(n.topicId || "").trim(),
-      said,
+      // Which of the topic's options this is, when the topic has any. Kept
+      // separately from the words so it can be counted without reading them.
+      choice: String(n.choice || "").trim().slice(0, 40),
+      said: said || String(n.choice || "").trim(),
       date: /^\d{4}-\d{2}-\d{2}$/.test(n.date || "") ? n.date : "",
       at: n.at || "",
     };
@@ -108,6 +127,38 @@
       .sort((a, b) => rank(a) - rank(b));
   }
 
+  // HOW A WHOLE GROUP ANSWERS ONE TOPIC. The countable half of the picture.
+  //
+  // Only the most recent answer per person counts — someone who was "reading"
+  // in September and "video" in November is one person who changed their mind,
+  // not two people.
+  function tally(notes, topic, whoIds) {
+    const t = normaliseTopic(topic);
+    const ids = Array.isArray(whoIds) ? whoIds : [];
+    if (!t || !t.options.length) return null;
+    const counts = {};
+    t.options.forEach((o) => (counts[o] = 0));
+    let answered = 0;
+    ids.forEach((id) => {
+      const latest = forPerson(notes, id, t.id).find((n) => n.choice);
+      if (!latest) return;
+      if (!(latest.choice in counts)) return; // an option you've since removed
+      counts[latest.choice]++;
+      answered++;
+    });
+    const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return {
+      topic: t,
+      counts,
+      ranked,
+      answered,
+      asked: ids.length,
+      // Never a percentage of PEOPLE unless enough of them answered — "100%
+      // prefer video" off two replies out of twenty-four is worse than silence.
+      share: (o) => (answered >= 3 ? counts[o] / answered : null),
+    };
+  }
+
   // Counts only — the one thing that may be shown outside the person's own
   // screen. A number of notes, never a word of what's in them.
   function summary(notes, topics, whoId, iso) {
@@ -121,6 +172,6 @@
   }
 
   window.OrganiserPastoral = {
-    normaliseTopic, normaliseNote, add, forPerson, freshness, gaps, summary,
+    normaliseTopic, normaliseNote, add, forPerson, freshness, gaps, summary, tally,
   };
 })();

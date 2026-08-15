@@ -15,6 +15,7 @@
     ["class.html", "Class"],
     ["records.html", "Students"],
     ["person.html", "One person"],
+    ["before-planning.html", "Before you plan"],
     ["people.html", "People"],
     ["portfolio.html", "Portfolio"],
     ["goals.html", "Goals"],

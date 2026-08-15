@@ -22,6 +22,7 @@
   let celebrateTimer = null;
   let schedule = [];
   let scheduleConfig = null;
+  let pendingPlan = null; // a pasted plan, read but not yet accepted
   let aiAvailable = false; // can the app propose milestones? (off in preview / no AI)
   const busyGoals = new Set(); // goals the AI is breaking down right now (transient)
 
@@ -321,6 +322,90 @@
     return wrap;
   }
 
+  // ---- taking a plan someone else wrote ------------------------------------
+  //
+  // READ IT, SHOW IT, THEN ASK. Never straight in: a paste is the one moment
+  // where a misread heading could quietly bury a step, so the whole thing is
+  // laid out first — every section, every step, every time it read — and only
+  // then does anything get made. Same rule as the check-back on Home.
+  function readPastedPlan() {
+    const box = $("#pasteText");
+    const out = $("#pastePreview");
+    if (!box || !out) return;
+    const PP = window.OrganiserPlanPaste;
+    if (!PP) return;
+    const plan = PP.parse(box.value, { today: todayISO() });
+    pendingPlan = plan;
+    if (!plan.milestones.length) {
+      out.hidden = false;
+      out.innerHTML = `<p class="muted">Couldn't find any steps in that. Bullet points or numbered lines work best — but honestly, anything with one job per line should do it.</p>`;
+      return;
+    }
+    const S = window.OrganiserSchedule;
+    const mins = PP.totalMinutes(plan);
+    const steps = PP.stepCount(plan);
+    const sized = PP.sized(plan);
+    out.hidden = false;
+    out.innerHTML =
+      `<h3>${escapeHtml(plan.title || "Untitled plan")}</h3>` +
+      `<p class="muted">${plan.milestones.length} section${plan.milestones.length === 1 ? "" : "s"}, ` +
+      `${steps} step${steps === 1 ? "" : "s"}` +
+      (plan.date ? ` · due ${escapeHtml(plan.date)}` : " · no deadline found") +
+      (mins ? ` · ${escapeHtml(S ? S.durationWords(mins) : mins + " min")} in total` : "") +
+      (sized < steps ? ` · ${steps - sized} with no time given, so the app will guess those` : "") +
+      `</p>` +
+      plan.milestones
+        .map(
+          (m) =>
+            `<div class="pp-ms"><strong>${escapeHtml(m.title)}</strong>` +
+            m.steps
+              .map((st) => `<div class="pp-step">${escapeHtml(st.title)}` +
+                `<span class="pp-mins">${st.minutes ? escapeHtml(S ? S.durationWords(st.minutes) : st.minutes + " min") : "a guess"}</span></div>`)
+              .join("") +
+            `</div>`
+        )
+        .join("");
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "btn";
+    go.textContent = "make this a goal";
+    go.addEventListener("click", acceptPastedPlan);
+    out.appendChild(go);
+  }
+
+  function acceptPastedPlan() {
+    const plan = pendingPlan;
+    if (!plan || !plan.milestones.length) return;
+    const GP = window.OrganiserGoalPlan;
+    const goal = {
+      id: uid(),
+      title: plan.title || "Pasted plan",
+      date: plan.date || "",
+      createdAt: now(),
+      milestones: plan.milestones.map((m) => ({
+        id: uid(), title: m.title, done: false, completedAt: null,
+        steps: m.steps.map((st) => ({ id: uid(), title: st.title, done: false, completedAt: null })),
+      })),
+    };
+    goals.unshift(goal);
+    // AND the part that makes it real: each step becomes a piece of work the
+    // day plan and the week spreader can actually see. The milestone list above
+    // is for looking at; these are for doing.
+    if (GP) {
+      plan.milestones.forEach((m) =>
+        m.steps.forEach((st) => items.push({ ...GP.taskFromStep(goal, st, scheduleConfig), id: uid(), createdAt: now() })));
+    }
+    OrganiserStore.save({ goals, items });
+    pendingPlan = null;
+    const box = $("#pasteText");
+    if (box) box.value = "";
+    const pb = $("#pasteBox");
+    if (pb) pb.hidden = true;
+    const pv = $("#pastePreview");
+    if (pv) { pv.hidden = true; pv.innerHTML = ""; }
+    render();
+  }
+
   function renderGoal(goal) {
     const card = document.createElement("section");
     card.className = "goal-card";
@@ -447,6 +532,18 @@
     items = Array.isArray(data.items) ? data.items : []; // shared pool, for tasks-under-goal
     schedule = Array.isArray(data.schedule) ? data.schedule : [];
     scheduleConfig = data.scheduleConfig || null;
+    const pt = $("#pasteToggle"), pbx = $("#pasteBox");
+    if (pt && pbx) pt.addEventListener("click", () => { pbx.hidden = !pbx.hidden; });
+    const pr = $("#pasteRead");
+    if (pr) pr.addEventListener("click", readPastedPlan);
+    const pc = $("#pasteCancel");
+    if (pc) pc.addEventListener("click", () => {
+      pendingPlan = null;
+      if (pbx) pbx.hidden = true;
+      const pv = $("#pastePreview");
+      if (pv) { pv.hidden = true; pv.innerHTML = ""; }
+    });
+
     // Find out if the AI can propose milestones, and wake it so the first goal
     // isn't slow. Silent + best-effort; preview mode (file://) has no server.
     if (OrganiserStore.mode === "file") {

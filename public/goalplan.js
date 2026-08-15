@@ -79,7 +79,10 @@
       const iso = S.addDaysISO(fromISO, i);
       if (iso > toISO) break;
       const free = S.gapsOn(schedule, c, iso).reduce((n, g) => n + (g.end - g.start), 0);
-      if (free >= c.minSessionMinutes) out.push({ iso, free });
+      if (free >= c.minSessionMinutes) {
+        const dow = new Date(iso + "T12:00:00").getDay();
+        out.push({ iso, free, weekend: dow === 0 || dow === 6 });
+      }
     }
     return out;
   }
@@ -105,6 +108,12 @@
       ? Math.round((days.reduce((n, d) => n + d.free, 0) / daysLeft) * c.fillFraction)
       : 0;
     const needPerDay = daysLeft > 0 ? Math.ceil(p.left / daysLeft) : 0;
+    // IF YOU HAVEN'T TOLD IT OTHERWISE, A SATURDAY LOOKS LIKE A FREE DAY.
+    // The app can't know you don't work weekends — but a rate worked out over
+    // days that include twenty Saturdays is a much kinder number than the truth,
+    // and being quietly optimistic about how much time you have is the one thing
+    // this calculation must never be. So it counts them and says it did.
+    const weekendDays = days.filter((d) => d.weekend).length;
 
     let verdict = "no deadline";
     if (deadline) {
@@ -122,6 +131,7 @@
       roomPerDay,
       needPerDay,
       verdict,
+      weekendDays,
       // How much simply won't fit, if it won't. The number you take to someone.
       short: deadline && daysLeft > 0 ? Math.max(0, p.left - roomPerDay * daysLeft) : 0,
     };
@@ -170,8 +180,12 @@
     if (r.verdict === "more than the days can hold") {
       return `${left}. That's ${per} — more than those days can hold, by about ${S.durationWords(r.short)}. Worth sorting out now rather than later: more time, fewer pieces, or a hand with it.`;
     }
-    if (r.verdict === "tight") return `${left}. That's ${per} — doable, but there's not much slack in it.`;
-    return `${left}. That's ${per}, which fits comfortably.`;
+    // Said once, at the end, so it doesn't get in the way of the number.
+    const wk = r.weekendDays
+      ? ` (that count includes ${r.weekendDays} weekend day${r.weekendDays === 1 ? "" : "s"} — mark them off in your week if you don't work them)`
+      : "";
+    if (r.verdict === "tight") return `${left}. That's ${per} — doable, but there's not much slack in it.${wk}`;
+    return `${left}. That's ${per}, which fits comfortably.${wk}`;
   }
 
   window.OrganiserGoalPlan = { workFor, progress, rate, daysWithRoom, taskFromStep, words };

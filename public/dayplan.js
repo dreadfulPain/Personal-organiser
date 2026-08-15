@@ -96,7 +96,23 @@
         !i.time &&
         !i.openLoop &&
         (!window.OrganiserPriority.droppable(i) || allowOptional) &&
-        (!i.date || i.date <= iso || startNow.has(i.id))
+        // WORK DUE BEYOND THE HORIZON IS FILLER, NOT INVISIBLE.
+        //
+        // This used to admit only work due today or booked for today by the
+        // week, which meant anything further out than the horizon got nothing
+        // at all — ever — until it came inside it. A pasted plan for a
+        // certificate due in three months was never once offered across eight
+        // simulated weeks: nought of ten pieces, while a goal with NO deadline
+        // got seven of nine, because undated work counts as filler and dated
+        // work didn't. Exactly backwards, and worse than useless, because the
+        // goal screen was cheerfully saying "eleven minutes a day, fits
+        // comfortably" about work the day plan would never mention.
+        //
+        // Now it's a candidate like anything else. It can't jump the queue —
+        // forPlanning puts a distant deadline behind everything pressing, and
+        // the two-thirds limit still stops the day — so it only ever gets time
+        // that would otherwise have gone spare.
+        true
     );
 
     let used = 0;

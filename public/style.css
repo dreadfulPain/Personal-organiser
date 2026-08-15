@@ -3736,3 +3736,23 @@ a.btn {
 .p-thead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
+
+
+/* ---- PASTING IN A PLAN SOMEONE ELSE WROTE ---------------------------------
+   Read it, show the whole thing, then ask. Never straight in. */
+.paste-wrap { margin: 6px 0 16px; }
+.paste-box { margin-top: 10px; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fff; }
+.paste-box textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.9rem;
+  padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  color: var(--ink); resize: vertical; }
+.paste-actions { display: flex; gap: 14px; align-items: center; margin-top: 10px; }
+.paste-preview { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.paste-preview h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.pp-ms { margin-top: 10px; }
+.pp-ms > strong { display: block; font-size: 0.92rem; }
+/* Every step and the time it read, so a misread is visible BEFORE anything is
+   made — the same reasoning as the check-back on Home. */
+.pp-step { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0 3px 12px;
+  font-size: 0.88rem; border-bottom: 1px solid var(--line); }
+.pp-mins { color: var(--ink-soft); white-space: nowrap; font-size: 0.8rem; }

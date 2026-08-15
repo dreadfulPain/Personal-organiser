@@ -23,6 +23,25 @@
         <button id="goalAddBtn" class="btn">New goal</button>
       </section>
 
+      <!-- PASTE A PLAN SOMEONE ELSE WROTE. The app is not the right thing to
+           decide what a big goal is made of; it's the right thing to hold the
+           answer and get it done. -->
+      <section class="paste-wrap">
+        <button type="button" id="pasteToggle" class="link">paste a plan</button>
+        <div id="pasteBox" class="paste-box" hidden>
+          <p class="muted">Ask Claude, or anyone, for a plan. Change the bits it got wrong
+            about your situation. Paste the whole thing here — headings, bullets, times in
+            brackets, a deadline written however you like. Nothing gets invented and nothing
+            gets thrown away.</p>
+          <textarea id="pasteText" rows="10" placeholder="# Get the certificate&#10;Deadline: 4 December&#10;&#10;## Work out what's required&#10;- Read the standards (2 hours)&#10;- List the evidence I need (45 min)"></textarea>
+          <div class="paste-actions">
+            <button type="button" id="pasteRead" class="btn">read it</button>
+            <button type="button" id="pasteCancel" class="link">never mind</button>
+          </div>
+          <div id="pastePreview" class="paste-preview" hidden></div>
+        </div>
+      </section>
+
       <div id="goalsList"></div>
     </main>
 
@@ -33,6 +52,9 @@
     <script src="priority.js" defer></script>
     <script src="dayplan.js" defer></script>
     <script src="weekplan.js" defer></script>
+    <script src="names.js" defer></script>
+    <script src="quickparse.js" defer></script>
+    <script src="planpaste.js" defer></script>
     <script src="goalplan.js" defer></script>
     <script src="goals.js" defer></script>
   </body>

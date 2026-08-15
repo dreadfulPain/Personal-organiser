@@ -108,11 +108,12 @@
       ? Math.round((days.reduce((n, d) => n + d.free, 0) / daysLeft) * c.fillFraction)
       : 0;
     const needPerDay = daysLeft > 0 ? Math.ceil(p.left / daysLeft) : 0;
-    // IF YOU HAVEN'T TOLD IT OTHERWISE, A SATURDAY LOOKS LIKE A FREE DAY.
-    // The app can't know you don't work weekends — but a rate worked out over
-    // days that include twenty Saturdays is a much kinder number than the truth,
-    // and being quietly optimistic about how much time you have is the one thing
-    // this calculation must never be. So it counts them and says it did.
+    // A SATURDAY IS A REAL DAY AND IT STAYS IN THE SUM. Sometimes the only way
+    // a big thing gets done is a quiet Sunday morning, and refusing to plan into
+    // one would be wrong about how the job works. But a rate that leans on
+    // twenty-two weekends without saying so is quietly promising your weekends
+    // away, so it counts them AND says how many. Whether that's fine is your
+    // call; see weekend.js for what actually got used.
     const weekendDays = days.filter((d) => d.weekend).length;
 
     let verdict = "no deadline";
@@ -182,7 +183,7 @@
     }
     // Said once, at the end, so it doesn't get in the way of the number.
     const wk = r.weekendDays
-      ? ` (that count includes ${r.weekendDays} weekend day${r.weekendDays === 1 ? "" : "s"} — mark them off in your week if you don't work them)`
+      ? ` (${r.weekendDays} of those are weekend days — they're counted, because sometimes you do use them)`
       : "";
     if (r.verdict === "tight") return `${left}. That's ${per} — doable, but there's not much slack in it.${wk}`;
     return `${left}. That's ${per}, which fits comfortably.${wk}`;

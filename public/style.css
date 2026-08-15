@@ -3756,3 +3756,19 @@ a.btn {
 .pp-step { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0 3px 12px;
   font-size: 0.88rem; border-bottom: 1px solid var(--line); }
 .pp-mins { color: var(--ink-soft); white-space: nowrap; font-size: 0.8rem; }
+
+
+/* ---- WHERE THE WEEKENDS WENT -----------------------------------------------
+   A row per weekend, most recent last so it reads left-to-right like time.
+   No colour coding: a long bar is not automatically a bad weekend, and the app
+   is not in a position to know which it was. */
+.wknd { margin-top: 26px; }
+.wknd h2 { font-size: 1rem; margin: 0 0 4px; }
+.wk-row { display: grid; grid-template-columns: 62px 1fr auto; gap: 10px;
+  align-items: center; padding: 3px 0; font-size: 0.85rem; }
+.wk-when { color: var(--ink-soft); }
+.wk-bar { background: var(--line); border-radius: 999px; height: 8px; overflow: hidden; }
+.wk-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.wk-amt { color: var(--ink-soft); white-space: nowrap; }
+/* The split wraps onto its own line — it's the interesting part, not a footnote. */
+.wk-split { grid-column: 2 / -1; color: var(--ink-soft); font-size: 0.78rem; }

@@ -86,7 +86,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -102,6 +102,7 @@ function normaliseDoc(d) {
     pastoralTopics: Array.isArray(d.pastoralTopics) ? d.pastoralTopics : [],
     pastoralNotes: Array.isArray(d.pastoralNotes) ? d.pastoralNotes : [],
     toldLog: Array.isArray(d.toldLog) ? d.toldLog : [],
+    worked: d.worked && typeof d.worked === "object" && !Array.isArray(d.worked) ? d.worked : {},
     contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
     schedule: Array.isArray(d.schedule) ? d.schedule : [],
     scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
@@ -119,7 +120,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, savedAt: null };
   try {
     current = readData();
   } catch {
@@ -149,6 +150,7 @@ function writeData(input, opts) {
         pastoralTopics: Array.isArray(input.pastoralTopics) ? input.pastoralTopics : current.pastoralTopics || [],
         pastoralNotes: Array.isArray(input.pastoralNotes) ? input.pastoralNotes : current.pastoralNotes || [],
         toldLog: Array.isArray(input.toldLog) ? input.toldLog : current.toldLog || [],
+        worked: input.worked && typeof input.worked === "object" ? input.worked : current.worked || {},
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -182,6 +184,7 @@ function writeData(input, opts) {
   const pastoralTopics = Array.isArray(input.pastoralTopics) ? input.pastoralTopics : current.pastoralTopics || [];
   const pastoralNotes = Array.isArray(input.pastoralNotes) ? input.pastoralNotes : current.pastoralNotes || [];
   const toldLog = Array.isArray(input.toldLog) ? input.toldLog : current.toldLog || [];
+  const worked = input.worked && typeof input.worked === "object" && !Array.isArray(input.worked) ? input.worked : current.worked || {};
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -196,6 +199,7 @@ function writeData(input, opts) {
     pastoralTopics,
     pastoralNotes,
     toldLog,
+    worked,
     schedule,
     scheduleConfig,
   };

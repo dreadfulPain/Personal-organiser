@@ -32,6 +32,7 @@
   let unreadableRows = []; // rows it couldn't make sense of — shown, never dropped
   let addingBlock = false;
   let movingId = null; // which planned task is having its slot changed
+  let worked = {}; // minutes really put in, per day — see weekend.js
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -44,7 +45,7 @@
   const todayISO = () => S().isoOf(new Date());
 
   function persist() {
-    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg });
+    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked });
   }
 
   // Make the tasks a block owes, and let go of the ones whose moment has passed.
@@ -95,6 +96,21 @@
     c.plans = keep.reduce((o, k) => ((o[k] = c.plans[k]), o), {});
     cfg = c;
     persist();
+  }
+
+
+  // MINUTES ACTUALLY WORKED, AGAINST THE DAY THEY HAPPENED ON.
+  //
+  // Everything else the app knows is about intention — what was planned, what's
+  // due. This is the only record of what really went in and WHEN, which is the
+  // only way to tell a Sunday you chose from a Sunday that just filled up. See
+  // weekend.js: it's the difference the app exists to help you notice.
+  function logWorked(it, minutes) {
+    const W = window.OrganiserWeekend;
+    if (!W || !(minutes >= 1)) return;
+    const c = S().normaliseConfig(cfg);
+    worked = W.record(worked, todayISO(), minutes, (it && it.area) || "");
+    cfg = c;
   }
 
   // ---------- when the day is taken away from you ----------
@@ -161,7 +177,10 @@
       );
       const to = started.getHours() * 60 + started.getMinutes();
       banked = S().workingMinutesBetween(schedule, iso, from, to);
-      if (banked >= 1) paused.spentMinutes = Math.round(Number(paused.spentMinutes) || 0) + banked;
+      if (banked >= 1) {
+        paused.spentMinutes = Math.round(Number(paused.spentMinutes) || 0) + banked;
+        logWorked(paused, banked);
+      }
     }
 
     // What the day USED to say, so the rebuild can name what moved.
@@ -454,6 +473,7 @@
     const est = S().estimateMinutes(it, cfg);
     const total = elapsed + (Math.round(Number(it.spentMinutes) || 0));
     if (total >= 1 && total <= Math.max(4 * est.full, 120)) cfg = S().learn(cfg, it, total);
+    logWorked(it, elapsed);
 
     p.lastTickMin = nowMin;
     savePlan(iso, p);
@@ -481,6 +501,7 @@
     const began = Math.max(slot.start, lastTick);
     const mins = S().workingMinutesBetween(schedule, iso, began, nowMin);
     if (mins >= 1) it.spentMinutes = Math.round(Number(it.spentMinutes) || 0) + mins;
+    logWorked(it, mins);
 
     // It's had its turn today; the rest of the day belongs to other things.
     p.dropped = (p.dropped || []).concat([it.id]);
@@ -1054,6 +1075,7 @@
     goals = data.goals || [];
     schedule = data.schedule || [];
     cfg = data.scheduleConfig || null;
+    worked = data.worked || {};
     syncPrep();
     $("#setupToggle").addEventListener("click", () => {
       setupOpen = !setupOpen;
@@ -1063,6 +1085,7 @@
       items = state.items || items;
       schedule = state.schedule || schedule;
       cfg = state.scheduleConfig || cfg;
+      worked = state.worked || worked;
       render();
     });
     render();

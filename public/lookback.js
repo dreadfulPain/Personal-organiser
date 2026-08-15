@@ -157,8 +157,51 @@
     });
   }
 
+  // WHERE THE WEEKENDS WENT.
+  //
+  // Shown here rather than on Home on purpose: this is a looking-back question,
+  // and putting it in front of you on a Tuesday morning would make it a nag.
+  // Counts and a split, never a verdict — whether five weekends running is too
+  // many is your call, and the app's job is only to make sure you're the one
+  // making it, with the number in front of you.
+  function renderWeekends(worked) {
+    const W = window.OrganiserWeekend;
+    const S = window.OrganiserSchedule;
+    const sec = document.querySelector("#weekends");
+    if (!W || !S || !sec) return;
+    const v = W.look(worked, S.isoOf(new Date()), 8);
+    if (!v.total) { sec.hidden = true; return; }
+    sec.hidden = false;
+    const words = document.querySelector("#wkndWords");
+    if (words) words.textContent = W.words(v);
+    const bars = document.querySelector("#wkndBars");
+    if (!bars) return;
+    const most = Math.max(...v.list.map((x) => x.total), 1);
+    bars.innerHTML = v.list
+      .slice()
+      .reverse()
+      .map((x) => {
+        const pct = Math.round((x.total / most) * 100);
+        const when = new Date(x.saturday + "T12:00:00")
+          .toLocaleDateString(undefined, { day: "numeric", month: "short" });
+        const split = Object.entries(x.areas)
+          .sort((a, b) => b[1] - a[1])
+          .map(([k, m]) => `${k} ${S.durationWords(m)}`)
+          .join(" · ");
+        return (
+          `<div class="wk-row"><span class="wk-when">${when}</span>` +
+          `<span class="wk-bar"><i style="width:${pct}%"></i></span>` +
+          `<span class="wk-amt">${x.total ? S.durationWords(x.total) : "—"}</span>` +
+          (split ? `<span class="wk-split">${split}</span>` : "") +
+          `</div>`
+        );
+      })
+      .join("");
+  }
+
   async function init() {
     const data = await OrganiserStore.load();
+    renderWeekends(data.worked || {});
     items = data.items || [];
     waiting = data.waiting || [];
     document.querySelectorAll(".mr-range").forEach((b) =>

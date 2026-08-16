@@ -13,7 +13,7 @@
 
   let contacts = [], records = [], recordConfig = null;
   let pastoralNotes = [], pastoralTopics = [];
-  let tried = [];
+  let tried = [], lessons = [];
   let targeted = null; // who's already had something planned with them in mind
   let group = "";
 
@@ -157,7 +157,12 @@
     const tw = $("#bpTriedCaveat");
     const tb = $("#bpTried");
     if (Y && tb) {
-      const rows = Y.byApproach(tried, records, recordConfig, contacts, pic.members);
+      // A lesson you taught IS a thing you tried, so it is handed over in that
+      // shape rather than copied into that store. Two records of one event
+      // would drift apart the first time either was edited.
+      const LP = window.OrganiserLessonPlan;
+      const all = LP ? tried.concat(LP.asTried(lessons)) : tried;
+      const rows = Y.byApproach(all, records, recordConfig, contacts, pic.members);
       if (tw) tw.textContent = rows.length ? Y.caveat(rows) : "";
       tb.innerHTML = rows.length
         ? rows
@@ -254,6 +259,7 @@
     pastoralNotes = Array.isArray(data.pastoralNotes) ? data.pastoralNotes : [];
     pastoralTopics = Array.isArray(data.pastoralTopics) ? data.pastoralTopics : [];
     tried = Array.isArray(data.tried) ? data.tried : [];
+    lessons = Array.isArray(data.lessons) ? data.lessons : [];
     targeted = data.targeted || {};
     const hash = (location.hash || "").replace(/^#/, "");
     if (hash && groups().includes(hash)) group = hash;

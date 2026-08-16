@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lessons</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Lessons</h1>
+        <p class="sub">Write the plan wherever you normally write it, then paste it
+          in here. The app reads the headings, keeps it against the class and the
+          day, and joins it to how they got on. It never writes a plan and never
+          marks one.</p>
+      </header>
+
+      <!-- PASTE IT IN. Read it, show what came out, then ask — never straight in. -->
+      <section class="p-block">
+        <h2>Paste a plan</h2>
+        <label class="ls-full">Your plan
+          <textarea id="lsPaste" rows="8" placeholder="Paste the whole thing. Headings and all."></textarea>
+        </label>
+        <div class="ls-row">
+          <label>Class
+            <input id="lsGroup" type="text" list="lsGroups" maxlength="60" />
+            <datalist id="lsGroups"></datalist>
+          </label>
+          <label>Aimed at
+            <select id="lsSkill"></select>
+          </label>
+          <label>When
+            <input id="lsDate" type="date" />
+          </label>
+          <label>Which slot
+            <select id="lsSlot"></select>
+          </label>
+        </div>
+        <label class="ls-full">This settles a job
+          <select id="lsItem"></select>
+        </label>
+        <div id="lsPreview" class="ls-preview" hidden></div>
+        <div class="ls-actions">
+          <button id="lsSave" type="button" class="btn">Keep this plan</button>
+        </div>
+      </section>
+
+      <!-- WHAT'S ALREADY IN. Newest first, because that's what you're editing. -->
+      <section class="p-block">
+        <h2>Kept plans</h2>
+        <p id="lsCount" class="muted"></p>
+        <div id="lsList"></div>
+      </section>
+
+      <!-- THE MIRROR. Counts of what you did. No advice, no score. -->
+      <section class="p-block" id="lsMirrorBlock">
+        <h2>What this adds up to</h2>
+        <p class="muted">Counts of what you actually recorded — nothing here is a
+          judgement of the teaching, and none of it knows what a good lesson looks
+          like. It's the things that are hard to see from the inside.</p>
+        <p id="lsMirrorWords" class="muted"></p>
+        <div id="lsMirror"></div>
+      </section>
+
+      <!-- THE HEADINGS. Folded away — set once, then forgotten. -->
+      <section class="p-block">
+        <details class="p-setup">
+          <summary>What your headings are called</summary>
+          <p class="muted">The app finds these in your plan. Change them when your
+            template changes, when you change year group, or when you change
+            school — nothing else has to change with them. Separated by commas,
+            and spelling slips are matched anyway.</p>
+          <form id="lsHeadForm" class="p-form">
+            <label>The objective is called
+              <input id="lsHObjective" type="text" maxlength="300" />
+            </label>
+            <label>How you taught it is called
+              <input id="lsHWays" type="text" maxlength="300" />
+            </label>
+            <label>How you checked it is called
+              <input id="lsHChecks" type="text" maxlength="300" />
+            </label>
+            <button type="submit" class="btn">Save headings</button>
+          </form>
+        </details>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="levels.js" defer></script>
+    <script src="names.js" defer></script>
+    <script src="schedule.js" defer></script>
+    <script src="tried.js" defer></script>
+    <script src="lessonplan.js" defer></script>
+    <script src="lessons.js" defer></script>
+  </body>
+</html>

@@ -3859,4 +3859,35 @@ a.btn {
    everything else — a podium would say "this one wins", which it doesn't. */
 .bp-tried, .p-tried { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .p-also { font-size: 0.8rem; margin: 3px 0 0; }
+
+/* ---- LESSONS: a plan written elsewhere, kept here ------------------------- */
+.ls-full { display: block; margin: 10px 0; font-size: 0.85rem; color: var(--ink-soft); }
+.ls-full textarea, .ls-full select { display: block; width: 100%; margin-top: 4px;
+  padding: 8px 10px; font: inherit; font-size: 0.95rem; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; }
+.ls-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0; }
+.ls-row label { flex: 1 1 160px; font-size: 0.85rem; color: var(--ink-soft); }
+.ls-row input, .ls-row select { display: block; width: 100%; margin-top: 4px;
+  padding: 7px 10px; font: inherit; font-size: 0.95rem; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; }
+.ls-actions { margin-top: 12px; }
+/* What the app read, shown before anything is kept — never straight in. */
+.ls-preview { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fff; }
+.ls-title { font-weight: 600; margin: 6px 0; }
+.ls-part { margin-top: 12px; }
+.ls-part h3 { font-size: 0.9rem; margin: 0 0 4px; }
+.ls-part ul { margin: 0; padding-left: 20px; }
+.ls-part li { margin: 2px 0; }
+.ls-item { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.ls-item.taught { border-left: 3px solid var(--accent); padding-left: 10px; }
+.ls-meta { font-size: 0.8rem; color: var(--ink-soft); margin: 4px 0 0; }
+.ls-note { margin: 6px 0 0; padding-left: 10px; border-left: 2px solid var(--line); }
+.ls-buttons { display: flex; gap: 14px; margin-top: 8px; }
+.ls-afterbox { margin-top: 8px; }
+.ls-notebox { display: block; width: 100%; padding: 8px 10px; font: inherit;
+  font-size: 0.95rem; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; }
+.ls-afterbox .btn { margin-top: 6px; }
+.ls-mpart { margin-top: 16px; }
+.ls-mpart h3 { font-size: 0.9rem; margin: 0 0 6px; }
 .bp-cover.never .bp-cwhen { font-style: italic; }

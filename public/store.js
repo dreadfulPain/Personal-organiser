@@ -47,6 +47,8 @@
   // Per group: who has already had something planned with them in mind. The
   // counterweight to always serving the biggest group.
   const LS_TARGETED = "organiser.targeted.v1";
+  // What you tried, so "did anything move afterwards" has something to join to.
+  const LS_TRIED = "organiser.tried.v1";
 
   let statusCb = null;
   let externalCb = null; // page refresh when the shared file changed elsewhere
@@ -54,7 +56,7 @@
   let pollTimer = null;
   let dirty = false;
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {} };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [] };
 
   function emit(s) {
     if (statusCb) statusCb(s);
@@ -86,6 +88,7 @@
       worked: get(LS_WORKED, {}),
       areas: get(LS_AREAS, []),
       targeted: get(LS_TARGETED, {}),
+      tried: get(LS_TRIED, []),
     };
   }
   function writeLegacy(state) {
@@ -105,6 +108,7 @@
       localStorage.setItem(LS_WORKED, JSON.stringify(state.worked || {}));
       localStorage.setItem(LS_AREAS, JSON.stringify(state.areas || []));
       localStorage.setItem(LS_TARGETED, JSON.stringify(state.targeted || {}));
+      localStorage.setItem(LS_TRIED, JSON.stringify(state.tried || []));
       localStorage.setItem(LS_SCHEDULECONFIG, JSON.stringify(state.scheduleConfig || null));
     } catch {
       /* storage may be full or blocked; ignore */
@@ -119,7 +123,7 @@
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {} };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [] };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
@@ -225,7 +229,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 

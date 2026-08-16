@@ -3855,4 +3855,8 @@ a.btn {
 .bp-ask { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px;
   align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .bp-atopic { color: var(--ink); font-size: 0.9rem; }
+/* What you tried and what moved after. Deliberately the same plain rows as
+   everything else — a podium would say "this one wins", which it doesn't. */
+.bp-tried, .p-tried { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.p-also { font-size: 0.8rem; margin: 3px 0 0; }
 .bp-cover.never .bp-cwhen { font-style: italic; }

@@ -86,7 +86,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -105,6 +105,7 @@ function normaliseDoc(d) {
     worked: d.worked && typeof d.worked === "object" && !Array.isArray(d.worked) ? d.worked : {},
     areas: Array.isArray(d.areas) ? d.areas : [],
     targeted: d.targeted && typeof d.targeted === "object" && !Array.isArray(d.targeted) ? d.targeted : {},
+    tried: Array.isArray(d.tried) ? d.tried : [],
     contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
     schedule: Array.isArray(d.schedule) ? d.schedule : [],
     scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
@@ -122,7 +123,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], savedAt: null };
   try {
     current = readData();
   } catch {
@@ -155,6 +156,7 @@ function writeData(input, opts) {
         worked: input.worked && typeof input.worked === "object" ? input.worked : current.worked || {},
         areas: Array.isArray(input.areas) ? input.areas : current.areas || [],
         targeted: input.targeted && typeof input.targeted === "object" ? input.targeted : current.targeted || {},
+        tried: Array.isArray(input.tried) ? input.tried : current.tried || [],
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -191,6 +193,7 @@ function writeData(input, opts) {
   const worked = input.worked && typeof input.worked === "object" && !Array.isArray(input.worked) ? input.worked : current.worked || {};
   const areas = Array.isArray(input.areas) ? input.areas : current.areas || [];
   const targeted = input.targeted && typeof input.targeted === "object" && !Array.isArray(input.targeted) ? input.targeted : current.targeted || {};
+  const tried = Array.isArray(input.tried) ? input.tried : current.tried || [];
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -208,6 +211,7 @@ function writeData(input, opts) {
     worked,
     areas,
     targeted,
+    tried,
     schedule,
     scheduleConfig,
   };

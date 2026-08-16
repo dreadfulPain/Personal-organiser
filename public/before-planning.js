@@ -13,6 +13,7 @@
 
   let contacts = [], records = [], recordConfig = null;
   let pastoralNotes = [], pastoralTopics = [];
+  let tried = [];
   let targeted = null; // who's already had something planned with them in mind
   let group = "";
 
@@ -47,7 +48,8 @@
         ? "Pick a group above."
         : "Nothing recorded for this group yet — no levels and no answers. This page fills itself in as you use the rest of the app.";
     }
-    ["#bpTallyBlock", "#bpCoverBlock", "#bpAskBlock", "#bpSkillBlock", "#bpNoteBlock"].forEach((sel) => {
+    ["#bpTallyBlock", "#bpCoverBlock", "#bpAskBlock", "#bpTriedBlock", "#bpSkillBlock",
+      "#bpNoteBlock"].forEach((sel) => {
       const el = $(sel);
       if (el) el.hidden = nothing;
     });
@@ -144,6 +146,32 @@
         : "";
     }
 
+    // ---- what you tried, and what moved --------------------------------
+    //
+    // The one place in the app where a count of approaches means anything: a
+    // whole group gives enough tries to be worth reading. It is still not proof
+    // and the caveat above it says so every single time — the moment this is
+    // shown as a bare league table it becomes a machine for confirming whatever
+    // you already believed.
+    const Y = window.OrganiserTried;
+    const tw = $("#bpTriedCaveat");
+    const tb = $("#bpTried");
+    if (Y && tb) {
+      const rows = Y.byApproach(tried, records, recordConfig, contacts, pic.members);
+      if (tw) tw.textContent = rows.length ? Y.caveat(rows) : "";
+      tb.innerHTML = rows.length
+        ? rows
+            .map(
+              (r) =>
+                `<div class="bp-tried"><div class="p-thead"><strong>${esc(r.what)}</strong>` +
+                `<span class="p-state">${r.tries} ${r.tries === 1 ? "try" : "tries"}` +
+                (r.skills.length ? ` · ${esc(r.skills.join(", "))}` : "") +
+                `</span></div><p class="p-said">${esc(Y.words(r))}</p></div>`
+            )
+            .join("")
+        : `<p class="muted">Nothing logged yet. Note what you did on a student's page, with the skill it was aimed at, and this fills in as you judge them again.</p>`;
+    }
+
     // ---- where people are ----------------------------------------------
     const s = $("#bpSkills");
     if (s) {
@@ -225,6 +253,7 @@
     recordConfig = data.recordConfig || null;
     pastoralNotes = Array.isArray(data.pastoralNotes) ? data.pastoralNotes : [];
     pastoralTopics = Array.isArray(data.pastoralTopics) ? data.pastoralTopics : [];
+    tried = Array.isArray(data.tried) ? data.tried : [];
     targeted = data.targeted || {};
     const hash = (location.hash || "").replace(/^#/, "");
     if (hash && groups().includes(hash)) group = hash;

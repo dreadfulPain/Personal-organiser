@@ -21,7 +21,7 @@
   "use strict";
 
   let contacts = [], records = [], recordConfig = null;
-  let pastoralNotes = [], pastoralTopics = [], toldLog = [];
+  let pastoralNotes = [], pastoralTopics = [], toldLog = [], tried = [];
   let who = "";
 
   const $ = (s) => document.querySelector(s);
@@ -239,7 +239,110 @@
     renderAll();
   }
 
-  // ---- 4. what you've already said -------------------------------------
+  // ---- 4. what you tried, and what moved afterwards ---------------------
+  //
+  // The trail, not a score. One student is never enough tries to count
+  // anything, so this shows what happened each time rather than a percentage —
+  // the counting only starts to mean something across a whole group, and that
+  // lives on the planning page.
+  function renderTried() {
+    const el = $("#pTried");
+    if (!el) return;
+    if (!who) { el.innerHTML = ""; return; }
+    const Y = window.OrganiserTried;
+    if (!Y) { el.innerHTML = ""; return; }
+    const list = Y.forPerson(tried, who, contacts);
+    if (!list.length) {
+      el.innerHTML = `<p class="muted">Nothing logged yet. Note what you did and which skill it was aimed at, and the app will tell you what their level did next time you judged it.</p>`;
+      return;
+    }
+    el.innerHTML = list
+      .map((t) => {
+        const out = Y.outcome(records, recordConfig, who, t.skill, t.date);
+        const also = Y.alsoInWindow(tried, contacts, who, t.skill, t.date, out);
+        return (
+          `<div class="p-tried"><div class="p-thead"><strong>${esc(t.what)}</strong>` +
+          `<span class="p-state">${esc(t.skill || "no skill set")} · ${esc(ago(t.date))}</span></div>` +
+          `<p class="p-said">${esc(outcomeWords(out))}</p>` +
+          // Two things in the same gap means the movement belongs to both and
+          // to neither. Said here rather than quietly counted twice.
+          (also.length
+            ? `<p class="muted p-also">You also tried ${esc(also.join(", "))} in the same gap — no way to tell them apart.</p>`
+            : "") +
+          `</div>`
+        );
+      })
+      .join("");
+  }
+
+  function outcomeWords(out) {
+    const lv = L();
+    const nm = (l) => (lv ? lv.levelLabel(recordConfig, l) : l);
+    switch (out.state) {
+      case "moved up":
+        return `Went from ${nm(out.before.level)} to ${nm(out.after.level)}${out.days ? `, ${out.days} days later` : ""}.`;
+      case "moved down":
+        return `Went from ${nm(out.before.level)} to ${nm(out.after.level)}${out.days ? `, ${out.days} days later` : ""}.`;
+      case "stayed the same":
+        return out.atCeiling
+          ? `Stayed at ${nm(out.before.level)}, which is already the top — there was nowhere to move.`
+          : `Stayed at ${nm(out.before.level)}.`;
+      case "not followed up yet":
+        return out.atCeiling
+          ? `At ${nm(out.before.level)} and not judged again since — already at the top.`
+          : `At ${nm(out.before.level)} beforehand, and not judged again since.`;
+      case "no level beforehand":
+        return `No level recorded before this, so there's nothing to compare with.`;
+      case "no skill":
+        return `No skill set on this one, so it can't be matched to a level.`;
+      default:
+        return `Nothing recorded against that skill yet.`;
+    }
+  }
+
+  function renderTriedForm() {
+    const Y = window.OrganiserTried;
+    const sel = $("#ptrSkill");
+    if (sel) {
+      const ss = skills();
+      sel.innerHTML = ss.length
+        ? ss.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("")
+        : `<option value="">no skills set up yet</option>`;
+    }
+    // The words you've used before, offered back — so the same thing doesn't
+    // end up counted separately under three spellings of itself.
+    const dl = $("#ptrWords");
+    if (dl && Y) {
+      dl.innerHTML = Y.vocabulary(tried)
+        .map((v) => `<option value="${esc(v.what)}"></option>`)
+        .join("");
+    }
+    const d = $("#ptrDate");
+    if (d && !d.value) d.value = todayISO();
+  }
+
+  function wireTried() {
+    const form = $("#pTriedForm");
+    if (!form) return;
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const Y = window.OrganiserTried;
+      if (!Y || !who) return;
+      const what = ($("#ptrWhat").value || "").trim();
+      if (!what) return;
+      tried = Y.add(
+        tried,
+        { what, skill: ($("#ptrSkill").value || "").trim(), whoIds: [who] },
+        ($("#ptrDate").value || "").trim() || todayISO()
+      );
+      OrganiserStore.save({ tried });
+      $("#ptrWhat").value = "";
+      renderTriedForm();
+      renderTried();
+    });
+  }
+
+  // ---- 5. what you've already said -------------------------------------
   function renderTold() {
     const el = $("#pTold");
     if (!el) return;
@@ -365,12 +468,14 @@
     if (t) t.textContent = who ? nameOf(who) : "One person";
     // Nothing to write on until you've said who — writing a note against nobody
     // is the one way to lose one entirely.
-    const forms = [$("#pToldForm")];
+    const forms = [$("#pToldForm"), $("#pTriedForm")];
     forms.forEach((f) => { if (f) f.hidden = !who; });
     renderTiles();
     renderChart();
     renderPastoral();
     renderTopics();
+    renderTriedForm();
+    renderTried();
     renderTold();
   }
 
@@ -401,6 +506,7 @@
     pastoralNotes = Array.isArray(data.pastoralNotes) ? data.pastoralNotes : [];
     pastoralTopics = Array.isArray(data.pastoralTopics) ? data.pastoralTopics : [];
     toldLog = Array.isArray(data.toldLog) ? data.toldLog : [];
+    tried = Array.isArray(data.tried) ? data.tried : [];
     // Deep-link straight to someone: person.html#id — so a shortcut can open on
     // the right person rather than on a chooser.
     const hash = (location.hash || "").replace(/^#/, "");
@@ -408,6 +514,7 @@
     renderPicker();
     wireWriting();
     wireTopics();
+    wireTried();
     wireTold();
     renderAll();
   }

@@ -66,6 +66,30 @@
         </details>
       </section>
 
+      <!-- WHAT YOU TRIED, AND WHAT MOVED AFTERWARDS.
+           The answerable version of "what works for this student" — not what
+           they say they prefer, but what their level did next time you looked. -->
+      <section class="p-block">
+        <h2>What you've tried</h2>
+        <p class="muted">What happened after, never what caused it. Between two
+          judgements a student also got older and sat in other lessons.</p>
+        <form id="pTriedForm" class="p-form">
+          <label>What you did
+            <input id="ptrWhat" type="text" maxlength="80" list="ptrWords"
+              placeholder="watched it done first" />
+            <datalist id="ptrWords"></datalist>
+          </label>
+          <label>Aimed at
+            <select id="ptrSkill"></select>
+          </label>
+          <label>When
+            <input id="ptrDate" type="date" />
+          </label>
+          <button type="submit" class="btn">Add</button>
+        </form>
+        <div id="pTried"></div>
+      </section>
+
       <!-- WHAT YOU'VE ALREADY TOLD PEOPLE. Read here, never exported. -->
       <section class="p-block">
         <h2>What you've told people</h2>
@@ -91,6 +115,7 @@
     <script src="chart.js" defer></script>
     <script src="pastoral.js" defer></script>
     <script src="told.js" defer></script>
+    <script src="tried.js" defer></script>
     <script src="person.js" defer></script>
   </body>
 </html>

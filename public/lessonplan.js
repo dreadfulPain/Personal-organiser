@@ -54,6 +54,29 @@
   // Letters and digits only, folded. This is the whole of the spelling policy.
   const fold = (s) => String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, "");
 
+  // Everything after the first `n` LETTERS of a line — see the note where this
+  // is used. Walking the string is the only way to land in the right place when
+  // the document's spacing differs from the synonym's.
+  function restAfter(raw, n) {
+    if (n <= 0) return raw;
+    let seen = 0;
+    for (let i = 0; i < raw.length; i++) {
+      if (/[a-z0-9]/i.test(raw[i])) seen++;
+      if (seen >= n) return raw.slice(i + 1);
+    }
+    return "";
+  }
+
+  // EVERY WAY A LINE CAN END, not just the one a keyboard makes.
+  //
+  // A plain \n is what someone typing gets. A document that came out of a word
+  // processor also carries \r\n, a VERTICAL TAB wherever a soft return was used
+  // — shift+enter, which is how most people end a line inside a bullet — a form
+  // feed at a page break, and occasionally the Unicode line and paragraph
+  // separators. Splitting on \n alone glues whole sections into one line, and
+  // the only symptom is a plan that seems to have one long activity in it.
+  const LINE_BREAKS = /\r\n|\r|\n|\u000b|\u000c|\u2028|\u2029/;
+
   function headings(config) {
     const c = (config && config.headings) || {};
     const out = {};
@@ -93,7 +116,13 @@
         if (!s) continue;
         if (s.length <= 3 ? f === s : f.startsWith(s)) {
           // What's left on the same line after the heading itself.
-          const after = raw.replace(/^[^A-Za-z0-9]*/, "").slice(syn.length).replace(/^[\s:：.\-–—>)]+/, "");
+          //
+          // Counted in letters, not characters. Slicing by the synonym's own
+          // length assumes the document spaces and punctuates it exactly as
+          // the synonym does — and "Learning  Objective:" with the double space
+          // Word leaves behind then slices two characters short and returns an
+          // objective of "e:". Wrong, kept, and counted, with nothing to see.
+          const after = restAfter(raw, s.length).replace(/^[\s:：.\-–—>)|\]]+/, "");
           return { part, rest: fold(after) ? after.trim() : "" };
         }
       }
@@ -126,21 +155,41 @@
   // THE PARSE. Everything under a heading belongs to it until the next one.
   function parse(text, config) {
     const hs = headings(config);
-    const lines = String(text || "").split(/\r?\n/);
+    const lines = String(text || "").split(LINE_BREAKS);
     const found = { objective: [], ways: [], checks: [] };
     const before = []; // anything above the first heading — usually the title
     let current = null;
+    let lastWasBullet = false;
     lines.forEach((line) => {
       const h = headingOf(line, hs);
       if (h) {
         current = h.part;
         if (h.rest) found[current].push(h.rest);
+        lastWasBullet = false;
         return;
       }
       const t = line.trim();
       if (!t) return;
-      if (!current) { before.push(t); return; }
-      found[current].push(isBullet(t) ? unbullet(t) : t);
+      if (!current) { before.push(t); lastWasBullet = false; return; }
+      if (isBullet(t)) {
+        found[current].push(unbullet(t));
+        lastWasBullet = true;
+        return;
+      }
+      // A PLAIN LINE STRAIGHT AFTER A BULLET IS THE REST OF THAT BULLET.
+      //
+      // Word writes a soft return wherever someone pressed shift+enter inside a
+      // list item, so one activity arrives as two lines. Counted separately,
+      // "then swap and read" becomes its own way of teaching and turns up in
+      // the mirror as a method in its own right. Only after a bullet, though —
+      // in a section with no bullets at all, and in a table, one line really is
+      // one item.
+      if (lastWasBullet && found[current].length) {
+        const i = found[current].length - 1;
+        found[current][i] = `${found[current][i]} ${t}`.trim();
+        return;
+      }
+      found[current].push(t);
     });
     return {
       // One line, because that's what an objective is. If it came out as

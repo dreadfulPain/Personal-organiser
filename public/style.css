@@ -3890,4 +3890,25 @@ a.btn {
 .ls-afterbox .btn { margin-top: 6px; }
 .ls-mpart { margin-top: 16px; }
 .ls-mpart h3 { font-size: 0.9rem; margin: 0 0 6px; }
+/* Said, never corrected — two standards really can be one character apart. */
+.cb-warn { margin: 4px 0 0; font-size: 0.8rem; color: var(--warn, #c06a00); }
+
+/* ---- TURNS: going round a list ------------------------------------------- */
+.ro-up { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.ro-buttons { display: flex; gap: 14px; align-items: center; margin-top: 8px; }
+.ro-instead:not(:empty) { margin-top: 8px; padding-left: 10px;
+  border-left: 2px solid var(--line); }
+.ro-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--line); }
+
+/* ---- SYLLABUS: offered, never decided ------------------------------------ */
+.ls-targets { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fff; }
+.ls-targets h3 { font-size: 0.95rem; margin: 0 0 4px; }
+.ls-target { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0;
+  border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+.ls-target input { margin-top: 4px; flex: none; }
+@media (max-width: 560px) {
+  .ro-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
 .bp-cover.never .bp-cwhen { font-style: italic; }

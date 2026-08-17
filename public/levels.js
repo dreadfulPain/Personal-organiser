@@ -124,7 +124,9 @@
     const clean = (Array.isArray(list) ? list : [])
       .map((x) => String(x).trim())
       .filter(Boolean)
-      .slice(0, 12);
+      // A real syllabus can hang a lot of codes off one skill statement —
+      // several strands, several year groups, two frameworks side by side.
+      .slice(0, 24);
     if (clean.length) config.skillTags[skill] = clean;
     else delete config.skillTags[skill];
     return config;

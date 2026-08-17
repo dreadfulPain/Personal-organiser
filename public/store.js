@@ -52,6 +52,9 @@
   // Lesson plans written elsewhere and pasted in, plus the headings yours use.
   const LS_LESSONS = "organiser.lessons.v1";
   const LS_LESSONCONFIG = "organiser.lessonconfig.v1";
+  // Going round a list, one at a time — and the targets you teach against.
+  const LS_ROTAS = "organiser.rotas.v1";
+  const LS_SYLLABUS = "organiser.syllabus.v1";
 
   let statusCb = null;
   let externalCb = null; // page refresh when the shared file changed elsewhere
@@ -59,7 +62,7 @@
   let pollTimer = null;
   let dirty = false;
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null };
+  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null };
 
   function emit(s) {
     if (statusCb) statusCb(s);
@@ -94,6 +97,8 @@
       tried: get(LS_TRIED, []),
       lessons: get(LS_LESSONS, []),
       lessonConfig: get(LS_LESSONCONFIG, null),
+      rotas: get(LS_ROTAS, []),
+      syllabus: get(LS_SYLLABUS, null),
     };
   }
   function writeLegacy(state) {
@@ -116,6 +121,8 @@
       localStorage.setItem(LS_TRIED, JSON.stringify(state.tried || []));
       localStorage.setItem(LS_LESSONS, JSON.stringify(state.lessons || []));
       localStorage.setItem(LS_LESSONCONFIG, JSON.stringify(state.lessonConfig || null));
+      localStorage.setItem(LS_ROTAS, JSON.stringify(state.rotas || []));
+      localStorage.setItem(LS_SYLLABUS, JSON.stringify(state.syllabus || null));
       localStorage.setItem(LS_SCHEDULECONFIG, JSON.stringify(state.scheduleConfig || null));
     } catch {
       /* storage may be full or blocked; ignore */
@@ -130,7 +137,7 @@
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null };
+    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null };
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
@@ -236,7 +243,7 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, ...lastState, ...part };
+    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 

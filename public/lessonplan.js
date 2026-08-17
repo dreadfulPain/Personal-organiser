@@ -236,6 +236,15 @@
       objective: String(l.objective || "").trim().slice(0, 300),
       ways: tidy(Array.isArray(l.ways) ? l.ways : []),
       checks: tidy(Array.isArray(l.checks) ? l.checks : []),
+      // Which syllabus targets you said this lesson was against. Codes only —
+      // the wording lives in the syllabus, which you can replace wholesale when
+      // the school or the year group changes without touching a single lesson.
+      // Attached by hand: see syllabus.js on why matching never decides.
+      targets: (Array.isArray(l.targets) ? l.targets : [])
+        .map((x) => String(x).trim())
+        .filter(Boolean)
+        .filter((x, i, a) => a.indexOf(x) === i)
+        .slice(0, 24),
       // Afterwards. Kept apart from the plan on purpose: one is what you meant
       // to do and the other is what happened, and merging them loses the gap
       // between the two, which is the interesting part.

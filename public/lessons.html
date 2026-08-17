@@ -42,6 +42,9 @@
           <select id="lsItem"></select>
         </label>
         <div id="lsPreview" class="ls-preview" hidden></div>
+        <!-- WHICH TARGETS THIS IS AGAINST. Offered, never decided — see
+             syllabus.js on why a word count must not make this call. -->
+        <div id="lsTargets" class="ls-targets" hidden></div>
         <div class="ls-actions">
           <button id="lsSave" type="button" class="btn">Keep this plan</button>
         </div>
@@ -62,6 +65,33 @@
           like. It's the things that are hard to see from the inside.</p>
         <p id="lsMirrorWords" class="muted"></p>
         <div id="lsMirror"></div>
+      </section>
+
+      <!-- WHAT'S BEEN TAUGHT AGAINST, AND WHAT HASN'T. -->
+      <section class="p-block" id="lsCoverBlock" hidden>
+        <h2>Targets covered</h2>
+        <p id="lsCoverWords" class="muted"></p>
+        <div id="lsCover"></div>
+      </section>
+
+      <!-- THE SYLLABUS ITSELF. Replaceable wholesale, which is the point. -->
+      <section class="p-block">
+        <details class="p-setup">
+          <summary>The targets you teach against</summary>
+          <p class="muted">Paste your syllabus in. One target a line — a code, then
+            the words. When you change school or year group, paste the new one over
+            the top: the lessons keep their codes and nothing else has to change.
+            Nothing here is ever recalled from memory by the app; matching is done
+            against these words and only these words.</p>
+          <label class="ls-full">What it's called
+            <input id="lsSylName" type="text" maxlength="80" placeholder="the one we use this year" />
+          </label>
+          <label class="ls-full">The targets
+            <textarea id="lsSylPaste" rows="7" placeholder="W.9-10.3.d  Use precise words and sensory language."></textarea>
+          </label>
+          <p id="lsSylRead" class="muted"></p>
+          <button id="lsSylSave" type="button" class="btn">Keep these targets</button>
+        </details>
       </section>
 
       <!-- THE HEADINGS. Folded away — set once, then forgotten. -->
@@ -94,6 +124,7 @@
     <script src="names.js" defer></script>
     <script src="schedule.js" defer></script>
     <script src="tried.js" defer></script>
+    <script src="syllabus.js" defer></script>
     <script src="lessonplan.js" defer></script>
     <script src="lessons.js" defer></script>
   </body>

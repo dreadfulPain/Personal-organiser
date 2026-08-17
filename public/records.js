@@ -1357,12 +1357,52 @@
     const tagIn = document.createElement("input");
     tagIn.type = "text";
     tagIn.value = OrganiserLevels.skillTags(config, skill).join(", ");
+
+    // EVERY CODE YOU'VE ALREADY USED, OFFERED BACK.
+    //
+    // This is the one kind of text in the whole app where spelling has to match
+    // exactly. Everywhere else a slip is forgiven on purpose — headings, names,
+    // what you tried. A framework code can't be: "W.9-10.3d" and "W.9-10.3.d"
+    // are two different standards as far as any counting is concerned, and
+    // nothing would ever tell you that you'd made two.
+    const listId = `tags-${skill.replace(/\W+/g, "-")}`;
+    const dl = document.createElement("datalist");
+    dl.id = listId;
+    OrganiserLevels.allTags(config).forEach((t) => {
+      const o = document.createElement("option");
+      o.value = t;
+      dl.appendChild(o);
+    });
+    tagIn.setAttribute("list", listId);
+
+    const warn = document.createElement("p");
+    warn.className = "cb-warn";
+    warn.hidden = true;
+
     tagIn.addEventListener("change", (e) => {
-      OrganiserLevels.setSkillTags(config, skill, e.target.value.split(",").map((x) => x.trim()));
+      const typed = e.target.value.split(",").map((x) => x.trim()).filter(Boolean);
+      // A code that is ALMOST one you already use is nearly always the same one
+      // typed twice. Said, never corrected — sometimes two standards really are
+      // one character apart, and the app has no business deciding which.
+      const N = window.OrganiserNames;
+      const known = OrganiserLevels.allTags(config);
+      const near = N
+        ? typed
+            .filter((t) => !known.includes(t))
+            .map((t) => ({ t, like: known.find((k) => N.nearEnough(k.toLowerCase(), t.toLowerCase())) }))
+            .filter((x) => x.like)
+        : [];
+      warn.hidden = !near.length;
+      warn.textContent = near.length
+        ? near.map((x) => `"${x.t}" is one character from "${x.like}", which you already use — if they're meant to be the same, they need to match exactly.`).join(" ")
+        : "";
+      OrganiserLevels.setSkillTags(config, skill, typed);
       persistRecords();
       render();
     });
     tagRow.appendChild(tagIn);
+    tagRow.appendChild(dl);
+    tagRow.appendChild(warn);
     box.appendChild(tagRow);
     return box;
   }

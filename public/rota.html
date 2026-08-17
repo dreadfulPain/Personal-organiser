@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Turns</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Turns</h1>
+        <p class="sub">A few minutes each, going round, so that over a few weeks
+          you've spoken to everyone and have something to say about all of them.
+          Longest since their last turn goes first — that one rule is what stops
+          anyone quietly falling off the end.</p>
+      </header>
+
+      <label class="p-pick">Which round
+        <select id="roWhich"></select>
+      </label>
+
+      <!-- WHO'S UP. The only thing you need at the moment you're doing it. -->
+      <section class="p-block" id="roTodayBlock" hidden>
+        <h2>Up today</h2>
+        <p id="roState" class="muted"></p>
+        <div id="roToday"></div>
+        <div class="ls-actions">
+          <button id="roAddTask" type="button" class="btn">Put today's turn in the day</button>
+        </div>
+      </section>
+
+      <!-- THE SLOT ISN'T WORKING FOR SOMEBODY. A fact about the time. -->
+      <section class="p-block" id="roStuckBlock" hidden>
+        <h2>The time isn't working</h2>
+        <p class="muted">Three tries that couldn't happen isn't bad luck any more.
+          It means this slot doesn't suit them, and the useful thing is a different
+          one rather than offering the same time again.</p>
+        <div id="roStuck"></div>
+      </section>
+
+      <!-- THE WHOLE QUEUE, in the order it will actually happen. -->
+      <section class="p-block" id="roQueueBlock" hidden>
+        <h2>The queue</h2>
+        <div id="roQueue"></div>
+      </section>
+
+      <!-- SETTING ONE UP. Folded away once it's done. -->
+      <section class="p-block">
+        <details class="p-setup" id="roSetupBox">
+          <summary>Set up a round</summary>
+          <p class="muted">Who's in it, how long each turn takes, and how often you'd
+            like everyone to come round. The app never forces a turn earlier than the
+            queue would — how often is only used to say how it's going.</p>
+          <form id="roForm" class="p-form">
+            <label>What it's called
+              <input id="roTitle" type="text" maxlength="80" placeholder="a few minutes each" />
+            </label>
+            <label>Who's in it
+              <select id="roGroup"></select>
+            </label>
+            <label>How many a day
+              <input id="roPerDay" type="number" min="1" max="20" value="1" />
+            </label>
+            <label>Minutes each
+              <input id="roMinutes" type="number" min="1" max="240" value="10" />
+            </label>
+            <label>Everyone within
+              <input id="roEvery" type="number" min="1" max="365" value="14" /> days
+            </label>
+            <label class="p-check"><input id="roOptional" type="checkbox" checked />
+              Give way when work is heavy</label>
+            <button type="submit" class="btn">Start the round</button>
+          </form>
+        </details>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="schedule.js" defer></script>
+    <script src="rota.js" defer></script>
+    <script src="rotapage.js" defer></script>
+  </body>
+</html>

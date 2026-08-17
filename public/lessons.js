@@ -17,7 +17,8 @@
   "use strict";
 
   let lessons = [], lessonConfig = null, contacts = [], records = [], recordConfig = null;
-  let schedule = [], items = [], tried = [];
+  let schedule = [], items = [], tried = [], syllabus = null;
+  let chosenTargets = []; // codes ticked for the plan currently in the box
   let editing = ""; // the id of the plan whose "afterwards" box is open
 
   const $ = (s) => document.querySelector(s);
@@ -84,6 +85,41 @@
         : "");
   }
 
+  // ---- which targets this plan is against ---------------------------------
+  //
+  // Candidates in order, each with the words that overlapped so the reason is
+  // visible rather than a score to be trusted. Ticking one is the judgement;
+  // the app never makes it, because "these words overlap" and "this lesson
+  // taught that" are not the same claim and only you can tell them apart.
+  function renderTargets() {
+    const el = $("#lsTargets");
+    if (!el) return;
+    const S = window.OrganiserSyllabus;
+    const text = ($("#lsPaste").value || "").trim();
+    if (!S || !syllabus || !text) { el.hidden = true; el.innerHTML = ""; return; }
+    const p = LP().parse(text, lessonConfig);
+    const hits = S.match(p.objective, syllabus, 6);
+    el.hidden = false;
+    if (!p.objective) {
+      el.innerHTML = `<p class="muted">No objective read out of the plan, so there's nothing to match against your targets. You can still tick any of them by hand once it's kept.</p>`;
+      return;
+    }
+    el.innerHTML =
+      `<h3>Which targets is this against?</h3>` +
+      `<p class="muted">Suggested from the words in your objective — nothing is ticked for you.</p>` +
+      (hits.length
+        ? hits
+            .map(
+              (h) =>
+                `<label class="ls-target"><input type="checkbox" class="ls-tbox" value="${esc(h.target.code)}"` +
+                `${chosenTargets.includes(h.target.code) ? " checked" : ""} />` +
+                `<span><strong>${esc(h.target.code || "no code")}</strong> ${esc(h.target.text)}` +
+                `<span class="p-state"> shared: ${esc(h.shared.slice(0, 6).join(", "))}</span></span></label>`
+            )
+            .join("")
+        : `<p class="muted">Nothing in your targets shares any words with that objective. That's worth a look either way — it may be worded differently, or it may genuinely not be on the syllabus.</p>`);
+  }
+
   function save() {
     const L = LP();
     const text = ($("#lsPaste").value || "").trim();
@@ -102,6 +138,7 @@
         ways: p.ways,
         checks: p.checks,
         itemId: ($("#lsItem").value || "").trim(),
+        targets: chosenTargets.slice(),
       },
       ($("#lsDate").value || "").trim() || todayISO()
     );
@@ -121,7 +158,9 @@
     OrganiserStore.save(itemId ? { lessons, items } : { lessons });
     $("#lsPaste").value = "";
     $("#lsItem").value = "";
+    chosenTargets = [];
     preview();
+    renderTargets();
     renderAll();
   }
 
@@ -307,10 +346,112 @@
     });
   }
 
+  // ---- what's been taught against, and what hasn't ------------------------
+  function renderCoverage() {
+    const S = window.OrganiserSyllabus;
+    const block = $("#lsCoverBlock");
+    const el = $("#lsCover");
+    if (!S || !block || !el) return;
+    const c = S.coverage(lessons, syllabus, {});
+    block.hidden = !c.total;
+    if (!c.total) return;
+    const w = $("#lsCoverWords");
+    if (w) w.textContent = S.words(c);
+    el.innerHTML =
+      (c.taught.length
+        ? `<div class="ls-mpart"><h3>Taught against</h3>` +
+          c.taught
+            .map(
+              (t) =>
+                `<div class="ro-row"><span><strong>${esc(t.code)}</strong> ` +
+                `${esc(t.target ? t.target.text : "")}</span>` +
+                `<span class="p-state">${t.times} ${t.times === 1 ? "lesson" : "lessons"}</span></div>`
+            )
+            .join("") +
+          `</div>`
+        : "") +
+      // Codes from a syllabus you have since replaced. Kept and named rather
+      // than counted as covered — a row with a code and no words beside it
+      // reads as a target you've met when it is nothing of the sort.
+      (c.fromOther && c.fromOther.length
+        ? `<div class="ls-mpart"><h3>From an earlier list</h3>` +
+          c.fromOther
+            .map(
+              (t) =>
+                `<div class="ro-row"><span><strong>${esc(t.code)}</strong></span>` +
+                `<span class="p-state">${t.times} ${t.times === 1 ? "lesson" : "lessons"}, not on the list you use now</span></div>`
+            )
+            .join("") +
+          `</div>`
+        : "") +
+      // The half you cannot notice by reading the other half.
+      (c.untaught.length
+        ? `<div class="ls-mpart"><h3>Nothing against these yet</h3>` +
+          c.untaught
+            .slice(0, 40)
+            .map(
+              (t) =>
+                `<div class="ro-row"><span><strong>${esc(t.code)}</strong> ${esc(t.text)}</span>` +
+                (t.strand ? `<span class="p-state">${esc(t.strand)}</span>` : "") +
+                `</div>`
+            )
+            .join("") +
+          (c.untaught.length > 40 ? `<p class="muted">and ${c.untaught.length - 40} more</p>` : "") +
+          `</div>`
+        : "");
+  }
+
+  function renderSyllabus() {
+    const S = window.OrganiserSyllabus;
+    if (!S) return;
+    const n = $("#lsSylName");
+    if (n && !n.value) n.value = (syllabus && syllabus.name) || "";
+    const box = $("#lsSylPaste");
+    if (box && !box.value && syllabus)
+      box.value = syllabus.targets.map((t) => `${t.code}\t${t.text}`).join("\n");
+    readSyllabus();
+  }
+
+  // Say what was read out BEFORE it's kept — the same rule as the plan box.
+  function readSyllabus() {
+    const S = window.OrganiserSyllabus;
+    const out = $("#lsSylRead");
+    const box = $("#lsSylPaste");
+    if (!S || !out || !box) return;
+    const t = S.parse(box.value || "");
+    const coded = t.filter((x) => x.code).length;
+    out.textContent = t.length
+      ? `${t.length} targets read, ${coded} of them with a code. ` +
+        (coded < t.length ? "The ones without a code can't be counted as covered, only read." : "")
+      : "";
+  }
+
+  function wireSyllabus() {
+    const box = $("#lsSylPaste");
+    if (box) box.addEventListener("input", readSyllabus);
+    const btn = $("#lsSylSave");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const S = window.OrganiserSyllabus;
+      if (!S) return;
+      const targets = S.parse(($("#lsSylPaste").value || ""));
+      // Replacing wholesale is the point — a new school, a new year group.
+      // Lessons keep the codes they were given, so anything still on the new
+      // syllabus stays joined up and anything dropped simply stops matching.
+      syllabus = targets.length
+        ? S.normalise({ name: ($("#lsSylName").value || "").trim(), targets })
+        : null;
+      OrganiserStore.save({ syllabus });
+      renderTargets();
+      renderAll();
+    });
+  }
+
   function renderAll() {
     renderPickers();
     renderList();
     renderMirror();
+    renderCoverage();
   }
 
   async function init() {
@@ -323,13 +464,25 @@
     schedule = Array.isArray(data.schedule) ? data.schedule : [];
     items = Array.isArray(data.items) ? data.items : [];
     tried = Array.isArray(data.tried) ? data.tried : [];
+    syllabus = data.syllabus || null;
     const paste = $("#lsPaste");
-    if (paste) paste.addEventListener("input", preview);
+    if (paste) paste.addEventListener("input", () => { preview(); renderTargets(); });
     const btn = $("#lsSave");
     if (btn) btn.addEventListener("click", save);
     wireList();
     wireHeadings();
+    wireSyllabus();
+    const tg = $("#lsTargets");
+    if (tg)
+      tg.addEventListener("change", (e) => {
+        const b = e.target;
+        if (!b || !b.classList || !b.classList.contains("ls-tbox")) return;
+        chosenTargets = b.checked
+          ? chosenTargets.concat([b.value])
+          : chosenTargets.filter((x) => x !== b.value);
+      });
     renderHeadings();
+    renderSyllabus();
     renderAll();
   }
 

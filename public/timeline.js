@@ -34,6 +34,7 @@
   let movingId = null; // which planned task is having its slot changed
   let worked = {}; // minutes really put in, per day — see weekend.js
   let areaList = []; // the parts of your life, as YOU named them — see areas.js
+  let rotas = []; // going round a list, one at a time — see rota.js
   let areaEditId = null; // which job is having its areas corrected
   const goalAreasById = (id) => {
     const g = goals.find((x) => x.id === id);
@@ -51,7 +52,21 @@
   const todayISO = () => S().isoOf(new Date());
 
   function persist() {
-    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList });
+    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList, rotas });
+  }
+
+  // A TURN TICKED OFF HERE IS A TURN, not just a job done.
+  //
+  // A rota task carries which round and which person it belongs to. Without
+  // this the job disappears off the day and the queue never moves, so the same
+  // name is offered again tomorrow and the round silently stops going round.
+  function markRotaTurn(it) {
+    const R = window.OrganiserRota;
+    if (!R || !it || !it.rotaId || !it.rotaMemberId) return;
+    const r = rotas.find((x) => x && x.id === it.rotaId);
+    if (!r) return;
+    const next = R.mark(r, it.rotaMemberId, todayISO());
+    rotas = rotas.map((x) => (x && x.id === it.rotaId ? next : x));
   }
 
   // Make the tasks a block owes, and let go of the ones whose moment has passed.
@@ -552,6 +567,7 @@
     const p = planFor(iso);
     it.done = true;
     it.completedAt = now.toISOString();
+    markRotaTurn(it);
 
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const lastTick = Number.isFinite(p.lastTickMin) ? p.lastTickMin : -1;
@@ -1169,6 +1185,7 @@
     cfg = data.scheduleConfig || null;
     worked = data.worked || {};
     areaList = data.areas || [];
+    rotas = data.rotas || [];
     syncPrep();
     $("#setupToggle").addEventListener("click", () => {
       setupOpen = !setupOpen;

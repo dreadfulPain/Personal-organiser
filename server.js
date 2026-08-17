@@ -86,7 +86,7 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, savedAt: null };
+  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, savedAt: null };
 }
 
 function normaliseDoc(d) {
@@ -108,6 +108,8 @@ function normaliseDoc(d) {
     tried: Array.isArray(d.tried) ? d.tried : [],
     lessons: Array.isArray(d.lessons) ? d.lessons : [],
     lessonConfig: d.lessonConfig && typeof d.lessonConfig === "object" ? d.lessonConfig : null,
+    rotas: Array.isArray(d.rotas) ? d.rotas : [],
+    syllabus: d.syllabus && typeof d.syllabus === "object" ? d.syllabus : null,
     contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
     schedule: Array.isArray(d.schedule) ? d.schedule : [],
     scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
@@ -125,7 +127,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, savedAt: null };
+  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, savedAt: null };
   try {
     current = readData();
   } catch {
@@ -161,6 +163,8 @@ function writeData(input, opts) {
         tried: Array.isArray(input.tried) ? input.tried : current.tried || [],
         lessons: Array.isArray(input.lessons) ? input.lessons : current.lessons || [],
         lessonConfig: input.lessonConfig !== undefined ? input.lessonConfig : current.lessonConfig || null,
+        rotas: Array.isArray(input.rotas) ? input.rotas : current.rotas || [],
+        syllabus: input.syllabus !== undefined ? input.syllabus : current.syllabus || null,
       };
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
@@ -200,6 +204,8 @@ function writeData(input, opts) {
   const tried = Array.isArray(input.tried) ? input.tried : current.tried || [];
   const lessons = Array.isArray(input.lessons) ? input.lessons : current.lessons || [];
   const lessonConfig = input.lessonConfig !== undefined ? input.lessonConfig : current.lessonConfig || null;
+  const rotas = Array.isArray(input.rotas) ? input.rotas : current.rotas || [];
+  const syllabus = input.syllabus !== undefined ? input.syllabus : current.syllabus || null;
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -220,6 +226,8 @@ function writeData(input, opts) {
     tried,
     lessons,
     lessonConfig,
+    rotas,
+    syllabus,
     schedule,
     scheduleConfig,
   };

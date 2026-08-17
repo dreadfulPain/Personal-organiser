@@ -67,12 +67,36 @@
         <div id="lsMirror"></div>
       </section>
 
-      <!-- WHAT'S BEEN TAUGHT AGAINST, AND WHAT HASN'T. -->
-      <section class="p-block" id="lsCoverBlock" hidden>
+      <!-- WHICH CLASS ALL OF THE BELOW IS ABOUT. -->
+      <section class="p-block" id="lsWhereBlock" hidden>
+        <label class="p-pick">Where we are with
+          <select id="lsWhich"></select>
+        </label>
+
+        <!-- COMING BACK TO IT: a day, a week, a month. -->
+        <h2>Due to come back to</h2>
+        <p class="muted">Something taught once is mostly gone within a month. Each
+          of these lands on the next lesson you actually have that class — and
+          going over it again in a normal lesson counts, it doesn't have to be
+          labelled a review.</p>
+        <p id="lsReviewWords" class="muted"></p>
+        <div id="lsReview"></div>
+
+        <!-- WHAT'S BEEN TAUGHT AGAINST, AND WHAT HASN'T. -->
         <h2>Targets covered</h2>
         <p id="lsCoverWords" class="muted"></p>
         <div id="lsCover"></div>
+
+        <!-- AND WHETHER IT LANDED. Taught is not learnt. -->
+        <h2>How it landed</h2>
+        <p class="muted">Having taught something and anyone having learnt it are
+          different facts. These are the ones most of them are furthest from,
+          first. Whether that means going again is your call — it depends which
+          of them are behind and what's coming, and neither is knowable here.</p>
+        <div id="lsWhere"></div>
       </section>
+
+      <section class="p-block" id="lsCoverBlock" hidden></section>
 
       <!-- THE SYLLABUS ITSELF. Replaceable wholesale, which is the point. -->
       <section class="p-block">
@@ -112,6 +136,12 @@
             <label>How you checked it is called
               <input id="lsHChecks" type="text" maxlength="300" />
             </label>
+            <label>Come back to it after
+              <input id="lsHGaps" type="text" maxlength="60" placeholder="1, 7, 30" />
+              <span class="muted">Days after teaching it. A day, a week and a month
+                is the usual shape — change it to whatever suits you, or empty it
+                to turn the reminders off.</span>
+            </label>
             <button type="submit" class="btn">Save headings</button>
           </form>
         </details>
@@ -125,6 +155,8 @@
     <script src="schedule.js" defer></script>
     <script src="tried.js" defer></script>
     <script src="syllabus.js" defer></script>
+    <script src="review.js" defer></script>
+    <script src="attain.js" defer></script>
     <script src="lessonplan.js" defer></script>
     <script src="lessons.js" defer></script>
   </body>

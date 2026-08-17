@@ -22,6 +22,7 @@
 
   let contacts = [], records = [], recordConfig = null;
   let pastoralNotes = [], pastoralTopics = [], toldLog = [], tried = [];
+  let lessons = [], syllabus = null;
   let who = "";
 
   const $ = (s) => document.querySelector(s);
@@ -237,6 +238,36 @@
     pastoralNotes = P.add(pastoralNotes, { who, topicId, ...what }, todayISO());
     OrganiserStore.save({ pastoralNotes });
     renderAll();
+  }
+
+  // ---- where they are against the syllabus -------------------------------
+  //
+  // Only targets their class was actually taught. Judging someone against
+  // something never covered is a mark for the planning, not for them — and it
+  // would put a wall of red on the page of a child who did nothing wrong.
+  function renderSyllabus() {
+    const A = window.OrganiserAttain;
+    const block = $("#pSylBlock");
+    const el = $("#pSyl");
+    if (!A || !block || !el) return;
+    const me = contacts.find((c) => c && c.id === who);
+    const rows = who ? A.forPerson(records, recordConfig, lessons, syllabus, who, me && me.group) : [];
+    block.hidden = !who || !rows.length;
+    if (!rows.length) return;
+    const w = $("#pSylWords");
+    if (w) w.textContent = A.personWords(rows);
+    el.innerHTML = rows
+      .map(
+        (r) =>
+          `<div class="ro-row ls-att ${esc(r.state.replace(/\s+/g, "-"))}">` +
+          `<span><strong>${esc(r.code)}</strong> ${esc(r.text)}</span>` +
+          `<span class="p-state">` +
+          (r.state === "not judged yet"
+            ? `taught ${esc(ago(r.lastTaught))}, not judged yet`
+            : `${esc(r.level)} · ${esc(ago(r.date))}`) +
+          `</span></div>`
+      )
+      .join("");
   }
 
   // ---- 4. what you tried, and what moved afterwards ---------------------
@@ -474,6 +505,7 @@
     renderChart();
     renderPastoral();
     renderTopics();
+    renderSyllabus();
     renderTriedForm();
     renderTried();
     renderTold();
@@ -507,6 +539,8 @@
     pastoralTopics = Array.isArray(data.pastoralTopics) ? data.pastoralTopics : [];
     toldLog = Array.isArray(data.toldLog) ? data.toldLog : [];
     tried = Array.isArray(data.tried) ? data.tried : [];
+    lessons = Array.isArray(data.lessons) ? data.lessons : [];
+    syllabus = data.syllabus || null;
     // Deep-link straight to someone: person.html#id — so a shortcut can open on
     // the right person rather than on a chooser.
     const hash = (location.hash || "").replace(/^#/, "");

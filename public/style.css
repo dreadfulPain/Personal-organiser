@@ -3908,7 +3908,23 @@ a.btn {
 .ls-target { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0;
   border-bottom: 1px solid var(--line); font-size: 0.92rem; }
 .ls-target input { margin-top: 4px; flex: none; }
+/* Coming back to it, and how it landed. Overdue is marked, never scolded. */
+.ls-rev.overdue { border-left: 3px solid var(--warn, #c06a00); padding-left: 8px; }
+.ls-rev.today { border-left: 3px solid var(--accent); padding-left: 8px; }
+.ls-att.below { border-left: 3px solid var(--warn, #c06a00); padding-left: 8px; }
+.ls-att.not-judged-yet { border-left: 3px solid var(--line); padding-left: 8px; }
+
+/* Marking a class against what a lesson was aimed at. */
+.ls-grid { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fff; }
+.ls-gtarget { margin-top: 12px; }
+.ls-gtarget h4 { font-size: 0.9rem; margin: 0 0 6px; }
+.ls-grow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 4px 0; }
+.ls-gname { flex: 0 0 8rem; font-size: 0.9rem; }
+.ls-lvl { font-size: 0.8rem; }
+
 @media (max-width: 560px) {
   .ro-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .ls-gname { flex: 1 1 100%; }
 }
 .bp-cover.never .bp-cwhen { font-style: italic; }

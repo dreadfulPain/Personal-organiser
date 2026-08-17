@@ -19,6 +19,8 @@
   let lessons = [], lessonConfig = null, contacts = [], records = [], recordConfig = null;
   let schedule = [], items = [], tried = [], syllabus = null;
   let chosenTargets = []; // codes ticked for the plan currently in the box
+  let where = "";         // which class the "where we are" half is about
+  let grading = "";       // the id of the lesson whose marking grid is open
   let editing = ""; // the id of the plan whose "afterwards" box is open
 
   const $ = (s) => document.querySelector(s);
@@ -199,7 +201,14 @@
           `${l.taught ? "taught" : "mark as taught"}</button>` +
           `<button type="button" class="link ls-after" data-id="${esc(l.id)}">` +
           `${l.note ? "change what you thought" : "how did it go"}</button>` +
+          // Only once it's taught and pointed at something — marking a class
+          // against a lesson you haven't given yet is a guess with a date on it.
+          (l.taught && l.targets.length
+            ? `<button type="button" class="link ls-mark" data-id="${esc(l.id)}">` +
+              `${grading === l.id ? "close" : "how did they do"}</button>`
+            : "") +
           `</div>` +
+          (grading === l.id ? markingGrid(l) : "") +
           // The box only opens for the one you asked for. A textarea under every
           // lesson turns the page into a wall of empty boxes.
           (editing === l.id
@@ -211,6 +220,72 @@
         );
       })
       .join("");
+  }
+
+  // ONE ROW PER PERSON, ONE COLUMN PER TARGET. Tap the level.
+  //
+  // Whoever you don't get to is left blank, which is its own answer — "not
+  // judged" is a different fact from "didn't get it" and the app keeps them
+  // apart everywhere. Nothing is pre-filled and nothing is assumed.
+  function markingGrid(l) {
+    const lv = window.OrganiserLevels;
+    if (!lv) return "";
+    const members = contacts.filter((c) => c && c.id && (!l.group || c.group === l.group));
+    if (!members.length) return `<p class="muted">Nobody on your list is in ${esc(l.group || "this class")}.</p>`;
+    const levels = lv.levels(recordConfig);
+    if (!levels.length) return `<p class="muted">No scale set up yet — the Students page is where the levels are named.</p>`;
+    return (
+      `<div class="ls-grid"><p class="muted">Anyone you don't get to stays blank, which is not the same as not getting it.</p>` +
+      l.targets
+        .map((code) => {
+          const rows = members
+            .map((m) => {
+              const cur = lv.currentFor(records, m.id, code);
+              return (
+                `<div class="ls-grow"><span class="ls-gname">${esc(m.name || m.id)}</span>` +
+                levels
+                  .map(
+                    (lev) =>
+                      `<button type="button" class="p-opt ls-lvl${cur && cur.level === lev ? " on" : ""}" ` +
+                      `data-lesson="${esc(l.id)}" data-code="${esc(code)}" data-who="${esc(m.id)}" ` +
+                      `data-level="${esc(lev)}">${esc(lev)}</button>`
+                  )
+                  .join("") +
+                `</div>`
+              );
+            })
+            .join("");
+          return `<div class="ls-gtarget"><h4>${esc(code)} ${esc(targetText(code))}</h4>${rows}</div>`;
+        })
+        .join("") +
+      `</div>`
+    );
+  }
+
+  // The same record every other page writes — same fields, same shape. A
+  // judgement made here has to be indistinguishable from one made on the
+  // Students page, or half the app stops seeing it.
+  function markLevel(who, code, level) {
+    const lv = window.OrganiserLevels;
+    if (!lv) return;
+    const cur = lv.currentFor(records, who, code);
+    const now = new Date().toISOString();
+    if (cur && String(cur.level) === String(level)) {
+      // Same judgement again is a confirmation, not a second piece of evidence.
+      lv.addConfirmation(cur, todayISO());
+    } else {
+      records = [{
+        id: `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        who, date: todayISO(),
+        type: ((recordConfig || {}).types || [])[0] || "assessment",
+        summary: cur ? `${code} — now ${level} (was ${cur.level})` : `${code} — ${level}`,
+        detail: "", extra: {}, topic: code, level: String(level), tags: [],
+        followUp: false, taskId: "", src: "hand", checkedAt: now, createdAt: now, files: [],
+      }].concat(records);
+    }
+    OrganiserStore.save({ records });
+    renderAll();
+    renderList();
   }
 
   function wireList() {
@@ -229,6 +304,11 @@
       } else if (t.classList.contains("ls-after")) {
         editing = editing === id ? "" : id;
         renderList();
+      } else if (t.classList.contains("ls-mark")) {
+        grading = grading === id ? "" : id;
+        renderList();
+      } else if (t.classList.contains("ls-lvl")) {
+        markLevel(t.dataset.who, t.dataset.code, t.dataset.level);
       } else if (t.classList.contains("ls-savenote")) {
         const box = el.querySelector(".ls-notebox");
         lessons = L.update(lessons, id, { note: box ? box.value : "" });
@@ -310,6 +390,13 @@
           .join("");
     const d = $("#lsDate");
     if (d && !d.value) d.value = todayISO();
+    const wh = $("#lsWhich");
+    if (wh) {
+      const gs = groups();
+      wh.innerHTML =
+        `<option value="">every class</option>` +
+        gs.map((x) => `<option value="${esc(x)}"${x === where ? " selected" : ""}>${esc(x)}</option>`).join("");
+    }
   }
 
   function renderHeadings() {
@@ -322,6 +409,9 @@
     set("#lsHObjective", hs.objective);
     set("#lsHWays", hs.ways);
     set("#lsHChecks", hs.checks);
+    const RV = window.OrganiserReview;
+    const g = $("#lsHGaps");
+    if (g && RV) g.value = RV.gaps(lessonConfig).join(", ");
   }
 
   function wireHeadings() {
@@ -338,6 +428,10 @@
           ways: split("#lsHWays"),
           checks: split("#lsHChecks"),
         },
+        // Empty is a deliberate "no reminders", and is kept as an empty list
+        // rather than falling back to the starting values.
+        reviewDays: ($("#lsHGaps").value || "")
+          .split(",").map((x) => Math.round(Number(x.trim()))).filter((n) => n > 0),
       };
       OrganiserStore.save({ lessonConfig });
       renderHeadings();
@@ -352,7 +446,7 @@
     const block = $("#lsCoverBlock");
     const el = $("#lsCover");
     if (!S || !block || !el) return;
-    const c = S.coverage(lessons, syllabus, {});
+    const c = S.coverage(lessons, syllabus, { group: where });
     block.hidden = !c.total;
     if (!c.total) return;
     const w = $("#lsCoverWords");
@@ -447,11 +541,85 @@
     });
   }
 
+  // ---- coming back to it --------------------------------------------------
+  function renderReview() {
+    const RV = window.OrganiserReview;
+    const el = $("#lsReview");
+    if (!RV || !el) return;
+    const rows = RV.due(lessons, lessonConfig, schedule, todayISO(), { group: where });
+    const w = $("#lsReviewWords");
+    if (w) w.textContent = RV.summary(rows);
+    el.innerHTML = rows.length
+      ? rows
+          .slice(0, 20)
+          .map(
+            (r) =>
+              `<div class="ro-row ls-rev ${esc(r.state)}"><span><strong>${esc(r.code)}</strong> ` +
+              `${esc(targetText(r.code))}</span>` +
+              `<span class="p-state">${esc(RV.words(r))}</span></div>`
+          )
+          .join("") + (rows.length > 20 ? `<p class="muted">and ${rows.length - 20} more</p>` : "")
+      : "";
+  }
+
+  const targetText = (code) => {
+    const S = window.OrganiserSyllabus;
+    const syl = S ? S.normalise(syllabus) : null;
+    const t = syl && syl.targets.find((x) => x.code === code);
+    return t ? t.text : "";
+  };
+
+  // ---- and whether it landed ----------------------------------------------
+  function renderWhere() {
+    const A = window.OrganiserAttain;
+    const el = $("#lsWhere");
+    if (!A || !el) return;
+    const members = contacts.filter((c) => c && c.id && (!where || c.group === where));
+    const pic = A.picture(records, recordConfig, lessons, syllabus, members, where);
+    if (!pic.rows.length) {
+      el.innerHTML = `<p class="muted">Nothing taught against the syllabus for this class yet.</p>`;
+      return;
+    }
+    if (!pic.anyJudged) {
+      el.innerHTML = `<p class="muted">${pic.rows.length} targets taught, and nobody judged against any of them yet. That's a starting point, not a result — mark a taught lesson below to begin.</p>`;
+      return;
+    }
+    el.innerHTML = pic.rows
+      .map((r) => {
+        const bar = r.ranked
+          .map(
+            ([lvl, n]) =>
+              `<div class="bp-row"><span class="bp-opt">${esc(lvl)}</span>` +
+              `<span class="bp-bar"><i style="width:${Math.round((n / Math.max(1, r.judged)) * 100)}%"></i></span>` +
+              `<span class="bp-n">${n}</span></div>`
+          )
+          .join("");
+        return (
+          `<div class="ls-mpart"><h3>${esc(r.code)} ${esc(r.text)}</h3>` +
+          `<p class="muted">${esc(A.classWords(r))}</p>${bar}` +
+          // Names, not just counts — the same rule as the planning page. A
+          // number tells you there's a problem; a name tells you whose.
+          (r.namesBelow.length
+            ? `<p class="bp-who">below: ${esc(r.namesBelow.map((x) => x.name).join(", "))}</p>`
+            : "") +
+          (r.namesUnjudged.length
+            ? `<p class="bp-who">not judged: ${esc(r.namesUnjudged.map((x) => x.name).join(", "))}</p>`
+            : "") +
+          `</div>`
+        );
+      })
+      .join("");
+  }
+
   function renderAll() {
     renderPickers();
     renderList();
     renderMirror();
     renderCoverage();
+    const wb = $("#lsWhereBlock");
+    if (wb) wb.hidden = !syllabus;
+    renderReview();
+    renderWhere();
   }
 
   async function init() {
@@ -465,10 +633,13 @@
     items = Array.isArray(data.items) ? data.items : [];
     tried = Array.isArray(data.tried) ? data.tried : [];
     syllabus = data.syllabus || null;
+    where = "";
     const paste = $("#lsPaste");
     if (paste) paste.addEventListener("input", () => { preview(); renderTargets(); });
     const btn = $("#lsSave");
     if (btn) btn.addEventListener("click", save);
+    const wh = $("#lsWhich");
+    if (wh) wh.addEventListener("change", () => { where = wh.value; renderAll(); });
     wireList();
     wireHeadings();
     wireSyllabus();

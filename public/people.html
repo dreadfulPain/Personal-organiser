@@ -24,6 +24,23 @@
           <input id="pplName" type="text" placeholder="Name — that's all you need to start" aria-label="Name" />
           <button id="pplAdd" class="btn">Add</button>
         </div>
+
+        <!-- THE WHOLE CLASS AT ONCE. The register is already a spreadsheet;
+             typing it in one name at a time is the longest job in setting this
+             app up, and the data is sitting there in two clean columns. -->
+        <details class="p-setup" id="pplPasteBox">
+          <summary>Paste a whole class in</summary>
+          <p class="muted">Select the names in your register and copy them. One
+            per line, or two columns for name and class — whichever way round
+            they come. Nothing is added until you have seen what it read.</p>
+          <label class="ls-full">Your list
+            <textarea id="pplPaste" rows="7" placeholder="Wang Wei&#9;9A"></textarea>
+          </label>
+          <div id="pplCols" class="ppl-cols" hidden></div>
+          <p id="pplPasteWords" class="muted"></p>
+          <div id="pplPreview" class="ls-preview" hidden></div>
+          <button id="pplPasteAdd" type="button" class="btn" hidden>Add them</button>
+        </details>
       </section>
 
       <p id="pplStatus" class="status" hidden></p>
@@ -56,6 +73,7 @@
     <script src="names.js" defer></script>
     <script src="quickparse.js" defer></script>
     <script src="capture.js" defer></script>
+    <script src="roster.js" defer></script>
     <script src="people.js" defer></script>
   </body>
 </html>

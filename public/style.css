@@ -3920,6 +3920,13 @@ a.btn {
 .ls-open input[type="file"] { font: inherit; font-size: 0.85rem; margin-left: 4px; }
 .ls-open .muted { display: block; margin-top: 3px; font-size: 0.78rem; }
 
+/* Pasting a whole class in. The skipped rows stay visible and greyed rather
+   than vanishing — a count that quietly drops three people is worse than none. */
+.ppl-cols { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.ppl-cols .muted { flex: 0 0 auto; }
+.ppl-col { font-size: 0.8rem; }
+.ppl-skip { opacity: 0.55; }
+
 /* ---- REGISTER: tap the ones who aren't here ------------------------------ */
 .at-row { display: flex; gap: 8px; align-items: center; padding: 5px 0;
   border-bottom: 1px solid var(--line); }

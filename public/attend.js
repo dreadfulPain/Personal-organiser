@@ -111,9 +111,17 @@
       else break;
     }
     const lastIn = [...all].reverse().find((s) => !s.away.includes(who));
-    const daysSinceIn = lastIn
-      ? Math.round((new Date(iso + "T12:00:00") - new Date(lastIn.date + "T12:00:00")) / 86400000)
-      : null;
+    const gap = (from) => Math.round((new Date(iso + "T12:00:00") - new Date(from + "T12:00:00")) / 86400000);
+    const daysSinceIn = lastIn ? gap(lastIn.date) : null;
+    // HOW OLD THE ANSWER ITSELF IS.
+    //
+    // A run of three carries on reading as "away the last three times" whether
+    // those were last week or last term. After a month off it is describing
+    // something that stopped being news in November, in the present tense, at
+    // the top of the page. So the date of the most recent register is carried
+    // out alongside the run — the fact and its age travel together.
+    const lastTaken = all.length ? all[all.length - 1].date : "";
+    const daysSinceRegister = lastTaken ? gap(lastTaken) : null;
     return {
       who,
       group,
@@ -126,6 +134,11 @@
       run,
       lastIn: lastIn ? lastIn.date : "",
       daysSinceIn,
+      lastTaken,
+      daysSinceRegister,
+      // Nothing has been taken for this class in a fortnight, so whatever this
+      // says is about a state of affairs that may well have moved on.
+      stale: daysSinceRegister !== null && daysSinceRegister > 14,
       dates: away.map((s) => s.date),
     };
   }
@@ -162,8 +175,19 @@
   // of registers and a number of days, and a question rather than a verdict.
   function words(p) {
     if (!p.sessions) return "No registers taken for this class yet.";
-    if (p.run >= 2)
-      return `Away the last ${p.run} times${p.lastIn ? `, last in on ${p.lastIn}` : ""}. Do you know why?`;
+    if (p.run >= 2) {
+      const since = p.daysSinceIn === null ? "" :
+        p.daysSinceIn < 14 ? `, last in ${p.daysSinceIn} days ago`
+        : `, last in ${Math.round(p.daysSinceIn / 7)} weeks ago`;
+      // If no register has been taken for a fortnight, say so first. Otherwise
+      // a run from before a holiday reads as something happening this week.
+      const old = p.stale
+        ? ` The last register for this class was ${
+            p.daysSinceRegister < 21 ? `${p.daysSinceRegister} days` : `${Math.round(p.daysSinceRegister / 7)} weeks`
+          } ago, so this may have moved on.`
+        : "";
+      return `Away the last ${p.run} times${since}. Do you know why?${old}`;
+    }
     if (!p.away) return `In for all ${p.sessions} registers taken.`;
     const sh = p.share === null
       ? `${p.away} of ${p.sessions}`

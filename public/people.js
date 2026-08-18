@@ -191,6 +191,82 @@
     openId = person.id;
     render();
   }
+  // ---- a whole class at once ------------------------------------------------
+  //
+  // Read, shown, then added — the same rule the plan box and the syllabus box
+  // follow. Twenty-four people arriving silently is exactly the kind of thing
+  // you want to have looked at before it happens.
+  function pasteRead() {
+    const R = window.OrganiserRoster;
+    const box = $("#pplPaste");
+    if (!R || !box) return null;
+    const text = box.value || "";
+    const pick = pasteCols;
+    const r = R.read(text, {
+      existing: contacts,
+      ...(pick ? { name: pick.name, group: pick.group } : {}),
+    });
+    if (!pasteCols && r.columns) pasteCols = r.pick;
+    return r;
+  }
+  let pasteCols = null;
+
+  function renderPaste() {
+    const R = window.OrganiserRoster;
+    const prev = $("#pplPreview");
+    const words = $("#pplPasteWords");
+    const btn = $("#pplPasteAdd");
+    const cols = $("#pplCols");
+    if (!R || !prev) return;
+    const r = pasteRead();
+    const any = r && r.rows.length;
+    if (prev) prev.hidden = !any;
+    if (btn) btn.hidden = !any || !r.adding.length;
+    if (cols) cols.hidden = !any || r.columns < 2;
+    if (words) words.textContent = any ? R.words(r) : "";
+    if (!any) return;
+
+    // WHICH COLUMN IS WHICH IS YOURS TO SAY. "Wang, Wei" and "Wang Wei, 9A"
+    // are the same shape and mean different things; a guess is offered and
+    // never imposed.
+    if (cols && r.columns >= 2) {
+      cols.innerHTML =
+        `<span class="muted">Which column is the name?</span> ` +
+        Array.from({ length: r.columns }, (_, c) =>
+          `<button type="button" class="p-opt ppl-col${c === r.pick.name ? " on" : ""}" ` +
+          `data-col="${c}">${escapeHtml((r.rows[0] && r.rows[0].cells[c]) || "column " + (c + 1))}</button>`
+        ).join("");
+    }
+
+    prev.innerHTML =
+      r.rows
+        .slice(0, 40)
+        .map(
+          (x) =>
+            `<div class="ro-row${x.skip ? " ppl-skip" : ""}">` +
+            `<span>${escapeHtml(x.name || "—")}</span>` +
+            `<span class="p-state">${escapeHtml(x.skip || x.group || "no class")}</span></div>`
+        )
+        .join("") +
+      (r.rows.length > 40 ? `<p class="muted">and ${r.rows.length - 40} more</p>` : "");
+  }
+
+  function pasteAdd() {
+    const r = pasteRead();
+    if (!r || !r.adding.length) return;
+    const made = r.adding.map((x) => ({
+      id: uid(), name: x.name, group: x.group || "", details: {}, createdAt: nowISO(),
+    }));
+    // Newest first, same as adding one by one, and in the order you pasted.
+    contacts = made.reverse().concat(contacts);
+    persist();
+    $("#pplPaste").value = "";
+    pasteCols = null;
+    renderPaste();
+    render();
+    setStatus(`${made.length} added.`);
+  }
+
   function deletePerson(id) {
     const p = contacts.find((c) => c.id === id);
     if (!p || !confirm(`Remove ${p.name} from your people list?`)) return;
@@ -455,6 +531,22 @@
     }
     OrganiserStore.onExternalChange(refreshFromExternal);
     $("#pplAdd").addEventListener("click", addPerson);
+    const pbox = $("#pplPaste");
+    if (pbox) pbox.addEventListener("input", () => { pasteCols = null; renderPaste(); });
+    const padd = $("#pplPasteAdd");
+    if (padd) padd.addEventListener("click", pasteAdd);
+    const pcols = $("#pplCols");
+    if (pcols)
+      pcols.addEventListener("click", (e) => {
+        const b = e.target.closest ? e.target.closest(".ppl-col") : null;
+        if (!b) return;
+        const c = Number(b.dataset.col);
+        // Picking the name column leaves the other one as the group, when there
+        // is exactly one other. More than that and the group is left alone.
+        const cur = pasteCols || { name: 0, group: -1 };
+        pasteCols = { name: c, group: cur.group === c ? -1 : cur.group };
+        renderPaste();
+      });
     $("#pplName").addEventListener("keydown", (e) => {
       if (e.key === "Enter") addPerson();
     });

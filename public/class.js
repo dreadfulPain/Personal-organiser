@@ -13,9 +13,34 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   // This page used to be read-only. The marking session writes, so it saves the
   // one half it owns — the merge-save keeps everything else intact.
+  // THE PEOPLE YOU ACTUALLY HAVE, when you have never filled in a marking list.
+  //
+  // This page marks whoever is in recordConfig.whoIds, which is a list of bare
+  // ids kept only by the Students page. The People page keeps `contacts`, and
+  // everything built since — the register, the turns, the pastoral notes, the
+  // person page, before-you-plan — hangs off that instead. Nothing joins the
+  // two, so somebody who has put their class into People and never opened the
+  // Students page gets an empty marking grid and no hint as to why.
+  //
+  // Falling back only when the list is empty can't overwrite anybody's setup:
+  // if you have a marking list, it is used exactly as before.
+  function markable() {
+    const own = (config && Array.isArray(config.whoIds) ? config.whoIds : []).filter(Boolean);
+    if (own.length) return own;
+    return contacts.filter((c) => c && c.id).map((c) => c.id);
+  }
+  // And a name to show for it, since a fallback list is full of ids nobody
+  // recognises. Falls back to the id, which is what this page always showed.
+  function nameOf(id) {
+    const c = contacts.find((x) => x && x.id === id);
+    return (c && c.name) || id;
+  }
+
   function persist() {
     OrganiserStore.save({ records });
   }
+  let contacts = []; // the People page's list — see markable()
+
   function escapeHtml(s) {
     return (s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -92,11 +117,11 @@
       card.appendChild(line);
 
       // Empty and unrecorded must never look the same.
-      const missing = (config.whoIds || []).filter((w) => !byWho.has(w));
+      const missing = markable().filter((w) => !byWho.has(w));
       const foot = document.createElement("p");
       foot.className = "cl-missing";
       foot.textContent = missing.length
-        ? `${missing.length} with no record for this skill: ${missing.join(", ")}`
+        ? `${missing.length} with no record for this skill: ${missing.map(nameOf).join(", ")}`
         : "everyone has a record for this skill";
       card.appendChild(foot);
       wrap.appendChild(card);
@@ -305,13 +330,13 @@
     const target = L.targetLevel(config);
     const list = document.createElement("div");
     list.className = "ms-list";
-    (config.whoIds || []).forEach((who) => {
+    markable().forEach((who) => {
       const current = L.currentFor(records, who, session.skill);
       const row = document.createElement("div");
       row.className = "ms-row";
       const name = document.createElement("span");
       name.className = "ms-who";
-      name.textContent = who;
+      name.textContent = nameOf(who);
       const now = document.createElement("span");
       const work = L.workFor(records, who, session.skill);
       // "confirmed 3×" reads as strong. With no work behind it, it's the
@@ -362,11 +387,11 @@
     // Show what's MISSING, not just what's there — the same principle as the
     // meeting panel. Nothing recorded and nothing wrong must never look alike.
     const byWho = L.classFor(records, session.skill);
-    const missing = (config.whoIds || []).filter((w) => !byWho.has(w));
+    const missing = markable().filter((w) => !byWho.has(w));
     const foot = document.createElement("p");
     foot.className = "ms-missing";
     foot.textContent = missing.length
-      ? `${missing.length} still with no record for this skill: ${missing.join(", ")}`
+      ? `${missing.length} still with no record for this skill: ${missing.map(nameOf).join(", ")}`
       : "everyone has a record for this skill ✓";
     box.appendChild(foot);
 
@@ -406,7 +431,7 @@
     const box = $("#checklist");
     box.hidden = false;
     box.innerHTML = "";
-    (config.whoIds || []).forEach((who) => {
+    markable().forEach((who) => {
       const s = studentReadiness(who);
       const row = document.createElement("div");
       row.className = "ck-row";
@@ -450,7 +475,7 @@
   }
 
   async function exportAll() {
-    const withEvidence = (config.whoIds || []).filter((w) => records.some((r) => r.who === w && r.topic && !OrganiserExport.needsCheck(r)));
+    const withEvidence = markable().filter((w) => records.some((r) => r.who === w && r.topic && !OrganiserExport.needsCheck(r)));
     if (!withEvidence.length) {
       setClStatus("No confirmed evidence to export yet.");
       return;
@@ -472,7 +497,7 @@
     const today = new Date();
     const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     OrganiserExport.download(`class-progress-${stamp}.html`, OrganiserExport.docShell("Class progress summaries", inner));
-    const skipped = (config.whoIds || []).length - withEvidence.length;
+    const skipped = markable().length - withEvidence.length;
     setClStatus(
       `Exported ${withEvidence.length} student summar${withEvidence.length === 1 ? "y" : "ies"} — each starts on a fresh page when printed. ✓` +
         (skipped ? ` ${skipped} with no confirmed evidence were left out.` : "") +
@@ -487,7 +512,7 @@
   // so nothing you've hand-edited in Excel is ever overwritten.
   function saveIntoFolders() {
     const X = OrganiserExport;
-    const withEvidence = (config.whoIds || []).filter((w) =>
+    const withEvidence = markable().filter((w) =>
       records.some((r) => r.who === w && r.topic && !X.needsCheck(r))
     );
     if (!withEvidence.length) {
@@ -515,7 +540,7 @@
       r.ok ? written.push(r.path || who) : failed.push(r.message);
     }
 
-    const skipped = (config.whoIds || []).length - withEvidence.length;
+    const skipped = markable().length - withEvidence.length;
     setClStatus(
       `Wrote ${written.length} file${written.length === 1 ? "" : "s"} into your data folder ✓` +
         (skipped ? ` — ${skipped} student${skipped === 1 ? "" : "s"} had no confirmed evidence, so ${skipped === 1 ? "no page was" : "no pages were"} written.` : ".") +
@@ -528,6 +553,7 @@
     const data = await OrganiserStore.load();
     records = Array.isArray(data.records) ? data.records : [];
     config = data.recordConfig || null;
+    contacts = Array.isArray(data.contacts) ? data.contacts : [];
     if (config && config.title) $("#clTitle").textContent = "The class — " + config.title;
     $("#ckBtn").addEventListener("click", renderChecklist);
     $("#exportAllBtn").addEventListener("click", exportAll);

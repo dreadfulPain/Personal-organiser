@@ -128,7 +128,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [], savedAt: null };
+  let current = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [], savedAt: null };
   try {
     current = readData();
   } catch {
@@ -145,8 +145,14 @@ function writeData(input, opts) {
       const kept = {
         version: 1,
         savedAt: new Date().toISOString(),
-        items: Array.isArray(input.items) ? input.items : [],
-        waiting: Array.isArray(input.waiting) ? input.waiting : [],
+        // An ABSENT key means "I'm not talking about this store", and must
+        // keep what's there. An empty ARRAY means "I deleted them all", and is
+        // honoured — Array.isArray([]) is true, so that still comes through.
+        // These two were the odd ones out: every other store falls back to the
+        // stored value, and items and waiting fell back to nothing, so any save
+        // that didn't mention them emptied them.
+        items: Array.isArray(input.items) ? input.items : current.items || [],
+        waiting: Array.isArray(input.waiting) ? input.waiting : current.waiting || [],
         goals: Array.isArray(input.goals) ? input.goals : current.goals || [],
         records: Array.isArray(input.records) ? input.records : current.records || [],
         recordConfig: input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null,
@@ -212,8 +218,8 @@ function writeData(input, opts) {
   const doc = {
     version: 1,
     savedAt: new Date().toISOString(),
-    items: Array.isArray(input.items) ? input.items : [],
-    waiting: Array.isArray(input.waiting) ? input.waiting : [],
+    items: Array.isArray(input.items) ? input.items : current.items || [],
+    waiting: Array.isArray(input.waiting) ? input.waiting : current.waiting || [],
     goals,
     records,
     recordConfig,

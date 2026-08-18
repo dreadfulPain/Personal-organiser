@@ -538,8 +538,14 @@
     const n = $("#lsSylName");
     if (n && !n.value) n.value = (syllabus && syllabus.name) || "";
     const box = $("#lsSylPaste");
-    if (box && !box.value && syllabus)
-      box.value = syllabus.targets.map((t) => `${t.code}\t${t.text}`).join("\n");
+    // Through normalise, never straight at the object. A stored syllabus is
+    // usually well formed because this page wrote it — but a hand-edited file,
+    // a half-finished save or an older version can leave `{}` behind, and the
+    // server passes any object through untouched. Reading .targets off that
+    // throws during init, which kills the whole page rather than one block.
+    const stored = window.OrganiserSyllabus && window.OrganiserSyllabus.normalise(syllabus);
+    if (box && !box.value && stored)
+      box.value = stored.targets.map((t) => `${t.code}\t${t.text}`).join("\n");
     readSyllabus();
   }
 

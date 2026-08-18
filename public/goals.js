@@ -43,6 +43,24 @@
   }
 
   // ----- model helpers -----
+  //
+  // EVERY GOAL HAS A LIST, even when the file says otherwise. Ten places in
+  // here read goal.milestones and milestone.steps without checking, which is
+  // fine while this page is the only thing that ever wrote them — and stops
+  // being fine the moment a goal arrives from a hand-edited file, an older
+  // version, or a half-finished import. One missing array then throws during
+  // init and takes the whole page with it, rather than one goal. The home page
+  // already guards the same field; this makes the two agree.
+  function shaped(list) {
+    return (Array.isArray(list) ? list : []).filter(Boolean).map((g) => ({
+      ...g,
+      milestones: (Array.isArray(g.milestones) ? g.milestones : []).filter(Boolean).map((m) => ({
+        ...m,
+        steps: Array.isArray(m.steps) ? m.steps.filter(Boolean) : [],
+      })),
+    }));
+  }
+
   function currentIndex(goal) {
     return goal.milestones.findIndex((m) => !m.done);
   }
@@ -538,7 +556,7 @@
 
   async function init() {
     const data = await OrganiserStore.load();
-    goals = Array.isArray(data.goals) ? data.goals : [];
+    goals = shaped(data.goals);
     items = Array.isArray(data.items) ? data.items : []; // shared pool, for tasks-under-goal
     schedule = Array.isArray(data.schedule) ? data.schedule : [];
     scheduleConfig = data.scheduleConfig || null;

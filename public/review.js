@@ -56,16 +56,25 @@
   // was taught in. No slot, or a slot that runs on no days, means the date
   // itself stands — better a plain date than pretending to know the timetable.
   function nextSitting(schedule, slotId, fromISO, limitDays) {
+    const S = window.OrganiserSchedule;
     const slot = (Array.isArray(schedule) ? schedule : []).find((s) => s && s.id === slotId);
     const days = slot && Array.isArray(slot.days) ? slot.days.map(Number).filter((d) => d >= 0 && d <= 6) : [];
-    if (!days.length) return { date: fromISO, moved: false, slot: slot || null };
+    // A DAY WRITTEN OFF IS NOT A DAY YOU SEE THEM. The timetable says you teach
+    // 9A on Mondays; it does not say the Monday in question is the first day of
+    // the winter break. Checking only the day of the week lands every review
+    // that falls in a holiday on a day the school is shut — which is precisely
+    // the case this exists to handle, since a month off is exactly when
+    // something taught before it needs coming back to.
+    const off = (iso) => !!(S && S.dayIsBlocked && S.dayIsBlocked(schedule, iso));
+    // With no slot there is still a holiday to avoid, so this runs either way.
     const cap = Math.max(1, Math.min(365, Number(limitDays) || 60));
     for (let i = 0; i <= cap; i++) {
       const iso = addDays(fromISO, i);
-      if (days.includes(new Date(iso + "T12:00:00").getDay()))
-        return { date: iso, moved: i > 0, slot };
+      if (off(iso)) continue;
+      if (!days.length || days.includes(new Date(iso + "T12:00:00").getDay()))
+        return { date: iso, moved: i > 0, slot: slot || null };
     }
-    return { date: fromISO, moved: false, slot };
+    return { date: fromISO, moved: false, slot: slot || null };
   }
 
   // EVERY OCCASION A TARGET WAS TAUGHT, oldest first, per class.

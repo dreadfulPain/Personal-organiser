@@ -23,6 +23,13 @@
         <label class="ls-full">Your plan
           <textarea id="lsPaste" rows="8" placeholder="Paste the whole thing. Headings and all."></textarea>
         </label>
+        <p class="ls-open">…or open a file:
+          <input id="lsPlanFile" type="file" accept=".pdf,application/pdf" />
+          <span class="muted">Pasting is better when you can — your PDF reader knows
+            the fonts and the layout, and this doesn't. Nothing is sent anywhere
+            either way; the file is read on this machine.</span>
+        </p>
+        <p id="lsPlanFileNote" class="cb-warn" hidden></p>
         <div class="ls-row">
           <label>Class
             <input id="lsGroup" type="text" list="lsGroups" maxlength="60" />
@@ -113,6 +120,10 @@
           <label class="ls-full">The targets
             <textarea id="lsSylPaste" rows="7" placeholder="W.9-10.3.d  Use precise words and sensory language."></textarea>
           </label>
+          <p class="ls-open">…or open a file:
+            <input id="lsSylFile" type="file" accept=".pdf,application/pdf" />
+          </p>
+          <p id="lsSylFileNote" class="cb-warn" hidden></p>
           <p id="lsSylRead" class="muted"></p>
           <button id="lsSylSave" type="button" class="btn">Keep these targets</button>
         </details>
@@ -154,6 +165,7 @@
     <script src="names.js" defer></script>
     <script src="schedule.js" defer></script>
     <script src="tried.js" defer></script>
+    <script src="pdftext.js" defer></script>
     <script src="syllabus.js" defer></script>
     <script src="review.js" defer></script>
     <script src="attain.js" defer></script>

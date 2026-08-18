@@ -122,6 +122,43 @@
         : `<p class="muted">Nothing in your targets shares any words with that objective. That's worth a look either way — it may be worded differently, or it may genuinely not be on the syllabus.</p>`);
   }
 
+  // ---- opening a file instead of pasting -----------------------------------
+  //
+  // The text lands in the same box a paste would, and goes through the same
+  // preview, because a PDF read is a draft and nothing else in this app treats
+  // it differently. Whatever the reader has to say about how well it went is
+  // shown above the box rather than buried.
+  function wireFile(inputSel, boxSel, noteSel, after) {
+    const input = $(inputSel);
+    if (!input) return;
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      const note = $(noteSel);
+      if (!file) return;
+      const P = window.OrganiserPdfText;
+      if (!P) return;
+      if (note) { note.hidden = false; note.textContent = "Reading…"; }
+      let r;
+      try {
+        r = await P.read(await file.arrayBuffer());
+      } catch (e) {
+        if (note) note.textContent = "That file couldn't be opened. Opening it yourself and copying the text across will work.";
+        return;
+      }
+      if (!r.ok || !r.text.trim()) {
+        if (note)
+          note.textContent =
+            (r.notes.join(" ") || "Nothing readable came out of that file.") +
+            " Try opening it and copying the text across instead.";
+        return;
+      }
+      const box = $(boxSel);
+      if (box) box.value = r.text;
+      if (note) note.textContent = [r.caution].concat(r.notes).join(" ");
+      if (after) after();
+    });
+  }
+
   function save() {
     const L = LP();
     const text = ($("#lsPaste").value || "").trim();
@@ -649,6 +686,8 @@
     wireList();
     wireHeadings();
     wireSyllabus();
+    wireFile("#lsPlanFile", "#lsPaste", "#lsPlanFileNote", () => { preview(); renderTargets(); });
+    wireFile("#lsSylFile", "#lsSylPaste", "#lsSylFileNote", readSyllabus);
     const tg = $("#lsTargets");
     if (tg)
       tg.addEventListener("change", (e) => {

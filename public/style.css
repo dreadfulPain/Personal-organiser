@@ -3914,6 +3914,12 @@ a.btn {
 .ls-att.below { border-left: 3px solid var(--warn, #c06a00); padding-left: 8px; }
 .ls-att.not-judged-yet { border-left: 3px solid var(--line); padding-left: 8px; }
 
+/* Opening a file instead of pasting. Deliberately quieter than the paste box:
+   pasting is the better route and the layout should say so. */
+.ls-open { margin: 6px 0 0; font-size: 0.85rem; color: var(--ink-soft); }
+.ls-open input[type="file"] { font: inherit; font-size: 0.85rem; margin-left: 4px; }
+.ls-open .muted { display: block; margin-top: 3px; font-size: 0.78rem; }
+
 /* ---- REGISTER: tap the ones who aren't here ------------------------------ */
 .at-row { display: flex; gap: 8px; align-items: center; padding: 5px 0;
   border-bottom: 1px solid var(--line); }

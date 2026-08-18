@@ -105,7 +105,13 @@
   // The planner itself lives in dayplan.js so it can be driven and tested
   // without a browser — this page just supplies the data and shows the result.
   function buildPlan(iso, previous, notBefore) {
-    return window.OrganiserDayPlan.build(items, schedule, cfg, iso, { previous, notBefore, ctx: ctx() });
+    // THE DAY'S OWN HOURS. A working day runs to the hours you set for work; a
+    // day without lessons runs to the ones you keep for yourself, which start
+    // later and go on longer. The planner is handed the right pair and needs to
+    // know nothing about which kind of day it is.
+    const DS = window.OrganiserDayShape;
+    const dayCfg = DS ? DS.shapeOf(schedule, iso, cfg).config : cfg;
+    return window.OrganiserDayPlan.build(items, schedule, dayCfg, iso, { previous, notBefore, ctx: ctx() });
   }
 
   function savePlan(iso, plan) {
@@ -393,12 +399,20 @@
       return;
     }
 
+    // A DAY YOU MARKED OFF stays off — that was your decision, not the app's.
     if (S().dayIsBlocked(schedule, iso)) {
-      wrap.innerHTML = `<p class="empty">Today's marked as a whole-day block — nothing planned into it.</p>`;
+      wrap.innerHTML = `<p class="empty">You've marked today off — nothing planned into it.</p>`;
       renderAccept(null);
       renderUnplanned(iso, null);
       return;
     }
+
+    // A DAY WITHOUT LESSONS IS STILL A DAY. It runs to its own hours and its
+    // plan is an order rather than a timetable, because at home nobody knows
+    // when they'll get up and a plan that says 09:14 is a fiction.
+    const DS = window.OrganiserDayShape;
+    const shape = DS ? DS.shapeOf(schedule, iso, cfg) : { kind: "work", loose: false, config: cfg };
+    const shapeNote = DS ? DS.words(shape) : "";
 
     const plan = planFor(iso);
     const blocks = S().blocksOn(schedule, iso);
@@ -421,17 +435,46 @@
     });
     rows.sort((a, b) => a.at - b.at || (a.kind === "block" ? -1 : 1));
 
+    // WHAT KIND OF DAY THIS IS, said before the list rather than left to be
+    // inferred from it looking odd.
+    if (shapeNote) {
+      const note = document.createElement("p");
+      note.className = "dp-shape";
+      note.textContent = shapeNote;
+      wrap.appendChild(note);
+    }
+
     const list = document.createElement("div");
-    list.className = "dp-list";
-    let prevEnd = null;
-    rows.forEach((r) => {
-      const startsAt = r.kind === "block" ? S().toMin(r.block.start) : r.slot.start;
-      if (prevEnd !== null && startsAt - prevEnd >= S().normaliseConfig(cfg).minGapMinutes) {
-        list.appendChild(freeRow(prevEnd, startsAt));
-      }
-      list.appendChild(r.kind === "block" ? blockRow(r.block) : taskRow(r.slot, r.item, plan, iso));
-      prevEnd = r.kind === "block" ? S().toMin(r.block.end) : r.slot.end;
-    });
+    list.className = "dp-list" + (shape.loose ? " loose" : "");
+
+    if (shape.loose && DS) {
+      // AN ORDER, NOT A TIMETABLE. The sequence is kept exactly — it is the
+      // useful half — but nothing is pinned to a minute, because on a day at
+      // home the minute would be invented and the first time it's wrong you
+      // stop believing the rest of the page.
+      DS.loosen(rows.map((r) => ({ ...r, start: r.at })), shape).forEach((part) => {
+        if (!part.rows.length) return;
+        const head = document.createElement("h3");
+        head.className = "dp-part";
+        head.textContent = part.part;
+        list.appendChild(head);
+        part.rows.forEach((r) => {
+          const el = r.kind === "block" ? blockRow(r.block) : taskRow(r.slot, r.item, plan, iso);
+          el.classList.add("no-clock");
+          list.appendChild(el);
+        });
+      });
+    } else {
+      let prevEnd = null;
+      rows.forEach((r) => {
+        const startsAt = r.kind === "block" ? S().toMin(r.block.start) : r.slot.start;
+        if (prevEnd !== null && startsAt - prevEnd >= S().normaliseConfig(cfg).minGapMinutes) {
+          list.appendChild(freeRow(prevEnd, startsAt));
+        }
+        list.appendChild(r.kind === "block" ? blockRow(r.block) : taskRow(r.slot, r.item, plan, iso));
+        prevEnd = r.kind === "block" ? S().toMin(r.block.end) : r.slot.end;
+      });
+    }
     wrap.appendChild(list);
 
     const heads = troubleBox(iso);

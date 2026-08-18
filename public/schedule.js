@@ -158,8 +158,16 @@
       // Ids this block concerns — how a meeting knows who it's about. Generic:
       // the code never learns what an id means.
       about: Array.isArray(b.about) ? b.about.map((x) => String(x).trim()).filter(Boolean) : [],
-      // Whole day unavailable (a holiday, an INSET day). Nothing is planned into it.
+      // NOT AVAILABLE AT ALL. You marked the day off — a day away, a weekend
+      // you don't work. Nothing is planned into it, and that is your decision
+      // rather than the app's.
       blocksDay: !!b.blocksDay,
+      // NO FIXED COMMITMENTS TODAY, but the day is still yours: a school
+      // holiday, a closure, an INSET day you aren't going to. The lessons stop;
+      // the work doesn't, and a break is often the best chance there is to get
+      // ahead on the reports. Kept apart from blocksDay because collapsing the
+      // two turns every holiday into a month the app refuses to plan.
+      noLessons: !!b.noLessons,
       // DOES THIS BLOCK NEED WORK DOING BEFORE IT? Off by default, always —
       // switching it on for everything would bury you, and most blocks (a
       // break, a duty, a meeting someone else runs) need nothing.
@@ -189,15 +197,25 @@
       .filter((b) => appliesOn(b, iso))
       .sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
   }
-  // Is the whole day written off (holiday / INSET)?
+  // Did you mark this day off? Nothing is planned into it.
   function dayIsBlocked(schedule, iso) {
     return blocksOn(schedule, iso).some((b) => b.blocksDay && !b.soft);
+  }
+  // Are the fixed commitments off today? True for a day you marked off AND for
+  // a day with no lessons in it. This is the question anything about TEACHING
+  // should ask — where a review lands, what shape the day is — while the
+  // planner asks the narrower one above.
+  function noTeachingOn(schedule, iso) {
+    return blocksOn(schedule, iso).some((b) => (b.blocksDay || b.noLessons) && !b.soft);
   }
 
   // Merge overlapping FIXED blocks into busy intervals. Soft ones are excluded
   // on purpose — a guess never makes you unavailable.
   function busyOn(schedule, iso) {
-    const fixed = blocksOn(schedule, iso).filter((b) => !b.soft);
+    // A no-lessons entry is not a busy one: it says the timetable doesn't apply
+    // today, not that you are occupied. A blocksDay entry IS busy, because that
+    // one means you are not available at all.
+    const fixed = blocksOn(schedule, iso).filter((b) => !b.soft && !b.noLessons);
     const out = [];
     fixed.forEach((b) => {
       const s = toMin(b.start);
@@ -212,6 +230,9 @@
   // The free stretches of a day, in minutes-from-midnight.
   function gapsOn(schedule, cfg, iso, notBefore) {
     const c = normaliseConfig(cfg);
+    // Unavailable means unavailable: if you marked this day off, nothing is
+    // planned into it and that stays true. A day with no LESSONS is a different
+    // thing entirely and is still plannable — see noTeachingOn below.
     if (dayIsBlocked(schedule, iso)) return [];
     // notBefore lets a rebuild plan only the time that's actually LEFT. Without
     // it, coming back at two o'clock would re-plan the whole morning.
@@ -520,6 +541,7 @@
     busyOn,
     gapsOn,
     dayIsBlocked,
+    noTeachingOn,
     fixedBlockAt,
     nextFreeMoment,
     estimateMinutes,

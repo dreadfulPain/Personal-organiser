@@ -3920,6 +3920,14 @@ a.btn {
 .ls-open input[type="file"] { font: inherit; font-size: 0.85rem; margin-left: 4px; }
 .ls-open .muted { display: block; margin-top: 3px; font-size: 0.78rem; }
 
+/* A day of your own: an order rather than a timetable, so the clock is hidden
+   rather than guessed at. */
+.dp-shape { margin: 0 0 10px; font-size: 0.85rem; color: var(--ink-soft); }
+.dp-part { font-size: 0.8rem; text-transform: lowercase; letter-spacing: 0.04em;
+  color: var(--ink-soft); margin: 14px 0 4px; font-weight: normal; }
+.dp-list.loose .no-clock .dp-time,
+.dp-list.loose .no-clock .when { display: none; }
+
 /* Pasting a whole class in. The skipped rows stay visible and greyed rather
    than vanishing — a count that quietly drops three people is worse than none. */
 .ppl-cols { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0; }

@@ -65,7 +65,11 @@
     // that falls in a holiday on a day the school is shut — which is precisely
     // the case this exists to handle, since a month off is exactly when
     // something taught before it needs coming back to.
-    const off = (iso) => !!(S && S.dayIsBlocked && S.dayIsBlocked(schedule, iso));
+    // The teaching question, not the availability one: a class you don't have
+    // is a class you can't review with, whether that's a holiday or a day you
+    // marked off.
+    const off = (iso) => !!(S && (S.noTeachingOn ? S.noTeachingOn(schedule, iso)
+      : S.dayIsBlocked && S.dayIsBlocked(schedule, iso)));
     // With no slot there is still a holiday to avoid, so this runs either way.
     const cap = Math.max(1, Math.min(365, Number(limitDays) || 60));
     for (let i = 0; i <= cap; i++) {

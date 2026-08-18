@@ -118,7 +118,12 @@
     if (!ev.start.time) {
       const days = spanDays(ev.start.date, ev.end && ev.end.date ? ev.end.date : ev.start.date);
       days.forEach((d) => {
-        blocks.push({ label, start: "00:00", end: "23:59", date: d, days: [], blocksDay: true, soft: false, source: "ics" });
+        // NO LESSONS, not "I'm away". A school calendar says the classes stop;
+        // it says nothing about whether you intend to work, and a break is
+        // often the best chance there is to get ahead. Mark a day off yourself
+        // if you want nothing planned into it.
+        blocks.push({ label, start: "00:00", end: "23:59", date: d, days: [],
+          noLessons: true, soft: false, source: "ics" });
       });
       return;
     }

@@ -51,6 +51,195 @@
   }
   const todayISO = () => S().isoOf(new Date());
 
+  // ---- the school calendar --------------------------------------------------
+  //
+  // Read, shown, labelled by you, then in. The middle step is the whole point:
+  // "Winter break begins" and "Staff return" are different instructions to this
+  // app, and telling them apart from the words would be the app deciding your
+  // term from a noun.
+  const calDay = (iso) => {
+    const d = new Date(iso + "T12:00:00");
+    return Number.isFinite(d.getTime())
+      ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+      : iso;
+  };
+
+  let calRows = [];
+  // What read() worked out — chiefly the year, which is the one number here that
+  // can be quietly wrong and take every other date down with it.
+  let calMeta = { rows: [], year: 0, borrowed: 0 };
+
+  function calRead(text, year) {
+    const C = window.OrganiserCalPlan;
+    if (!C) return;
+    const r = C.read(text || "", year ? { year } : undefined);
+    calRows = r.rows;
+    calMeta = r;
+    const box = $("#calYear");
+    // Filled in from the document, and yours to correct.
+    if (box && !box.value) box.value = String(r.year || "");
+    renderCal();
+  }
+
+  function renderCal() {
+    const C = window.OrganiserCalPlan;
+    const box = $("#calRows");
+    const words = $("#calWords");
+    const btn = $("#calAdd");
+    if (!C || !box) return;
+    if (words) words.textContent = C.words({ ...calMeta, rows: calRows }, calRows, calDay);
+    if (btn) btn.hidden = !calRows.some((r) => r.kind);
+    // What each row will actually cover, worked out by the reader rather than
+    // guessed at again here — so what this shows is what gets kept.
+    const marks = new Map();
+    C.plan(calRows).forEach((p) => {
+      marks.set(p.row, p);
+      if (p.endRow) marks.set(p.endRow, { endOf: p });
+    });
+    box.innerHTML = "";
+    calRows.forEach((r, i) => {
+      const row = document.createElement("div");
+      row.className = "cal-row";
+      const mark = marks.get(r);
+      const name = document.createElement("span");
+      name.className = "cal-name";
+      // WRITTEN OUT, not 2026-08-24. Half the rows on a real calendar come back
+      // with no name on them — the date is a heading and the words are in a
+      // table cell somewhere else — so the date is the only thing telling you
+      // which row you're looking at, and a string of digits is the hardest
+      // possible way to read one.
+      name.textContent = `${calDay(r.date)} — ${r.label}`;
+      row.appendChild(name);
+      // Four plain choices, and "nothing" is one of them and is the default.
+      [["noLessons", "no lessons"], ["off", "day off"],
+       ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "p-opt cal-pick" + (r.kind === k ? " on" : "");
+        b.textContent = lab;
+        b.addEventListener("click", () => {
+          // Clearing a row clears the run-on with it — a tick on a line that
+          // does nothing would sit there looking like it meant something.
+          calRows[i] = { ...r, kind: k, spans: k ? r.spans : false };
+          renderCal();
+        });
+        row.appendChild(b);
+      });
+      // THE RUN-ON. A holiday arrives as two lines — begins, ends — and only
+      // you know which pairs are a stretch and which are two separate days.
+      // Offered only where pressing it would change something.
+      if (mark && mark.canSpan) {
+        const tick = document.createElement("button");
+        tick.type = "button";
+        tick.className = "p-opt cal-span" + (r.spans ? " on" : "");
+        // SAME WORDS EITHER WAY, and they say the date it lands on and how far
+        // that is — before you press it, not after. The whole reason this is a
+        // tick and not a guess is that the stretch can be seven weeks long, and
+        // nobody should find that out by having it happen to them.
+        tick.textContent =
+          (r.kind === "lessons"
+            ? `and stop on ${calDay(mark.wouldEnd)}`
+            : `runs on to ${calDay(mark.wouldEnd)} — ${mark.wouldBe} days`) + (r.spans ? " ✓" : "?");
+        tick.addEventListener("click", () => {
+          calRows[i] = { ...r, spans: !r.spans };
+          renderCal();
+        });
+        row.appendChild(tick);
+      }
+      // And the far end of a stretch says so, so a row vanishing into one above
+      // it isn't a surprise.
+      if (mark && mark.endOf) {
+        const end = document.createElement("span");
+        end.className = "muted cal-end";
+        end.textContent = `end of “${mark.endOf.label}”`;
+        row.appendChild(end);
+      }
+      box.appendChild(row);
+    });
+    renderCalTerm();
+  }
+
+  // WHICH OF YOUR TIMETABLE ENTRIES ARE THE LESSONS.
+  //
+  // The calendar knows when the teaching runs. It cannot know which lines of
+  // your week are teaching — period 3 and the Tuesday briefing look identical
+  // from here, and one of them happens in the set-up week and one doesn't. So
+  // it shows you what it would limit, ticked, and you take the ticks off
+  // whatever carries on regardless.
+  let calTermPick = null;
+
+  const repeatingBlocks = () =>
+    schedule.filter((b) => b && Array.isArray(b.days) && b.days.length && !b.date &&
+      !b.blocksDay && !b.noLessons);
+
+  function renderCalTerm() {
+    const C = window.OrganiserCalPlan;
+    const box = $("#calTerm");
+    if (!box) return;
+    const t = C && C.term(calRows);
+    const list = repeatingBlocks();
+    box.innerHTML = "";
+    box.hidden = !t || !list.length;
+    if (!t || !list.length) return;
+    if (!calTermPick) calTermPick = new Set(list.map((b) => b.id));
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent =
+      `Lessons run from ${calDay(t.from)}${t.to ? ` to ${calDay(t.to)}` : " onwards"}. Which of these only ` +
+      "happen in that stretch? Anything ticked stops applying outside it — take the tick " +
+      "off whatever runs regardless.";
+    box.appendChild(p);
+    list.forEach((b) => {
+      const pick = document.createElement("button");
+      pick.type = "button";
+      pick.className = "p-opt cal-term" + (calTermPick.has(b.id) ? " on" : "");
+      pick.textContent = `${b.label || "(no name)"} ${b.start}–${b.end}` +
+        (b.from || b.to ? ` (already ${b.from || "…"}–${b.to || "…"})` : "");
+      pick.addEventListener("click", () => {
+        if (calTermPick.has(b.id)) calTermPick.delete(b.id);
+        else calTermPick.add(b.id);
+        renderCalTerm();
+      });
+      box.appendChild(pick);
+    });
+  }
+
+  function calApply() {
+    const C = window.OrganiserCalPlan;
+    if (!C) return;
+    const made = C.toBlocks(calRows).map((b) => ({ ...b, id: uid() }));
+    // A day already in the schedule is left as it is — reading the calendar in
+    // twice must not put two of every holiday in your week.
+    const have = new Set(schedule.filter((b) => b && b.date).map((b) => b.date + "|" + (b.label || "")));
+    const fresh = made.filter((b) => !have.has(b.date + "|" + b.label));
+    // The term dates are a separate thing that can arrive on its own — a
+    // calendar saying only "students return" still has something to tell you.
+    const t = C.term(calRows);
+    const picked = t && calTermPick ? [...calTermPick] : [];
+    if (!fresh.length && !picked.length) return;
+    if (picked.length)
+      schedule = schedule.map((b) =>
+        b && calTermPick.has(b.id) ? { ...b, from: t.from, to: t.to || b.to || "" } : b);
+    schedule = schedule.concat(fresh);
+    persist();
+    calRows = [];
+    calTermPick = null;
+    const box = $("#calPaste");
+    if (box) box.value = "";
+    renderCal();
+    renderTimeOff();
+    render();
+    const words = $("#calWords");
+    if (words)
+      words.textContent =
+        (fresh.length ? `${fresh.length} day${fresh.length === 1 ? "" : "s"} added. ` : "") +
+        (picked.length
+          ? `${picked.length} timetable entr${picked.length === 1 ? "y" : "ies"} now only run` +
+            `${picked.length === 1 ? "s" : ""} from ${calDay(t.from)}${t.to ? ` to ${calDay(t.to)}` : " onwards"}. `
+          : "") +
+        "Paste another calendar in if there's more.";
+  }
+
   // ---- time off ------------------------------------------------------------
   //
   // A range of days you want nothing planned into. Stored as ordinary
@@ -1177,7 +1366,7 @@
   }
 
   function blockForm(existing) {
-    const b = existing || { label: "", start: "09:00", end: "10:00", days: [1, 2, 3, 4, 5], date: "", soft: false, about: [] };
+    const b = existing || { label: "", start: "09:00", end: "10:00", days: [1, 2, 3, 4, 5], date: "", from: "", to: "", soft: false, about: [] };
     const form = document.createElement("div");
     form.className = "su-form";
     form.innerHTML = `
@@ -1186,6 +1375,13 @@
       <label>to <input type="time" class="bf-end" value="${escapeHtml(b.end)}" /></label>
       <div class="bf-days">${DAY_LETTERS.map((l, i) => `<label class="bf-day"><input type="checkbox" value="${i}" ${b.days.includes(i) ? "checked" : ""} /><span>${l}</span></label>`).join("")}</div>
       <label class="bf-onedate">or one date only <input type="date" class="bf-date" value="${escapeHtml(b.date || "")}" /></label>
+      <div class="bf-runs">
+        <span class="bf-hint">WHEN DOES IT RUN? Staff go back before the students do, and a
+          timetable with no dates on it runs for ever — including that week, and next July.
+          Leave both empty if it really does apply all year.</span>
+        <label>from <input type="date" class="bf-from" value="${escapeHtml(b.from || "")}" /></label>
+        <label>until <input type="date" class="bf-to" value="${escapeHtml(b.to || "")}" /></label>
+      </div>
       <label class="bf-soft"><input type="checkbox" class="bf-softbox" ${b.soft ? "checked" : ""} /> this one's a guess, not a fixed thing</label>
       <label class="bf-soft"><input type="checkbox" class="bf-prep" ${b.prep && b.prep.on ? "checked" : ""} /> I have to get something ready before this one</label>
       <label class="bf-lead">ready by <input type="number" class="bf-leaddays" min="0" max="14" value="${b.prep && b.prep.leadDays ? b.prep.leadDays : 1}" /> day(s) before
@@ -1210,6 +1406,10 @@
         end: form.querySelector(".bf-end").value,
         days,
         date: form.querySelector(".bf-date").value,
+        // The stretch it runs for. Without these a timetable applies from the
+        // day you typed it until the end of time.
+        from: form.querySelector(".bf-from").value,
+        to: form.querySelector(".bf-to").value,
         soft: form.querySelector(".bf-softbox").checked,
         prep: {
           on: form.querySelector(".bf-prep").checked,
@@ -1291,6 +1491,40 @@
     areaList = data.areas || [];
     rotas = data.rotas || [];
     syncPrep();
+    const calBox = $("#calPaste");
+    const calYear = $("#calYear");
+    const reRead = () => calRead(calBox ? calBox.value : "", calYear ? Number(calYear.value) : 0);
+    if (calBox) calBox.addEventListener("input", reRead);
+    // Changing the year re-reads what's already there rather than making you
+    // paste it again.
+    if (calYear) calYear.addEventListener("input", reRead);
+    const calAdd = $("#calAdd");
+    if (calAdd) calAdd.addEventListener("click", calApply);
+    const calFile = $("#calFile");
+    if (calFile)
+      calFile.addEventListener("change", async () => {
+        const f = calFile.files && calFile.files[0];
+        const P = window.OrganiserPdfText;
+        const words = $("#calWords");
+        if (!f || !P) return;
+        if (words) words.textContent = "Reading…";
+        try {
+          const r = await P.read(await f.arrayBuffer());
+          if (!r.ok || !r.text.trim()) {
+            if (words) words.textContent = (r.notes.join(" ") || "Nothing readable in that file.") +
+              " Opening it and copying the text across will work.";
+            return;
+          }
+          if (calBox) calBox.value = r.text;
+          // A new document brings its own year, so the old one is let go of.
+          if (calYear) calYear.value = "";
+          calRead(r.text);
+          if (words) words.textContent = r.caution + " " + words.textContent;
+        } catch (e) {
+          if (words) words.textContent = "That file couldn't be opened. Copy the text across instead.";
+        }
+      });
+
     const offAdd = $("#offAdd");
     if (offAdd)
       offAdd.addEventListener("click", () =>

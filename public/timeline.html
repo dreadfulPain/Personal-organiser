@@ -26,6 +26,42 @@
       <div id="dpAccept" class="dp-accept" hidden></div>
       <section id="unplanned" class="dp-also" hidden></section>
 
+      <!-- THE SCHOOL CALENDAR. It arrives as a PDF, a spreadsheet, a Word file
+           or an email, and all four become text the moment you copy them. -->
+      <section class="setup-wrap">
+        <details class="p-setup" id="calBox">
+          <summary>Read in a school calendar</summary>
+          <p class="muted">Paste it, or open the PDF. Any line with a date on it is
+            picked up; anything without one is left alone. Nothing is guessed about
+            what a date means — you say, once, and it goes in.</p>
+          <p class="muted">A holiday is usually two lines, a start and an end. Tick
+            <em>runs on to the next</em> on the first of them and it becomes every day
+            between; it'll tell you how many before you keep it.</p>
+          <label class="ls-full">Paste it here
+            <textarea id="calPaste" rows="7" placeholder="Staff return&#9;24 August 2026"></textarea>
+          </label>
+          <p class="ls-open">…or open a file:
+            <input id="calFile" type="file" accept=".pdf,application/pdf" />
+          </p>
+          <p class="ls-open">Year, for any line that doesn't say one:
+            <input id="calYear" type="number" min="1900" max="2199" step="1" />
+            <span class="muted">Taken from the document. A table that puts the year on
+              its own line leaves the dates without one, and being twelve months out
+              is the sort of mistake nothing else would show you.</span>
+          </p>
+          <p class="muted">And mark the day the students come back as <em>lessons start</em>.
+            A timetable typed in with no dates on it runs for ever — through the set-up
+            week, through the holidays and through next July — so this is the line that
+            tells it when the teaching actually happens.</p>
+          <p id="calWords" class="muted"></p>
+          <div id="calRows"></div>
+          <div id="calTerm" hidden></div>
+          <div class="ls-actions">
+            <button id="calAdd" type="button" class="btn" hidden>Put these in</button>
+          </div>
+        </details>
+      </section>
+
       <!-- TIME OFF. Not for the day itself — you can simply not open this — but
            so the planner knows the gap is coming and places the work around it.
            Five weeks to a deadline is not five weeks if five days are a break. -->
@@ -69,6 +105,8 @@
     <script src="dayshape.js" defer></script>
     <script src="rota.js" defer></script>
     <script src="ics.js" defer></script>
+    <script src="calplan.js" defer></script>
+    <script src="pdftext.js" defer></script>
     <script src="priority.js" defer></script>
     <script src="dayplan.js" defer></script>
     <script src="weekplan.js" defer></script>

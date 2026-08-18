@@ -3920,6 +3920,26 @@ a.btn {
 .ls-open input[type="file"] { font: inherit; font-size: 0.85rem; margin-left: 4px; }
 .ls-open .muted { display: block; margin-top: 3px; font-size: 0.78rem; }
 
+/* Reading a calendar in. One row a date, three plain choices, nothing guessed. */
+.cal-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 5px 0; border-bottom: 1px solid var(--line); }
+.cal-name { flex: 1 1 14rem; font-size: 0.9rem; }
+.cal-pick { font-size: 0.78rem; }
+/* The run-on. Set apart from the three choices, because it answers a different
+   question — not what this day is, but how far it reaches. */
+.cal-span { font-size: 0.78rem; margin-left: 6px; border-style: dashed; }
+.cal-span.on { border-style: solid; }
+.cal-end { font-size: 0.78rem; margin-left: 6px; }
+/* Which of your timetable entries only run in term. The app can't know, so it
+   shows them and you take the ticks off what carries on regardless. */
+#calTerm { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+#calTerm p { flex: 1 1 100%; margin: 0 0 4px; }
+.cal-term { font-size: 0.78rem; }
+/* When a timetable entry actually runs. */
+.bf-runs { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; margin: 6px 0; }
+.bf-runs .bf-hint { flex: 1 1 100%; }
+
 /* Time booked off. Deliberately plain: it is a fact you are recording, not an
    achievement and not a confession. */
 #offBox .ls-row { margin: 10px 0; }

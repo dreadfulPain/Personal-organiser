@@ -3914,6 +3914,15 @@ a.btn {
 .ls-att.below { border-left: 3px solid var(--warn, #c06a00); padding-left: 8px; }
 .ls-att.not-judged-yet { border-left: 3px solid var(--line); padding-left: 8px; }
 
+/* ---- REGISTER: tap the ones who aren't here ------------------------------ */
+.at-row { display: flex; gap: 8px; align-items: center; padding: 5px 0;
+  border-bottom: 1px solid var(--line); }
+.at-name { flex: 1 1 auto; font-size: 0.95rem; }
+.at-row .p-opt { font-size: 0.8rem; }
+.at-watch { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.at-watch.now { border-left: 3px solid var(--warn, #c06a00); padding-left: 10px; }
+.at-watch.often { border-left: 3px solid var(--line); padding-left: 10px; }
+
 /* Marking a class against what a lesson was aimed at. */
 .ls-grid { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line);
   border-radius: 10px; background: #fff; }

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Register</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Register</h1>
+        <p class="sub">Tap whoever isn't here. Everyone else is in — you shouldn't
+          have to tick twenty-four names to say nothing happened. Kept for the run,
+          not the day, so a long absence turns up here rather than in a corridor.</p>
+      </header>
+
+      <div class="ls-row">
+        <label>Class
+          <select id="atGroup"></select>
+        </label>
+        <label>Day
+          <input id="atDate" type="date" />
+        </label>
+        <label>Which lesson
+          <select id="atSlot"></select>
+        </label>
+      </div>
+
+      <!-- WHO ISN'T HERE. One tap each, and usually none. -->
+      <section class="p-block" id="atTakeBlock" hidden>
+        <h2>Who isn't here</h2>
+        <p id="atTakenWords" class="muted"></p>
+        <div id="atNames"></div>
+        <div class="ls-actions">
+          <button id="atSave" type="button" class="btn">Keep this register</button>
+        </div>
+      </section>
+
+      <!-- THE ONE THAT MATTERS. Somebody who has stopped coming. -->
+      <section class="p-block" id="atWatchBlock" hidden>
+        <h2>Worth a second look</h2>
+        <p class="muted">Nobody here has done anything wrong and neither have you.
+          A run of absences is simply hard to notice one lesson at a time, which is
+          the only reason this page exists.</p>
+        <p id="atWatchWords" class="muted"></p>
+        <div id="atWatch"></div>
+      </section>
+
+      <!-- WHAT THEY WEREN'T IN THE ROOM FOR. -->
+      <section class="p-block" id="atCatchBlock" hidden>
+        <h2>Missed while away</h2>
+        <p class="muted">Taught to the class on a day they weren't in. Not something
+          they failed to grasp — something they were never offered, which needs a
+          different answer. Anything covered again while they were there, or judged
+          at target since, drops off on its own.</p>
+        <div id="atCatch"></div>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="levels.js" defer></script>
+    <script src="attend.js" defer></script>
+    <script src="attendpage.js" defer></script>
+  </body>
+</html>

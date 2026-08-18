@@ -93,7 +93,7 @@
   }
 
   // ONE TARGET ACROSS A CLASS. The counts, and nothing but the counts.
-  function forClass(records, config, members, code) {
+  function forClass(records, config, members, code, opts) {
     const lv = L();
     const ids = (Array.isArray(members) ? members : []).map((m) => (m && m.id) || m).filter(Boolean);
     if (!lv || !ids.length) return { code, counts: {}, at: 0, below: 0, unjudged: 0, total: 0 };
@@ -102,8 +102,28 @@
     let at = 0, below = 0, unjudged = 0;
     const namesBelow = [], namesUnjudged = [];
     const byId = new Map((Array.isArray(members) ? members : []).map((m) => [(m && m.id) || m, (m && m.name) || m]));
+    // Someone who was never in the room for it is not an unjudged student —
+    // they are a student who wasn't offered it, and lumping the two together
+    // turns your register into a gap in your marking.
+    const AT = window.OrganiserAttend;
+    const wasAway = new Set();
+    if (AT && opts && Array.isArray(opts.lessons)) {
+      ids.forEach((id) => {
+        const taughtWhenIn = (opts.lessons || []).some(
+          (l) =>
+            l && l.taught && (Array.isArray(l.targets) ? l.targets : []).includes(code) &&
+            AT.wasAway(opts.attendance || [], id, l.group, l.date) !== true
+        );
+        const taughtAtAll = (opts.lessons || []).some(
+          (l) => l && l.taught && (Array.isArray(l.targets) ? l.targets : []).includes(code)
+        );
+        if (taughtAtAll && !taughtWhenIn) wasAway.add(id);
+      });
+    }
+    const missedIt = [];
     ids.forEach((id) => {
       const rec = lv.currentFor(records || [], id, code);
+      if (!rec && wasAway.has(id)) { missedIt.push({ id, name: byId.get(id) || id }); return; }
       if (!rec) { unjudged++; namesUnjudged.push({ id, name: byId.get(id) || id }); return; }
       counts[rec.level] = (counts[rec.level] || 0) + 1;
       if (lv.isStronger(config, target, rec.level)) { below++; namesBelow.push({ id, name: byId.get(id) || id }); }
@@ -122,12 +142,14 @@
       judged: at + below,
       namesBelow,
       namesUnjudged,
+      // Counted apart and named, never folded into either of the above.
+      missedIt,
       target,
     };
   }
 
   // THE WHOLE CLASS, TARGET BY TARGET — what's solid and what isn't.
-  function picture(records, config, lessons, syllabus, members, group) {
+  function picture(records, config, lessons, syllabus, members, group, opts) {
     const S = window.OrganiserSyllabus;
     const syl = S ? S.normalise(syllabus) : null;
     const byCode = new Map((syl ? syl.targets : []).filter((t) => t.code).map((t) => [t.code, t]));
@@ -140,7 +162,7 @@
       });
     });
     const rows = [...taught].map((code) => {
-      const r = forClass(records, config, members, code);
+      const r = forClass(records, config, members, code, { lessons, attendance: opts && opts.attendance });
       const t = byCode.get(code);
       return { ...r, text: t ? t.text : "", strand: t ? t.strand : "" };
     });
@@ -162,10 +184,14 @@
   // and how many weeks are left — none of which is in this file.
   function classWords(r) {
     if (!r.total) return "";
-    if (!r.judged) return `Nobody judged on this yet, out of ${r.total}.`;
+    if (!r.judged)
+      return `Nobody judged on this yet, out of ${r.total}.` +
+        (r.missedIt && r.missedIt.length ? ` ${r.missedIt.length} weren't in for it.` : "");
     const bits = [`${r.at} of ${r.judged} judged are at or above ${r.target || "target"}`];
     if (r.below) bits.push(`${r.below} below`);
     if (r.unjudged) bits.push(`${r.unjudged} not judged`);
+    if (r.missedIt && r.missedIt.length)
+      bits.push(`${r.missedIt.length} weren't in for it`);
     return bits.join(" · ") + ".";
   }
 

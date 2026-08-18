@@ -18,6 +18,7 @@
     ["before-planning.html", "Before you plan"],
     ["lessons.html", "Lessons"],
     ["rota.html", "Turns"],
+    ["attend.html", "Register"],
     ["people.html", "People"],
     ["portfolio.html", "Portfolio"],
     ["goals.html", "Goals"],

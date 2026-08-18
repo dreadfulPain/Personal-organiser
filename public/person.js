@@ -22,7 +22,7 @@
 
   let contacts = [], records = [], recordConfig = null;
   let pastoralNotes = [], pastoralTopics = [], toldLog = [], tried = [];
-  let lessons = [], syllabus = null;
+  let lessons = [], syllabus = null, attendance = [];
   let who = "";
 
   const $ = (s) => document.querySelector(s);
@@ -238,6 +238,36 @@
     pastoralNotes = P.add(pastoralNotes, { who, topicId, ...what }, todayISO());
     OrganiserStore.save({ pastoralNotes });
     renderAll();
+  }
+
+  // ---- what they weren't in the room for ---------------------------------
+  //
+  // Above the syllabus block, because it changes how the rest of the page
+  // reads. Four targets below target looks like one thing when they were there
+  // for all of it and quite another when they weren't.
+  function renderMissed() {
+    const AT = window.OrganiserAttend;
+    const block = $("#pMissBlock");
+    const el = $("#pMiss");
+    if (!AT || !block || !el) return;
+    const me = contacts.find((c) => c && c.id === who);
+    const rows = who
+      ? AT.missed(lessons, attendance, records, recordConfig, who, me && me.group)
+      : [];
+    const fresh = rows.filter((r) => !r.caughtElsewhere);
+    block.hidden = !who || !fresh.length;
+    if (!fresh.length) return;
+    const w = $("#pMissWords");
+    if (w) w.textContent = AT.missedWords(rows);
+    el.innerHTML = fresh
+      .map(
+        (r) =>
+          `<div class="ro-row"><span><strong>${esc(r.code)}</strong> ${esc(r.lesson)}</span>` +
+          `<span class="p-state">away ${esc(r.dates.join(", "))}` +
+          (r.judged ? ` · judged ${esc(r.level)} since` : "") +
+          `</span></div>`
+      )
+      .join("");
   }
 
   // ---- where they are against the syllabus -------------------------------
@@ -505,6 +535,7 @@
     renderChart();
     renderPastoral();
     renderTopics();
+    renderMissed();
     renderSyllabus();
     renderTriedForm();
     renderTried();
@@ -541,6 +572,7 @@
     tried = Array.isArray(data.tried) ? data.tried : [];
     lessons = Array.isArray(data.lessons) ? data.lessons : [];
     syllabus = data.syllabus || null;
+    attendance = Array.isArray(data.attendance) ? data.attendance : [];
     // Deep-link straight to someone: person.html#id — so a shortcut can open on
     // the right person rather than on a chooser.
     const hash = (location.hash || "").replace(/^#/, "");

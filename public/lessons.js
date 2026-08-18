@@ -17,7 +17,7 @@
   "use strict";
 
   let lessons = [], lessonConfig = null, contacts = [], records = [], recordConfig = null;
-  let schedule = [], items = [], tried = [], syllabus = null;
+  let schedule = [], items = [], tried = [], syllabus = null, attendance = [];
   let chosenTargets = []; // codes ticked for the plan currently in the box
   let where = "";         // which class the "where we are" half is about
   let grading = "";       // the id of the lesson whose marking grid is open
@@ -575,7 +575,7 @@
     const el = $("#lsWhere");
     if (!A || !el) return;
     const members = contacts.filter((c) => c && c.id && (!where || c.group === where));
-    const pic = A.picture(records, recordConfig, lessons, syllabus, members, where);
+    const pic = A.picture(records, recordConfig, lessons, syllabus, members, where, { attendance });
     if (!pic.rows.length) {
       el.innerHTML = `<p class="muted">Nothing taught against the syllabus for this class yet.</p>`;
       return;
@@ -605,6 +605,11 @@
           (r.namesUnjudged.length
             ? `<p class="bp-who">not judged: ${esc(r.namesUnjudged.map((x) => x.name).join(", "))}</p>`
             : "") +
+          // Never in the room for it. A different problem with a different
+          // answer, so it gets its own line rather than padding "not judged".
+          (r.missedIt && r.missedIt.length
+            ? `<p class="bp-who">weren't in for it: ${esc(r.missedIt.map((x) => x.name).join(", "))}</p>`
+            : "") +
           `</div>`
         );
       })
@@ -633,6 +638,7 @@
     items = Array.isArray(data.items) ? data.items : [];
     tried = Array.isArray(data.tried) ? data.tried : [];
     syllabus = data.syllabus || null;
+    attendance = Array.isArray(data.attendance) ? data.attendance : [];
     where = "";
     const paste = $("#lsPaste");
     if (paste) paste.addEventListener("input", () => { preview(); renderTargets(); });

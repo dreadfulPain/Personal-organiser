@@ -91,8 +91,14 @@
     // No blocks and nothing written off. Fall back to the days you said you
     // work — not to a built-in idea of a weekend, which would be wrong for
     // anybody whose week isn't Monday to Friday.
+    //
+    // AND ASKED AS THE DAY IT IS STANDING IN FOR. A Saturday making up for a
+    // Friday is a working day even if the Friday it replaces happens to have
+    // no blocks on it — the calendar says you are at work, and "what weekday is
+    // this?" is the wrong question to answer that with.
     const wd = workingDays(config);
-    return wd.includes(new Date(iso + "T12:00:00").getDay()) ? "work" : "own";
+    const dow = S && S.runsAsOn ? S.runsAsOn(schedule, iso) : new Date(iso + "T12:00:00").getDay();
+    return wd.includes(dow) ? "work" : "own";
   }
 
   // Which days you work, when the schedule can't say. Monday to Friday to begin

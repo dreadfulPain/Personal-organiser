@@ -167,8 +167,22 @@
         String.fromCharCode(parseInt(g, 8))));
 
   // ---- one page's content stream ------------------------------------------
+  //
+  // Returns the text as before, AND where each piece of it sat.
+  //
+  // A PDF has no table. It has words at coordinates, and the columns are only
+  // visible in the coordinates — so a timetable read as plain text comes out as
+  // "RegistrationRegistrationRegistration", one row of five lessons run
+  // together with nothing between them. The text is what almost everything here
+  // wants; the positions are what a grid needs, and they cost nothing to keep.
   function textOf(content, fonts, tally) {
     const lines = [];
+    // Every line as its cells: [{ x, text }]. A new cell starts wherever the
+    // document jumped sideways by more than a space's width, which is exactly
+    // where a person would see a column.
+    const rows = [];
+    let rowCells = [];
+    let x = 0, cellX = 0, cellStart = 0;
     let line = "";
     let font = null;
     let size = 12;
@@ -192,7 +206,24 @@
         line += raw;
       }
     };
-    const br = () => { if (line.trim()) lines.push(line.trim()); line = ""; };
+    // A cell ends where the next one begins. Taken as a slice of the line that
+    // is being built anyway, so the character decoding above is not duplicated
+    // and the two outputs cannot drift apart.
+    const closeCell = (nextX) => {
+      const t = line.slice(cellStart).trim();
+      if (t) rowCells.push({ x: cellX, text: t });
+      cellStart = line.length;
+      cellX = nextX;
+    };
+    const br = () => {
+      closeCell(x);
+      if (rowCells.length) rows.push({ y, cells: rowCells });
+      rowCells = [];
+      if (line.trim()) lines.push(line.trim());
+      line = "";
+      cellStart = 0;
+      cellX = x;
+    };
 
     const re =
       /\/([\w.]+)\s+([\d.]+)\s+Tf|(-?[\d.]+)\s+(-?[\d.]+)\s+(?:Td|TD)\b|([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+Tm\b|T\*|\[((?:[^\[\]\\]|\\.)*)\]\s*TJ|\(((?:[^()\\]|\\.)*)\)\s*(?:Tj|'|")|<([0-9A-Fa-f\s]+)>\s*Tj|\bET\b/g;
@@ -204,12 +235,26 @@
         // A fixed threshold splits "8:00" into "8" and ":00" the moment a
         // document nudges a character a fraction of a point, which real ones do
         // constantly. Measured against the font size, that stops happening.
+        x += Number(m[3]) || 0;
         if (Math.abs(Number(m[4])) > Math.max(2, size * 0.4)) br();
+        // AND A COLUMN BREAK IS A SIDEWAYS MOVE BIGGER THAN A SPACE. Same
+        // reasoning in the other direction: a document that nudges a character
+        // is not starting a new column, and one that jumps half an inch is.
+        else if ((Number(m[3]) || 0) > Math.max(1, size * 0.6)) closeCell(x);
         continue;
       }
       if (m[5] !== undefined) {
         const ny = Number(m[10]);
-        if (y !== null && Math.abs(ny - y) > Math.max(2, size * 0.4)) br();
+        const nx = Number(m[9]);
+        const broke = y !== null && Math.abs(ny - y) > Math.max(2, size * 0.4);
+        const jumped = !broke && Number.isFinite(nx) && nx - x > Math.max(1, size * 0.6);
+        // MOVED BEFORE THE BREAK, not after. Closing a cell stamps the NEXT
+        // one's position, so a row that ends at the right-hand edge would give
+        // the next row's first cell that same edge — and the time column would
+        // land under Friday.
+        if (Number.isFinite(nx)) x = nx;
+        if (broke) br();
+        else if (jumped) closeCell(x);
         y = ny;
         continue;
       }
@@ -246,7 +291,7 @@
         if (prev !== undefined && prev.length <= 2 && /^[:.,;)\]\-–]/.test(l)) out[out.length - 1] = prev + l;
         else out.push(l);
       });
-    return out.join("\n");
+    return { text: out.join("\n"), rows };
   }
 
   // ---- the whole document -------------------------------------------------
@@ -290,7 +335,8 @@
         const d = o && (await streamOf(o, bytes, s));
         if (d) content += bytesToLatin1(d) + "\n";
       }
-      pages.push({ page: i + 1, text: content ? textOf(content, fonts, tally) : "" });
+      const got = content ? textOf(content, fonts, tally) : { text: "", rows: [] };
+      pages.push({ page: i + 1, text: got.text, rows: got.rows });
     }
 
     const empty = pages.filter((p) => !p.text).length;
@@ -315,6 +361,8 @@
       ok: true,
       pages,
       text: pages.map((p) => p.text).filter(Boolean).join("\n\n"),
+      // Where each piece of text sat, for anything that needs the columns back.
+      rows: pages.flatMap((p) => p.rows || []),
       notes,
       // Always. Not a warning about this file — a fact about the format.
       caution:

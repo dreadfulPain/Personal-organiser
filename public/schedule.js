@@ -168,6 +168,44 @@
       // ahead on the reports. Kept apart from blocksDay because collapsing the
       // two turns every holiday into a month the app refuses to plan.
       noLessons: !!b.noLessons,
+      // COULD THIS ONE MOVE, IF IT CAME TO IT?
+      //
+      // Not the same question as soft. Soft means "I'm not sure this happens";
+      // this one means "this definitely happens, and it could be swapped".
+      // Teachers trade lessons with each other constantly, and when something
+      // has to give, the useful thing to know is which of the fixed points are
+      // fixed to a person rather than to the clock. Off by default: a lesson is
+      // at nine whether or not you're ready for it, until you say otherwise.
+      swappable: !!b.swappable,
+      // DATES THIS ONE DOESN'T RUN. The exception to a repeating block: you
+      // swapped it away, someone covered it, the class was out on a trip. The
+      // pattern is still right for every other week, and saying "except that
+      // Tuesday" is the only way to keep it right without deleting it.
+      skip: Array.isArray(b.skip)
+        ? [...new Set(b.skip.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))].sort()
+        : [],
+      // THIS DATE RUNS ANOTHER DAY'S TIMETABLE.
+      //
+      // A make-up day: the holiday moved and a Saturday is standing in for the
+      // Friday it replaced, with the Friday lessons on it. Without this the
+      // only way to say so is to type every lesson in again as a one-off, and
+      // the app still thinks the day is your own — so it plans a lie-in over
+      // the top of a full teaching day.
+      //
+      // 0–6, or null for "this is an ordinary entry". Null rather than -1 or 0,
+      // because Sunday IS 0 and every check that reads this has to survive it.
+      //
+      // AND THE EMPTY CASE IS ASKED FIRST, because Number(null) is 0 — so
+      // normalising an already-normalised block turned every entry in the week
+      // into "runs as Sunday", and since a make-up marker is not a commitment
+      // it was then filtered out of the day. The whole schedule vanished on the
+      // second pass through, which is a thing that happens constantly.
+      runsAs:
+        b.runsAs === null || b.runsAs === undefined || b.runsAs === ""
+          ? null
+          : Number.isInteger(Number(b.runsAs)) && Number(b.runsAs) >= 0 && Number(b.runsAs) <= 6
+            ? Number(b.runsAs)
+            : null,
       // DOES THIS BLOCK NEED WORK DOING BEFORE IT? Off by default, always —
       // switching it on for everything would bury you, and most blocks (a
       // break, a duty, a meeting someone else runs) need nothing.
@@ -184,17 +222,40 @@
     return (Array.isArray(list) ? list : []).map(normaliseBlock).filter(Boolean);
   }
 
-  function appliesOn(b, iso) {
+  function appliesOn(b, iso, asDay) {
     if (b.from && iso < b.from) return false;
     if (b.to && iso > b.to) return false;
+    // The exception beats the pattern. A lesson you swapped away isn't there
+    // that week, however right the rest of the pattern is.
+    if (b.skip && b.skip.indexOf(iso) >= 0) return false;
     if (b.date) return b.date === iso;
-    const dow = new Date(iso + "T12:00:00").getDay();
+    const dow = Number.isInteger(asDay) ? asDay : new Date(iso + "T12:00:00").getDay();
     return b.days.includes(dow);
   }
+
+  // WHICH DAY IS THIS DATE BEHAVING AS? Itself, unless something says otherwise.
+  // Returns 0–6, and the answer is what every other question about the day has
+  // to be asked with — a Saturday standing in for a Friday has Friday's lessons
+  // on it and is a working day, and asking "what weekday is this?" the ordinary
+  // way gets both of those wrong.
+  function runsAsOn(schedule, iso) {
+    const m = normalise(schedule).find((b) => b.date === iso && b.runsAs !== null && !b.soft);
+    return m ? m.runsAs : new Date(iso + "T12:00:00").getDay();
+  }
+  // Is this date standing in for a different one? The marker itself, or null.
+  function standingIn(schedule, iso) {
+    return normalise(schedule).find((b) => b.date === iso && b.runsAs !== null && !b.soft) || null;
+  }
+
   // Every block that applies on a date, earliest first.
+  //
+  // A make-up marker is not a block you have to sit through — it says which
+  // day's pattern applies, and returning it as a 00:00–23:59 commitment would
+  // swallow the day it is trying to describe.
   function blocksOn(schedule, iso) {
+    const asDay = runsAsOn(schedule, iso);
     return normalise(schedule)
-      .filter((b) => appliesOn(b, iso))
+      .filter((b) => b.runsAs === null && appliesOn(b, iso, asDay))
       .sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
   }
   // Did you mark this day off? Nothing is planned into it.
@@ -542,6 +603,8 @@
     gapsOn,
     dayIsBlocked,
     noTeachingOn,
+    runsAsOn,
+    standingIn,
     fixedBlockAt,
     nextFreeMoment,
     estimateMinutes,

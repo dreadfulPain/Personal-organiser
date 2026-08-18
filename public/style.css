@@ -3936,6 +3936,15 @@ a.btn {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 #calTerm p { flex: 1 1 100%; margin: 0 0 4px; }
 .cal-term { font-size: 0.78rem; }
+/* A lesson that could be traded, and one that isn't running this week. Both
+   are facts about a block, shown the same way its other facts are. */
+.su-swaptag, .su-skiptag { font-size: 0.72rem; padding: 1px 6px; border-radius: 10px;
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.su-swapform { margin: 4px 0 10px; }
+/* Days that run another day's timetable. */
+.su-makeup { margin-top: 10px; }
+.su-makeup .mu-list { margin-top: 6px; }
+
 /* When a timetable entry actually runs. */
 .bf-runs { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; margin: 6px 0; }
 .bf-runs .bf-hint { flex: 1 1 100%; }

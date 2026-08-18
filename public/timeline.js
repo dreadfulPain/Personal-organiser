@@ -261,10 +261,42 @@
         days: [], blocksDay: true, soft: false, source: "hand" });
     }
     if (!made.length) return;
+    // WHAT YOU ARE ACTUALLY BOOKING OVER. Counted before the days go in, while
+    // the timetable still applies to them — afterwards they are marked off and
+    // the lessons have already gone quiet.
+    const covers = lessonsCovered(made.map((b) => b.date));
     schedule = schedule.concat(made);
     persist();
     renderTimeOff();
     render();
+    const words = $("#offWords");
+    if (words && covers.total) words.textContent = coverWords(covers) + " " + words.textContent;
+  }
+
+  // The teaching those dates would land on, and how much of it you'd said could
+  // be traded. Counted, never judged — booking leave over a teaching day is an
+  // ordinary thing to do, and the app's job is to say what it costs, not
+  // whether to.
+  function lessonsCovered(dates) {
+    const Sx = S();
+    let total = 0, swappable = 0;
+    const days = new Set();
+    dates.forEach((iso) => {
+      const on = Sx.blocksOn(schedule, iso).filter((b) => !b.soft && !b.blocksDay && !b.noLessons);
+      if (!on.length) return;
+      days.add(iso);
+      total += on.length;
+      swappable += on.filter((b) => b.swappable).length;
+    });
+    return { total, swappable, days: days.size };
+  }
+
+  function coverWords(c) {
+    return `That covers ${c.total} fixed thing${c.total === 1 ? "" : "s"} across ` +
+      `${c.days} day${c.days === 1 ? "" : "s"}` +
+      (c.swappable
+        ? ` — ${c.swappable} of them you'd said could be swapped.`
+        : ", and none of them are marked as swappable.");
   }
 
   function removeTimeOff(id) {
@@ -1188,6 +1220,9 @@
         <textarea id="ttText" rows="4" placeholder="Mon-Fri 08:40-09:00 Registration&#10;Mon 09:00-09:45 P1 Maths 7B&#10;…"></textarea>
         <div class="su-row">
           <button type="button" id="ttRead" class="btn">Read this</button>
+          <label class="su-file">or open the PDF
+            <input type="file" id="ttPdf" accept=".pdf,application/pdf" hidden />
+          </label>
           <label class="su-file">or import a calendar file (.ics)
             <input type="file" id="icsFile" accept=".ics,text/calendar" hidden />
           </label>
@@ -1195,12 +1230,15 @@
         </div>
         <p id="ttStatus" class="su-status" hidden></p>
       </div>
+      <div id="makeUp" class="su-makeup"></div>
       <div id="ttReview"></div>
       <div id="blockAdd"></div>
       <div id="blockList" class="su-list"></div>`;
 
     $("#ttRead").addEventListener("click", readTimetable);
+    $("#ttPdf").addEventListener("change", readTimetablePdf);
     $("#icsFile").addEventListener("change", readIcs);
+    renderMakeUp();
     $("#addBlockBtn").addEventListener("click", () => {
       addingBlock = !addingBlock;
       renderSetup();
@@ -1218,9 +1256,32 @@
     el.hidden = !msg;
   }
 
+  // WHAT THE READER FOUND, ON SCREEN, BEFORE ANY OF IT IS KEPT.
+  function showRead(got) {
+    pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+    unreadableRows = [];
+    renderSetup();
+    setSuStatus(window.OrganiserTimetable ? window.OrganiserTimetable.words(got) : "");
+  }
+
   async function readTimetable() {
-    const text = ($("#ttText").value || "").trim();
-    if (!text) return;
+    // NOT TRIMMED. A timetable's first line is the day names with an empty cell
+    // in front of them, so the paste starts with a tab — and trimming it takes
+    // that cell away and shifts every day one column to the left. Monday's
+    // lessons come out on Sunday and nothing looks wrong.
+    const text = $("#ttText").value || "";
+    if (!text.trim()) return;
+    // READ HERE, IN PLAIN CODE, FIRST.
+    //
+    // A timetable is a grid, and a grid is arithmetic: count the columns, find
+    // the times, take what's in each cell. It went through the model for a
+    // year, which meant no model meant no timetable, no server meant no
+    // timetable, and the same paste could come out differently twice. None of
+    // that was ever necessary. The model still gets a go at anything that
+    // isn't a grid or a list, because that part it genuinely is better at.
+    const T = window.OrganiserTimetable;
+    const got = T ? T.read(text) : null;
+    if (got && got.blocks.length) return showRead(got);
     setSuStatus("Reading it… this one's allowed to take a moment.");
     try {
       const r = await fetch("/api/timetable", {
@@ -1251,6 +1312,107 @@
     } catch {
       setSuStatus("Couldn't reach the reader just now — you can still add blocks by hand.");
     }
+  }
+
+  // A TIMETABLE OUT OF A PDF.
+  //
+  // Not through the text. A PDF has no columns to lose because it never had
+  // any — it has words at coordinates, and read as text a whole row of lessons
+  // comes out run together with nothing between them. The positions are the
+  // columns, so those are what this uses, and the text is only the fallback.
+  async function readTimetablePdf(e) {
+    const f = e.target.files && e.target.files[0];
+    const P = window.OrganiserPdfText;
+    const T = window.OrganiserTimetable;
+    if (!f || !P || !T) return;
+    setSuStatus("Opening it…");
+    try {
+      const r = await P.read(await f.arrayBuffer());
+      if (!r.ok) {
+        setSuStatus((r.notes.join(" ") || "That file couldn't be opened.") +
+          " Opening it and copying the table across will work.");
+        return;
+      }
+      const got = (r.rows && r.rows.length ? T.fromRows(r.rows) : null) || T.read(r.text);
+      if (!got.blocks.length) {
+        if ($("#ttText")) $("#ttText").value = r.text;
+        setSuStatus("Nothing in there looked like a timetable — the text is in the box " +
+          "above so you can see what came out, and tidy it.");
+        return;
+      }
+      showRead(got);
+      setSuStatus(r.caution + " " + T.words(got));
+    } catch {
+      setSuStatus("That file couldn't be opened. Copy the table across instead.");
+    }
+  }
+
+  // ---- make-up days ---------------------------------------------------------
+  //
+  // A Saturday that runs the Friday timetable, because the holiday moved and
+  // this is the day standing in for it. Without it the only way to say so is to
+  // type every lesson in again as a one-off — and the app would still think the
+  // day was your own, so it would plan a lie-in over the top of a teaching day.
+  function renderMakeUp() {
+    const box = $("#makeUp");
+    if (!box) return;
+    const Sx = S();
+    const made = Sx.normalise(schedule).filter((b) => b.runsAs !== null);
+    box.innerHTML = `
+      <details class="p-setup">
+        <summary>Days that run another day's timetable</summary>
+        <p class="muted">A working Saturday standing in for a weekday, or any day
+          that runs a different day's lessons. Say which day it runs as and the
+          whole timetable moves with it — hours, lessons and all.</p>
+        <div class="su-row">
+          <label>Date <input type="date" class="mu-date" /></label>
+          <label>runs as
+            <select class="mu-day">${DAY_NAMES.map((n, i) => `<option value="${i}">${escapeHtml(n)}</option>`).join("")}</select>
+          </label>
+          <button type="button" class="btn mu-add">Add it</button>
+        </div>
+        <div class="mu-list"></div>
+      </details>`;
+    const list = box.querySelector(".mu-list");
+    if (!made.length) list.innerHTML = `<p class="empty">None yet.</p>`;
+    else
+      made.forEach((b) => {
+        const row = document.createElement("div");
+        row.className = "su-brow";
+        const span = document.createElement("span");
+        span.className = "su-blabel";
+        span.textContent = `${b.date} — runs as ${DAY_NAMES[b.runsAs]}`;
+        row.appendChild(span);
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "link";
+        del.textContent = "remove";
+        del.addEventListener("click", () => {
+          schedule = Sx.normalise(schedule).filter((x) => x.id !== b.id);
+          persist();
+          renderSetup();
+          render();
+        });
+        row.appendChild(del);
+        list.appendChild(row);
+      });
+    box.querySelector(".mu-add").addEventListener("click", () => {
+      const date = box.querySelector(".mu-date").value;
+      const day = Number(box.querySelector(".mu-day").value);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      const made2 = Sx.normaliseBlock({
+        label: `runs as ${DAY_NAMES[day]}`,
+        start: "00:00", end: "23:59", date, runsAs: day, source: "hand",
+      });
+      if (!made2) return;
+      // One per date. Saying it twice is a correction, not a second day.
+      schedule = Sx.normalise(schedule)
+        .filter((x) => !(x.date === date && x.runsAs !== null))
+        .concat([made2]);
+      persist();
+      renderSetup();
+      render();
+    });
   }
 
   function readIcs(e) {
@@ -1366,7 +1528,7 @@
   }
 
   function blockForm(existing) {
-    const b = existing || { label: "", start: "09:00", end: "10:00", days: [1, 2, 3, 4, 5], date: "", from: "", to: "", soft: false, about: [] };
+    const b = existing || { label: "", start: "09:00", end: "10:00", days: [1, 2, 3, 4, 5], date: "", from: "", to: "", soft: false, swappable: false, skip: [], about: [] };
     const form = document.createElement("div");
     form.className = "su-form";
     form.innerHTML = `
@@ -1383,6 +1545,7 @@
         <label>until <input type="date" class="bf-to" value="${escapeHtml(b.to || "")}" /></label>
       </div>
       <label class="bf-soft"><input type="checkbox" class="bf-softbox" ${b.soft ? "checked" : ""} /> this one's a guess, not a fixed thing</label>
+      <label class="bf-soft"><input type="checkbox" class="bf-swapbox" ${b.swappable ? "checked" : ""} /> this one could be swapped with someone if it came to it</label>
       <label class="bf-soft"><input type="checkbox" class="bf-prep" ${b.prep && b.prep.on ? "checked" : ""} /> I have to get something ready before this one</label>
       <label class="bf-lead">ready by <input type="number" class="bf-leaddays" min="0" max="14" value="${b.prep && b.prep.leadDays ? b.prep.leadDays : 1}" /> day(s) before
         <span class="bf-hint">A task appears for each time this comes round, a week ahead — not the whole term. Leave the box unticked for anything you don't prepare yourself.</span></label>
@@ -1411,6 +1574,12 @@
         from: form.querySelector(".bf-from").value,
         to: form.querySelector(".bf-to").value,
         soft: form.querySelector(".bf-softbox").checked,
+        // Not the same as a guess. This one definitely happens — it is just
+        // fixed to a person rather than to the clock, and could be traded.
+        swappable: form.querySelector(".bf-swapbox").checked,
+        // Kept, or a swap already recorded would be thrown away by an edit.
+        skip: (existing && existing.skip) || [],
+        runsAs: existing ? existing.runsAs : null,
         prep: {
           on: form.querySelector(".bf-prep").checked,
           leadDays: Number(form.querySelector(".bf-leaddays").value) || 1,
@@ -1435,6 +1604,8 @@
   }
 
   let editingBlockId = null;
+  // Which block is having its exceptions edited, if any.
+  let swappingId = "";
   function renderBlockList() {
     const el = $("#blockList");
     if (!el) return;
@@ -1453,7 +1624,7 @@
       row.className = "su-brow" + (b.soft ? " soft" : "");
       row.innerHTML = `
         <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
-        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
+        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "link";
@@ -1475,9 +1646,91 @@
         render();
         setSuStatus(`Removed “${gone.label}”.`);
       });
-      row.append(edit, del);
+      // NOT THIS WEEK. A swap, a cover, a trip — the pattern is still right for
+      // every other week, and deleting the lesson to record one Tuesday would
+      // be throwing away the term to fix a day.
+      const swap = document.createElement("button");
+      swap.type = "button";
+      swap.className = "link su-swapbtn";
+      swap.textContent = swappingId === b.id ? "never mind" : "not on…";
+      swap.addEventListener("click", () => {
+        swappingId = swappingId === b.id ? "" : b.id;
+        renderSetup();
+      });
+      row.append(edit, swap, del);
       el.appendChild(row);
+      if (swappingId === b.id) el.appendChild(swapForm(b));
     });
+  }
+
+  // The dates one block doesn't run on, and adding another.
+  function swapForm(b) {
+    const box = document.createElement("div");
+    box.className = "su-form su-swapform";
+    box.innerHTML = `
+      <p class="muted">Days this one isn't happening — you swapped it with someone,
+        someone covered it, the class was out. Everything else about it stays as it is.</p>
+      <div class="su-row">
+        <label>not on <input type="date" class="sw-date" /></label>
+        <button type="button" class="btn sw-add">Mark it off</button>
+      </div>
+      <p class="muted">A SWAP IS TWO HALVES. If you took it somewhere else rather than
+        losing it, say where and both halves go in at once — otherwise the day you
+        gave it away is right and the day you teach it is empty.</p>
+      <div class="su-row">
+        <label>instead it's on <input type="date" class="sw-to" /></label>
+        <label>from <input type="time" class="sw-start" value="${escapeHtml(b.start)}" /></label>
+        <label>to <input type="time" class="sw-end" value="${escapeHtml(b.end)}" /></label>
+      </div>
+      <div class="sw-list"></div>`;
+    const list = box.querySelector(".sw-list");
+    if (!b.skip.length) list.innerHTML = `<p class="empty">It runs every time so far.</p>`;
+    else
+      b.skip.forEach((d) => {
+        const row = document.createElement("div");
+        row.className = "su-brow";
+        const s = document.createElement("span");
+        s.className = "su-blabel";
+        s.textContent = d;
+        row.appendChild(s);
+        const put = document.createElement("button");
+        put.type = "button";
+        put.className = "link";
+        put.textContent = "put it back";
+        put.addEventListener("click", () => setSkip(b.id, b.skip.filter((x) => x !== d)));
+        row.appendChild(put);
+        list.appendChild(row);
+      });
+    box.querySelector(".sw-add").addEventListener("click", () => {
+      const d = box.querySelector(".sw-date").value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+      const to = box.querySelector(".sw-to").value;
+      const moved = /^\d{4}-\d{2}-\d{2}$/.test(to)
+        ? S().normaliseBlock({
+            label: b.label,
+            start: box.querySelector(".sw-start").value || b.start,
+            end: box.querySelector(".sw-end").value || b.end,
+            date: to,
+            about: b.about,
+            prep: b.prep,
+            swappable: b.swappable,
+            source: "hand",
+          })
+        : null;
+      setSkip(b.id, b.skip.concat([d]), moved);
+    });
+    return box;
+  }
+
+  function setSkip(id, dates, alsoAdd) {
+    schedule = S().normalise(schedule).map((x) => (x.id === id ? { ...x, skip: dates } : x));
+    if (alsoAdd) schedule = schedule.concat([alsoAdd]);
+    persist();
+    // The form stays open. Taking a date back off is a correction, and closing
+    // the thing you are correcting is how you lose your place in it.
+    renderSetup();
+    render();
+    if (alsoAdd) setSuStatus(`Swapped — it's off on ${dates[dates.length - 1]} and on ${alsoAdd.date} instead.`);
   }
 
   async function init() {

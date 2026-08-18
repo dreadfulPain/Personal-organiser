@@ -3920,6 +3920,12 @@ a.btn {
 .ls-open input[type="file"] { font: inherit; font-size: 0.85rem; margin-left: 4px; }
 .ls-open .muted { display: block; margin-top: 3px; font-size: 0.78rem; }
 
+/* Time booked off. Deliberately plain: it is a fact you are recording, not an
+   achievement and not a confession. */
+#offBox .ls-row { margin: 10px 0; }
+#offBox .ls-actions { display: flex; gap: 14px; align-items: center; }
+#offList { margin-top: 8px; }
+
 /* A day of your own: an order rather than a timetable, so the clock is hidden
    rather than guessed at. */
 .dp-shape { margin: 0 0 10px; font-size: 0.85rem; color: var(--ink-soft); }

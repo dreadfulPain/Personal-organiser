@@ -67,15 +67,20 @@
   //            hours are imposed from outside.
   //   "own"  — they don't. A weekend, a holiday, an INSET day you're not going
   //            to. Work can still happen and often should; the shape is yours.
+  //   "off"  — you said no. Away, resting, doing something else. No tasks.
   //
-  // There is deliberately no third kind for "genuinely away". A day you want
-  // nothing from is a day you don't open this on, and inventing a state for it
-  // would only give the app another way to decide something for you.
+  // The third one nearly wasn't here, on the grounds that a day you want
+  // nothing from is a day you don't open the app on. That was wrong, and for a
+  // reason that has nothing to do with the day itself: TELLING IT IN ADVANCE IS
+  // THE WHOLE POINT. Five weeks to a deadline is not five weeks if five of
+  // those days are a break — and the only way anything can be placed sensibly
+  // is if the gap is known before it arrives rather than discovered by not
+  // being used.
   function kindOf(schedule, iso, config) {
     const S = window.OrganiserSchedule;
-    // A day written off in the schedule — a holiday, an INSET day, whatever you
-    // imported — is a day the fixed commitments don't apply. That used to mean
-    // "nothing at all", which is the assumption this whole file exists to undo.
+    // Asked first: a day you marked off is off, whatever else is true of it.
+    if (S && S.dayIsBlocked && S.dayIsBlocked(schedule, iso)) return "off";
+    // Then: no lessons, but the day is still yours.
     if (S && S.noTeachingOn && S.noTeachingOn(schedule, iso)) return "own";
     // Otherwise: does anything actually run today? A day with no fixed block on
     // it is your own day whether it's a Saturday or a Tuesday in the holidays.
@@ -106,6 +111,12 @@
   function shapeOf(schedule, iso, config) {
     const kind = kindOf(schedule, iso, config);
     const own = ownDay(config);
+    // A day off has no hours to speak of. It is returned rather than refused so
+    // that a caller counting days can tell the difference between "nothing fits
+    // here" and "I never asked about this day".
+    if (kind === "off") {
+      return { kind, loose: false, start: "", end: "", parts: [], config: config || {} };
+    }
     if (kind === "work") {
       return {
         kind,
@@ -160,6 +171,8 @@
   // otherwise.
   function words(shape) {
     if (shape.kind === "work") return "";
+    if (shape.kind === "off")
+      return "You've marked this off — nothing is planned into it, and the work has been placed around it.";
     return shape.loose
       ? "A day of your own — no lessons, so this is an order rather than a timetable. Times would only be a guess."
       : "A day of your own — no lessons, but planned to the clock as you asked.";

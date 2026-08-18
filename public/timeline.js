@@ -51,6 +51,67 @@
   }
   const todayISO = () => S().isoOf(new Date());
 
+  // ---- time off ------------------------------------------------------------
+  //
+  // A range of days you want nothing planned into. Stored as ordinary
+  // day-blocking entries, one per day, because that is what the rest of the app
+  // already understands — no new store, and every count that already respects a
+  // day off respects these the moment they exist.
+  function addTimeOff(fromISO, toISO, label) {
+    if (!fromISO) return;
+    const to = toISO && toISO >= fromISO ? toISO : fromISO;
+    const name = (label || "").trim() || "off";
+    const made = [];
+    for (let i = 0; i < 400; i++) {
+      const iso = S().addDaysISO(fromISO, i);
+      if (iso > to) break;
+      // Already marked off? Leave it — booking a fortnight that overlaps a day
+      // you'd already taken must not put two of it in the list.
+      if (schedule.some((b) => b && b.date === iso && b.blocksDay)) continue;
+      made.push({ id: uid(), label: name, start: "00:00", end: "23:59", date: iso,
+        days: [], blocksDay: true, soft: false, source: "hand" });
+    }
+    if (!made.length) return;
+    schedule = schedule.concat(made);
+    persist();
+    renderTimeOff();
+    render();
+  }
+
+  function removeTimeOff(id) {
+    schedule = schedule.filter((b) => !(b && b.id === id));
+    persist();
+    renderTimeOff();
+    render();
+  }
+
+  function renderTimeOff() {
+    const list = $("#offList");
+    const words = $("#offWords");
+    if (!list) return;
+    const off = schedule.filter((b) => b && b.blocksDay && b.date).sort((a, b) => a.date.localeCompare(b.date));
+    const ahead = off.filter((b) => b.date >= todayISO());
+    if (words)
+      words.textContent = ahead.length
+        ? `${ahead.length} day${ahead.length === 1 ? "" : "s"} booked off ahead — the work is being placed around ${ahead.length === 1 ? "it" : "them"}.`
+        : "Nothing booked off ahead.";
+    // Only what's still to come: a day off last March is not information.
+    list.innerHTML = "";
+    ahead.slice(0, 60).forEach((b) => {
+      const row = document.createElement("div");
+      row.className = "ro-row";
+      const name = document.createElement("span");
+      name.textContent = `${b.date} — ${b.label || "off"}`;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "link";
+      btn.textContent = "put it back";
+      btn.addEventListener("click", () => removeTimeOff(b.id));
+      row.append(name, btn);
+      list.appendChild(row);
+    });
+  }
+
   function persist() {
     OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList, rotas });
   }
@@ -1230,6 +1291,14 @@
     areaList = data.areas || [];
     rotas = data.rotas || [];
     syncPrep();
+    const offAdd = $("#offAdd");
+    if (offAdd)
+      offAdd.addEventListener("click", () =>
+        addTimeOff($("#offFrom").value, $("#offTo").value, $("#offLabel").value));
+    const offToday = $("#offToday");
+    if (offToday) offToday.addEventListener("click", () => addTimeOff(todayISO(), todayISO(), $("#offLabel").value));
+    renderTimeOff();
+
     $("#setupToggle").addEventListener("click", () => {
       setupOpen = !setupOpen;
       renderSetup();

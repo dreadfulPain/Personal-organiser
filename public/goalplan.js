@@ -72,17 +72,46 @@
   // counting it would make the rate look kinder than it is.
   function daysWithRoom(schedule, cfg, fromISO, toISO) {
     const S = window.OrganiserSchedule;
+    const DS = window.OrganiserDayShape;
     const c = S.normaliseConfig(cfg);
     const out = [];
     if (!toISO || toISO < fromISO) return out;
     for (let i = 0; i < 400; i++) {
       const iso = S.addDaysISO(fromISO, i);
       if (iso > toISO) break;
-      const free = S.gapsOn(schedule, c, iso).reduce((n, g) => n + (g.end - g.start), 0);
+      // EACH DAY MEASURED BY ITS OWN HOURS. A Saturday is not a Tuesday that
+      // happens to have no lessons in it: it starts later and runs longer, and
+      // measuring it against the working day's hours quietly understates what
+      // the week can actually hold.
+      const shape = DS ? DS.shapeOf(schedule, iso, c) : { kind: "work", config: c };
+      if (shape.kind === "off") continue; // you said no; it counts for nothing
+      const dayCfg = shape.kind === "own" ? S.normaliseConfig(shape.config) : c;
+      const free = S.gapsOn(schedule, dayCfg, iso).reduce((n, g) => n + (g.end - g.start), 0);
       if (free >= c.minSessionMinutes) {
         const dow = new Date(iso + "T12:00:00").getDay();
-        out.push({ iso, free, weekend: dow === 0 || dow === 6 });
+        out.push({ iso, free, weekend: dow === 0 || dow === 6, kind: shape.kind });
       }
+    }
+    return out;
+  }
+
+  // WHAT THE STRETCH IS ACTUALLY MADE OF. Five weeks to a deadline is a number
+  // of days, and those days are not interchangeable: some carry lessons, some
+  // are yours, and some you have said you want nothing from. Counted here so a
+  // rate can be honest about what it is dividing by.
+  function madeOf(schedule, cfg, fromISO, toISO) {
+    const S = window.OrganiserSchedule;
+    const DS = window.OrganiserDayShape;
+    const c = S.normaliseConfig(cfg);
+    const out = { days: 0, work: 0, own: 0, off: 0, offDates: [] };
+    if (!toISO || toISO < fromISO) return out;
+    for (let i = 0; i < 400; i++) {
+      const iso = S.addDaysISO(fromISO, i);
+      if (iso > toISO) break;
+      out.days++;
+      const kind = DS ? DS.kindOf(schedule, iso, c) : "work";
+      out[kind]++;
+      if (kind === "off") out.offDates.push(iso);
     }
     return out;
   }
@@ -101,6 +130,10 @@
     const p = progress(goal, items, cfg);
     const deadline = /^\d{4}-\d{2}-\d{2}$/.test((goal && goal.date) || "") ? goal.date : "";
     const days = deadline ? daysWithRoom(schedule, cfg, fromISO, deadline) : [];
+    // What the stretch is made of, including the days you have said you want
+    // nothing from — which is the difference between "five weeks" and "five
+    // weeks minus the week you're away".
+    const made = deadline ? madeOf(schedule, cfg, fromISO, deadline) : { days: 0, work: 0, own: 0, off: 0, offDates: [] };
     const daysLeft = days.length;
     // What a day can realistically give this, on average, after the two-thirds
     // rule — the day still has everything else in it.
@@ -133,6 +166,8 @@
       needPerDay,
       verdict,
       weekendDays,
+      made,
+      offDays: made.off,
       // How much simply won't fit, if it won't. The number you take to someone.
       short: deadline && daysLeft > 0 ? Math.max(0, p.left - roomPerDay * daysLeft) : 0,
     };
@@ -179,15 +214,28 @@
     if (r.verdict === "out of days") return `${left}, and the day is here.`;
     const per = `${S.durationWords(r.needPerDay)} a day across the ${r.daysLeft} working day${r.daysLeft === 1 ? "" : "s"} left`;
     if (r.verdict === "more than the days can hold") {
-      return `${left}. That's ${per} — more than those days can hold, by about ${S.durationWords(r.short)}. Worth sorting out now rather than later: more time, fewer pieces, or a hand with it.`;
+      return `${left}. That's ${per} — more than those days can hold, by about ${S.durationWords(r.short)}.${offWords(r)} Worth sorting out now rather than later: more time, fewer pieces, or a hand with it.`;
     }
     // Said once, at the end, so it doesn't get in the way of the number.
     const wk = r.weekendDays
       ? ` (${r.weekendDays} of those are weekend days — they're counted, because sometimes you do use them)`
       : "";
-    if (r.verdict === "tight") return `${left}. That's ${per} — doable, but there's not much slack in it.${wk}`;
-    return `${left}. That's ${per}, which fits comfortably.${wk}`;
+    // And what has been taken OUT of the sum, which matters more than what's
+    // in it: a stretch that looks comfortable because it's five weeks long is
+    // a different thing when a week of it is a break you've already booked.
+    const off = r.offDays
+      ? ` ${r.offDays} day${r.offDays === 1 ? "" : "s"} you've marked off ${r.offDays === 1 ? "is" : "are"} left out of that.`
+      : "";
+    if (r.verdict === "tight") return `${left}. That's ${per} — doable, but there's not much slack in it.${off}${wk}`;
+    return `${left}. That's ${per}, which fits comfortably.${off}${wk}`;
   }
 
-  window.OrganiserGoalPlan = { workFor, progress, rate, daysWithRoom, taskFromStep, words };
+  // The days taken out of the sum, said the same way wherever it appears.
+  function offWords(r) {
+    return r.offDays
+      ? ` ${r.offDays} day${r.offDays === 1 ? "" : "s"} you've marked off ${r.offDays === 1 ? "is" : "are"} left out of that.`
+      : "";
+  }
+
+  window.OrganiserGoalPlan = { workFor, progress, rate, daysWithRoom, madeOf, taskFromStep, words };
 })();

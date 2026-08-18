@@ -26,6 +26,35 @@
       <div id="dpAccept" class="dp-accept" hidden></div>
       <section id="unplanned" class="dp-also" hidden></section>
 
+      <!-- TIME OFF. Not for the day itself — you can simply not open this — but
+           so the planner knows the gap is coming and places the work around it.
+           Five weeks to a deadline is not five weeks if five days are a break. -->
+      <section class="setup-wrap">
+        <details class="p-setup" id="offBox">
+          <summary>Book time off</summary>
+          <p class="muted">Days you won't be doing anything — away, resting, busy
+            with something else. Nothing gets planned into them, and everything
+            else moves to fit around them. Telling it early is the whole point.</p>
+          <div class="ls-row">
+            <label>From
+              <input id="offFrom" type="date" />
+            </label>
+            <label>To
+              <input id="offTo" type="date" />
+            </label>
+            <label>What to call it
+              <input id="offLabel" type="text" maxlength="60" placeholder="away" />
+            </label>
+          </div>
+          <div class="ls-actions">
+            <button id="offAdd" type="button" class="btn">Mark those off</button>
+            <button id="offToday" type="button" class="link">just today</button>
+          </div>
+          <p id="offWords" class="muted"></p>
+          <div id="offList"></div>
+        </details>
+      </section>
+
       <!-- THE WEEK'S SHAPE: a once-a-term job, folded away the rest of the time -->
       <section class="setup-wrap">
         <button type="button" id="setupToggle" class="link setup-toggle">set up my week</button>

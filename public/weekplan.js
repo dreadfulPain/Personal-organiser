@@ -73,6 +73,49 @@
     });
   }
 
+  // WHICH DAY SOON HAS THE MOST ROOM IN IT.
+  //
+  // Undated work is never booked into a future day — it has no deadline to
+  // miss, so committing it would be inventing a promise. That rule is right and
+  // it stays. But it left a hole: on a day too full to hold everything, the app
+  // squeezed what it could into the evening and said nothing about the Saturday
+  // two days later with ten hours in it. It knew, and didn't mention it.
+  //
+  // So: not a booking. A sentence. You decide.
+  function roomAhead(schedule, cfg, fromISO, days) {
+    const S = window.OrganiserSchedule;
+    const D = window.OrganiserDayShape;
+    const c = S.normaliseConfig(cfg);
+    const span = Math.max(1, Math.min(60, Number(days) || 7));
+    const out = [];
+    for (let i = 0; i < span; i++) {
+      const iso = S.addDaysISO(fromISO, i);
+      // Asked with the day's OWN shape, so a Saturday is measured by the hours
+      // a Saturday actually has rather than by a working day's.
+      const shape = D && D.shapeOf ? D.shapeOf(schedule, iso, c) : { kind: "work", config: c };
+      if (shape.kind === "off") continue;
+      const free = S.gapsOn(schedule, shape.config, iso).reduce((n, g) => n + (g.end - g.start), 0);
+      out.push({ iso, free, kind: shape.kind, days: i });
+    }
+    return out;
+  }
+
+  // The freest day after today, if it is meaningfully freer. Null when there
+  // isn't one — saying "tomorrow has slightly more room" every day would be
+  // noise, and noise is how a useful line stops being read.
+  function betterDay(schedule, cfg, fromISO, days) {
+    const list = roomAhead(schedule, cfg, fromISO, days);
+    if (list.length < 2) return null;
+    const today = list[0];
+    const rest = list.slice(1).filter((d) => d.free > 0);
+    if (!rest.length) return null;
+    const best = rest.reduce((a, b) => (b.free > a.free ? b : a));
+    // Half as much again, and at least an hour more. Below that it is not worth
+    // moving anything for.
+    if (best.free < today.free * 1.5 || best.free - today.free < 60) return null;
+    return best;
+  }
+
   // items, schedule, cfg → where each dated job should actually get done.
   // days: how far to look (7 for the week, a month's length for the month).
   function spread(items, schedule, cfg, fromISO, days, ctx) {
@@ -376,6 +419,8 @@
 
   window.OrganiserWeekPlan = {
     spread,
+    roomAhead,
+    betterDay,
     startToday,
     nextDayWithRoom,
     trouble,

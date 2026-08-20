@@ -835,6 +835,9 @@
           <span class="dp-est${slot.pinned ? "" : " guess"}">${escapeHtml(S().durationWords(est.minutes))}${est.spent ? " left" : ""}${slot.pinned ? "" : " — a guess"}</span>
           ${est.spent ? `<span class="dp-sofar">${escapeHtml(S().durationWords(est.spent))} already in</span>` : ""}
           ${slot.why ? `<span class="dp-why">${escapeHtml(slot.why)}</span>` : ""}
+          ${slot.clashWith && slot.clashWith.length
+            ? `<span class="dp-clash">at the same time as ${escapeHtml(slot.clashWith.join(", "))}</span>`
+            : ""}
           ${again >= 2 ? `<span class="dp-again">on the plan ${again} days running — it may want a proper slot, or breaking up</span>` : ""}
           <button type="button" class="link dp-area">${escapeHtml(areaLabel(it))}</button>
         </div>
@@ -1154,6 +1157,14 @@
     setTlStatus(`Moved “${it.title}” to ${S().dayWord(new Date(spot.iso + "T12:00:00"))} at ${S().fmtTime(it.time)} — the first real stretch it fits in. ✓`);
   }
 
+  // Said as a day and an amount, not as an instruction. It is your call.
+  function roomWords(d) {
+    const when = new Date(d.iso + "T12:00:00")
+      .toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+    return `${when} has ${S().durationWords(d.free)} free in it` +
+      (d.kind === "own" ? " and nothing fixed" : "") + " — more room than today, if any of this can wait.";
+  }
+
   function renderUnplanned(iso, plan) {
     const el = $("#unplanned");
     if (!el) return;
@@ -1164,7 +1175,16 @@
       return;
     }
     el.hidden = false;
-    el.innerHTML = `<h2>Also today</h2><p class="muted">Dated today but left out of the plan — the day was full enough.</p>`;
+    // AND WHERE THERE IS ROOM. Nothing is booked into it — undated work has no
+    // deadline to miss and turning it into a commitment would be inventing a
+    // promise. But the app knew the Saturday was empty and said nothing, which
+    // is its own kind of unhelpful.
+    const WPx = window.OrganiserWeekPlan;
+    const better = WPx && WPx.betterDay ? WPx.betterDay(schedule, cfg, iso, 8) : null;
+    el.innerHTML = `<h2>Also today</h2><p class="muted">Dated today but left out of the plan — the day was full enough.</p>` +
+      (better
+        ? `<p class="dp-room">${escapeHtml(roomWords(better))}</p>`
+        : "");
     const list = document.createElement("div");
     list.className = "dp-alsolist";
     left.forEach((it) => {

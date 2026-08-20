@@ -3936,6 +3936,12 @@ a.btn {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 #calTerm p { flex: 1 1 100%; margin: 0 0 4px; }
 .cal-term { font-size: 0.78rem; }
+/* Something you pinned to a time that a lesson is already in. Named, not moved —
+   you may know the class is out. */
+.dp-clash { color: var(--warn, #b45309); }
+/* Where there IS room. Information, never a booking. */
+.dp-room { font-size: 0.9rem; margin-top: 4px; }
+
 /* When to set off. The one number on the row that changes what you do. */
 .dp-leave { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
 .su-theretag { font-size: 0.72rem; padding: 1px 6px; border-radius: 10px;

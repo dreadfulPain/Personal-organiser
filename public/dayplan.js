@@ -66,11 +66,28 @@
     const freeTotal = gaps.reduce((n, g) => n + (g.end - g.start), 0);
     const budget = Math.floor(freeTotal * c.fillFraction);
 
+    // A TIME YOU GAVE IT IS KEPT, EVEN WHEN IT LANDS ON SOMETHING.
+    //
+    // Everything else here is planned into the gaps and can't collide with a
+    // fixed block. A time you typed is different: it goes where you said. And
+    // it used to go there silently, so "mark the books at 9:15" sat on top of
+    // the nine o'clock lesson looking exactly like a plan — and you cannot mark
+    // books while you are teaching.
+    //
+    // It is NOT moved. You may know something the app doesn't: the class is out
+    // on a trip, someone is covering. But it is named, on the row, so the
+    // double-booking is a thing you decided rather than a thing that happened.
+    const onNow = S.blocksOn(schedule, iso).filter((b) => !b.soft && !b.noLessons && !b.blocksDay);
     const pinned = items.filter((i) => !i.done && i.date === iso && i.time);
     const slots = pinned.map((i) => {
       const start = S.toMin(i.time);
       const est = S.estimateMinutes(i, c);
-      return { itemId: i.id, start, end: Math.min(start + est.minutes, 24 * 60 - 1), pinned: true, soft: false };
+      const end = Math.min(start + est.minutes, 24 * 60 - 1);
+      const hit = onNow.filter((b) => start < S.toMin(b.end) && end > S.toMin(b.start));
+      return {
+        itemId: i.id, start, end, pinned: true, soft: false,
+        clashWith: hit.map((b) => b.label).slice(0, 3),
+      };
     });
     slots.forEach((s) => carve(gaps, s.start, s.end));
 

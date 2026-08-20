@@ -1647,13 +1647,33 @@
   // memory is the only holder. These surface here (louder than the shortlist,
   // which skips them to avoid double-shouting), each showing when its reminder
   // will come find you.
+  // HOW LONG SOMETHING HAS BEEN OPEN. The list of things you are waiting on
+  // other people for has always said this; the list of things YOU started and
+  // left said nothing at all, which is the wrong way round — the one you can do
+  // something about was the one going quiet.
+  function openSince(it) {
+    if (!it.createdAt) return "";
+    const made = new Date(it.createdAt);
+    if (!Number.isFinite(made.getTime())) return "";
+    const days = Math.max(0, Math.round((Date.now() - made.getTime()) / 86400000));
+    return days === 0 ? "started today" : days === 1 ? "open 1 day" : `open ${days} days`;
+  }
+
   function renderLoops() {
     const section = $("#loops");
     const listEl = $("#loopsList");
     if (!section || !listEl) return;
     const loops = items
       .filter((i) => !i.done && i.openLoop)
-      .sort((a, b) => (a.remindAt || "9999").localeCompare(b.remindAt || "9999"));
+      // When it will next ask, then how long it has been sitting. Without the
+      // second, a loop with no reminder on it sinks below every loop that has
+      // one, however long ago you started it — and the ones nobody set a
+      // reminder for are exactly the ones that go quiet for a term.
+      .sort(
+        (a, b) =>
+          (a.remindAt || "9999").localeCompare(b.remindAt || "9999") ||
+          String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+      );
     if (!loops.length) {
       section.hidden = true;
       listEl.innerHTML = "";
@@ -1676,6 +1696,7 @@
           <div class="lp-title">${escapeHtml(it.title)}</div>
           <div class="item-meta">
             ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
+            <span class="lp-since">${escapeHtml(openSince(it))}</span>
             ${due ? `<span class="when${it.deadlineType === "hard" ? " due" : ""}">${it.deadlineType === "hard" ? "due " : ""}${escapeHtml(due)}</span>` : ""}
             ${ping ? `<span class="ping-info">${escapeHtml(ping)}</span>` : ""}
           </div>

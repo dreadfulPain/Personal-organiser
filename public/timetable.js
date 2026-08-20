@@ -244,11 +244,105 @@
     return [...found].sort((x, y) => x - y);
   }
 
+  // ---- an agenda ------------------------------------------------------------
+  //
+  // THE THIRD SHAPE, and the one a real document turned out to be. An
+  // orientation schedule, a conference programme, an inset day: the time sits
+  // on a line of its own and what happens at it follows underneath.
+  //
+  //     7:00-11:00
+  //     Health Check
+  //     (bring passport & ID photos)
+  //     11:30-13:00
+  //     Lunch Break & Campus Tour
+  //
+  // This is also what a two-column table collapses to when it goes through a
+  // PDF, which is why it matters more than it looks: the columns are gone but
+  // the ORDER survives, and the order is enough.
+  //
+  // It is a day, not a week — these are things happening once, on a date, so
+  // they come back with no days on them and the date is asked for separately.
+  function readAgenda(text, opts) {
+    const o = opts || {};
+    const out = { shape: "agenda", days: [], blocks: [], daysGuessed: false, note: "" };
+    const lines = String(text || "").split(LINE_BREAKS)
+      .map((l) => l.replace(/\u00a0/g, " ").trim()).filter(Boolean);
+    // A date is what the reader uses to know a new day has started; if none is
+    // given it just doesn't check.
+    const C = window.OrganiserCalPlan;
+    const hasDate = (l) => !!(C && C.dateIn(l, o.year || 2000));
+    let open = null;
+    let extra = 0;
+    lines.forEach((line) => {
+      // A line that is ONLY a time is a heading for what comes next. A line
+      // with a time and words in it is an entry all by itself.
+      const span = spanIn(line);
+      if (span) {
+        const rest = line
+          .replace(new RegExp(`\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?\\s*(?:${DASH})\\s*\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?`, "i"), " ")
+          .replace(/\s{2,}/g, " ").replace(/^[\s\-–—:|\t]+|[\s\-–—:|\t]+$/g, "").trim();
+        open = { label: rest, start: span.start, end: span.end, days: [], date: o.date || "",
+          soft: false, source: "paste" };
+        extra = 0;
+        out.blocks.push(open);
+        return;
+      }
+      // Everything under a time belongs to it, until the next time. The FIRST
+      // such line is what it's called; the rest is detail, and detail is not
+      // dropped — "(bring passport and ID photos)" is the single most
+      // important line on the page and belongs with the thing it is about.
+      if (!open) return;
+      if (!open.label) { open.label = line.slice(0, 80); return; }
+      // BUT THE LAST ENTRY ON A PAGE IS FOLLOWED BY THE PAGE. A footer, a
+      // welcome paragraph, the date printed at the bottom — all of it sits
+      // under the last time on the page and none of it is about that entry.
+      // A row of a table is a few lines; a page of prose is not, so the detail
+      // stops after a few, and stops dead at a date, which is a new day
+      // starting rather than more about this one.
+      if (hasDate(line) || extra >= 6) { open = null; return; }
+      extra++;
+      open.note = ((open.note ? open.note + " " : "") + line).slice(0, 300);
+    });
+    out.blocks = out.blocks.filter((b) => b.label);
+    return out.blocks.length ? out : null;
+  }
+
+  // A DOCUMENT THAT IS SEVERAL DAYS LONG.
+  //
+  // An orientation schedule is one day a page, and the date for that day is
+  // printed on it — so each page is read on its own and its entries get that
+  // page's date. Read as one lump they would all run together with no way to
+  // tell the first morning from the second.
+  function fromPages(pages, opts) {
+    const o = opts || {};
+    const C = window.OrganiserCalPlan;
+    const list = Array.isArray(pages) ? pages : [];
+    const out = { shape: "agenda", days: [], blocks: [], daysGuessed: false, note: "", dates: [] };
+    list.forEach((p) => {
+      const text = String((p && p.text) || "");
+      if (!text.trim()) return;
+      // The date printed on this page. Anywhere on it — a schedule puts it in
+      // the header, the footer or beside the title, and which is not knowable.
+      const found = C ? C.read(text, o.year ? { year: o.year } : undefined) : { rows: [] };
+      const date = found.rows.length ? found.rows[0].date : "";
+      const got = readAgenda(text, { date, year: found.year });
+      if (!got) return;
+      if (date && out.dates.indexOf(date) < 0) out.dates.push(date);
+      out.blocks = out.blocks.concat(got.blocks);
+    });
+    if (!out.blocks.length) return null;
+    const undated = out.blocks.filter((b) => !b.date).length;
+    if (undated)
+      out.note = `${undated} of them had no date on their page — say which day they're on before keeping them.`;
+    return out;
+  }
+
   // ---- the front door -------------------------------------------------------
   //
-  // Grid or lines: worked out from the text, never asked. A grid is tried first
-  // because a grid read as lines loses four days out of five, while lines read
-  // as a grid simply find no time column and fall through.
+  // Grid, lines or agenda: worked out from the text, never asked. A grid is
+  // tried first because a grid read as anything else loses four days out of
+  // five, while the others read as a grid simply find no time column and fall
+  // through.
   function read(text) {
     const raw = String(text || "");
     const rows = raw.split(LINE_BREAKS).map(cellsOf).filter((c) => c.some((x) => x));
@@ -256,7 +350,9 @@
     if (grid) return grid;
     const lines = readLines(raw);
     if (lines) return lines;
-    return { shape: "none", days: [], blocks: [], daysGuessed: false, note: "" };
+    const agenda = readAgenda(raw);
+    if (agenda) return agenda;
+    return NOTHING;
   }
 
   // ---- reading a PDF's own columns -----------------------------------------
@@ -269,9 +365,28 @@
   //
   // TOLERANCE IS A FRACTION OF THE PAGE, not a number of points, because a
   // document scaled differently is the same table.
+  const NOTHING = { shape: "none", days: [], blocks: [], daysGuessed: false, note: "" };
+
+  // ARE THESE COLUMNS, OR ARE THEY LETTERS?
+  //
+  // Plenty of PDFs place every glyph separately — a real one turned "TIME" into
+  // a cell saying "TIM" and a cell saying "E". Clustered, that produces a grid
+  // of single characters and a confident answer made of nonsense, which is far
+  // worse than admitting the layout is no use and reading the text instead.
+  //
+  // The tell is the size of the pieces. Columns hold words; a document that is
+  // positioning letters hands back cells one or two characters long.
+  function looksLikeColumns(rows) {
+    const cells = rows.flatMap((r) => r.cells);
+    if (cells.length < 4) return false;
+    const short = cells.filter((c) => String(c.text || "").trim().length <= 2).length;
+    return short / cells.length < 0.3;
+  }
+
   function fromRows(pdfRows, opts) {
     const list = (Array.isArray(pdfRows) ? pdfRows : []).filter((r) => r && r.cells && r.cells.length);
-    if (!list.length) return { shape: "none", days: [], blocks: [], daysGuessed: false, note: "" };
+    if (!list.length) return NOTHING;
+    if (!looksLikeColumns(list)) return { ...NOTHING, note: "glyphs" };
     const xs = list.flatMap((r) => r.cells.map((c) => Number(c.x) || 0));
     const spread = Math.max(...xs) - Math.min(...xs);
     const tol = Math.max(4, spread * ((opts && opts.tolerance) || 0.02));
@@ -318,6 +433,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, fromRows, words,
+    read, readAgenda, fromPages, fromRows, words,
   };
 })();

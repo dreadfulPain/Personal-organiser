@@ -211,6 +211,87 @@
   const QUICK = /\b(quick|quickly|just|briefly|two minutes|5 ?min)\b/i;
   const BIG = /\b(whole|all of|write up|draft|plan out|big|entire|redo)\b/i;
 
+  // ---- the throat-clearing at the front --------------------------------------
+  //
+  // "I need to sign into 365" is a task called "sign into 365". The first three
+  // words are how a person starts a sentence, not part of the job, and a list
+  // where every line begins "I need to" is four words of nothing before the
+  // thing you're looking for — on every row, every time you scan it.
+  //
+  // Only ever taken off the FRONT, and only when something is left. Not
+  // language the app knows about: a phrase that means "what follows is the
+  // thing", which is as true of a shopping list as of a lesson.
+  const LEAD_IN =
+    /^\s*(?:i\s+(?:need|have|want|ought|forgot|must|should|will|shall)\s+to|i\s+must|i\s+should|remember\s+to|don'?t\s+forget\s+to|note\s+to\s+self:?|todo:?|to\s?do:?|task:?|make\s+sure\s+(?:to|i)|need\s+to|got\s+to|gotta)\s+/i;
+
+  function dropLeadIn(s) {
+    let out = String(s || "");
+    // Twice at most: "todo: I need to …" is a real thing people write.
+    for (let i = 0; i < 2; i++) {
+      const cut = out.replace(LEAD_IN, "");
+      if (cut === out || !cut.trim()) break;
+      out = cut;
+    }
+    return out.trim() || String(s || "").trim();
+  }
+
+  // ---- one line that is plainly two jobs -------------------------------------
+  //
+  // "finish updating my laptop and sign into 365" is two things. Kept as one it
+  // gets ticked off when half of it is done, which is worse than useless — it
+  // is a job you now believe is finished.
+  //
+  // THE WHOLE DIFFICULTY IS "and". It joins jobs ("update the laptop and sign
+  // in") and it joins nouns ("can it handle the app and ai"), and getting that
+  // wrong in the second direction turns one task into two nonsense ones. So a
+  // split happens only when what comes after the join STARTS WITH A DOING WORD.
+  //
+  // That list is language, not subject matter — the same standing as the day
+  // names and month names elsewhere in here. Nothing in it knows what the job
+  // is about, and a plumber's week splits exactly as well as a teacher's.
+  const DOING = new RegExp(
+    "^(?:" + [
+      "add", "ask", "book", "bring", "buy", "call", "cancel", "change", "chase", "check",
+      "clean", "clear", "collect", "confirm", "contact", "copy", "do", "download", "draft",
+      "email", "finish", "fill", "find", "fix", "get", "give", "go", "hand", "install",
+      "join", "learn", "let", "look", "mail", "make", "mark", "meet", "message", "move",
+      "order", "organise", "organize", "pack", "pay", "phone", "pick", "plan", "post",
+      "prepare", "print", "put", "read", "register", "remind", "renew", "reply", "report",
+      "return", "review", "ring", "run", "send", "set", "share", "sign", "sort", "speak",
+      "start", "submit", "sync", "take", "talk", "tell", "text", "tidy", "update",
+      "upload", "visit", "wash", "watch", "write",
+    ].join("|") + ")\\b",
+    "i"
+  );
+
+  // Where a line could break: a comma, a semicolon, "and", "then", "&".
+  const JOIN = /\s*(?:,\s*(?:and\s+|then\s+)?|;\s*|\s+and\s+|\s+then\s+|\s*&\s+)/gi;
+
+  // One line → the jobs in it. Almost always one.
+  function pieces(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return [];
+    const out = [];
+    let last = 0;
+    let m;
+    JOIN.lastIndex = 0;
+    while ((m = JOIN.exec(raw))) {
+      const after = raw.slice(m.index + m[0].length);
+      const before = raw.slice(last, m.index).trim();
+      // Both halves have to look like jobs. A tail that starts with a doing
+      // word, and a head long enough to be one — "go and get it" is one job
+      // said in the ordinary way, not two.
+      if (DOING.test(dropLeadIn(after)) && before.split(/\s+/).length >= 3 &&
+          after.split(/\s+/).length >= 2) {
+        out.push(before);
+        last = m.index + m[0].length;
+      }
+    }
+    if (!out.length) return [raw];
+    out.push(raw.slice(last).trim());
+    return out.filter(Boolean);
+  }
+
   // One line of plain text → the same shape the AI half returns, so both roads
   // into the app produce the identical thing and the check-back can't tell them
   // apart. Fields it can't see are left empty; nothing is ever guessed.
@@ -251,6 +332,11 @@
       title = title.slice(label[0].length).trim();
     }
 
+    // "I need to" is not part of the job. Everything else is left exactly as you
+    // typed it — including the capital letter you didn't use. Tidying that would
+    // be the app editing your words, and the promise here is the opposite one:
+    // if it found nothing to read, you get your sentence back untouched.
+    title = dropLeadIn(title);
     title = title.replace(/^[\s,;:-]+|[\s,;:-]+$/g, "");
     if (!title) title = raw;
 
@@ -286,5 +372,36 @@
     return !!(item.date || item.time || item.promisedTo || item.waitingOn || item.importance !== "normal");
   }
 
-  window.OrganiserQuickParse = { parse, readWhen, readPeople, foundAnything };
+  // EVERY JOB IN ONE LINE, each read the same way a single one would be.
+  //
+  // The date is read from the WHOLE line before it is cut up, then given to
+  // every piece — "update the laptop and sign into 365 by friday" has one
+  // Friday in it and both halves are due then. Read per-piece, the first half
+  // would have no date at all.
+  function parseAll(text, ctx) {
+    const raw = String(text || "").trim();
+    const parts = pieces(raw);
+    if (parts.length <= 1) return [parse(raw, ctx)];
+    const whole = parse(raw, ctx);
+    return parts.map((p) => {
+      const one = parse(p, ctx);
+      return {
+        ...one,
+        date: one.date || whole.date,
+        time: one.time || whole.time,
+        notBefore: one.notBefore || whole.notBefore,
+        deadlineType: one.date ? one.deadlineType : whole.deadlineType,
+        importance: one.importance !== "normal" ? one.importance : whole.importance,
+        promisedTo: one.promisedTo || whole.promisedTo,
+        waitingOn: one.waitingOn || whole.waitingOn,
+        // What it was cut out of, so the check-back can show you the sentence
+        // you actually typed next to what it made of it.
+        sourceText: raw,
+      };
+    });
+  }
+
+  window.OrganiserQuickParse = {
+    parse, parseAll, pieces, dropLeadIn, readWhen, readPeople, foundAnything,
+  };
 })();

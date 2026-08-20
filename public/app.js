@@ -648,10 +648,15 @@
         /* one lump is still better than nothing lost */
       }
     }
-    const made = parts.map((t) =>
+    // parseAll, not parse: a part can still be more than one job. The splitter
+    // above cuts at line breaks and full stops, and "update the laptop and sign
+    // into 365" has neither — one line, two jobs, and ticked off when half of
+    // it is done. Everything lands in the check-back either way, so a split you
+    // didn't want is one tap to undo.
+    const made = parts.flatMap((t) =>
       window.OrganiserQuickParse
-        ? OrganiserQuickParse.parse(t, { contacts })
-        : { title: t, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }
+        ? OrganiserQuickParse.parseAll(t, { contacts })
+        : [{ title: t, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }]
     );
     pending = made;
     proposed = made.map((m) => JSON.parse(JSON.stringify(m)));

@@ -3936,6 +3936,11 @@ a.btn {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 #calTerm p { flex: 1 1 100%; margin: 0 0 4px; }
 .cal-term { font-size: 0.78rem; }
+/* A one-off read out of a schedule: its date, and the detail that came with it
+   (who's running it, which room) kept rather than thrown away. */
+.su-date.missing { border-color: var(--warn, #b45309); }
+.su-tnote { flex: 1 1 100%; font-size: 0.78rem; color: var(--muted); }
+
 /* A lesson that could be traded, and one that isn't running this week. Both
    are facts about a block, shown the same way its other facts are. */
 .su-swaptag, .su-skiptag { font-size: 0.72rem; padding: 1px 6px; border-radius: 10px;

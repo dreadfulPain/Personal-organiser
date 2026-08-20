@@ -337,7 +337,7 @@
       })
     );
     document.getElementById("capAdd").addEventListener("click", async () => {
-      if (!pending.length) return;
+      if (!pending || !pending.length) return;
       const n = applyEntries(pending, barState);
       pending = null;
       await saveAndReload(n.tasks + n.records + n.goals ? "Added — " + summaryText(n) + ". ✓" : "");
@@ -365,12 +365,29 @@
       // No AI: capture is sacred, and patterns still read the everyday parts —
       // the date, the time, anyone already in People. Offline and instant.
       barState.items = barState.items || [];
-      const guess = window.OrganiserQuickParse
-        ? OrganiserQuickParse.parse(text, { contacts: barState.contacts || [] })
-        : { title: text, type: "task" };
+      const QP = window.OrganiserQuickParse;
+      const guesses = QP
+        ? QP.parseAll(text, { contacts: barState.contacts || [] })
+        : [{ title: text, type: "task" }];
+      // ONE THING GOES STRAIGHT IN. Capture is meant to be a single tap, and
+      // making you confirm "call the dentist" would take that away.
+      //
+      // MORE THAN ONE STOPS TO BE LOOKED AT. Cutting your sentence in half is
+      // the one thing here you would want to see, because when it is wrong it
+      // is wrong in a way you would never notice afterwards — two half-jobs
+      // that each read perfectly well on their own.
+      if (guesses.length > 1) {
+        pending = guesses.map((g) => ({ kind: "task", item: g, sourceText: g.sourceText || text }));
+        input.value = "";
+        input.style.height = "auto";
+        setCapStatus(`Read that as ${guesses.length} jobs — drop any that shouldn't be there.`);
+        renderPending();
+        return;
+      }
+      const guess = guesses[0];
       barState.items.push(finishItem(guess));
       input.value = "";
-      const read = window.OrganiserQuickParse && OrganiserQuickParse.foundAnything(guess);
+      const read = QP && QP.foundAnything(guess);
       await saveAndReload(
         (read ? "Saved, with the date and details I could read. ✓" : "Saved it as a task. ✓") +
           (barState.engineNote ? " " + barState.engineNote : "")

@@ -1333,7 +1333,20 @@
           " Opening it and copying the table across will work.");
         return;
       }
-      const got = (r.rows && r.rows.length ? T.fromRows(r.rows) : null) || T.read(r.text);
+      // THREE WAYS IN, STRONGEST FIRST.
+      //
+      // The PDF's own positions, if it drew a table with them. Then the text,
+      // if it still looks like a grid or a list. Then page by page as an
+      // agenda — a schedule with the times down one side and a date printed on
+      // each page, which is what an orientation or an inset day arrives as, and
+      // which is all that survives a PDF that positions every letter separately.
+      const fromRows = r.rows && r.rows.length ? T.fromRows(r.rows) : null;
+      const fromText = T.read(r.text);
+      const got =
+        (fromRows && fromRows.blocks.length ? fromRows : null) ||
+        (fromText.shape === "grid" || fromText.shape === "lines" ? fromText : null) ||
+        T.fromPages(r.pages) ||
+        fromText;
       if (!got.blocks.length) {
         if ($("#ttText")) $("#ttText").value = r.text;
         setSuStatus("Nothing in there looked like a timetable — the text is in the box " +
@@ -1458,12 +1471,19 @@
     pastedBlocks.forEach((b, i) => {
       const row = document.createElement("div");
       row.className = "su-trow" + (b.keep ? "" : " dropped");
+      // A ONE-OFF NEEDS ITS DATE ON SCREEN, NOT JUST IN THE DATA. Something
+      // with no repeating days and no date is thrown away when it's saved —
+      // silently, because a block with nothing to happen on isn't a block. So
+      // anything dated shows a date box, and one that's empty is visibly empty.
+      const dated = !b.days || !b.days.length;
       row.innerHTML = `
         <input type="checkbox" class="su-keep" ${b.keep ? "checked" : ""} aria-label="Keep this row" />
         <input type="text" class="su-label" value="${escapeHtml(b.label)}" aria-label="Label" />
         <input type="time" class="su-start" value="${escapeHtml(b.start)}" aria-label="Start" />
         <input type="time" class="su-end" value="${escapeHtml(b.end)}" aria-label="End" />
-        <span class="su-days">${escapeHtml(daysWords(b))}</span>`;
+        ${dated
+          ? `<input type="date" class="su-date${b.date ? "" : " missing"}" value="${escapeHtml(b.date || "")}" aria-label="Date" />`
+          : `<span class="su-days">${escapeHtml(daysWords(b))}</span>`}`;
       row.querySelector(".su-keep").addEventListener("change", (e) => {
         pastedBlocks[i].keep = e.target.checked;
         row.classList.toggle("dropped", !e.target.checked);
@@ -1471,6 +1491,14 @@
       row.querySelector(".su-label").addEventListener("input", (e) => (pastedBlocks[i].label = e.target.value));
       row.querySelector(".su-start").addEventListener("change", (e) => (pastedBlocks[i].start = e.target.value));
       row.querySelector(".su-end").addEventListener("change", (e) => (pastedBlocks[i].end = e.target.value));
+      if (dated)
+        row.querySelector(".su-date").addEventListener("change", (e) => (pastedBlocks[i].date = e.target.value));
+      if (b.note) {
+        const note = document.createElement("span");
+        note.className = "su-tnote";
+        note.textContent = b.note;
+        row.appendChild(note);
+      }
       table.appendChild(row);
     });
     box.appendChild(table);
@@ -1481,13 +1509,21 @@
     save.className = "btn";
     save.textContent = "Save these blocks";
     save.addEventListener("click", () => {
-      const kept = pastedBlocks.filter((b) => b.keep).map((b) => S().normaliseBlock(b)).filter(Boolean);
+      const wanted = pastedBlocks.filter((b) => b.keep);
+      const kept = wanted.map((b) => S().normaliseBlock(b)).filter(Boolean);
+      // A ROW THAT WOULDN'T SAVE IS SAID OUT LOUD. "Saved 14" when you were
+      // looking at 16 is the failure you can't see: the two that went are the
+      // two you'd have wanted to know about.
+      const lost = wanted.length - kept.length;
       schedule = S().normalise(schedule).concat(kept);
       pastedBlocks = null;
       persist();
       renderSetup();
       render();
-      setSuStatus(`Saved ${kept.length} block${kept.length === 1 ? "" : "s"}. ✓`);
+      setSuStatus(
+        `Saved ${kept.length} block${kept.length === 1 ? "" : "s"}. ✓` +
+        (lost ? ` ${lost} couldn't be saved — ${lost === 1 ? "it had" : "they had"} no day or date on ${lost === 1 ? "it" : "them"}.` : "")
+      );
     });
     const cancel = document.createElement("button");
     cancel.type = "button";

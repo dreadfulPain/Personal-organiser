@@ -207,6 +207,11 @@
   // as plain alternatives.
   const HIGH = /\b(urgent|urgently|asap|important|critical|priority|must|deadline)\b|重要|紧急|急/i;
   const LOW = /\b(sometime|someday|whenever|no rush|if i (?:get|have) time|eventually|low priority)\b/i;
+  // "SOMEDAY" IS NOT "TODAY". Narrower than LOW on purpose — "low priority" is
+  // about how much it matters, this is about when, and they are different
+  // questions. Something you told the app today is for today unless you said
+  // otherwise, and this is how you say otherwise.
+  const SOMEDAY = /\b(sometime|some ?day|one day|whenever|no rush|eventually|at some point|when i (?:get|have) (?:a )?(?:time|chance|minute)|if i (?:get|have) time)\b|有空|以后再说/i;
   const HARD = /\b(deadline|due|must be|has to be|no later than|by end of|cut off|cutoff)\b/i;
   const QUICK = /\b(quick|quickly|just|briefly|two minutes|5 ?min)\b/i;
   const BIG = /\b(whole|all of|write up|draft|plan out|big|entire|redo)\b/i;
@@ -364,6 +369,11 @@
       waitingOn: who.waitingOn,
       remindAt: "",
       remindedAt: null,
+      // DID YOU SAY IT COULD WAIT? Only ever set from your own words. What the
+      // app does with a task that has no date at all is decided where the task
+      // is filed, not here — this half never invents a date, it only reports
+      // whether you said one and whether you said it wasn't urgent.
+      someday: SOMEDAY.test(raw),
       // Says plainly where this came from, so the check-back can be honest
       // about how much thought went into it.
       by: "patterns",

@@ -136,13 +136,30 @@
     return t;
   }
 
+  // TOLD TODAY MEANS TODAY.
+  //
+  // Something with no date used to get none at all, which sounds neutral and
+  // isn't: undated work is never booked into a day, so it drifted. You said it
+  // out loud today because it is on your mind today, and the plain reading of
+  // that is "now", not "at no point in particular".
+  //
+  // SOFT, always. A date you didn't give is a wish about when, never a promise
+  // — nothing here can turn into a missed deadline, because you never set one.
+  // And if you said it could wait ("sometime", "whenever"), it keeps no date at
+  // all, because that is you saying otherwise.
+  function dateFor(item) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(item.date || "")) return item.date;
+    if (item.someday) return "";
+    return todayISO();
+  }
+
   function finishItem(item) {
     const remindAt = item.openLoop || (item.deadlineType === "hard" && item.date) ? remindForDate(item.date) : "";
     return {
       id: uid(),
       title: item.title,
       type: item.type || "task",
-      date: item.date || "",
+      date: dateFor(item),
       time: item.time || "",
       deadlineType: item.deadlineType === "hard" ? "hard" : "soft",
       importance: item.importance || "normal",

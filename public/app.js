@@ -700,7 +700,9 @@
         id: uid(),
         title,
         type: TYPES.includes(it.type) ? it.type : "task",
-        date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : "",
+        // Told today means today — see finishItem in capture.js for why. Soft,
+        // always: a date you didn't give can never become a missed deadline.
+        date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : it.someday ? "" : todayISO(),
         time: normaliseTime(it.time),
         deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
         importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
@@ -906,7 +908,11 @@
     const row = document.createElement("div");
     const imp = importanceOf(it);
     row.className = `item imp-${imp}`;
-    const overdue = it.date && it.date < todayISO();
+    // Overdue means a deadline you gave has passed. A soft date is a wish about
+    // when — and since the app dates anything you mention today, most soft
+    // dates were never typed by anyone. Calling those overdue tomorrow would
+    // manufacture a pile of failures out of things you merely said.
+    const overdue = it.date && it.date < todayISO() && it.deadlineType === "hard";
     let label = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
     const tlabel = fmtTime(it.time);
     if (tlabel) label = label ? `${label} · ${tlabel}` : tlabel;
@@ -1023,7 +1029,8 @@
       time.textContent = fmtTime(it.time);
       row.appendChild(time);
     }
-    const overdue = it.date && it.date < todayISO();
+    // Same rule as the list rows: only a deadline you actually gave can be late.
+    const overdue = it.date && it.date < todayISO() && it.deadlineType === "hard";
     const tags = Array.isArray(it.tags) ? it.tags : [];
     const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
     const eff = effortOf(it);

@@ -99,7 +99,12 @@
 
   // Why it's here, in plain words. Describes; never judges.
   function reason(it, ctx) {
-    if (it.date && it.date < ctx.today) return "overdue";
+    // ONLY A PROMISE CAN BE BROKEN. A hard date is one you gave — that one can
+    // be overdue. A soft date is a wish about when, and most of them were never
+    // typed by anybody: the app puts today on whatever you mention, so calling
+    // those overdue tomorrow would build a wall of accusations out of things
+    // you only said out loud.
+    if (it.date && it.date < ctx.today) return it.deadlineType === "hard" ? "overdue" : "still waiting";
     if (it.date && it.date === ctx.today) return "due today";
     if (it.promisedTo) return "promised to " + it.promisedTo;
     if (isHigh(it)) return "matters a lot";

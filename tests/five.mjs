@@ -1098,6 +1098,41 @@ sec("One reading of a clock time, not two");
      "capture.js still stores whatever it was handed");
 }
 
+// ---------------------------------------------------------------------------
+sec("The two pages nothing had ever opened");
+{
+  // Not because they were thought about and skipped — nobody had counted.
+  const { open } = await import("./_dom.mjs");
+  const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const DATA = {
+    items: [{ id: "t1", title: "mark the books", type: "task", date: iso(2), time: "",
+      tags: [], deadlineType: "hard", importance: "normal", effort: "medium", goalId: "g1",
+      openLoop: false, promisedTo: "", waitingOn: "", done: false, createdAt: iso(-1) + "T09:00:00Z",
+      completedAt: null, plannedMinutes: 0, spentMinutes: 0, optional: false, committed: false,
+      notBefore: "", areas: [] }],
+    goals: [{ id: "g1", title: "Get the reports done", areas: ["work"], date: iso(20),
+      createdAt: iso(-30) + "T09:00:00Z", completedAt: null,
+      milestones: [{ id: "m1", title: "First draft", done: false, completedAt: null,
+        steps: [{ id: "s1", title: "read one set", done: false, completedAt: null }] }] }],
+    schedule: [], contacts: [], waiting: [],
+  };
+
+  for (const page of ["goals.html", "month.html"]) {
+    const r = await open(page, DATA);
+    ok(`${page} opens without error`, r.errs.length === 0, r.errs.join("; "));
+    const drawn = r.created.map((e) => String(e.textContent || "") + String(e.innerHTML || "")).join(" ");
+    ok(`${page} draws something`, drawn.trim().length > 20, drawn.slice(0, 120));
+    // A PAGE THAT RENDERS AN EMPTY SHELL IS NOT A PAGE THAT WORKS. It has to
+    // show the thing it was given.
+    ok(`${page} shows what it was given`,
+       /reports|mark the books/i.test(drawn), drawn.slice(0, 200));
+    ok(`${page} leaves no raw date on screen`, !/\b\d{4}-\d{2}-\d{2}\b/.test(
+         drawn.replace(/type="date"[^>]*/g, "").replace(/value="[^"]*"/g, "")),
+       (drawn.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []).slice(0, 3).join(" "));
+  }
+}
+
 if (gaps.length) {
   console.log("\nWhat is not there\n" + "-".repeat(17));
   gaps.forEach((g) => console.log("  · " + g));

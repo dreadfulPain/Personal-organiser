@@ -786,6 +786,16 @@
     return "with " + names.join(", ");
   }
 
+  // WHEN TO SET OFF. "09:00" is when you are already late; this is the number
+  // that changes what you do, so it goes on the row itself.
+  function leaveWords(b) {
+    const at = S().leaveBy(b);
+    if (at === null) return "";
+    return `<div class="dp-leave">${b.getThere > 0
+      ? `leave by ${escapeHtml(S().fmtTime(S().toHM(at)))} — ${b.getThere} min to get there`
+      : "be there on time"}</div>`;
+  }
+
   function blockRow(b) {
     const el = document.createElement("div");
     // The solid/dashed difference is the most important thing on this page: a
@@ -798,6 +808,7 @@
         <div class="dp-title">${escapeHtml(b.label)}</div>
         ${b.soft ? `<div class="dp-guess">the app's guess — not a fixed thing</div>` : ""}
         ${b.about && b.about.length ? `<div class="dp-about">${escapeHtml(aboutWords(b.about))}</div>` : ""}
+        ${leaveWords(b)}
       </div>`;
     return el;
   }
@@ -1679,6 +1690,48 @@
     return made.length;
   }
 
+  // ---- somewhere you have to be --------------------------------------------
+  //
+  // A schedule is a list of places you have to be at a time, and if being late
+  // is penalised then every one of them is a job — not scenery on the calendar.
+  // The app used to draw them and then plan work up to the minute they started,
+  // which is the app causing the thing you get penalised for.
+  //
+  // ON BY DEFAULT HERE, unlike everything else in this box. Everything else is
+  // the app proposing something about your words; this is the plain reading of
+  // what a schedule IS. Untick it if these are places you're already sitting.
+  let therePick = true;
+  let thereMins = 0;
+
+  function thereOffer() {
+    const box = document.createElement("div");
+    box.className = "su-people";
+    if (!pastedBlocks || !pastedBlocks.length) return box;
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent =
+      "These are places you have to be. Counted as jobs, nothing gets planned " +
+      "into the time it takes to get there, and the day tells you when to leave.";
+    box.appendChild(p);
+    const row = document.createElement("div");
+    row.className = "su-row";
+    const tick = document.createElement("button");
+    tick.type = "button";
+    tick.className = "p-opt su-chip" + (therePick ? " on" : "");
+    tick.textContent = therePick ? "count these as jobs ✓" : "count these as jobs";
+    tick.addEventListener("click", () => { therePick = !therePick; renderSetup(); });
+    row.appendChild(tick);
+    const lab = document.createElement("label");
+    lab.innerHTML = `minutes to get there <input type="number" class="th-mins" min="0" max="240" value="${thereMins}" />`;
+    lab.querySelector(".th-mins").addEventListener("change", (e) => {
+      thereMins = Math.max(0, Math.min(240, Number(e.target.value) || 0));
+      renderSetup();
+    });
+    row.appendChild(lab);
+    box.appendChild(row);
+    return box;
+  }
+
   // NOTHING SAVES UNTIL THIS IS CHECKED. The model read a wall of text; a person
   // reads the result. Every cell is editable and every row can be dropped.
   function reviewTable() {
@@ -1722,6 +1775,7 @@
       table.appendChild(row);
     });
     box.appendChild(table);
+    box.appendChild(thereOffer());
     box.appendChild(peopleOffer());
     box.appendChild(jobOffer());
     const actions = document.createElement("div");
@@ -1736,7 +1790,12 @@
       // carry the ids of the people named on it.
       const who = applyPeople();
       const kept = wanted
-        .map((b) => S().normaliseBlock({ ...b, about: (b.about || []).concat(who.get(b.id) || []) }))
+        .map((b) => S().normaliseBlock({
+          ...b,
+          about: (b.about || []).concat(who.get(b.id) || []),
+          beThere: therePick,
+          getThere: therePick ? thereMins : 0,
+        }))
         .filter(Boolean);
       // A ROW THAT WOULDN'T SAVE IS SAID OUT LOUD. "Saved 14" when you were
       // looking at 16 is the failure you can't see: the two that went are the
@@ -1748,6 +1807,8 @@
       pastedBlocks = null;
       peoplePick = null;
       jobPick = null;
+      therePick = true;
+      thereMins = 0;
       persist();
       renderSetup();
       render();
@@ -1797,7 +1858,7 @@
   }
 
   function blockForm(existing) {
-    const b = existing || { label: "", start: "09:00", end: "10:00", days: [1, 2, 3, 4, 5], date: "", from: "", to: "", soft: false, swappable: false, skip: [], about: [] };
+    const b = existing || { label: "", start: "09:00", end: "10:00", days: [1, 2, 3, 4, 5], date: "", from: "", to: "", soft: false, swappable: false, beThere: false, getThere: 0, skip: [], about: [] };
     const form = document.createElement("div");
     form.className = "su-form";
     form.innerHTML = `
@@ -1815,6 +1876,9 @@
       </div>
       <label class="bf-soft"><input type="checkbox" class="bf-softbox" ${b.soft ? "checked" : ""} /> this one's a guess, not a fixed thing</label>
       <label class="bf-soft"><input type="checkbox" class="bf-swapbox" ${b.swappable ? "checked" : ""} /> this one could be swapped with someone if it came to it</label>
+      <label class="bf-soft"><input type="checkbox" class="bf-therebox" ${b.beThere ? "checked" : ""} /> I have to be here on time — count it as a job</label>
+      <label class="bf-lead">and it takes <input type="number" class="bf-getthere" min="0" max="240" value="${Number(b.getThere) || 0}" /> minutes to get there
+        <span class="bf-hint">Nothing gets planned into that time, and the day tells you when to leave.</span></label>
       <label class="bf-soft"><input type="checkbox" class="bf-prep" ${b.prep && b.prep.on ? "checked" : ""} /> I have to get something ready before this one</label>
       <label class="bf-lead">ready by <input type="number" class="bf-leaddays" min="0" max="14" value="${b.prep && b.prep.leadDays ? b.prep.leadDays : 1}" /> day(s) before
         <span class="bf-hint">A task appears for each time this comes round, a week ahead — not the whole term. Leave the box unticked for anything you don't prepare yourself.</span></label>
@@ -1846,6 +1910,10 @@
         // Not the same as a guess. This one definitely happens — it is just
         // fixed to a person rather than to the clock, and could be traded.
         swappable: form.querySelector(".bf-swapbox").checked,
+        // Turning up on time is work. Saying so blocks the journey out and puts
+        // it in your list as a job like any other.
+        beThere: form.querySelector(".bf-therebox").checked,
+        getThere: Number(form.querySelector(".bf-getthere").value) || 0,
         // Kept, or a swap already recorded would be thrown away by an edit.
         skip: (existing && existing.skip) || [],
         runsAs: existing ? existing.runsAs : null,
@@ -1893,7 +1961,7 @@
       row.className = "su-brow" + (b.soft ? " soft" : "");
       row.innerHTML = `
         <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
-        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
+        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${b.beThere ? ` <span class="su-theretag">be there${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "link";

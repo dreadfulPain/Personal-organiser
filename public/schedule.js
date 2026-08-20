@@ -92,6 +92,10 @@
     prepHorizonDays: 7,
     prepRemindAt: "17:00",
     prepTitle: "Plan: {block}",
+    // What a "be there on time" job is called. Yours to reword — the app never
+    // reads these, it only writes them.
+    thereTitle: "Be at {block}",
+    leaveTitle: "Leave for {block}",
     // WHEN SOMETHING SUDDENLY TAKES OVER. Set the moment you say it has, cleared
     // when you say you're back. While it's set the app plans nothing and pings
     // nothing — the middle of a crisis is the worst possible time to be told
@@ -126,6 +130,8 @@
     if (horizon >= 1 && horizon <= 28) out.prepHorizonDays = Math.round(horizon);
     if (toMin(c.prepRemindAt) !== null) out.prepRemindAt = c.prepRemindAt;
     if (typeof c.prepTitle === "string" && c.prepTitle.trim()) out.prepTitle = c.prepTitle.trim().slice(0, 80);
+    if (typeof c.thereTitle === "string" && c.thereTitle.trim()) out.thereTitle = c.thereTitle.trim().slice(0, 80);
+    if (typeof c.leaveTitle === "string" && c.leaveTitle.trim()) out.leaveTitle = c.leaveTitle.trim().slice(0, 80);
     if (c.away && typeof c.away === "object" && c.away.startedAt) {
       out.away = { label: String(c.away.label || "").slice(0, 80), startedAt: String(c.away.startedAt) };
     }
@@ -168,6 +174,23 @@
       // ahead on the reports. Kept apart from blocksDay because collapsing the
       // two turns every holiday into a month the app refuses to plan.
       noLessons: !!b.noLessons,
+      // BEING THERE ON TIME IS ITSELF A JOB.
+      //
+      // The app used to treat a place you have to be as scenery: it drew the
+      // block and planned work right up to the minute it started. For anybody
+      // who is penalised for turning up late that is not neutral — it is the
+      // app causing the thing. Getting there is work, it takes time, and the
+      // time it takes has to be time nothing else is allowed into.
+      //
+      // Off by default, because for most blocks it is already true that you're
+      // in the room. Switch it on and three things follow: the journey is busy,
+      // the day says when to leave, and it becomes a job in your list like any
+      // other — because that is what it is.
+      beThere: !!b.beThere,
+      // How long it takes to get there, door to door, including the faff. Zero
+      // is a real answer: the next room is somewhere you still have to be on
+      // time for, it just doesn't take any getting to.
+      getThere: Math.max(0, Math.min(240, Math.round(Number(b.getThere) || 0))),
       // COULD THIS ONE MOVE, IF IT CAME TO IT?
       //
       // Not the same question as soft. Soft means "I'm not sure this happens";
@@ -277,15 +300,34 @@
     // today, not that you are occupied. A blocksDay entry IS busy, because that
     // one means you are not available at all.
     const fixed = blocksOn(schedule, iso).filter((b) => !b.soft && !b.noLessons);
+    // THE JOURNEY IS BUSY TOO. Without this the planner fills the time you
+    // needed to travel in, and you arrive late having done everything it said.
+    //
+    // SORTED AFTER THE JOURNEY IS ADDED, not before. blocksOn sorts by when a
+    // block STARTS, and a block with half an hour of travel in front of it now
+    // begins earlier than one that starts before it — merge them in the old
+    // order and the gap in between silently disappears into the run.
+    const spans = fixed
+      .map((b) => ({
+        start: Math.max(0, toMin(b.start) - (b.beThere ? b.getThere : 0)),
+        end: toMin(b.end),
+      }))
+      .sort((a, b) => a.start - b.start || a.end - b.end);
     const out = [];
-    fixed.forEach((b) => {
-      const s = toMin(b.start);
-      const e = toMin(b.end);
+    spans.forEach((sp) => {
       const last = out[out.length - 1];
-      if (last && s <= last.end) last.end = Math.max(last.end, e);
-      else out.push({ start: s, end: e });
+      if (last && sp.start <= last.end) last.end = Math.max(last.end, sp.end);
+      else out.push({ start: sp.start, end: sp.end });
     });
     return out;
+  }
+
+  // When you have to set off, for a block that says being there on time matters.
+  // Null for everything else — a block you are already sitting in front of has
+  // no leaving time, and showing one would be noise on every row.
+  function leaveBy(b) {
+    if (!b || !b.beThere) return null;
+    return Math.max(0, toMin(b.start) - (b.getThere || 0));
   }
 
   // The free stretches of a day, in minutes-from-midnight.
@@ -498,6 +540,18 @@
     const c = normaliseConfig(cfg);
     return c.prepTitle.replace("{block}", block.label);
   }
+  // A separate key, because one block can owe you both — get the lesson ready
+  // AND be in the room for it — and they are two different jobs.
+  function thereKey(blockId, iso) {
+    return blockId + "|" + iso + "|there";
+  }
+  function thereTitle(cfg, block) {
+    const c = normaliseConfig(cfg);
+    // "Leave for" when there is a journey, "Be at" when there isn't. Both are
+    // yours to reword; the app never reads them.
+    const t = block.getThere > 0 ? c.leaveTitle : c.thereTitle;
+    return t.replace("{block}", block.label);
+  }
   // Returns what to add and what to quietly drop. Pure — the caller decides
   // whether to save, so nothing is written just by looking.
   function prepPlan(schedule, cfg, items, from) {
@@ -510,6 +564,49 @@
     });
 
     const add = [];
+
+    // BEING SOMEWHERE ON TIME IS A JOB. Same machinery as the work a block owes
+    // you, because it is the same thing: something the block makes you do,
+    // dated to it, that you can tick off and that can remind you.
+    //
+    // Timed to when you have to LEAVE, not when it starts. "09:00" is when you
+    // are already late; "08:30" is the number that changes what you do.
+    normalise(schedule)
+      .filter((b) => b.beThere && !b.blocksDay && !b.noLessons && !b.soft)
+      .forEach((b) => {
+        occurrencesOf(b, today, c.prepHorizonDays).forEach((iso) => {
+          const key = thereKey(b.id, iso);
+          if (existing.has(key)) return;
+          const at = leaveBy(b);
+          add.push({
+            prepFor: key,
+            autoPrep: true,
+            title: thereTitle(c, b),
+            type: "task",
+            date: iso,
+            time: toHM(at),
+            // It starts when it starts. Nothing about this one is a preference.
+            deadlineType: "hard",
+            importance: "normal",
+            // Getting somewhere is not a piece of work with a size; it is a
+            // moment you have to be at.
+            effort: "quick",
+            tags: [],
+            whenText: b.getThere > 0
+              ? `${b.getThere} min to get there, so leave by ${fmtTime(toHM(at))}`
+              : `starts ${fmtTime(b.start)}`,
+            goalId: "",
+            standardId: "",
+            openLoop: false,
+            promisedTo: "",
+            remindAt: iso + "T" + toHM(Math.max(0, at - 15)),
+            remindedAt: null,
+            lessonAt: iso + "T" + b.start,
+            done: false,
+          });
+        });
+      });
+
     blocks.forEach((b) => {
       occurrencesOf(b, today, c.prepHorizonDays).forEach((iso) => {
         const key = prepKey(b.id, iso);
@@ -590,6 +687,9 @@
     occurrencesOf,
     prepKey,
     prepTitle,
+    thereKey,
+    thereTitle,
+    leaveBy,
     prepPlan,
     lessonMomentOf,
     addDaysISO,

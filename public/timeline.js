@@ -1214,14 +1214,12 @@
   // to be worth saying — "waiting 2 days" on everything would be noise, and a
   // number nobody needs is how a useful line stops being read.
   function waitingWords(it) {
-    if (!it.createdAt) return "";
-    const made = new Date(it.createdAt);
-    if (!Number.isFinite(made.getTime())) return "";
-    const days = Math.round((Date.now() - made.getTime()) / 86400000);
-    if (days < 7) return "";
-    if (days < 14) return "waiting a week";
-    if (days < 60) return `waiting ${Math.round(days / 7)} weeks`;
-    return `waiting ${Math.round(days / 30)} months`;
+    const s = S().agoWords(it.createdAt);
+    // Said only once it is long enough to be worth saying — "waiting 2 days" on
+    // everything is noise, and a number nobody needs is how a useful line stops
+    // being read.
+    if (!s || /^(today|1 day|[1-6] days)$/.test(s)) return "";
+    return `waiting ${s}`;
   }
 
   function renderUnplanned(iso, plan) {

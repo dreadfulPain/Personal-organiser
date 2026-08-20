@@ -50,8 +50,11 @@
     const mm = Math.min(59, parseInt(m[2], 10));
     return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
   }
+  // One or two digits for the hour, like everything else that reads a clock
+  // time here. It used to insist on two, so a time written "9:05" simply
+  // vanished off the row while the planner went on using it.
   function fmtTime(t) {
-    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
+    const m = /^(\d{1,2}):(\d{2})$/.exec((t || "").toString().trim());
     if (!m) return "";
     const d = new Date();
     d.setHours(+m[1], +m[2], 0, 0);
@@ -960,12 +963,20 @@
   // them called out, then an "anytime today" group — and you can give any task a
   // time right here. Pure seeing + you-decide; nothing auto-moves. (Coming up /
   // Someday stay simple lists.)
+  // THE SCHEDULE'S READING, not a second one. This was a private copy that
+  // wanted two digits for the hour and answered 0 — midnight — for anything it
+  // couldn't read, which is exactly what schedule.js documents as the reason
+  // not to do that. Two functions with the same name giving different answers
+  // to the same question is how a page and its planner come to disagree.
   function toMin(t) {
-    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
-    return m ? +m[1] * 60 + +m[2] : 0;
+    const v = OrganiserSchedule.toMin(t);
+    return v === null ? null : v;
   }
   function gapLabel(a, b) {
-    const mins = toMin(b) - toMin(a);
+    const from = toMin(a);
+    const to = toMin(b);
+    if (from === null || to === null) return "";
+    const mins = to - from;
     if (mins <= 0) return "";
     if (mins < 60) return `~${mins} min until the next thing`;
     const h = Math.round(mins / 60);
@@ -1652,11 +1663,9 @@
   // left said nothing at all, which is the wrong way round — the one you can do
   // something about was the one going quiet.
   function openSince(it) {
-    if (!it.createdAt) return "";
-    const made = new Date(it.createdAt);
-    if (!Number.isFinite(made.getTime())) return "";
-    const days = Math.max(0, Math.round((Date.now() - made.getTime()) / 86400000));
-    return days === 0 ? "started today" : days === 1 ? "open 1 day" : `open ${days} days`;
+    const s = OrganiserSchedule.agoWords(it.createdAt);
+    if (!s) return "";
+    return s === "today" ? "started today" : `open ${s}`;
   }
 
   function renderLoops() {
@@ -1830,6 +1839,12 @@
     if (!it.waitingSince) return 0;
     return Math.max(0, Math.round((new Date() - new Date(it.waitingSince + "T12:00:00")) / 86400000));
   }
+  // The same scale the loops list uses, so two lists about how long something
+  // has been sitting cannot describe the same month differently.
+  function sinceWords(it) {
+    const s = OrganiserSchedule.agoWords(it.waitingSince ? it.waitingSince + "T12:00:00" : "");
+    return s === "today" ? "since today" : s;
+  }
   function armWaiting(it, days) {
     const d = new Date();
     d.setDate(d.getDate() + days);
@@ -1858,7 +1873,7 @@
           <div class="wo-title">${escapeHtml(it.title)}</div>
           <div class="wo-meta">
             <span class="wo-who">${escapeHtml(it.waitingOn)}</span>
-            <span class="wo-since">${days === 0 ? "since today" : days === 1 ? "1 day" : `${days} days`}</span>
+            <span class="wo-since">${escapeHtml(sinceWords(it))}</span>
             ${asked ? `<span class="wo-asked">asked you ${asked}×</span>` : ""}
             ${it.remindAt && !it.remindedAt ? `<span class="ping-info">${escapeHtml(fmtRemind(it))}</span>` : ""}
           </div>

@@ -153,6 +153,18 @@
     return todayISO();
   }
 
+  // One reading of a clock time, shared by everything here. Same rule as
+  // OrganiserSchedule.toMin: one or two digits for the hour, and anything that
+  // isn't a time becomes nothing rather than midnight.
+  function tidyTime(t) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec((t || "").toString().trim());
+    if (!m) return "";
+    const h = Number(m[1]);
+    const mm = Number(m[2]);
+    if (h > 23 || mm > 59) return "";
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+
   function finishItem(item) {
     const remindAt = item.openLoop || (item.deadlineType === "hard" && item.date) ? remindForDate(item.date) : "";
     return {
@@ -160,7 +172,12 @@
       title: item.title,
       type: item.type || "task",
       date: dateFor(item),
-      time: item.time || "",
+      // TIDIED ON THE WAY IN, not trusted. This is the front door on every
+      // page, and it used to keep whatever it was handed — so a time written
+      // "9:05" was stored unpadded, the planner read it as 09:05 and pinned the
+      // job there, and the row in your list showed no time at all. Two answers
+      // to the same question, and the one you could see was the wrong one.
+      time: tidyTime(item.time),
       deadlineType: item.deadlineType === "hard" ? "hard" : "soft",
       importance: item.importance || "normal",
       effort: item.effort || "medium",

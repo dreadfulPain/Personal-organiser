@@ -51,6 +51,22 @@
   function fmtSpan(a, b) {
     return fmtTime(a) + "–" + fmtTime(b);
   }
+  // HOW LONG AGO, IN WORDS — one scale, so two lists cannot describe the same
+  // gap differently. They did: a thing left open for a month read "open 30
+  // days" on one page and "waiting 4 weeks" on another, both true and neither
+  // matching. Returns the span only ("4 weeks"); the framing is the caller's,
+  // because "open" and "waiting" are different facts about it.
+  function agoWords(stamp, now) {
+    const then = stamp instanceof Date ? stamp : new Date(stamp);
+    if (!stamp || !Number.isFinite(then.getTime())) return "";
+    const days = Math.max(0, Math.round(((now ? now.getTime() : Date.now()) - then.getTime()) / 86400000));
+    if (days === 0) return "today";
+    if (days === 1) return "1 day";
+    if (days < 14) return `${days} days`;
+    if (days < 60) return `${Math.round(days / 7)} weeks`;
+    return `${Math.round(days / 30)} months`;
+  }
+
   function durationWords(mins) {
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
@@ -716,6 +732,7 @@
     fmtTime,
     fmtSpan,
     durationWords,
+    agoWords,
     dayWord,
     uid,
   };

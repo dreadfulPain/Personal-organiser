@@ -1,6 +1,8 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+import { checker } from "./_check.mjs";
+const { ok, done: finish } = checker();
 // A MONTH, LIVED — with the three things that actually make days messy:
 //   1. work that spawns MORE work when you finish it
 //   2. work that runs well over the guess
@@ -296,6 +298,7 @@ console.log(`\n${"═".repeat(78)}\nA JOB BIGGER THAN ANY SINGLE DAY (6 hours of
   ]);
   const cfg = { dayStart:"08:00", dayEnd:"17:00" };   // free: 8-9, 12-14, 16-17 = 4h
   const REAL = 6 * 60;
+  const finished = {};
   [false, true].forEach((remember) => {
     const it = mk({ title:"The big marking pile", effort:"draining", date: dISO(1), deadlineType:"hard" }, "big");
     let done = null, put = 0;
@@ -313,5 +316,21 @@ console.log(`\n${"═".repeat(78)}\nA JOB BIGGER THAN ANY SINGLE DAY (6 hours of
     console.log(`  ${remember ? "with " : "without"} part-done:  ` +
       (done ? `finished ${lab(done)} after ${S.durationWords(put)} at the desk`
             : `NEVER FINISHES — ${S.durationWords(put)} spent over 10 days and still nothing to show`));
+    finished[remember ? "remembers" : "forgets"] = { done, put };
   });
+
+  // THE WHOLE POINT OF THIS FILE, and it was only ever printed. A job bigger
+  // than any single gap can only ever be finished if the minutes already spent
+  // on it are counted. Forget them and every day starts from nothing: the work
+  // goes in, the pile never goes down, and ten days later there is still
+  // nothing to show for forty hours.
+  ok("a job bigger than a day finishes, if the minutes already spent are kept",
+     !!finished.remembers.done, JSON.stringify(finished.remembers));
+  ok("and never finishes at all if they are forgotten",
+     !finished.forgets.done, JSON.stringify(finished.forgets));
+  ok("with the same hours going in either way",
+     finished.forgets.put >= finished.remembers.put,
+     `${finished.forgets.put} spent for nothing vs ${finished.remembers.put} spent and done`);
 }
+
+finish();

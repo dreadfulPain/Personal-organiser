@@ -311,7 +311,7 @@ sec("Make-up days — a Saturday that runs another day's timetable");
 // ---------------------------------------------------------------------------
 sec("And all of it on the page, not just in the modules");
 {
-  const { open } = await import("./dom.mjs");
+  const { open } = await import("./_dom.mjs");
   const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
   ok("the timeline page opens without error", r.errs.length === 0, r.errs.join("; "));
 
@@ -431,7 +431,7 @@ sec("And all of it on the page, not just in the modules");
 
 sec("Booking leave over a teaching day says what it costs");
 {
-  const { open } = await import("./dom.mjs");
+  const { open } = await import("./_dom.mjs");
   const WEEK = [
     { id: "b1", label: "9A English", start: "09:00", end: "10:00", days: [1], swappable: true },
     { id: "b2", label: "G10 Literature", start: "11:00", end: "12:00", days: [1] },

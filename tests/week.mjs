@@ -1,6 +1,8 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+import { checker } from "./_check.mjs";
+const { ok, done: finish } = checker();
 // A WHOLE WORKING WEEK. Uneven days, work due on different days, and two
 // unscripted events. Walks Monday to Friday day by day, exactly as the app
 // would: build the day, do what's planned, carry the rest into tomorrow.
@@ -146,6 +148,17 @@ function runWeek(label, seed, events) {
     // What the Week tab would be saying at this point in the week.
     const wk = W.OrganiserWeekPlan.spread(items, sched, CFG, iso, 7, ctx);
     if (wk.wontFit.length) console.log(`   ⚠ WEEK TAB WARNS: ${wk.wontFit.map(w=>`${items.find(i=>i.id===w.itemId)?.title} needs ${S.durationWords(w.minutes)} by ${NAME[w.date]||w.date}`).join("; ")}`);
+    // A WARNING ABOUT SOMETHING ALREADY PAST IS NOT A WARNING. Every one of
+    // these has to arrive while the day it is about is still ahead, or the app
+    // is just narrating the damage.
+    wk.wontFit.forEach((w) =>
+      ok(`${iso}: the warning about "${items.find((i) => i.id === w.itemId)?.title}" comes before it is due`,
+         !w.date || w.date >= iso, `warned ${iso}, due ${w.date}`));
+    // And nothing is planned on top of a lesson, on any day of the week.
+    const busy = S.busyOn(sched, iso);
+    const on = (plan.slots || []).filter((s2) => busy.some((b) => s2.start < b.end && b.start < s2.end));
+    ok(`${iso}: nothing is planned on top of something fixed`, on.length === 0,
+       JSON.stringify(on.slice(0, 3)));
 
     // You do what the day said. Everything else rolls into tomorrow untouched.
     plan.slots.forEach(s => { const it = items.find(i=>i.id===s.itemId); if (it) it.done = true; });
@@ -197,3 +210,5 @@ runWeek("THE WEEK — NO AI (same sentences, patterns only)", QP, EVENTS(addsQP)
 
 console.log("\n\n   what the patterns read from the sentences:");
 SENTENCES.forEach((s,i)=>console.log(`     ${pad(JSON.stringify(s),52)} → ${pad(QP[i].date||"—",12)} ${pad(QP[i].importance,7)} ${pad(QP[i].effort,9)} ${QP[i].deadlineType}`));
+
+finish();

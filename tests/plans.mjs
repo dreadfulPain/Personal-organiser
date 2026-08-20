@@ -1,6 +1,8 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+import { checker } from "./_check.mjs";
+const { ok, done: finish } = checker();
 // PASTING IN A PLAN SOMEONE ELSE WROTE, then living an ordinary term with it.
 //
 // Two goals of the kind you'd actually ask a model for: long, multi-stage, with
@@ -164,8 +166,18 @@ goals.forEach((g) => {
   console.log(`    due ${g.date ? lab(g.date) : "no date"} · ${done.length}/${mine.length} pieces done · started ${first ? lab(first) : "never"}`);
   console.log(`    ${started.length} of ${mine.length} pieces were touched at all`);
   if (late.length) console.log(`    ⚠ ${late.length} finished after the deadline`);
+  // A PLAN SOMEBODY ELSE WROTE STILL HAS TO GET DONE ON TIME. It counted the
+  // late ones and then only printed the number, so a run where a third of a
+  // pasted plan landed after its deadline looked exactly like one where none
+  // did.
+  ok(`"${g.title}": nothing finished after the deadline`, late.length === 0,
+     JSON.stringify(late.map((i) => `${i.title} on ${doneOn.get(i.id)}, due ${g.date}`)));
+  ok(`"${g.title}": it was actually started, not left until the end`,
+     !!first && (!g.date || first < g.date), `first touched ${first || "never"}, due ${g.date}`);
   const r = GP.rate(g, live, SCHED, CFG, WORKDAYS[WORKDAYS.length-1]);
   console.log(`    at the end: ${GP.words(r)}`);
 });
 const ord = live.filter(i => !i.goalId);
 console.log(`\n  the ordinary work alongside: ${ord.filter(i=>i.done).length}/${ord.length} done`);
+
+finish();

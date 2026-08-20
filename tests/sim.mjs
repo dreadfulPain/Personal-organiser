@@ -1,6 +1,8 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+import { checker } from "./_check.mjs";
+const { ok, done: finish } = checker();
 // A WEEK IN THE LIFE. A real timetable, real tasks, and the four situations
 // asked for — planned day, no-AI day, a 30-min interruption, and a 30-min
 // meeting that hands you more work.
@@ -80,6 +82,23 @@ function show(label, items, plan, sched) {
   const unplanned = items.filter(i=>!i.done && !plan.slots.some(s2=>s2.itemId===i.id));
   if (unplanned.length) console.log(`  not today: ${unplanned.map(i=>i.title).join(", ")}`);
   if (plan.displaced?.length) console.log(`  PUSHED OUT: ${plan.displaced.map(id=>by(id)?.title).join(", ")}`);
+
+  // WHAT A CRISIS MUST NOT DO IS LOSE ANYTHING. Work pushed out of a day is
+  // fine and expected — that is what a crisis is. Work that stops existing is
+  // not, and it is invisible from the inside, because a shorter list looks
+  // exactly like a day that went well.
+  ok(`${label}: everything pushed out is still a real job`,
+     (plan.displaced || []).every((id) => !!by(id)),
+     JSON.stringify((plan.displaced || []).filter((id) => !by(id))));
+  ok(`${label}: and none of it was quietly ticked off`,
+     (plan.displaced || []).every((id) => !by(id)?.done),
+     JSON.stringify((plan.displaced || []).filter((id) => by(id)?.done)));
+  // NOR MAY IT DOUBLE-BOOK. A day rebuilt round an interruption has to come
+  // back as a day, not as two jobs in the same minutes.
+  const over = (plan.slots || []).filter((a, i) =>
+    (plan.slots || []).slice(i + 1).some((b) => a.start < b.end && b.start < a.end));
+  ok(`${label}: nothing is booked over anything else`, over.length === 0,
+     JSON.stringify(over.slice(0, 3)));
 }
 
 // ============ 1 & 2: the ordinary Monday, both ways =========================
@@ -205,3 +224,5 @@ const LONG_TO = S.toMin("16:20");
   pl.displaced = before.filter(id => !nowIn.has(id) && !(items.find(i=>i.id===id)||{}).done);
   show(`SAFETY NET — 4h25m CRISIS — ${tag}`, items, pl, sc);
 });
+
+finish();

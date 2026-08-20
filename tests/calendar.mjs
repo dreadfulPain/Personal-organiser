@@ -349,7 +349,7 @@ sec("The preview and the days that get kept can't disagree");
 // ---------------------------------------------------------------------------
 sec("And the tick is on the page, not just in the model");
 {
-  const { open } = await import("./dom.mjs");
+  const { open } = await import("./_dom.mjs");
   const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
   ok("the timeline page opens without error", r.errs.length === 0, r.errs.join("; "));
 
@@ -512,7 +512,7 @@ sec("And the one that matters most: when do the lessons start");
 
 sec("From that line to a timetable that knows when it applies");
 {
-  const { open } = await import("./dom.mjs");
+  const { open } = await import("./_dom.mjs");
   // A week already typed in: two lessons and a briefing that happens whether or
   // not the students are there. The app cannot tell which is which.
   const WEEK = [

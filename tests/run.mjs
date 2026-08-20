@@ -17,14 +17,18 @@ import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// Not every .mjs here is a suite. Two are stand-in servers a test starts and
-// talks to, and one is the browser stand-in the page tests import.
-const NOT_A_SUITE = new Set(["run.mjs", "dom.mjs", "fo2.mjs", "fo3.mjs"]);
+// NOT EVERY .mjs HERE IS A SUITE. Some are the scaffolding the suites stand
+// on — the browser stand-in, the stand-in engine, the shared counter.
+//
+// That was a list of filenames until it wasn't, which is the same mistake this
+// whole change is about. A leading underscore says "scaffolding", and there is
+// nothing left to keep up to date.
+const isHelper = (f) => f === "run.mjs" || f.startsWith("_");
 
 const only = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 const files = fs
   .readdirSync(HERE)
-  .filter((f) => f.endsWith(".mjs") && !NOT_A_SUITE.has(f))
+  .filter((f) => f.endsWith(".mjs") && !isHelper(f))
   .filter((f) => !only.length || only.some((o) => f.includes(o)))
   .sort();
 

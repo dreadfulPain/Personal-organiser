@@ -1,6 +1,8 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+import { checker } from "./_check.mjs";
+const { ok, done: finish } = checker();
 // A MONTH, HOUR BY HOUR. Not a planning exercise — a use exercise.
 //
 // The plan is built in the morning and then you actually live the day: things
@@ -259,4 +261,20 @@ const OLD = runMonth([], { oldWay: true });
   console.log(`  ${e.padEnd(9)} truth ${String(realAvg).padStart(3)} min  ·  old way ended at ${String(oldEnd).padStart(3)} (${err(oldEnd)})` +
     `  ·  now ends at ${String(newEnd).padStart(3)} (${err(newEnd)})` +
     `  ·  believed ${mine.filter(l=>l.taught!==null).length}/${mine.length} vs ${theirs.filter(l=>l.taught!==null).length}/${theirs.length}`);
+
+  // THE CLAIM THIS FILE EXISTS TO TEST, printed for two months and never
+  // checked. Learning from what actually happened has to end up closer to the
+  // truth than the starting guess — otherwise it is just noise that moves the
+  // number about, and a wrong estimate that keeps changing is worse than a
+  // wrong one that sits still.
+  if (mine.length >= 3) {
+    ok(`${e}: learning from real minutes lands closer to the truth`,
+       Math.abs(newEnd - realAvg) <= Math.abs(oldEnd - realAvg),
+       `truth ${realAvg}, was ${oldEnd} (${err(oldEnd)}), now ${newEnd} (${err(newEnd)})`);
+    ok(`${e}: and it saw more of what actually happened`,
+       mine.filter((l) => l.taught !== null).length >= theirs.filter((l) => l.taught !== null).length,
+       `${mine.filter((l) => l.taught !== null).length} vs ${theirs.filter((l) => l.taught !== null).length}`);
+  }
 });
+
+finish();

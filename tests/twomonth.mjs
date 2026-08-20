@@ -1,6 +1,8 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+import { checker } from "./_check.mjs";
+const { ok, done: finish } = checker();
 // TWO MONTHS, HOUR BY HOUR. Eight weeks of ordinary teaching with:
 //   · a weekly planning meeting handing out work in uneven bursts
 //   · a crisis in month one that eats a fortnight
@@ -287,8 +289,21 @@ function report(name, R) {
     console.log(`    the SEVEN-DAY week tab first says it:        ${sevenFirst ? lab(sevenFirst.iso) : "never"}` +
       (sevenFirst ? `  (${total - J.bigProgress.findIndex(p=>p.iso===sevenFirst.iso)} working days before)` : ""));
   }
+  // THE QUESTION THIS FILE ASKS, and it only ever printed the answer. A big job
+  // that never gets finished is a bad month; a big job that never gets finished
+  // AND the app never mentioned is a broken promise, because being told on the
+  // day is no use and being told in week two is everything.
+  ok(`${name}: nothing was missed without the app seeing it coming`,
+     (big && big.done) || !!J.firstWarning,
+     big && big.done ? "finished" : "not finished and never warned about");
+  if (J.firstWarning) {
+    const daysLeft = J.bigProgress.length - J.bigProgress.findIndex((p) => p.iso === J.firstWarning);
+    ok(`${name}: and it said so with working days still to go`, daysLeft >= 3, `${daysLeft} days`);
+  }
   return R;
 }
 
 const A = report("TWO MONTHS — as the app behaves now", run({ pauseButton:false }));
 const B = report("TWO MONTHS — with an interruption button that banks the minutes", run({ pauseButton:true }));
+
+finish();

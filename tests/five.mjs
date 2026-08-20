@@ -12,7 +12,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { open } from "./dom.mjs";
+import { open } from "./_dom.mjs";
 
 const PUB = join(REPO_ROOT, "public");
 const UPLOAD = "/root/.claude/uploads/2a3fbe32-10e5-5444-988f-643a421d1a40/" +

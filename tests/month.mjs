@@ -4,6 +4,8 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // A MONTH. Four weeks, a weekly planning meeting that hands you work in uneven
 // bursts, and a crisis in week two that takes a fortnight of meetings and
 // paperwork to put right. Walks every working day the way the app would.
+import { checker } from "./_check.mjs";
+const { ok, done } = checker();
 import fs from "node:fs"; import vm from "node:vm";
 const REPO = REPO_ROOT;
 const FILES = ["schedule.js","priority.js","dayplan.js","weekplan.js","names.js","quickparse.js"];
@@ -235,4 +237,19 @@ console.log(`\n${"═".repeat(74)}\nTHE MONTH TAB on Mon 14 Sept — a 28-day sp
   Object.values(p.byDay).forEach(day => day.forEach((a,i)=>day.slice(i+1).forEach(b=>{
     if (a.start < b.start+b.minutes && b.start < a.start+a.minutes) clash.push([a.itemId,b.itemId]); })));
   console.log(`  overlaps: ${clash.length}`);
+
+  // IT ALREADY COUNTED THIS AND THEN SAID NOTHING ABOUT IT. Two jobs booked
+  // into the same minutes is the one thing a month's planning must never
+  // produce: it is not a worse plan, it is a plan that is lying to you.
+  ok("across a month, no two jobs are booked into the same minutes",
+     clash.length === 0, JSON.stringify(clash.slice(0, 4)));
+  // AND NOTHING FALLS DOWN THE BACK. Everything dated is either given a slot or
+  // handed back as "won't fit" — the one outcome that must not exist is a job
+  // that is neither.
+  const dated = items.filter((i) => i.date && !i.done).length;
+  ok("everything dated either got a slot or came back as won't-fit",
+     p.placements.length + p.wontFit.length >= dated,
+     `${p.placements.length} placed + ${p.wontFit.length} won't fit, of ${dated} dated`);
 }
+
+done();

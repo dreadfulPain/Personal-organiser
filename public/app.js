@@ -701,7 +701,8 @@
         title,
         type: TYPES.includes(it.type) ? it.type : "task",
         // Told today means today — see finishItem in capture.js for why. Soft,
-        // always: a date you didn't give can never become a missed deadline.
+        // always: a date the app supplied, rather than one you gave, must never
+        // be able to turn into a missed deadline.
         date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : it.someday ? "" : todayISO(),
         time: normaliseTime(it.time),
         deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
@@ -1149,7 +1150,20 @@
   // from the same definition. One answer to "what matters", used twice — so the
   // two screens can never quietly start disagreeing with each other.
   function priorityCtx() {
-    return { today: todayISO(), goalTitle: goalTitleById };
+    return { today: todayISO(), goalTitle: goalTitleById, tight: tightNow() };
+  }
+
+  // See timeline.js — the same question, asked the same way, so the two pages
+  // cannot start disagreeing about what is pressing.
+  function tightNow() {
+    const WPx = window.OrganiserWeekPlan;
+    if (!WPx || !WPx.tightIds) return null;
+    try {
+      const c = OrganiserSchedule.normaliseConfig(scheduleConfig);
+      return WPx.tightIds(items, schedule, c, todayISO(), Math.max(c.planHorizonDays, 28));
+    } catch {
+      return null;
+    }
   }
   function shortlistReason(it) {
     const r = OrganiserPriority.reason(it, priorityCtx());

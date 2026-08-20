@@ -116,6 +116,67 @@
     return best;
   }
 
+  // ---- how tight each deadline actually is ---------------------------------
+  //
+  // A DEADLINE IS NOT A TIME TO DO SOMETHING. It is a time to have finished by,
+  // which means the work itself still belongs in the ordinary queue and gets
+  // done in whatever room turns up. What a deadline adds is pressure, and
+  // pressure is not a property of the job — it is the room left before it set
+  // against everything already owed to that room.
+  //
+  // So "due Friday" is not urgent by itself. Four hours of work due Friday with
+  // three hours free before Friday is urgent. Ten minutes of work due Friday is
+  // not, and never becomes so until Friday.
+  //
+  // Deliberately per-DEADLINE rather than per-job: everything due on or before a
+  // date is competing for the same hours, so the honest question is whether all
+  // of it fits, not whether this one would if it were the only thing.
+  function deadlineLoad(items, schedule, cfg, fromISO, days) {
+    const S = window.OrganiserSchedule;
+    const c = S.normaliseConfig(cfg);
+    const span = Math.max(1, Math.min(180, Number(days) || c.planHorizonDays));
+    const droppable = window.OrganiserPriority.droppable;
+    const all = (Array.isArray(items) ? items : []).filter(
+      (i) => i && !i.done && !i.openLoop && !droppable(i) && i.date
+    );
+    if (!all.length) return [];
+
+    // Room, day by day, at the same two-thirds ceiling the plan itself uses —
+    // measuring against wall-to-wall would call a week comfortable that isn't.
+    const room = [];
+    for (let i = 0; i < span; i++) {
+      const iso = S.addDaysISO(fromISO, i);
+      const free = S.gapsOn(schedule, c, iso).reduce((n, g) => n + (g.end - g.start), 0);
+      room.push({ iso, mins: Math.floor(free * c.fillFraction) });
+    }
+    const roomBy = (date) =>
+      room.filter((d) => d.iso <= date).reduce((n, d) => n + d.mins, 0);
+
+    const dates = [...new Set(all.map((i) => i.date))].sort();
+    return dates.map((date) => {
+      const owed = all.filter((i) => i.date <= date);
+      const need = owed.reduce((n, i) => n + S.estimateMinutes(i, c).minutes, 0);
+      const have = roomBy(date);
+      return { date, need, room: have, slack: have - need, ids: owed.map((i) => i.id) };
+    });
+  }
+
+  // The jobs whose deadline no longer has comfortable room in front of it.
+  // Returned as a Set so ordering can ask in one step, and so that "tight" is
+  // decided once from the whole picture rather than guessed at per job.
+  function tightIds(items, schedule, cfg, fromISO, days) {
+    const S = window.OrganiserSchedule;
+    const c = S.normaliseConfig(cfg);
+    const out = new Set();
+    deadlineLoad(items, schedule, cfg, fromISO, days).forEach((d) => {
+      // Not one useful sitting of spare room left before it. Below that, work
+      // stops being something you'll get to and starts being something you have
+      // to be doing.
+      if (d.slack < c.minSessionMinutes) d.ids.forEach((id) => out.add(id));
+    });
+    return out;
+  }
+
   // items, schedule, cfg → where each dated job should actually get done.
   // days: how far to look (7 for the week, a month's length for the month).
   function spread(items, schedule, cfg, fromISO, days, ctx) {
@@ -421,6 +482,8 @@
     spread,
     roomAhead,
     betterDay,
+    deadlineLoad,
+    tightIds,
     startToday,
     nextDayWithRoom,
     trouble,

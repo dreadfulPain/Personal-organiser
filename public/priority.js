@@ -65,6 +65,20 @@
   function rank(it, ctx) {
     const dueNow = it.date && it.date <= ctx.today;
     if (it.deadlineType === "hard" && dueNow) return 0; // always first
+    // A DEADLINE GETS MORE URGENT AS THE ROOM IN FRONT OF IT RUNS OUT.
+    //
+    // It used to be a switch: either the day had arrived, or the job sat in the
+    // bottom band with everything else. So something due tomorrow ranked
+    // exactly the same as something due in three months, and both sat behind a
+    // goal task with no deadline at all — right up until the morning it was
+    // due, when being told is no use.
+    //
+    // Tightness is worked out from the whole picture (see weekplan.tightIds):
+    // the room left before the deadline against everything already owed to it.
+    // Four hours due Friday with three hours free is urgent; ten minutes due
+    // Friday is not. Sorted by date after this, so of two tight ones the nearer
+    // comes first.
+    if (ctx && ctx.tight && ctx.tight.has && ctx.tight.has(it.id)) return 1;
     if (isHigh(it) || it.promisedTo) return 1; // your values, and your word
     if (goalOf(it, ctx)) return 2; // then milestone-pull
     if (dueNow) return 3;
@@ -111,6 +125,8 @@
     // you only said out loud.
     if (it.date && it.date < ctx.today) return it.deadlineType === "hard" ? "overdue" : "still waiting";
     if (it.date && it.date === ctx.today) return "due today";
+    if (ctx && ctx.tight && ctx.tight.has && ctx.tight.has(it.id))
+      return "little room left before it's due";
     if (it.promisedTo) return "promised to " + it.promisedTo;
     if (isHigh(it)) return "matters a lot";
     const g = goalOf(it, ctx);

@@ -376,7 +376,22 @@
     return g ? g.title : "";
   }
   function ctx() {
-    return { today: todayISO(), goalTitle: goalTitleById };
+    return { today: todayISO(), goalTitle: goalTitleById, tight: tightNow() };
+  }
+
+  // WHICH DEADLINES HAVE RUN OUT OF ROOM IN FRONT OF THEM. Worked out from the
+  // whole picture — every hour free between now and the deadline against
+  // everything already owed to those hours — so that a job gets more urgent as
+  // its room disappears rather than only on the morning it is due.
+  function tightNow() {
+    const WPx = window.OrganiserWeekPlan;
+    if (!WPx || !WPx.tightIds) return null;
+    const c = S().normaliseConfig(cfg);
+    try {
+      return WPx.tightIds(items, schedule, c, todayISO(), Math.max(c.planHorizonDays, 28));
+    } catch {
+      return null; // ordering must never be the thing that breaks the page
+    }
   }
 
   // ---------- building the plan ----------
@@ -1023,6 +1038,32 @@
   //
   // Deliberately unexcited. No red, no count-down, no exclamation marks. The
   // point is that you find out early, not that you feel bad early.
+  // IS IT PILING UP? The count of hours you have against the hours already
+  // promised to a deadline, over the whole horizon rather than today.
+  //
+  // The app has been able to work this out for a long time and never said it.
+  // "Two hours a day spare once the committed work is in" and "the committed
+  // work is using nearly all the room there is" are the same arithmetic and
+  // completely different weeks, and you can only act on the second one early.
+  //
+  // Said only when it is one of those two. A comfortable month does not need
+  // reporting every morning.
+  function pressureWords(iso) {
+    const WP = window.OrganiserWeekPlan;
+    if (!WP || !WP.pressure) return "";
+    const c = S().normaliseConfig(cfg);
+    let p;
+    try {
+      p = WP.pressure(items, schedule, c, iso, Math.max(c.planHorizonDays, 28), ctx());
+    } catch {
+      return "";
+    }
+    if (!p || p.verdict === "room") return "";
+    return `Over the next ${p.days} days — ${p.because}. ` +
+      `${S().durationWords(p.claimed)} of work against ${S().durationWords(p.ceiling)} of room, ` +
+      `and ${p.daysWithRoom} day${p.daysWithRoom === 1 ? "" : "s"} with a real gap left in ${p.daysWithRoom === 1 ? "it" : "them"}.`;
+  }
+
   function troubleBox(iso) {
     const WP = window.OrganiserWeekPlan;
     if (!WP || !WP.trouble) return null;
@@ -1030,13 +1071,17 @@
     const rows = WP.trouble(items, schedule, c, iso, Math.max(c.planHorizonDays, 28), ctx())
       .filter((t) => t.short >= c.minSessionMinutes)
       .slice(0, 3);
-    if (!rows.length) return null;
+    const piling = pressureWords(iso);
+    if (!rows.length && !piling) return null;
 
     const box = document.createElement("div");
     box.className = "dp-ahead";
     box.innerHTML =
       `<h3>Worth knowing now</h3>` +
-      `<p class="muted">There isn't room for ${rows.length === 1 ? "this" : "these"} before ${rows.length === 1 ? "it's" : "they're"} due, on the time you've actually got. Said now rather than on the day, while there's still something you can do about it.</p>`;
+      (piling ? `<p class="dp-piling">${escapeHtml(piling)}</p>` : "") +
+      (rows.length
+        ? `<p class="muted">There isn't room for ${rows.length === 1 ? "this" : "these"} before ${rows.length === 1 ? "it's" : "they're"} due, on the time you've actually got. Said now rather than on the day, while there's still something you can do about it.</p>`
+        : "");
     const list = document.createElement("div");
     list.className = "dp-flaglist";
     rows.forEach((t) => {

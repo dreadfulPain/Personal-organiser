@@ -263,7 +263,7 @@
       .map(
         (r) =>
           `<div class="ro-row"><span><strong>${esc(r.code)}</strong> ${esc(r.lesson)}</span>` +
-          `<span class="p-state">away ${esc(r.dates.join(", "))}` +
+          `<span class="p-state">away ${esc(window.OrganiserDates.daysWords(r.dates))}` +
           (r.judged ? ` · judged ${esc(r.level)} since` : "") +
           `</span></div>`
       )

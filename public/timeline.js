@@ -58,12 +58,10 @@
   // "Winter break begins" and "Staff return" are different instructions to this
   // app, and telling them apart from the words would be the app deciding your
   // term from a noun.
-  const calDay = (iso) => {
-    const d = new Date(iso + "T12:00:00");
-    return Number.isFinite(d.getTime())
-      ? d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" })
-      : iso;
-  };
+  // The calendar's dates carry the year, because a school calendar is read
+  // months before the days in it. Everything else about how a date is written
+  // comes from the one place — see dates.js.
+  const calDay = (iso) => OrganiserDates.dayWords(iso, { year: true, relative: false }) || iso;
 
   let calRows = [];
   // What read() worked out — chiefly the year, which is the one number here that
@@ -323,7 +321,7 @@
       const row = document.createElement("div");
       row.className = "ro-row";
       const name = document.createElement("span");
-      name.textContent = `${b.date} — ${b.label || "off"}`;
+      name.textContent = `${OrganiserDates.dayWords(b.date)} — ${b.label || "off"}`;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "link";
@@ -1214,7 +1212,7 @@
   // to be worth saying — "waiting 2 days" on everything would be noise, and a
   // number nobody needs is how a useful line stops being read.
   function waitingWords(it) {
-    const s = S().agoWords(it.createdAt);
+    const s = OrganiserDates.agoWords(it.createdAt);
     // Said only once it is long enough to be worth saying — "waiting 2 days" on
     // everything is noise, and a number nobody needs is how a useful line stops
     // being read.
@@ -1550,7 +1548,7 @@
         row.className = "su-brow";
         const span = document.createElement("span");
         span.className = "su-blabel";
-        span.textContent = `${b.date} — runs as ${DAY_NAMES[b.runsAs]}`;
+        span.textContent = `${OrganiserDates.dayWords(b.date)} — runs as ${DAY_NAMES[b.runsAs]}`;
         row.appendChild(span);
         const del = document.createElement("button");
         del.type = "button";

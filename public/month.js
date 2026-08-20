@@ -153,7 +153,7 @@
         line.textContent = (t ? t + " " : "") + it.title;
         // The plan may put it before its deadline; say so rather than let the
         // grid quietly imply the date moved.
-        line.title = it.date && start !== null && it.date !== cell.iso ? `${it.title} — due ${it.date}` : it.title;
+        line.title = it.date && start !== null && it.date !== cell.iso ? `${it.title} — due ${OrganiserDates.dayWords(it.date)}` : it.title;
         el.appendChild(line);
       });
       if (cell.items.length > SHOW) {

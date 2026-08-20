@@ -128,7 +128,7 @@
           (r) =>
             `<div class="ro-row"><span><strong>${esc(r.code)}</strong> ` +
             `${esc(r.lesson)}</span><span class="p-state">` +
-            `away ${r.dates.length === 1 ? "on" : "for"} ${esc(r.dates.join(", "))}` +
+            `away ${r.dates.length === 1 ? "on" : "for"} ${esc(window.OrganiserDates.daysWords(r.dates))}` +
             (r.caughtElsewhere ? " · came up again while they were in" : "") +
             (r.judged ? ` · judged ${esc(r.level)} since` : "") +
             `</span></div>`

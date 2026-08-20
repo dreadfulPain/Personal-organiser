@@ -378,7 +378,7 @@
       `<h3>${escapeHtml(plan.title || "Untitled plan")}</h3>` +
       `<p class="muted">${plan.milestones.length} section${plan.milestones.length === 1 ? "" : "s"}, ` +
       `${steps} step${steps === 1 ? "" : "s"}` +
-      (plan.date ? ` · due ${escapeHtml(plan.date)}` : " · no deadline found") +
+      (plan.date ? ` · due ${escapeHtml(OrganiserDates.dayWords(plan.date))}` : " · no deadline found") +
       (mins ? ` · ${escapeHtml(S ? S.durationWords(mins) : mins + " min")} in total` : "") +
       (sized < steps ? ` · ${steps - sized} with no time given, so the app will guess those` : "") +
       `</p>` +

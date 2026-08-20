@@ -1663,7 +1663,7 @@
   // left said nothing at all, which is the wrong way round — the one you can do
   // something about was the one going quiet.
   function openSince(it) {
-    const s = OrganiserSchedule.agoWords(it.createdAt);
+    const s = OrganiserDates.agoWords(it.createdAt);
     if (!s) return "";
     return s === "today" ? "started today" : `open ${s}`;
   }
@@ -1842,7 +1842,7 @@
   // The same scale the loops list uses, so two lists about how long something
   // has been sitting cannot describe the same month differently.
   function sinceWords(it) {
-    const s = OrganiserSchedule.agoWords(it.waitingSince ? it.waitingSince + "T12:00:00" : "");
+    const s = OrganiserDates.agoWords(it.waitingSince ? it.waitingSince + "T12:00:00" : "");
     return s === "today" ? "since today" : s;
   }
   function armWaiting(it, days) {

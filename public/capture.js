@@ -153,9 +153,11 @@
     return todayISO();
   }
 
-  // One reading of a clock time, shared by everything here. Same rule as
-  // OrganiserSchedule.toMin: one or two digits for the hour, and anything that
-  // isn't a time becomes nothing rather than midnight.
+  // One reading of a clock time, shared by everything here. The same rule the
+  // schedule spine uses — one or two digits for the hour, and anything that
+  // isn't a time becomes nothing rather than midnight. Written out here rather
+  // than borrowed, because this file runs on pages that have no schedule at
+  // all and must never come to need one.
   function tidyTime(t) {
     const m = /^(\d{1,2}):(\d{2})$/.exec((t || "").toString().trim());
     if (!m) return "";
@@ -353,7 +355,7 @@
               : "") +
             (e.sourceText ? `<span class="cap-source" title="What it was translated from">${escapeHtml(e.sourceText.slice(0, 60))}</span>` : "");
           let mid = "";
-          if (e.kind === "task") mid = escapeHtml(e.item.title) + (e.item.date ? ` <span class="cap-when">${escapeHtml(e.item.date)}</span>` : "");
+          if (e.kind === "task") mid = escapeHtml(e.item.title) + (e.item.date ? ` <span class="cap-when">${escapeHtml(OrganiserDates.dayWords(e.item.date))}</span>` : "");
           else if (e.kind === "record")
             mid = `<span class="cap-who">${escapeHtml(e.record.who || "— who? —")}</span> ${escapeHtml(e.record.summary)}` +
               (e.record.topic ? ` <span class="cap-when">${escapeHtml(e.record.topic)}${e.record.level ? " " + escapeHtml(e.record.level) : ""}</span>` : "");

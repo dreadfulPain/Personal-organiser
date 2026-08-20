@@ -6,7 +6,8 @@
   "description": "A calm, neurodivergent-friendly organiser: dump messy thoughts, it understands and sorts them into calm zones.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/run.mjs"
   },
   "engines": {
     "node": ">=18"

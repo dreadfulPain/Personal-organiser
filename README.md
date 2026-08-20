@@ -424,3 +424,12 @@ system.
   sync be added later).
 - The AI step, when turned on, lives behind the sorting endpoints and is completely
   optional.
+- `tests/` — the whole suite, run with `npm test`. It needs nothing installed:
+  no framework, no network, no browser. It opens each page in a stand-in
+  browser, presses the buttons and reads what comes back, so a control that
+  exists but was never wired to anything fails rather than passing quietly.
+
+  The run tells you three things on purpose: how many checks passed, which
+  files check the app over without counting, and which ones only print a report
+  and therefore cover nothing. That last line is there so a green run can never
+  quietly claim more than it did.

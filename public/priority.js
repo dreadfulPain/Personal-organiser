@@ -22,6 +22,11 @@
   function isHigh(it) {
     return it.importance === "high";
   }
+  // How much you said it matters, as a number to sort by. Only ever what YOU
+  // set — the app never decides that something is minor.
+  function weight(it) {
+    return it && it.importance === "high" ? 0 : it && it.importance === "low" ? 2 : 1;
+  }
 
   // CAN THIS EVEN BE STARTED YET?
   //
@@ -141,9 +146,22 @@
   function forPlanning(items, ctx) {
     const first = ordered(items, ctx);
     const taken = new Set(first.map((i) => i.id));
+    // THE TAIL IS SORTED TOO. It used to go by tier and then by date, which
+    // sounds complete and isn't: everything down here either has no date or has
+    // one far enough off that it isn't pressing, so the date decided almost
+    // nothing and the rest came out in whatever order the file happened to hold
+    // them. A minor job landed ahead of an ordinary one for no reason at all.
+    //
+    // What you said about how much something matters is the only thing left to
+    // go on once nothing is due, so it is what goes on.
     const rest = (items || [])
       .filter((i) => !i.done && !i.openLoop && !taken.has(i.id) && !blocked(i, ctx))
-      .sort((a, b) => tier(a) - tier(b) || (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"));
+      .sort(
+        (a, b) =>
+          tier(a) - tier(b) ||
+          weight(a) - weight(b) ||
+          (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99")
+      );
     return first.concat(rest);
   }
 

@@ -3936,6 +3936,12 @@ a.btn {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 #calTerm p { flex: 1 1 100%; margin: 0 0 4px; }
 .cal-term { font-size: 0.78rem; }
+/* Who's running which session. Offered, never assumed — a tick, not a guess. */
+.su-people { margin: 10px 0 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.su-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.su-chip { font-size: 0.8rem; }
+.su-chip.known { font-weight: 600; }
+
 /* A one-off read out of a schedule: its date, and the detail that came with it
    (who's running it, which room) kept rather than thrown away. */
 .su-date.missing { border-color: var(--warn, #b45309); }

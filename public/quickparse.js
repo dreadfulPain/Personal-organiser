@@ -222,7 +222,7 @@
   // language the app knows about: a phrase that means "what follows is the
   // thing", which is as true of a shopping list as of a lesson.
   const LEAD_IN =
-    /^\s*(?:i\s+(?:need|have|want|ought|forgot|must|should|will|shall)\s+to|i\s+must|i\s+should|remember\s+to|don'?t\s+forget\s+to|note\s+to\s+self:?|todo:?|to\s?do:?|task:?|make\s+sure\s+(?:to|i)|need\s+to|got\s+to|gotta)\s+/i;
+    /^\s*(?:i\s+(?:need|have|want|ought|forgot|must|should|will|shall)\s+to|i\s+must|i\s+should|remember\s+to|don'?t\s+forget\s+to|note\s+to\s+self:?|todo:?|to\s?do:?|task:?|make\s+sure\s+(?:to|i)|need\s+to|got\s+to|gotta|please)\s+/i;
 
   function dropLeadIn(s) {
     let out = String(s || "");
@@ -266,6 +266,10 @@
 
   // Where a line could break: a comma, a semicolon, "and", "then", "&".
   const JOIN = /\s*(?:,\s*(?:and\s+|then\s+)?|;\s*|\s+and\s+|\s+then\s+|\s*&\s+)/gi;
+
+  // Does this start with a doing word? Used by anything that has to tell an
+  // instruction from a description — "bring your passport" from "Health Check".
+  const startsWithDoing = (s) => DOING.test(dropLeadIn(String(s || "").trim()));
 
   // One line → the jobs in it. Almost always one.
   function pieces(text) {
@@ -402,6 +406,6 @@
   }
 
   window.OrganiserQuickParse = {
-    parse, parseAll, pieces, dropLeadIn, readWhen, readPeople, foundAnything,
+    parse, parseAll, pieces, dropLeadIn, startsWithDoing, readWhen, readPeople, foundAnything,
   };
 })();

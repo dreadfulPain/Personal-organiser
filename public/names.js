@@ -196,6 +196,115 @@
     return out;
   }
 
+  // ---- names sitting loose in a piece of text --------------------------------
+  //
+  // A schedule says who is running each session. Read out of a PDF those names
+  // arrive mixed into one run of words with the rooms and the groups, because
+  // the columns are gone — "Jack D, Joshua K (PS & MS) Dave (HS) Xianmian
+  // Building 109". Something has to pick the people out of that.
+  //
+  // AND IT MUST NOT DECIDE. The rule at the top of this file holds hardest
+  // here: never add a person silently, because a wrong guess becomes a
+  // permanent contact and a right one you never confirmed is a contact you
+  // don't trust. This returns CANDIDATES. Somebody ticks them.
+  //
+  // What it uses is shape, not vocabulary — §0.2. It knows nothing about
+  // schools, rooms or job titles:
+  //
+  //   · a name is one to three words, each starting with a capital
+  //   · nothing with a digit in it (which is most rooms, floors and addresses)
+  //   · nothing in full capitals (an acronym: PS, HS, FAO, TBA, IT)
+  //   · a run of them separated by commas is a strong sign, because that is how
+  //     a list of people is written and almost nothing else is
+  const CAP_WORD = /^[A-ZÀ-ɏ][\w'’À-ɏ-]*$/;
+
+  function couldBeName(chunk) {
+    const s = String(chunk || "").trim().replace(/[.,;:]+$/, "");
+    if (!s || /\d/.test(s)) return "";
+    const words = s.split(/\s+/);
+    if (!words.length || words.length > 3) return "";
+    if (!words.every((w) => CAP_WORD.test(w))) return "";
+    // ALL CAPS is an acronym, not a person — and ONE of them anywhere in the
+    // run is enough to spoil it. "Dave TBA" is a name and a placeholder that
+    // ended up side by side, not somebody called Dave Tba.
+    //
+    // A single capital letter is an initial and stays: "Jack D" is how a school
+    // writes a surname it doesn't want in full.
+    if (words.some((w) => w.length > 1 && w === w.toUpperCase())) return "";
+    if (s.length < 2 || s.length > 40) return "";
+    return s;
+  }
+
+  function peopleIn(text) {
+    const src = String(text || "");
+    if (!src.trim()) return [];
+    const seen = new Map();
+    const add = (name, strong) => {
+      const key = norm(name);
+      if (!key) return;
+      const had = seen.get(key);
+      if (had) { had.times++; if (strong) had.listed = true; return; }
+      seen.set(key, { name, times: 1, listed: !!strong });
+    };
+    // Split on brackets and slashes first — a bracket is nearly always an aside
+    // ("(HS)", "(bring your passport)") and never part of a name.
+    src.split(/[()\[\]/|\n]+/).forEach((part) => {
+      const bits = part.split(/\s*,\s*/).map((b) => b.trim()).filter(Boolean);
+      // A comma-separated run of two or more name-shaped bits is a list of
+      // people. One on its own could be anything, so it counts for less.
+      const shaped = bits.map(couldBeName);
+      const strong = bits.length > 1 && shaped.filter(Boolean).length > 1;
+      shaped.forEach((s) => { if (s) add(s, strong); });
+      // THE FIRST NAME IN THE LIST HAS THE SENTENCE STUCK TO IT.
+      //
+      // "…New Teachers Jack D, Joshua K" — Joshua comes out clean and Jack
+      // doesn't, because he is on the end of everything that came before him.
+      // Pulling capitalised runs out of any old text was tried and it produced
+      // "Xianmian Building", "Floor" and "Saturday"; this is the narrow version
+      // that doesn't.
+      //
+      // It only looks inside a chunk ALREADY KNOWN to be a list of people, and
+      // only for a name the same SHAPE as the ones beside it — a list is
+      // written consistently, so if the others are "word plus initial" then the
+      // last two words of this one are too.
+      // ONE CLEAN SIBLING IS ENOUGH TO GIVE THE SHAPE. "…New Teachers Jack D,
+      // Joshua K" has only one name the commas hand over whole, and it is still
+      // the shape the other one is written in.
+      if (bits.length < 2 || !shaped.some(Boolean)) return;
+      const shapes = [...new Set(shaped.filter(Boolean).map((s) => s.split(/\s+/).length))];
+      bits.forEach((bit, i) => {
+        if (shaped[i]) return;
+        const words = bit.split(/\s+/);
+        // Longest shape first, and stop at the first one that fits. Trying them
+        // all turns "Vincent Wu" into Vincent Wu AND Wu — one person offered
+        // twice, once under half their name.
+        [...shapes].sort((a, b) => b - a).some((n) => {
+          if (words.length <= n) return false;
+          const tail = couldBeName(words.slice(-n).join(" "));
+          if (tail) add(tail, true);
+          return !!tail;
+        });
+      });
+    });
+    // NAMES GLUED TO OTHER WORDS ARE LEFT BEHIND, ON PURPOSE.
+    //
+    // Flattened out of a PDF a name often has a sentence in front of it —
+    // "Teachers on the name lists Carre" — and pulling runs of capitalised
+    // words out of those was tried: it found four more people and eleven more
+    // things that aren't people. "Xianmian Building", "Floor", "Welcome",
+    // "Saturday". Twenty-eight chips to find eighteen right ones is worse to
+    // read than eighteen chips with one wrong one, and this is a list somebody
+    // has to look down.
+    //
+    // The ones it misses are recoverable and the ones it invents are not: a
+    // name typed in by hand takes a second, and once anybody is in People they
+    // are matched by look() from then on, silently, every time.
+    return [...seen.values()]
+      // The ones written as a list first, then the ones said most often.
+      .sort((a, b) => (b.listed ? 1 : 0) - (a.listed ? 1 : 0) || b.times - a.times ||
+        a.name.localeCompare(b.name));
+  }
+
   // THE PART THAT ACTUALLY SOLVES PINYIN. When you confirm that "Wang Wei" is
   // 王伟, that spelling is kept on the contact — so the next time, and every
   // time after, it's an exact match. The app ends up knowing how you write your
@@ -212,5 +321,5 @@
     return true;
   }
 
-  window.OrganiserNames = { look, namesIn, remember, formsOf, pinyinCouldBe, distance, nearEnough, norm };
+  window.OrganiserNames = { look, namesIn, peopleIn, couldBeName, remember, formsOf, pinyinCouldBe, distance, nearEnough, norm };
 })();

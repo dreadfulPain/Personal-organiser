@@ -35,6 +35,7 @@
   let worked = {}; // minutes really put in, per day — see weekend.js
   let areaList = []; // the parts of your life, as YOU named them — see areas.js
   let rotas = []; // going round a list, one at a time — see rota.js
+  let contacts = []; // People, for linking a session to whoever is running it
   let areaEditId = null; // which job is having its areas corrected
   const goalAreasById = (id) => {
     const g = goals.find((x) => x.id === id);
@@ -335,6 +336,14 @@
 
   function persist() {
     OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList, rotas });
+  }
+
+  // People are saved SEPARATELY, and only when this page actually changed them.
+  // Sending contacts on every ordinary save means one page that loaded them
+  // wrong can empty the People tab from the other side of the app, and that is
+  // the exact shape of bug this store has produced before.
+  function persistPeople() {
+    OrganiserStore.save({ contacts });
   }
 
   // A TURN TICKED OFF HERE IS A TURN, not just a job done.
@@ -767,6 +776,16 @@
     renderUnplanned(iso, plan);
   }
 
+  // An id is not a person. A block that says "about c8x2k" tells you nothing,
+  // and the whole reason for linking one to People is so the day can say who.
+  function aboutWords(ids) {
+    const names = (ids || []).map((id) => {
+      const c = contacts.find((x) => x && x.id === id);
+      return c ? c.name : id;
+    });
+    return "with " + names.join(", ");
+  }
+
   function blockRow(b) {
     const el = document.createElement("div");
     // The solid/dashed difference is the most important thing on this page: a
@@ -778,7 +797,7 @@
       <div class="dp-main">
         <div class="dp-title">${escapeHtml(b.label)}</div>
         ${b.soft ? `<div class="dp-guess">the app's guess — not a fixed thing</div>` : ""}
-        ${b.about && b.about.length ? `<div class="dp-about">about ${b.about.map(escapeHtml).join(", ")}</div>` : ""}
+        ${b.about && b.about.length ? `<div class="dp-about">${escapeHtml(aboutWords(b.about))}</div>` : ""}
       </div>`;
     return el;
   }
@@ -1459,6 +1478,207 @@
     return b.days.slice().sort().map((d) => DAY_NAMES[d]).join(" ");
   }
 
+  // ---- who's running these -------------------------------------------------
+  //
+  // A schedule says who is taking each session, and those people are the ones
+  // you are about to spend two days with. Read out of a PDF their names arrive
+  // mixed into one run of words with the rooms and the groups, so something has
+  // to pick them out — and then STOP.
+  //
+  // Never added silently. That rule is written at the top of names.js and it is
+  // right: a wrong guess becomes a permanent contact you then have to find and
+  // delete, and a right one you never confirmed is a contact you don't trust.
+  // So they are offered, unticked, and the ones you tick get added AND linked to
+  // the sessions their name appeared in.
+  //
+  // Anyone already in People is matched and linked without asking, because that
+  // is not a guess — it is a look-up.
+  let peoplePick = null;
+
+  function candidates() {
+    const N = window.OrganiserNames;
+    if (!N || !N.peopleIn || !pastedBlocks) return [];
+    const seen = new Map();
+    pastedBlocks.forEach((b) => {
+      if (!b.note) return;
+      N.peopleIn(b.note).forEach((c) => {
+        const found = N.look(c.name, contacts);
+        const key = found.state === "matched" ? found.contact.id : "new:" + c.name.toLowerCase();
+        const had = seen.get(key);
+        if (had) { had.on.push(b.id); return; }
+        seen.set(key, {
+          key, name: found.state === "matched" ? found.contact.name : c.name,
+          known: found.state === "matched" ? found.contact : null,
+          nearly: found.state === "nearly" ? found.suggestions : null,
+          listed: c.listed, on: [b.id],
+        });
+      });
+    });
+    return [...seen.values()];
+  }
+
+  function peopleOffer() {
+    const box = document.createElement("div");
+    box.className = "su-people";
+    const list = candidates();
+    if (!list.length) return box;
+    if (!peoplePick) {
+      // Anyone you already have is on, because linking a person you already
+      // know is a look-up. Anyone new is off, because adding one is a decision.
+      peoplePick = new Set(list.filter((c) => c.known).map((c) => c.key));
+    }
+    const known = list.filter((c) => c.known).length;
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent =
+      `${list.length} name${list.length === 1 ? "" : "s"} in these — tick whoever is a person and ` +
+      `they'll go in People, linked to the sessions they're named on.` +
+      (known ? ` ${known} ${known === 1 ? "is" : "are"} already there.` : "") +
+      " It only finds the ones written as a list, so add anyone it missed.";
+    box.appendChild(p);
+    const row = document.createElement("div");
+    row.className = "su-chips";
+    list.forEach((c) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "p-opt su-chip" + (peoplePick.has(c.key) ? " on" : "") + (c.known ? " known" : "");
+      b.textContent = c.name + (c.known ? " ✓" : "") + (c.on.length > 1 ? ` ·${c.on.length}` : "");
+      if (c.nearly && c.nearly.length)
+        b.title = `You already have ${c.nearly.map((x) => x.name).join(" or ")} — same person?`;
+      b.addEventListener("click", () => {
+        if (peoplePick.has(c.key)) peoplePick.delete(c.key);
+        else peoplePick.add(c.key);
+        renderSetup();
+      });
+      row.appendChild(b);
+    });
+    box.appendChild(row);
+    const add = document.createElement("div");
+    add.className = "su-row";
+    add.innerHTML = `<label>someone it missed <input type="text" class="pp-new" maxlength="60" /></label>
+      <button type="button" class="link pp-add">add them</button>`;
+    add.querySelector(".pp-add").addEventListener("click", () => {
+      const name = add.querySelector(".pp-new").value.trim();
+      if (!name) return;
+      const N = window.OrganiserNames;
+      const found = N ? N.look(name, contacts) : { state: "new" };
+      if (found.state === "matched") { peoplePick.add(found.contact.id); renderSetup(); return; }
+      contacts = contacts.concat([{ id: uid(), name, group: "", details: {},
+        createdAt: new Date().toISOString() }]);
+      persistPeople();
+      renderSetup();
+    });
+    box.appendChild(add);
+    return box;
+  }
+
+  // Turn the ticks into People, and hand back which block gets which id.
+  function applyPeople() {
+    const byBlock = new Map();
+    if (!peoplePick || !peoplePick.size) return byBlock;
+    let changed = false;
+    candidates().forEach((c) => {
+      if (!peoplePick.has(c.key)) return;
+      let id = c.known ? c.known.id : "";
+      if (!id) {
+        id = uid();
+        contacts = contacts.concat([{ id, name: c.name, group: "", details: {},
+          createdAt: new Date().toISOString() }]);
+        changed = true;
+      }
+      c.on.forEach((blockId) => {
+        if (!byBlock.has(blockId)) byBlock.set(blockId, []);
+        byBlock.get(blockId).push(id);
+      });
+    });
+    if (changed) persistPeople();
+    return byBlock;
+  }
+
+  // ---- things a schedule tells you to DO -----------------------------------
+  //
+  // "Health Check (bring passport & FOUR ID photos)". The session is a thing
+  // you attend; the bracket is a thing you have to do, and it is the single
+  // most important line on the page — the one that costs you the morning if you
+  // miss it. As a block it is neither: you cannot tick it off and nothing
+  // reminds you.
+  //
+  // A BRACKET THAT STARTS WITH A DOING WORD. Narrow on purpose: a bracket is
+  // nearly always an aside, and an aside in the imperative is an instruction to
+  // the reader. "(PS & MS)" and "(HS)" are not, and don't come out.
+  let jobPick = null;
+
+  function askedFor() {
+    const QP = window.OrganiserQuickParse;
+    if (!QP || !QP.startsWithDoing || !pastedBlocks) return [];
+    const out = [];
+    const seen = new Set();
+    pastedBlocks.forEach((b) => {
+      const src = `${b.label || ""}\n${b.note || ""}`;
+      (src.match(/\(([^)]{4,80})\)/g) || []).forEach((raw) => {
+        // A bracket can run across the lines the note kept, so it comes back
+        // as one line before anything reads it.
+        const inner = raw.slice(1, -1).replace(/\s+/g, " ").trim();
+        if (!QP.startsWithDoing(inner)) return;
+        const key = inner.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({
+          key, text: QP.dropLeadIn(inner), date: b.date || "",
+          // The session's name without its brackets — one of which is this very
+          // instruction, and reading it twice on one line is noise.
+          on: String(b.label || "").replace(/\s*\([^)]*\)/g, "").trim(),
+        });
+      });
+    });
+    return out;
+  }
+
+  function jobOffer() {
+    const box = document.createElement("div");
+    box.className = "su-people";
+    const list = askedFor();
+    if (!list.length) return box;
+    if (!jobPick) jobPick = new Set();
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = `${list.length} of these say to bring or do something. ` +
+      "Tick any you want as a job on the day — they're not jobs until you say so.";
+    box.appendChild(p);
+    const row = document.createElement("div");
+    row.className = "su-chips";
+    list.forEach((j) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "p-opt su-chip" + (jobPick.has(j.key) ? " on" : "");
+      b.textContent = j.text + (j.on ? ` — ${j.on}` : "");
+      b.addEventListener("click", () => {
+        if (jobPick.has(j.key)) jobPick.delete(j.key);
+        else jobPick.add(j.key);
+        renderSetup();
+      });
+      row.appendChild(b);
+    });
+    box.appendChild(row);
+    return box;
+  }
+
+  function applyJobs() {
+    if (!jobPick || !jobPick.size) return 0;
+    const made = askedFor().filter((j) => jobPick.has(j.key)).map((j) => ({
+      id: uid(), title: j.text, type: "task", date: j.date, time: "", tags: [],
+      deadlineType: j.date ? "hard" : "soft", importance: "normal", effort: "quick",
+      goalId: "", openLoop: false, promisedTo: "", waitingOn: "", done: false,
+      createdAt: new Date().toISOString(), completedAt: null, plannedMinutes: 0,
+      spentMinutes: 0, optional: false, committed: true, notBefore: "", areas: [],
+      // What it came off, so you can see why it's there a month later.
+      whenText: j.on || "",
+    }));
+    if (!made.length) return 0;
+    items = items.concat(made);
+    return made.length;
+  }
+
   // NOTHING SAVES UNTIL THIS IS CHECKED. The model read a wall of text; a person
   // reads the result. Every cell is editable and every row can be dropped.
   function reviewTable() {
@@ -1502,6 +1722,8 @@
       table.appendChild(row);
     });
     box.appendChild(table);
+    box.appendChild(peopleOffer());
+    box.appendChild(jobOffer());
     const actions = document.createElement("div");
     actions.className = "su-row";
     const save = document.createElement("button");
@@ -1510,18 +1732,29 @@
     save.textContent = "Save these blocks";
     save.addEventListener("click", () => {
       const wanted = pastedBlocks.filter((b) => b.keep);
-      const kept = wanted.map((b) => S().normaliseBlock(b)).filter(Boolean);
+      // Who runs what, worked out before the blocks are made so each one can
+      // carry the ids of the people named on it.
+      const who = applyPeople();
+      const kept = wanted
+        .map((b) => S().normaliseBlock({ ...b, about: (b.about || []).concat(who.get(b.id) || []) }))
+        .filter(Boolean);
       // A ROW THAT WOULDN'T SAVE IS SAID OUT LOUD. "Saved 14" when you were
       // looking at 16 is the failure you can't see: the two that went are the
       // two you'd have wanted to know about.
       const lost = wanted.length - kept.length;
       schedule = S().normalise(schedule).concat(kept);
+      const linked = kept.filter((b) => b.about.length).length;
+      const jobs = applyJobs();
       pastedBlocks = null;
+      peoplePick = null;
+      jobPick = null;
       persist();
       renderSetup();
       render();
       setSuStatus(
         `Saved ${kept.length} block${kept.length === 1 ? "" : "s"}. ✓` +
+        (linked ? ` ${linked} of them say who's running it.` : "") +
+        (jobs ? ` ${jobs} job${jobs === 1 ? "" : "s"} added.` : "") +
         (lost ? ` ${lost} couldn't be saved — ${lost === 1 ? "it had" : "they had"} no day or date on ${lost === 1 ? "it" : "them"}.` : "")
       );
     });
@@ -1779,6 +2012,7 @@
     worked = data.worked || {};
     areaList = data.areas || [];
     rotas = data.rotas || [];
+    contacts = data.contacts || [];
     syncPrep();
     const calBox = $("#calPaste");
     const calYear = $("#calYear");

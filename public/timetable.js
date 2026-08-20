@@ -301,7 +301,11 @@
       // starting rather than more about this one.
       if (hasDate(line) || extra >= 6) { open = null; return; }
       extra++;
-      open.note = ((open.note ? open.note + " " : "") + line).slice(0, 300);
+      // KEPT AS SEPARATE LINES. In the document these are separate cells — who
+      // is running it, then where it is — and running them together makes
+      // "Dave" and "TBA" into a person called Dave Tba. The line break is the
+      // only thing left saying they are two different facts.
+      open.note = ((open.note ? open.note + "\n" : "") + line).slice(0, 300);
     });
     out.blocks = out.blocks.filter((b) => b.label);
     return out.blocks.length ? out : null;
@@ -350,7 +354,13 @@
     if (grid) return grid;
     const lines = readLines(raw);
     if (lines) return lines;
-    const agenda = readAgenda(raw);
+    // A PASTED AGENDA USES A DATE IN ITS OWN TEXT, if there is one — the same
+    // rule fromPages() uses per page. Without it the entries have no day to
+    // happen on, and something with no day is thrown away when it is saved.
+    const C = window.OrganiserCalPlan;
+    const found = C ? C.read(raw) : { rows: [] };
+    const agenda = readAgenda(raw, found.rows.length
+      ? { date: found.rows[0].date, year: found.year } : undefined);
     if (agenda) return agenda;
     return NOTHING;
   }

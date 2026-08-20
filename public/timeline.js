@@ -1165,12 +1165,41 @@
       (d.kind === "own" ? " and nothing fixed" : "") + " — more room than today, if any of this can wait.";
   }
 
+  // How long something has been sitting there. Said only once it is long enough
+  // to be worth saying — "waiting 2 days" on everything would be noise, and a
+  // number nobody needs is how a useful line stops being read.
+  function waitingWords(it) {
+    if (!it.createdAt) return "";
+    const made = new Date(it.createdAt);
+    if (!Number.isFinite(made.getTime())) return "";
+    const days = Math.round((Date.now() - made.getTime()) / 86400000);
+    if (days < 7) return "";
+    if (days < 14) return "waiting a week";
+    if (days < 60) return `waiting ${Math.round(days / 7)} weeks`;
+    return `waiting ${Math.round(days / 30)} months`;
+  }
+
   function renderUnplanned(iso, plan) {
     const el = $("#unplanned");
     if (!el) return;
     const planned = new Set((plan && plan.slots ? plan.slots : []).map((s) => s.itemId));
     const left = items.filter((i) => !i.done && i.date === iso && !planned.has(i.id));
-    if (!left.length) {
+    // WORK WITH NO DATE IS NOT THE SAME AS WORK THAT DOESN'T EXIST.
+    //
+    // It is filler: it goes in whatever space is left over. But a day whose
+    // budget is already full has no space left over, and then it gets nothing —
+    // and unlike the dated work beside it, nothing said so. Dated work that
+    // didn't fit is listed here and re-tried tomorrow by the week planner;
+    // undated work was simply gone. Not de-prioritised — invisible.
+    //
+    // Deadlines still come first. This is not a claim that it should have had a
+    // slot; it is the app admitting it is holding something it never mentions.
+    const P = window.OrganiserPriority;
+    const floating = items.filter(
+      (i) => !i.done && !i.date && !i.openLoop && !planned.has(i.id) &&
+        !(P && P.droppable && P.droppable(i))
+    );
+    if (!left.length && !floating.length) {
       el.hidden = true;
       return;
     }
@@ -1181,19 +1210,53 @@
     // is its own kind of unhelpful.
     const WPx = window.OrganiserWeekPlan;
     const better = WPx && WPx.betterDay ? WPx.betterDay(schedule, cfg, iso, 8) : null;
-    el.innerHTML = `<h2>Also today</h2><p class="muted">Dated today but left out of the plan — the day was full enough.</p>` +
-      (better
-        ? `<p class="dp-room">${escapeHtml(roomWords(better))}</p>`
-        : "");
-    const list = document.createElement("div");
-    list.className = "dp-alsolist";
-    left.forEach((it) => {
+    el.innerHTML = `<h2>Also today</h2>` +
+      (left.length
+        ? `<p class="muted">Dated today but left out of the plan — the day was full enough.</p>`
+        : "") +
+      (better ? `<p class="dp-room">${escapeHtml(roomWords(better))}</p>` : "");
+    const put = (into, it, extra) => {
       const row = document.createElement("div");
       row.className = "dp-alsorow";
       row.textContent = it.title;
-      list.appendChild(row);
-    });
-    el.appendChild(list);
+      if (extra) {
+        const tag = document.createElement("span");
+        tag.className = "dp-waiting";
+        tag.textContent = extra;
+        row.appendChild(tag);
+      }
+      into.appendChild(row);
+    };
+    if (left.length) {
+      const list = document.createElement("div");
+      list.className = "dp-alsolist";
+      left.forEach((it) => put(list, it, ""));
+      el.appendChild(list);
+    }
+    if (floating.length) {
+      const head = document.createElement("p");
+      head.className = "muted dp-floating";
+      head.textContent =
+        `${floating.length} with no day on ${floating.length === 1 ? "it" : "them"} — ` +
+        "these go in whatever room is left over, and today there wasn't any.";
+      el.appendChild(head);
+      const list = document.createElement("div");
+      list.className = "dp-alsolist";
+      // A handful, oldest first. A list of forty is not a thing anybody reads,
+      // and the ones that have sat longest are the ones worth seeing.
+      floating
+        .slice()
+        .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
+        .slice(0, 6)
+        .forEach((it) => put(list, it, waitingWords(it)));
+      if (floating.length > 6) {
+        const more = document.createElement("div");
+        more.className = "dp-alsorow muted";
+        more.textContent = `…and ${floating.length - 6} more`;
+        list.appendChild(more);
+      }
+      el.appendChild(list);
+    }
   }
 
   function renderAccept(plan, iso) {

@@ -3936,6 +3936,11 @@ a.btn {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 #calTerm p { flex: 1 1 100%; margin: 0 0 4px; }
 .cal-term { font-size: 0.78rem; }
+/* Work with no day on it that today had no room for. Not de-prioritised —
+   it was invisible, which is worse. */
+.dp-floating { margin-top: 10px; }
+.dp-waiting { margin-left: 8px; font-size: 0.78rem; color: var(--muted); }
+
 /* Something you pinned to a time that a lesson is already in. Named, not moved —
    you may know the class is out. */
 .dp-clash { color: var(--warn, #b45309); }

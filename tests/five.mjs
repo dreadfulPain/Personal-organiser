@@ -541,9 +541,37 @@ sec("A place you have to be is a job you have to do");
      job.remindAt);
   ok("it's called Leave for, because there's a journey",
      /^Leave for/.test(job.title), job.title);
-  ok("and Be at when there isn't",
-     /^Be at/.test(S.prepPlan([S.normaliseBlock({ ...AWAY, getThere: 0 })], CFG, [],
-       new Date("2026-08-20T09:00:00")).add[0].title));
+  // AND NOTHING AT ALL WHEN THERE IS NO JOURNEY. This used to make a "Be at
+  // <block>" job timed to the very minute the block starts — so a day drew the
+  // block, drew a second row underneath saying to be at it, and then warned in
+  // red that the two were at the same time. Twenty-two blocks became forty-four
+  // rows, half of them clashing with themselves.
+  //
+  // A block with no journey is already on the day and already says "be there on
+  // time". There is nothing left for a second row to tell you.
+  ok("and nothing at all when there is no journey to protect",
+     S.prepPlan([S.normaliseBlock({ ...AWAY, getThere: 0 })], CFG, [],
+       new Date("2026-08-20T09:00:00")).add.length === 0,
+     JSON.stringify(S.prepPlan([S.normaliseBlock({ ...AWAY, getThere: 0 })], CFG, [],
+       new Date("2026-08-20T09:00:00")).add.map((t) => t.title)));
+
+  // AND IT CAN TAKE ONE BACK. The app could make a job on your behalf but could
+  // only drop it the day AFTER — so a block you deleted, or a rule that changed,
+  // left its jobs sitting in your list for a week with nothing to say they were
+  // orphans.
+  {
+    const made = S.prepPlan([AWAY], CFG, [], new Date("2026-08-20T09:00:00")).add
+      .map((t) => ({ ...t, id: "auto-" + t.prepFor, done: false }));
+    ok("a job was made while the block wanted one", made.length > 0, String(made.length));
+    const gone = S.prepPlan([], CFG, made, new Date("2026-08-20T09:00:00"));
+    ok("and taken back once nothing asks for it", gone.drop.length === made.length,
+       JSON.stringify(gone.drop.map((t) => t.title)));
+    // BUT ONLY WHILE IT IS STILL THE APP'S. The moment you rename one, move it,
+    // or put it off, it is yours and nothing may quietly remove it.
+    const mine = made.map((t) => ({ ...t, edited: true }));
+    ok("never one you have touched",
+       S.prepPlan([], CFG, mine, new Date("2026-08-20T09:00:00")).drop.length === 0);
+  }
 
   // Once, not once per look.
   const again = S.prepPlan([AWAY], CFG, add, new Date("2026-08-20T09:00:00"));
@@ -709,8 +737,18 @@ sec("A date you never gave can never become a failure");
      PR.reason(old, { today: TODAY }) === "still waiting", PR.reason(old, { today: TODAY }));
   ok("and a deadline you DID give is overdue",
      PR.reason(promised, { today: TODAY }) === "overdue", PR.reason(promised, { today: TODAY }));
-  ok("today is today either way",
-     PR.reason({ ...old, date: TODAY }, { today: TODAY }) === "due today");
+  // AND TODAY IS NO DIFFERENT. This asserted "due today" for a soft date as well
+  // as a hard one — "today is today either way" — but "due" is a claim about a
+  // DEADLINE, not about a date. Six things typed on a Friday morning with no
+  // date on them at all came back stamped "due today": six deadlines the app
+  // had invented and then told you about. That is the wall the next comment
+  // describes, built on the one day you cannot escape it.
+  ok("a deadline you gave for today says so",
+     PR.reason({ ...promised, date: TODAY }, { today: TODAY }) === "due today",
+     PR.reason({ ...promised, date: TODAY }, { today: TODAY }));
+  ok("and one the app dated for you claims nothing",
+     PR.reason({ ...old, date: TODAY }, { today: TODAY }) === "",
+     PR.reason({ ...old, date: TODAY }, { today: TODAY }));
   // THE WALL. The app dates whatever you mention, so a fortnight of mentioning
   // things would otherwise be a fortnight of accusations.
   const app = fs.readFileSync(path.join(PUB, "app.js"), "utf8");

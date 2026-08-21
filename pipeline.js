@@ -173,7 +173,12 @@ function detectBlocks(src, lines) {
 // Last resort: one long paragraph. Still code, still no model.
 function sentences(src) {
   const out = [];
-  const re = /[^.!?。！？\n]+[.!?。！？]+["'”’)]*\s*|[^.!?。！？\n]+$/g;
+  // THE `m` IS LOAD-BEARING. Without it `$` means end of the whole text, so the
+  // second alternative could only ever match the LAST line — and a line with no
+  // full stop on the end matched neither alternative and was dropped. Six lines
+  // typed into the box came back as one: the last one. Nobody punctuates a
+  // brain dump, so this was the ordinary case, not the odd one.
+  const re = /[^.!?。！？\n]+[.!?。！？]+["'”’)]*\s*|[^.!?。！？\n]+$/gm;
   let m;
   while ((m = re.exec(src))) {
     const text = m[0].trim();

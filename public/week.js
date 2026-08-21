@@ -4,6 +4,13 @@
 (() => {
   "use strict";
 
+  // Now, to the minute. Handed to the planner rather than read inside it, so the
+  // same span asked twice in one minute plans identically.
+  const minuteNow = () => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  };
+
   const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
 
   let items = [];
@@ -74,6 +81,42 @@
     return el;
   }
 
+  // WHAT YOU ARE ALREADY DOING THAT DAY. Lessons, form time, duty, meetings —
+  // the things that are simply true about the day before any task is planned
+  // into it.
+  //
+  // THIS PAGE USED TO IGNORE THEM ENTIRELY. A teacher with a full timetable saw
+  // "free" printed under Monday, Tuesday, Wednesday and Thursday, because the
+  // page only ever looked at tasks and no task happened to fall there. The
+  // planner knew about the lessons the whole time — it was placing work around
+  // them — and the one view you'd use to decide when to take on more work said
+  // the days were empty.
+  function blocksFor(iso) {
+    const S = window.OrganiserSchedule;
+    if (!S || !S.blocksOn) return [];
+    // Soft blocks are guesses and the day markers aren't things you attend.
+    return S.blocksOn(schedule, iso)
+      .filter((b) => !b.soft && !b.blocksDay && !b.noLessons)
+      .map((b) => ({ block: b, start: S.toMin(b.start) }))
+      .sort((a, b) => a.start - b.start);
+  }
+
+  function blockRow(b) {
+    const el = document.createElement("div");
+    el.className = "item wk-item wk-block";
+    const t = fmtTime(b.block.start);
+    el.innerHTML = `
+      ${t ? `<div class="tl-time">${escapeHtml(t)}</div>` : ""}
+      <div class="item-main">
+        <div class="item-title">${escapeHtml(b.block.label || "Block")}</div>
+        <div class="item-meta">
+          <span class="badge block">${b.block.beThere ? "BE THERE" : "ON"}</span>
+          ${b.block.end ? `<span class="when">till ${escapeHtml(fmtTime(b.block.end))}</span>` : ""}
+        </div>
+      </div>`;
+    return el;
+  }
+
   const DAYS = 7;
 
   // WHAT'S CHANGED HERE. This page used to list whatever carried the day's date
@@ -87,7 +130,9 @@
     wrap.innerHTML = "";
     const t = todayISO();
     const WP = window.OrganiserWeekPlan;
-    const plan = WP ? WP.spread(items, schedule, cfg, t, DAYS, { today: t, goalTitle: () => "" }) : null;
+    const plan = WP
+      ? WP.spread(items, schedule, cfg, t, DAYS, { today: t, nowMinutes: minuteNow(), goalTitle: () => "" })
+      : null;
 
     if (plan && plan.wontFit.length) wrap.appendChild(wontFitBox(plan));
 
@@ -106,18 +151,32 @@
         .filter((p) => p.it && !p.it.done)
         .sort((a, b) => a.start - b.start);
 
+      const blocks = blocksFor(iso);
       const sec = document.createElement("section");
       sec.className = "wk-day";
       const h = document.createElement("h2");
       h.className = "wk-heading" + (i === 0 ? " today" : "");
       h.textContent = dayHeading(iso, i);
       sec.appendChild(h);
-      if (!day.length) {
+      // FREE MEANS FREE. Not "no tasks happen to be planned here" — a day with
+      // four lessons on it is not free, and saying so is worse than saying
+      // nothing, because it is the sentence you plan against.
+      if (!day.length && !blocks.length) {
         sec.insertAdjacentHTML("beforeend", `<p class="wk-free">free</p>`);
       } else {
         const list = document.createElement("div");
         list.className = "items";
-        day.forEach((p) => list.appendChild(row(p.it, p)));
+        // One day, in time order, whichever kind of thing each row is.
+        const rows = blocks
+          .map((b) => ({ at: b.start, make: () => blockRow(b) }))
+          .concat(day.map((p) => ({
+            at: p.pinnedByHand && p.it.time && window.OrganiserSchedule
+              ? OrganiserSchedule.toMin(p.it.time)
+              : p.start,
+            make: () => row(p.it, p),
+          })))
+          .sort((a, b) => a.at - b.at);
+        rows.forEach((r) => list.appendChild(r.make()));
         sec.appendChild(list);
       }
       wrap.appendChild(sec);

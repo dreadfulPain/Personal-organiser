@@ -124,7 +124,11 @@
     // those overdue tomorrow would build a wall of accusations out of things
     // you only said out loud.
     if (it.date && it.date < ctx.today) return it.deadlineType === "hard" ? "overdue" : "still waiting";
-    if (it.date && it.date === ctx.today) return "due today";
+    // AND THE SAME IS TRUE OF TODAY. This said "due today" for any date landing
+    // on today, hard or soft — so five things typed this morning with no date on
+    // them at all came back stamped "due today", five deadlines the app had
+    // invented and then told you about. Nothing was due. It was just today.
+    if (it.date && it.date === ctx.today && it.deadlineType === "hard") return "due today";
     if (ctx && ctx.tight && ctx.tight.has && ctx.tight.has(it.id))
       return "little room left before it's due";
     if (it.promisedTo) return "promised to " + it.promisedTo;

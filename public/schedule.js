@@ -564,6 +564,9 @@
     });
 
     const add = [];
+    // Every job the schedule ASKS FOR on this pass. Anything auto-made that
+    // isn't in here is something the app changed its mind about.
+    const wanted = new Set();
 
     // BEING SOMEWHERE ON TIME IS A JOB. Same machinery as the work a block owes
     // you, because it is the same thing: something the block makes you do,
@@ -572,10 +575,22 @@
     // Timed to when you have to LEAVE, not when it starts. "09:00" is when you
     // are already late; "08:30" is the number that changes what you do.
     normalise(schedule)
-      .filter((b) => b.beThere && !b.blocksDay && !b.noLessons && !b.soft)
+      // ONLY WHERE THERE IS A JOURNEY TO PROTECT. With no travel time this job
+      // lands on the very minute its own block starts, so the day drew the
+      // block, drew a second row under it saying "Be at <that block>", and then
+      // warned in red that the two were at the same time. A timetable of
+      // twenty-two blocks became forty-four rows, half of them clashing with
+      // themselves.
+      //
+      // A block with no journey is already on the day, already says "be there
+      // on time", and needs nothing else. Put minutes against a block in "set
+      // up my week" and the leave-by job comes back — which is the case it was
+      // written for.
+      .filter((b) => b.beThere && b.getThere > 0 && !b.blocksDay && !b.noLessons && !b.soft)
       .forEach((b) => {
         occurrencesOf(b, today, c.prepHorizonDays).forEach((iso) => {
           const key = thereKey(b.id, iso);
+          wanted.add(key);
           if (existing.has(key)) return;
           const at = leaveBy(b);
           add.push({
@@ -610,6 +625,7 @@
     blocks.forEach((b) => {
       occurrencesOf(b, today, c.prepHorizonDays).forEach((iso) => {
         const key = prepKey(b.id, iso);
+        wanted.add(key);
         if (existing.has(key)) return;
         // Due `leadDays` before the lesson — but never dated in the past, or it
         // would arrive already overdue, which is a lie about what happened.
@@ -648,10 +664,20 @@
     const drop = [];
     existing.forEach((it, key) => {
       if (it.done) return;
-      const iso = key.split("|")[1] || "";
-      if (!iso || iso >= today) return;
       const untouched = it.autoPrep && !it.snoozes && !it.edited;
-      if (untouched) drop.push(it);
+      if (!untouched) return;
+      const iso = key.split("|")[1] || "";
+      if (!iso) return;
+      // Past and never touched → let it go. The lesson has happened; a pile of
+      // untouched auto-made tasks accusing you afterwards is exactly the wall
+      // the restart guard exists to prevent.
+      if (iso < today) return drop.push(it);
+      // AND ANYTHING THE SCHEDULE NO LONGER ASKS FOR. The app could make a job
+      // on your behalf but could only take it back the day after — so a block
+      // you deleted, or a rule that changed, left its jobs sitting in your list
+      // for a week with no way to tell they were orphans. Only ones you never
+      // touched: the moment you rename or move one it is yours.
+      if (!wanted.has(key)) drop.push(it);
     });
     return { add, drop };
   }

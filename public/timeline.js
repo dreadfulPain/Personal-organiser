@@ -403,7 +403,20 @@
     const c = S().normaliseConfig(cfg);
     const store = c.plans[iso];
     if (store && store.acceptedAt) return { ...store, accepted: true };
-    return buildPlan(iso, store);
+    // NOT INTO THIS MORNING, IF THIS MORNING HAS GONE. The first plan of the day
+    // was built from the start of the working day whatever the clock said, so
+    // opening this page at ten to catch up handed you a plan that began at
+    // half seven: five jobs sitting in hours that had already passed, every one
+    // of them looking like something you'd failed to do. The rebuild after
+    // "something's come up" already knew to start from now; the ordinary first
+    // look didn't.
+    return buildPlan(iso, store, iso === todayISO() ? minuteNow() : undefined);
+  }
+
+  // Now, to the minute — and only ever used for today.
+  function minuteNow() {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
   }
 
   // The planner itself lives in dayplan.js so it can be driven and tested

@@ -6,6 +6,13 @@
 (() => {
   "use strict";
 
+  // Now, to the minute. Handed to the planner rather than read inside it, so the
+  // same span asked twice in one minute plans identically.
+  const minuteNow = () => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  };
+
   let items = [];
   let schedule = [];
   let cfg = null;
@@ -62,7 +69,9 @@
     const from = first > today ? first : today;
     const span = Math.max(1, Math.round((new Date(y, m, 1 - lead + total) - new Date(from + "T12:00:00")) / 86400000));
     const WP = window.OrganiserWeekPlan;
-    const plan = WP ? WP.spread(list, schedule, cfg, from, span, { today, goalTitle: () => "" }) : null;
+    const plan = WP
+      ? WP.spread(list, schedule, cfg, from, span, { today, nowMinutes: minuteNow(), goalTitle: () => "" })
+      : null;
     const planned = new Set();
     if (plan) {
       plan.placements.forEach((p) => {
@@ -86,12 +95,27 @@
         iso,
         day: d.getDate(),
         inMonth: d.getMonth() === m,
+        // HOW MUCH OF THE DAY IS ALREADY GONE. The line under the title promises
+        // that an empty square is real free time, and it wasn't: a teacher with
+        // a full timetable saw every teaching day of the month as a blank box.
+        // Nothing was wrong with the timetable — this grid simply never looked
+        // at it, while promising you could plan against the gaps.
+        booked: bookedOn(iso),
         items: (byIso.get(iso) || [])
           .slice()
           .sort((a, b) => minuteOf(a) - minuteOf(b)),
       });
     }
     return { cells, label: start.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
+  }
+
+  // Minutes already committed on a day — lessons, form time, duty, meetings.
+  function bookedOn(iso) {
+    const S = window.OrganiserSchedule;
+    if (!S || !S.blocksOn) return 0;
+    return S.blocksOn(schedule, iso)
+      .filter((b) => !b.soft && !b.blocksDay && !b.noLessons)
+      .reduce((n, b) => n + Math.max(0, S.toMin(b.end) - S.toMin(b.start)), 0);
   }
 
   function weekdayNames() {
@@ -142,6 +166,14 @@
       num.className = "mo-daynum";
       num.textContent = cell.day;
       el.appendChild(num);
+      if (cell.booked) {
+        const on = document.createElement("div");
+        on.className = "mo-booked";
+        on.textContent =
+          (window.OrganiserSchedule ? OrganiserSchedule.durationWords(cell.booked) : cell.booked + " min") +
+          " booked";
+        el.appendChild(on);
+      }
       cell.items.slice(0, SHOW).forEach(({ it, start }) => {
         const line = document.createElement("div");
         line.className = "mo-ev" + (it.deadlineType === "hard" ? " hard" : "");

@@ -350,7 +350,11 @@
     if (!title) title = raw;
 
     return {
-      title: title.slice(0, 160),
+      // NOT CUT. This used to be title.slice(0, 160) — three lines under a
+      // comment promising your sentence back untouched, which it then cut off
+      // mid-word with nothing to show that it had. Long is a display problem,
+      // and a display problem is not solved by deleting what somebody wrote.
+      title,
       type: "task",
       date: when.date,
       // Earliest it could happen. Never later than the deadline — if reading it

@@ -72,7 +72,14 @@ sec("It must never make things worse");
   ok("and it says it found nothing", Q.foundAnything(plain) === false);
   ok("but says so when it did", Q.foundAnything(p("call the dentist tuesday")) === true);
   ok("empty input doesn't crash", p("").title === "");
-  ok("a huge input doesn't crash", p("x".repeat(5000)).title.length <= 160);
+  // A huge input must not crash — and must not be quietly cut, either. This
+  // asserted title.length <= 160, which was the app silently deleting the end
+  // of what somebody wrote, three lines under a comment promising their
+  // sentence back untouched. Long is a display problem; you don't solve a
+  // display problem by throwing away the words.
+  ok("a huge input doesn't crash", p("x".repeat(5000)).title.length === 5000,
+     String(p("x".repeat(5000)).title.length));
+  ok("and nothing typed is thrown away", p("y".repeat(400)).title === "y".repeat(400));
   ok("an impossible date is refused", p("book it 45/99").date === "", p("book it 45/99").date);
   ok("a bare number isn't a time", p("buy 3 folders").time === "", p("buy 3 folders").time);
   ok("it marks where it came from", p("anything").by === "patterns");

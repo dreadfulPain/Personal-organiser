@@ -4043,3 +4043,17 @@ a.btn {
   .ls-gname { flex: 1 1 100%; }
 }
 .bp-cover.never .bp-cwhen { font-style: italic; }
+
+/* A day you are already committed to must never look like a blank square. */
+.mo-booked {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  margin: 1px 0 2px;
+}
+.wk-block .item-title {
+  font-weight: 600;
+}
+.badge.block {
+  background: #e7eee9;
+  color: #3d5a49;
+}

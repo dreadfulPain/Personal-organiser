@@ -39,9 +39,9 @@
 
   // A day's free stretches, minus anything you pinned to a clock time by hand.
   // A time you chose yourself is a commitment, not a suggestion.
-  function openGaps(items, schedule, c, iso) {
+  function openGaps(items, schedule, c, iso, notBefore) {
     const S = window.OrganiserSchedule;
-    const gaps = S.gapsOn(schedule, c, iso).map((g) => ({ ...g }));
+    const gaps = S.gapsOn(schedule, c, iso, notBefore).map((g) => ({ ...g }));
     items
       .filter((i) => !i.done && i.date === iso && i.time)
       .forEach((i) => {
@@ -194,9 +194,21 @@
     const lastISO = dates[dates.length - 1];
 
     // Each day starts with its real free time and its own two-thirds ceiling.
+    // TODAY HAS ALREADY PARTLY GONE. The week planned every day from the start
+    // of the working day, so at ten in the morning it still offered you half
+    // seven — and the first thing on the week's own "today" was a job sitting an
+    // hour and a half in the past, looking like something you had failed to do.
+    // The day page had learned this; the week hadn't, and they are two answers
+    // to the same question.
+    //
+    // Only ever what the CALLER says the time is. Reading the clock in here
+    // would make the same week plan differently depending on when it was asked,
+    // which is exactly the kind of thing you can't write a test against.
+    const nowMin = ctx && Number.isFinite(ctx.nowMinutes) ? ctx.nowMinutes : null;
+    const startOf = (iso) => (nowMin !== null && ctx && iso === ctx.today ? nowMin : undefined);
     const room = new Map();
     dates.forEach((iso) => {
-      const gaps = openGaps(all, schedule, c, iso);
+      const gaps = openGaps(all, schedule, c, iso, startOf(iso));
       const free = gaps.reduce((n, g) => n + (g.end - g.start), 0);
       room.set(iso, { gaps, budget: Math.floor(free * c.fillFraction), used: 0, free, overran: false });
     });

@@ -629,6 +629,23 @@ body {
   font-weight: 600;
 }
 
+/* The same news on every other page. Only ever on screen when something has
+   actually gone wrong, so it can afford to be impossible to miss. */
+.saving-trouble {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #e0b6ab;
+  border-left: 4px solid #a4503f;
+  border-radius: var(--radius);
+  background: #fdf1ee;
+  color: #7d3b2e;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+.saving-trouble[hidden] {
+  display: none;
+}
+
 .preview-banner {
   background: #fdf6ec;
   border: 1px solid #efe2cc;

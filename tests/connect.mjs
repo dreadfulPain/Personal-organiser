@@ -21,6 +21,8 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import path from "node:path";
+// One shared reading of store.js for the whole suite — see _store.mjs.
+import { STORES as TABLE } from "./_store.mjs";
 
 const dir = join(REPO_ROOT, "public");
 const src = Object.fromEntries(
@@ -135,8 +137,8 @@ sec("Every exported function is called from outside its own file");
 // ---------------------------------------------------------------------------
 sec("Every store is written, read, and survives both save paths");
 {
-  const store = code(src["store.js"]);
-  const keys = [...store.matchAll(/(\w+):\s*get\(LS_/g)].map((m) => m[1]);
+  // From the one shared reading of store.js, not a pattern of this file's own.
+  const keys = TABLE.map((s) => s.key);
   ok("there are stores to check", keys.length > 5, String(keys.length));
   keys.forEach((k) => {
     const writers = scripts.filter(
@@ -149,8 +151,6 @@ sec("Every store is written, read, and survives both save paths");
     // and read only in the same file is a local variable with extra steps.
     if (writers.length && readers.length && writers.join() === readers.join())
       notes.push(`${k} is only used by ${writers.join(", ")} — no other page sees it`);
-    ok(`${k}: kept by the fallback copy`,
-       new RegExp(`setItem\\(LS_\\w+,\\s*JSON\\.stringify\\(state\\.${k}\\b`).test(store));
     ok(`${k}: kept by the server`, (code(server).match(new RegExp(`\\b${k}\\b`, "g")) || []).length >= 4,
        `${k} appears fewer than 4 times in server.js — a copy in writeData is missing it`);
   });

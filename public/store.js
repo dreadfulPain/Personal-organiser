@@ -21,113 +21,136 @@
 
   const SERVER = location.protocol === "http:" || location.protocol === "https:";
 
-  // Legacy / preview keys (also kept as an emergency mirror in file mode).
-  const LS_ITEMS = "organiser.items.v1";
-  const LS_WAITING = "organiser.waiting.v1";
-  const LS_GOALS = "organiser.goals.v1";
-  const LS_RECORDS = "organiser.records.v1";
-  const LS_RECORDCONFIG = "organiser.recordconfig.v1";
-  const LS_PORTFOLIO = "organiser.portfolio.v1";
-  const LS_CONTACTS = "organiser.contacts.v1";
-  const LS_CONTACTCONFIG = "organiser.contactconfig.v1";
-  const LS_SCHEDULE = "organiser.schedule.v1";
-  const LS_SCHEDULECONFIG = "organiser.scheduleconfig.v1";
-  // What you know about people besides their marks, and what you've told whom.
-  // Ordinary storage — the "never leaves" promise is enforced where the data is
-  // USED (no export path, no fetch), not by hiding it from the save file, which
-  // would only mean losing it.
-  const LS_PASTORALTOPICS = "organiser.pastoraltopics.v1";
-  const LS_PASTORALNOTES = "organiser.pastoralnotes.v1";
-  const LS_TOLD = "organiser.told.v1";
-  // Minutes actually worked, per day. The only record of WHEN effort went in —
-  // without it there's no telling a chosen Sunday from a habit.
-  const LS_WORKED = "organiser.worked.v1";
-  // The parts of your life, as YOU name them, with the words each has learned.
-  const LS_AREAS = "organiser.areas.v1";
-  // Per group: who has already had something planned with them in mind. The
-  // counterweight to always serving the biggest group.
-  const LS_TARGETED = "organiser.targeted.v1";
-  // What you tried, so "did anything move afterwards" has something to join to.
-  const LS_TRIED = "organiser.tried.v1";
-  // Lesson plans written elsewhere and pasted in, plus the headings yours use.
-  const LS_LESSONS = "organiser.lessons.v1";
-  const LS_LESSONCONFIG = "organiser.lessonconfig.v1";
-  // Going round a list, one at a time — and the targets you teach against.
-  const LS_ROTAS = "organiser.rotas.v1";
-  const LS_SYLLABUS = "organiser.syllabus.v1";
-  // Who was actually in the room — see attend.js on why that matters twice.
-  const LS_ATTENDANCE = "organiser.attendance.v1";
+  // ---- THE LIST OF STORES, WRITTEN ONCE ------------------------------------
+  //
+  // Everything below works from this table and nothing else: loading, saving,
+  // the emergency mirror, a backup, a restore, and pulling in a change made on
+  // another computer. That is the whole point of it being a table.
+  //
+  // It used to be a hand-copied list in nine separate places, and twelve of the
+  // twenty-two stores had been added to some of them and forgotten in the
+  // others. Nothing failed. load() simply handed the page ten stores, the page
+  // read the missing ones as "nothing there", and the next save wrote that
+  // nothing back over the file. A register, a term of pastoral notes and every
+  // lesson plan could go that way without a single error anywhere.
+  //
+  // Adding a store now means adding ONE line here.
+  //   name in the app · the key this browser keeps it under · what "none" is
+  const STORES = [
+    ["items", "organiser.items.v1", []],
+    ["waiting", "organiser.waiting.v1", []],
+    ["goals", "organiser.goals.v1", []],
+    ["records", "organiser.records.v1", []],
+    ["recordConfig", "organiser.recordconfig.v1", null],
+    ["portfolio", "organiser.portfolio.v1", null],
+    ["contacts", "organiser.contacts.v1", []],
+    ["contactConfig", "organiser.contactconfig.v1", null],
+    ["schedule", "organiser.schedule.v1", []],
+    ["scheduleConfig", "organiser.scheduleconfig.v1", null],
+    // What you know about people besides their marks, and what you've told whom.
+    // Ordinary storage — the "never leaves" promise is enforced where the data is
+    // USED (no export path, no fetch), not by hiding it from the save file, which
+    // would only mean losing it.
+    ["pastoralTopics", "organiser.pastoraltopics.v1", []],
+    ["pastoralNotes", "organiser.pastoralnotes.v1", []],
+    ["toldLog", "organiser.told.v1", []],
+    // Minutes actually worked, per day. The only record of WHEN effort went in —
+    // without it there's no telling a chosen Sunday from a habit.
+    ["worked", "organiser.worked.v1", {}],
+    // The parts of your life, as YOU name them, with the words each has learned.
+    ["areas", "organiser.areas.v1", []],
+    // Per group: who has already had something planned with them in mind. The
+    // counterweight to always serving the biggest group.
+    ["targeted", "organiser.targeted.v1", {}],
+    // What you tried, so "did anything move afterwards" has something to join to.
+    ["tried", "organiser.tried.v1", []],
+    // Lesson plans written elsewhere and pasted in, plus the headings yours use.
+    ["lessons", "organiser.lessons.v1", []],
+    ["lessonConfig", "organiser.lessonconfig.v1", null],
+    // Going round a list, one at a time — and the targets you teach against.
+    ["rotas", "organiser.rotas.v1", []],
+    ["syllabus", "organiser.syllabus.v1", null],
+    // Who was actually in the room — see attend.js on why that matters twice.
+    ["attendance", "organiser.attendance.v1", []],
+  ];
 
-  let statusCb = null;
+  // A fresh copy of "nothing at all", every time — never the same array twice,
+  // so one page's empty list can't turn into another's.
+  const blankFor = (b) => (Array.isArray(b) ? [] : b && typeof b === "object" ? {} : null);
+  function blank() {
+    const o = {};
+    STORES.forEach(([k, , b]) => { o[k] = blankFor(b); });
+    return o;
+  }
+
+  // Keep a value only if it is the SHAPE that store is. Anything else becomes
+  // "none" rather than being handed to a page that will try to loop over it.
+  function keep(value, b) {
+    if (Array.isArray(b)) return Array.isArray(value) ? value : [];
+    const objish = value && typeof value === "object" && !Array.isArray(value);
+    if (b && typeof b === "object") return objish ? value : {};
+    return objish ? value : null;
+  }
+
+  // Take every store out of a document, whatever else it happens to carry.
+  function take(d) {
+    const o = {};
+    const src = d || {};
+    STORES.forEach(([k, , b]) => { o[k] = keep(src[k], b); });
+    return o;
+  }
+
+  const hasAnything = (s) =>
+    STORES.some(([k, , b]) => {
+      const v = (s || {})[k];
+      if (Array.isArray(b)) return Array.isArray(v) && v.length > 0;
+      return !!v && (typeof v !== "object" || Object.keys(v).length > 0);
+    });
+
+  // MORE THAN ONE THING MAY WANT TO KNOW. This held a single callback, so the
+  // second caller silently replaced the first — and what it replaced would have
+  // been the thing telling you a save had failed.
+  const statusCbs = [];
   let externalCb = null; // page refresh when the shared file changed elsewhere
   let saveTimer = null;
   let pollTimer = null;
   let dirty = false;
+  // WHICH stores have changed since the last save that got through. Only the
+  // beacon on the way out uses this, and it uses it because a beacon is capped
+  // at about 64KB in every browser — the whole state passes that within a term,
+  // so the one save that happens as you close the page was the one most likely
+  // to be thrown away.
+  const touched = new Set();
   let baseSavedAt = null; // the version we loaded — sent back to guard writes (shared folder)
-  let lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [] };
+  let lastState = blank();
 
   function emit(s) {
-    if (statusCb) statusCb(s);
+    statusCbs.forEach((cb) => {
+      try {
+        cb(s);
+      } catch {
+        /* one listener falling over must not stop the next being told */
+      }
+    });
   }
 
   function readLegacy() {
-    function get(k, fallback) {
+    const o = {};
+    STORES.forEach(([k, ls, b]) => {
       try {
-        const r = localStorage.getItem(k);
-        return r ? JSON.parse(r) : fallback;
+        const r = localStorage.getItem(ls);
+        o[k] = r ? keep(JSON.parse(r), b) : blankFor(b);
       } catch {
-        return fallback;
+        o[k] = blankFor(b);
       }
-    }
-    return {
-      items: get(LS_ITEMS, []),
-      waiting: get(LS_WAITING, []),
-      goals: get(LS_GOALS, []),
-      records: get(LS_RECORDS, []),
-      recordConfig: get(LS_RECORDCONFIG, null),
-      portfolio: get(LS_PORTFOLIO, null),
-      contacts: get(LS_CONTACTS, []),
-      contactConfig: get(LS_CONTACTCONFIG, null),
-      schedule: get(LS_SCHEDULE, []),
-      scheduleConfig: get(LS_SCHEDULECONFIG, null),
-      pastoralTopics: get(LS_PASTORALTOPICS, []),
-      pastoralNotes: get(LS_PASTORALNOTES, []),
-      toldLog: get(LS_TOLD, []),
-      worked: get(LS_WORKED, {}),
-      areas: get(LS_AREAS, []),
-      targeted: get(LS_TARGETED, {}),
-      tried: get(LS_TRIED, []),
-      lessons: get(LS_LESSONS, []),
-      lessonConfig: get(LS_LESSONCONFIG, null),
-      rotas: get(LS_ROTAS, []),
-      syllabus: get(LS_SYLLABUS, null),
-      attendance: get(LS_ATTENDANCE, []),
-    };
+    });
+    return o;
   }
   function writeLegacy(state) {
     try {
-      localStorage.setItem(LS_ITEMS, JSON.stringify(state.items || []));
-      localStorage.setItem(LS_WAITING, JSON.stringify(state.waiting || []));
-      localStorage.setItem(LS_GOALS, JSON.stringify(state.goals || []));
-      localStorage.setItem(LS_RECORDS, JSON.stringify(state.records || []));
-      localStorage.setItem(LS_RECORDCONFIG, JSON.stringify(state.recordConfig || null));
-      localStorage.setItem(LS_PORTFOLIO, JSON.stringify(state.portfolio || null));
-      localStorage.setItem(LS_CONTACTS, JSON.stringify(state.contacts || []));
-      localStorage.setItem(LS_CONTACTCONFIG, JSON.stringify(state.contactConfig || null));
-      localStorage.setItem(LS_SCHEDULE, JSON.stringify(state.schedule || []));
-      localStorage.setItem(LS_PASTORALTOPICS, JSON.stringify(state.pastoralTopics || []));
-      localStorage.setItem(LS_PASTORALNOTES, JSON.stringify(state.pastoralNotes || []));
-      localStorage.setItem(LS_TOLD, JSON.stringify(state.toldLog || []));
-      localStorage.setItem(LS_WORKED, JSON.stringify(state.worked || {}));
-      localStorage.setItem(LS_AREAS, JSON.stringify(state.areas || []));
-      localStorage.setItem(LS_TARGETED, JSON.stringify(state.targeted || {}));
-      localStorage.setItem(LS_TRIED, JSON.stringify(state.tried || []));
-      localStorage.setItem(LS_LESSONS, JSON.stringify(state.lessons || []));
-      localStorage.setItem(LS_LESSONCONFIG, JSON.stringify(state.lessonConfig || null));
-      localStorage.setItem(LS_ROTAS, JSON.stringify(state.rotas || []));
-      localStorage.setItem(LS_SYLLABUS, JSON.stringify(state.syllabus || null));
-      localStorage.setItem(LS_ATTENDANCE, JSON.stringify(state.attendance || []));
-      localStorage.setItem(LS_SCHEDULECONFIG, JSON.stringify(state.scheduleConfig || null));
+      STORES.forEach(([k, ls, b]) => {
+        localStorage.setItem(ls, JSON.stringify(keep((state || {})[k], b)));
+      });
     } catch {
       /* storage may be full or blocked; ignore */
     }
@@ -135,30 +158,20 @@
 
   async function load() {
     if (!SERVER) {
-      const data = readLegacy();
-      lastState = { items: data.items, waiting: data.waiting, goals: data.goals, records: data.records, recordConfig: data.recordConfig, portfolio: data.portfolio, contacts: data.contacts, contactConfig: data.contactConfig, schedule: data.schedule, scheduleConfig: data.scheduleConfig };
+      lastState = readLegacy();
       emit({ mode: "preview", state: "preview" });
       return { ...lastState, mode: "preview" };
     }
 
-    let serverData = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [] };
+    let serverData = blank();
+    let reachedFile = false;
     try {
       const r = await fetch("/api/data");
       if (r.ok) {
         const d = await r.json();
-        serverData = {
-          items: d.items || [],
-          waiting: d.waiting || [],
-          goals: d.goals || [],
-          records: d.records || [],
-          recordConfig: d.recordConfig || null,
-          portfolio: d.portfolio || null,
-          contacts: d.contacts || [],
-          contactConfig: d.contactConfig || null,
-          schedule: d.schedule || [],
-          scheduleConfig: d.scheduleConfig || null,
-        };
+        serverData = take(d);
         baseSavedAt = d.savedAt || null; // the version we're now working from
+        reachedFile = true;
       }
     } catch {
       /* fall through; we'll still mirror to localStorage below */
@@ -169,15 +182,8 @@
     // storage" gotcha).
     let migratedNote = "";
     const legacy = readLegacy();
-    const serverEmpty =
-      serverData.items.length === 0 &&
-      serverData.waiting.length === 0 &&
-      serverData.goals.length === 0 &&
-      serverData.records.length === 0;
-    const haveLegacy =
-      legacy.items.length > 0 || legacy.waiting.length > 0 || legacy.goals.length > 0 || legacy.records.length > 0;
-    if (serverEmpty && haveLegacy) {
-      serverData = { items: legacy.items, waiting: legacy.waiting, goals: legacy.goals, records: legacy.records, recordConfig: legacy.recordConfig, portfolio: legacy.portfolio, contacts: legacy.contacts, contactConfig: legacy.contactConfig, schedule: legacy.schedule, scheduleConfig: legacy.scheduleConfig };
+    if (!hasAnything(serverData) && hasAnything(legacy)) {
+      serverData = legacy;
       migratedNote = "Brought your earlier items into your saved data file.";
       try {
         await fetch("/api/data", {
@@ -191,7 +197,10 @@
     }
 
     lastState = serverData;
-    writeLegacy(serverData); // emergency mirror
+    // ONLY MIRROR WHAT WE ACTUALLY READ. If the file couldn't be reached there
+    // is nothing to mirror, and writing the blank state over this browser's copy
+    // would destroy the one surviving copy at the exact moment it matters.
+    if (reachedFile || migratedNote) writeLegacy(serverData);
     emit({ mode: "file", state: "saved", at: Date.now() });
     startPolling(); // watch the shared file for changes made on another computer
     return { ...serverData, mode: "file", migratedNote };
@@ -224,18 +233,7 @@
       const r = await fetch("/api/data");
       if (!r.ok) return;
       const d = await r.json();
-      lastState = {
-        items: d.items || [],
-        waiting: d.waiting || [],
-        goals: d.goals || [],
-        records: d.records || [],
-        recordConfig: d.recordConfig || null,
-        portfolio: d.portfolio || null,
-        contacts: d.contacts || [],
-        contactConfig: d.contactConfig || null,
-        schedule: d.schedule || [],
-        scheduleConfig: d.scheduleConfig || null,
-      };
+      lastState = take(d);
       baseSavedAt = d.savedAt || null;
       writeLegacy(lastState);
       emit({ mode: "file", state: "saved", at: Date.now(), note });
@@ -247,7 +245,10 @@
 
   // Merge the given part(s) into the held state — keeps the keys you didn't pass.
   function save(part) {
-    lastState = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [], ...lastState, ...part };
+    Object.keys(part || {}).forEach((k) => {
+      if (STORES.some(([name]) => name === k)) touched.add(k);
+    });
+    lastState = { ...blank(), ...lastState, ...part };
     writeLegacy(lastState); // always keep the mirror current
     dirty = true;
 
@@ -274,18 +275,7 @@
         dirty = false;
         const d = await r.json().catch(() => ({}));
         if (d.data) {
-          lastState = {
-            items: d.data.items || [],
-            waiting: d.data.waiting || [],
-            goals: d.data.goals || [],
-            records: d.data.records || [],
-            recordConfig: d.data.recordConfig || null,
-            portfolio: d.data.portfolio || null,
-            contacts: d.data.contacts || [],
-            contactConfig: d.data.contactConfig || null,
-            schedule: d.data.schedule || [],
-            scheduleConfig: d.data.scheduleConfig || null,
-          };
+          lastState = take(d.data);
           baseSavedAt = d.data.savedAt || d.savedAt || baseSavedAt;
           writeLegacy(lastState);
           if (externalCb) externalCb(lastState);
@@ -293,17 +283,28 @@
         emit({ mode: "file", state: "conflict", note: "Changed on another device — pulled in the latest (your edit was kept in data/backups)." });
         return;
       }
-      if (!r.ok) throw new Error("status " + r.status);
+      if (!r.ok) {
+        const said = await r.json().catch(() => ({}));
+        const e = new Error("status " + r.status);
+        // A REFUSAL WITH A REASON IS NOT WORTH REPEATING. Sending the same
+        // too-big save four more times changes nothing, takes ten seconds, and
+        // buries the one sentence that says what actually happened.
+        e.said = said && said.message ? said.message : "";
+        e.final = r.status >= 400 && r.status < 500;
+        throw e;
+      }
       const d = await r.json().catch(() => ({}));
       if (d.savedAt) baseSavedAt = d.savedAt;
       dirty = false;
+      touched.clear();
       emit({ mode: "file", state: "saved", at: d.savedAt ? Date.parse(d.savedAt) : Date.now() });
-    } catch {
-      if (attempt < 4) {
+    } catch (e) {
+      const said = e && e.said ? e.said : "";
+      if (!(e && e.final) && attempt < 4) {
         emit({ mode: "file", state: "saving" });
         setTimeout(() => doSave(attempt + 1), 1000 * (attempt + 1));
       } else {
-        emit({ mode: "file", state: "error" });
+        emit({ mode: "file", state: "error", note: said });
       }
     }
   }
@@ -321,9 +322,20 @@
   function flushBeacon() {
     if (!SERVER || !dirty) return;
     try {
-      const blob = new Blob([JSON.stringify({ ...lastState, baseSavedAt })], { type: "application/json" });
-      navigator.sendBeacon("/api/data", blob);
-      dirty = false;
+      // Only the stores you actually changed. Leaving a store out means "I'm
+      // not talking about this one" and it is kept as it is, so this is both
+      // far smaller and exactly what a page saving its own part means.
+      const part = { baseSavedAt };
+      if (touched.size) touched.forEach((k) => { part[k] = lastState[k]; });
+      else Object.assign(part, lastState);
+      const blob = new Blob([JSON.stringify(part)], { type: "application/json" });
+      // IT TELLS YOU WHETHER IT TOOK IT. Ignoring that was how a save could be
+      // dropped and marked done in the same breath — and this is the save that
+      // happens when there is no page left to try again on.
+      if (navigator.sendBeacon("/api/data", blob)) {
+        dirty = false;
+        touched.clear();
+      }
     } catch {
       /* best-effort */
     }
@@ -331,20 +343,7 @@
 
   // Export the WHOLE owned state, so a backup is complete.
   function exportNow() {
-    const doc = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      items: lastState.items || [],
-      waiting: lastState.waiting || [],
-      goals: lastState.goals || [],
-      records: lastState.records || [],
-      recordConfig: lastState.recordConfig || null,
-      portfolio: lastState.portfolio || null,
-      contacts: lastState.contacts || [],
-      contactConfig: lastState.contactConfig || null,
-      schedule: lastState.schedule || [],
-      scheduleConfig: lastState.scheduleConfig || null,
-    };
+    const doc = { version: 1, exportedAt: new Date().toISOString(), ...take(lastState) };
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -364,18 +363,15 @@
       fr.onload = () => {
         try {
           const d = JSON.parse(fr.result);
-          resolve({
-            items: Array.isArray(d.items) ? d.items : [],
-            waiting: Array.isArray(d.waiting) ? d.waiting : [],
-            goals: Array.isArray(d.goals) ? d.goals : [],
-            records: Array.isArray(d.records) ? d.records : [],
-            recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
-            portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
-            contacts: Array.isArray(d.contacts) ? d.contacts : [],
-            contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
-            schedule: Array.isArray(d.schedule) ? d.schedule : [],
-            scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
-          });
+          // A BACKUP THAT ISN'T ONE MUST NOT COME BACK AS AN EMPTY APP. Valid
+          // JSON with none of our stores in it — someone's shopping list, a
+          // half-downloaded file — would otherwise restore cleanly as nothing
+          // and overwrite everything you had.
+          if (!d || typeof d !== "object" || Array.isArray(d) || !STORES.some(([k]) => k in d)) {
+            reject(new Error("That file doesn't look like an organiser backup."));
+            return;
+          }
+          resolve(take(d));
         } catch {
           reject(new Error("That file doesn't look like an organiser backup."));
         }
@@ -393,7 +389,7 @@
     importFile,
     flushBeacon,
     onStatus: (cb) => {
-      statusCb = cb;
+      if (typeof cb === "function") statusCbs.push(cb);
     },
     // Fires when the shared file changed on another computer and we pulled it in;
     // the page re-renders from the fresh state passed to the callback.

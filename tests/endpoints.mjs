@@ -134,6 +134,14 @@ sec("Writing documents out");
      JSON.stringify(r.j));
 }
 
+sec("A wrong address is a wrong address");
+{
+  // A doubled slash used to come back as "Something went wrong", which reads as
+  // a broken app and sends you hunting for a fault that isn't there.
+  const r = await fetch(`${BASE}//`);
+  ok("a mistyped address says not found", r.status === 404, String(r.status));
+}
+
 sec("And nothing anywhere leaks the file it is guarding");
 {
   // Every one of these is reachable from a browser. None of them may hand back

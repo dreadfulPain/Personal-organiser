@@ -20,6 +20,8 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import path from "node:path";
+// One shared reading of store.js for the whole suite — see _store.mjs.
+import { STORES as TABLE } from "./_store.mjs";
 
 const dir = join(REPO_ROOT, "public");
 const src = Object.fromEntries(
@@ -61,7 +63,10 @@ function readers(key) {
 }
 
 console.log("\n--- can it be collected? (something writes it) ---");
-const stores = ["pastoralTopics", "pastoralNotes", "toldLog", "targeted", "worked", "areas", "tried", "lessons", "rotas", "attendance"];
+// EVERY store, out of store.js, not the ten that were typed here. The ten were
+// the newest features at the time; the other twelve went unasked for months,
+// which is how the oldest and most-trusted ones stopped being checked at all.
+const stores = TABLE.map((t) => t.key);
 for (const k of stores) {
   const w = writers(k);
   ok(`${k}: something in the app writes it`, w.length > 0, `no page saves ${k} — the data can never get in`);
@@ -74,10 +79,12 @@ for (const k of stores) {
 }
 
 console.log("\n--- is it stored? (all the places a field gets silently dropped) ---");
+// store.js used to copy this list into nine separate places and twelve stores
+// had been missed out of some of them. It works from one table now, so the
+// question is no longer "is it in all nine" but "is it in the table" — and
+// tests/store.mjs runs the file to prove the table is really the only route.
 for (const k of stores) {
-  ok(`${k}: store.js knows it on load`, new RegExp(`${k}:\\s*get\\(`).test(code(store)));
-  ok(`${k}: store.js writes it to the fallback copy`, new RegExp(`localStorage\\.setItem\\(LS_[A-Z]+,\\s*JSON\\.stringify\\(state\\.${k}`).test(code(store)));
-  ok(`${k}: store.js has it in the blank state`, (code(store).match(new RegExp(`${k}:`, "g")) || []).length >= 3);
+  ok(`${k}: store.js has a store for it`, TABLE.some((t) => t.key === k));
   // server.js drops a field in three separate places if it isn't listed.
   ok(`${k}: the server keeps it`, (code(server).match(new RegExp(`\\b${k}\\b`, "g")) || []).length >= 3,
      `${k} appears fewer than 3 times in server.js — one of writeData's copies is missing it`);
@@ -96,6 +103,13 @@ const sorting = {
   rotas: ["rota.js", ["queue", "due", "mark", "insteadOf", "taskFor"]],
   attendance: ["attend.js", ["take", "sessions", "pattern", "concerns", "missed"]],
 };
+// SAID OUT LOUD rather than quietly not checked: which stores have no module
+// that orders them. Some genuinely need none — a config is a config — but the
+// list has to be visible or a new store joins it in silence.
+{
+  const unsorted = stores.filter((k) => !sorting[k]);
+  if (unsorted.length) console.log(`  -- no module orders these (they may not need one): ${unsorted.join(", ")}`);
+}
 for (const [k, [file, fns]] of Object.entries(sorting)) {
   const c = code(src[file] || "");
   const missing = fns.filter((f) => !new RegExp(`function ${f}\\b`).test(c));

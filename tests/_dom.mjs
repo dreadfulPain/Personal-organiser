@@ -168,13 +168,19 @@ export async function open(pg, data, opts) {
   vm.createContext(sb);
 
   const errs = [];
+  const statusCbs = [];
   for (const f of [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1])) {
     if (f === "store.js") {
       sb.OrganiserStore = {
         load: async () => JSON.parse(JSON.stringify(state)),
         save(part) { saves.push(part); Object.assign(state, JSON.parse(JSON.stringify(part))); },
         flush: async () => {}, exportNow: async () => {}, importFile: async () => {},
-        flushBeacon() {}, onStatus() {}, onExternalChange() {}, mode: "file",
+        flushBeacon() {},
+        // KEPT, NOT SWALLOWED. This threw the callback away, so anything whose
+        // job is to react to a save going wrong looked identical on the page to
+        // nothing being there at all — which is the bug it exists to prevent.
+        onStatus(cb) { if (typeof cb === "function") statusCbs.push(cb); },
+        onExternalChange() {}, mode: "file",
       };
       continue;
     }
@@ -184,7 +190,9 @@ export async function open(pg, data, opts) {
   }
   await new Promise((r) => setTimeout(r, 60));
   const settle = () => new Promise((r) => setTimeout(r, 20));
-  return { errs, byId, created, saves, state, sb, get, settle };
+  // Tell the page what the store would have told it.
+  const tellStatus = (st) => { statusCbs.forEach((cb) => cb(st)); };
+  return { errs, byId, created, saves, state, sb, get, settle, tellStatus, statusCbs };
 }
 
 // Everything the page made clickable, whatever tag it is.

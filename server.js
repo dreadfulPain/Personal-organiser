@@ -40,6 +40,10 @@ const DATA_FILE = path.join(DATA_DIR, "organiser-data.json");
 const PREV_FILE = path.join(BACKUP_DIR, "previous.json");
 
 const PORT = process.env.PORT || 3000;
+// How big your own saved document may get. Deliberately far larger than the
+// limit on anything typed or pasted in: this one grows on its own, a bit every
+// day, and the day it crosses the line is the day saving stops.
+const DATA_LIMIT = 64 * 1024 * 1024;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 // Read a simple .env file (so you can paste a key without installing dotenv).
@@ -2383,29 +2387,58 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function readBody(req) {
+function readBody(req, maxBytes) {
+  const cap = maxBytes || 8 * 1024 * 1024;
   return new Promise((resolve, reject) => {
     let data = "";
     let size = 0;
+    let over = false;
     req.on("data", (c) => {
       size += c.length;
-      if (size > 8 * 1024 * 1024) {
-        reject(new Error("too large"));
-        req.destroy();
+      if (size > cap) {
+        // DO NOT KILL THE SOCKET HERE. Destroying it means the browser gets no
+        // answer at all — the save simply fails, the app says "couldn't save,
+        // will keep trying", and there is no way on earth to find out why.
+        // Let the rest arrive and throw it away, then say so in words the
+        // route can pass on.
+        if (!over) {
+          over = true;
+          data = "";
+        }
         return;
       }
       data += c;
     });
-    req.on("end", () => resolve(data));
+    req.on("end", () => {
+      if (over) {
+        const e = new Error("too large");
+        e.tooLarge = true;
+        e.limit = cap;
+        e.size = size;
+        reject(e);
+        return;
+      }
+      resolve(data);
+    });
     req.on("error", reject);
   });
 }
+
+const mb = (n) => `${(n / (1024 * 1024)).toFixed(1)}MB`;
 
 // --- routing ---------------------------------------------------------------
 
 const server = http.createServer(async (req, res) => {
   try {
-    const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
+    let reqUrl;
+    try {
+      reqUrl = new URL(req.url, `http://localhost:${PORT}`);
+    } catch {
+      // A doubled slash or a mistyped address is a wrong address, not a broken
+      // app. It used to come back as "Something went wrong", which sends you
+      // looking for a fault that isn't there.
+      return sendJson(res, 404, { error: "not_found" });
+    }
     const pathname = reqUrl.pathname;
 
     if (pathname === "/api/upload" && req.method === "POST") {
@@ -2449,7 +2482,11 @@ const server = http.createServer(async (req, res) => {
     if (pathname === "/api/data") {
       if (req.method === "GET") return sendJson(res, 200, readData());
       if (req.method === "PUT" || req.method === "POST") {
-        const body = await readBody(req);
+        // YOUR OWN DATA FILE IS NOT A PASTED NOTE. The general limit is there to
+        // stop one enormous paste; years of records, lesson plans and registers
+        // legitimately run past it, and somebody whose file simply grew should
+        // never find that saving has quietly stopped working.
+        const body = await readBody(req, DATA_LIMIT);
         let parsed;
         try {
           parsed = JSON.parse(body || "{}");
@@ -2605,6 +2642,18 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" || req.method === "HEAD") return serveStatic(pathname, res);
     return sendJson(res, 404, { error: "not_found" });
   } catch (e) {
+    // TOO BIG IS A THING WITH A NAME. It used to destroy the connection without
+    // answering, so the browser got nothing at all — no status, no reason, just
+    // a save that failed — and the app said "couldn't save, will keep trying"
+    // while checking a window that had been open the whole time. Answered here
+    // rather than at one route, so every way in says the same thing.
+    if (e && e.tooLarge) {
+      console.warn(`[server] refused ${mb(e.size)}, over the ${mb(e.limit)} limit`);
+      return sendJson(res, 413, {
+        error: "too_large",
+        message: `That is ${mb(e.size)}, past the ${mb(e.limit)} limit. Nothing was written — your saved file is exactly as it was.`,
+      });
+    }
     console.error("[server] error:", e?.message || e);
     sendJson(res, 500, { error: "server", message: "Something went wrong." });
   }

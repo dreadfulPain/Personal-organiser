@@ -2064,15 +2064,16 @@
       el.classList.add("saving");
       el.textContent = "Saving…";
     } else if (s.state === "conflict") {
-      el.classList.add("error");
-      el.textContent = s.note || "Changed on another device — pulled in the latest.";
+      // SAID BY saving.js, ON EVERY PAGE. This line keeps the everyday news —
+      // saving, saved — and leaves anything that went wrong to the one place
+      // that says it the same way wherever you happen to be standing.
+      el.textContent = "";
     } else if (s.state === "saved") {
       el.classList.add("saved");
       const t = s.at ? new Date(s.at) : new Date();
       el.textContent = s.note || `Saved ✓ ${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
     } else if (s.state === "error") {
-      el.classList.add("error");
-      el.textContent = "Couldn't save — will keep trying. Make sure the app window is still open.";
+      el.textContent = "";
     }
   }
 

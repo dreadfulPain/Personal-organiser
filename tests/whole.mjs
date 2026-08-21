@@ -18,6 +18,11 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { spawn } from "node:child_process";
+// The store list comes from one place for the whole suite. It used to be worked
+// out here with a pattern of this file's own, and when store.js changed shape
+// that pattern matched nothing: 157 checks became 47 and it still said
+// "0 failed". A list that can empty itself is worse than one that is wrong.
+import { STORES as TABLE } from "./_store.mjs";
 
 const REPO = REPO_ROOT;
 const PUB = path.join(REPO, "public");
@@ -35,8 +40,7 @@ const server = fs.readFileSync(path.join(REPO, "server.js"), "utf8");
 const code = (s) => String(s || "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const pages = Object.keys(src).filter((f) => f.endsWith(".html")).sort();
 
-// THE STORE LIST, read out of the code rather than typed here.
-const STORES = [...code(src["store.js"]).matchAll(/(\w+):\s*get\(LS_\w+/g)].map((m) => m[1]);
+const STORES = TABLE.map((s) => s.key);
 
 // ---------------------------------------------------------------------------
 sec(`ACROSS — every store written and read (${STORES.length} of them)`);
@@ -55,6 +59,22 @@ sec(`ACROSS — every store written and read (${STORES.length} of them)`);
 sec("DOWN — the places a field gets silently dropped");
 {
   const st = code(src["store.js"]), sv = code(server);
+  // store.js used to hand-copy this list in NINE places — loading, saving, the
+  // mirror, a backup, a restore, the conflict answer — and twelve stores had
+  // been added to some and forgotten in the others. It works from one table
+  // now, so the thing worth checking is that the table is still the only way
+  // to storage.
+  const strays = [...st.matchAll(/localStorage\.(?:get|set|remove)Item\(\s*["\x27`]/g)];
+  ok("nothing in store.js goes round the table to reach storage", strays.length === 0,
+     `${strays.length} place(s) name a storage key directly instead of using the table`);
+  ok("and every store in the table has its own key",
+     new Set(TABLE.map((s) => s.ls)).size === TABLE.length,
+     "two stores share a key, so one writes over the other");
+  // The blank state is BUILT from the table rather than written out again. A
+  // literal here is how a store came to be missing from it in the first place.
+  ok("store.js starts from the table rather than from a list of its own",
+     /let lastState = blank\(\)/.test(st) && /STORES\.forEach\(\(\[k, , b\]\) => \{ o\[k\] = blankFor\(b\)/.test(st),
+     "the blank state is written out by hand again");
   // EVERY BLANK-STATE LITERAL MUST NAME EVERY STORE. These are the objects a
   // fresh install, an unreadable file and a first save all start from, and a
   // store missing from one of them is a store that starts life as undefined —
@@ -63,18 +83,12 @@ sec("DOWN — the places a field gets silently dropped");
   const blanks = [
     ["server: the fresh document", (sv.match(/return \{ version: 1,[^;]+?\};/s) || [])[0]],
     ["server: the fallback when the file won't read", (sv.match(/let current = \{[^;]+?\};/s) || [])[0]],
-    ["store.js: the blank state", (st.match(/let lastState = \{[^;]+?\};/s) || [])[0]],
   ];
   for (const [what, blob] of blanks) {
     const missing = blob ? STORES.filter((k) => !new RegExp(`\\b${k}\\s*:`).test(blob)) : STORES;
     ok(`${what} names all ${STORES.length} stores`, missing.length === 0, `missing: ${missing.join(", ")}`);
   }
   for (const k of STORES) {
-    ok(`${k}: store.js loads, saves and blanks it`,
-       new RegExp(`${k}:\\s*get\\(`).test(st) &&
-       new RegExp(`setItem\\(LS_\\w+,\\s*JSON\\.stringify\\(state\\.${k}\\b`).test(st) &&
-       (st.match(new RegExp(`\\b${k}:`, "g")) || []).length >= 3,
-       `store.js is missing one of the three places ${k} has to appear`);
     // server.js drops a field unless it is named in the blank doc, normaliseDoc,
     // the current fallback, the conflict copy AND the written doc.
     ok(`${k}: the server keeps it in all five places`,

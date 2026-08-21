@@ -488,7 +488,7 @@
       const whoSel = card.querySelector(".rp-who");
       const typeSel = card.querySelector(".rp-type");
       if (!p.who) whoSel.appendChild(new Option("— who? —", "")); // never guessed for you
-      config.whoIds.forEach((w) => whoSel.appendChild(new Option(w, w)));
+      config.whoIds.forEach((w) => whoSel.appendChild(new Option(nameOf(w), w)));
       config.types.forEach((t) => typeSel.appendChild(new Option(t, t)));
       whoSel.value = p.who;
       typeSel.value = p.type;
@@ -855,6 +855,16 @@
   }
 
   // ----- render -----
+  // AN ID IS NOT A NAME. Every person-picker on this page was built straight
+  // out of the id list, so it offered "p1" and "S03" and you had to remember
+  // which was which. The name comes from the People page; when there isn't one
+  // the id is shown, because inventing a name would be worse than a bare id.
+  let contacts = [];
+  function nameOf(id) {
+    const c = contacts.find((x) => x && x.id === id);
+    return (c && c.name) || id;
+  }
+
   function fillSelect(sel, values, allLabel) {
     const el = $(sel);
     const current = el.value;
@@ -868,7 +878,7 @@
     values.forEach((v) => {
       const o = document.createElement("option");
       o.value = v;
-      o.textContent = v;
+      o.textContent = nameOf(v);
       el.appendChild(o);
     });
     if ([...el.options].some((o) => o.value === current)) el.value = current;
@@ -883,14 +893,17 @@
 
     const head = document.createElement("div");
     head.className = "rec-extra-fields";
-    const mkSel = (labelText, values, current, apply, allowEmpty) => {
+    // `show` turns a value into what the option says. Almost everything here is
+    // its own label; a person is not, and offering "p1" made you keep a mapping
+    // in your head that the app already has.
+    const mkSel = (labelText, values, current, apply, allowEmpty, show = (v) => v) => {
       const label = document.createElement("label");
       label.className = "cb-field";
       label.innerHTML = `<span class="cb-lbl">${escapeHtml(labelText)}</span>`;
       const sel = document.createElement("select");
       if (allowEmpty) sel.appendChild(new Option("—", ""));
-      values.forEach((v) => sel.appendChild(new Option(v, v)));
-      if (![...sel.options].some((o) => o.value === current)) sel.appendChild(new Option(current, current));
+      values.forEach((v) => sel.appendChild(new Option(show(v), v)));
+      if (![...sel.options].some((o) => o.value === current)) sel.appendChild(new Option(show(current), current));
       sel.value = current;
       sel.addEventListener("change", (e) => {
         apply(e.target.value);
@@ -900,7 +913,7 @@
       label.appendChild(sel);
       head.appendChild(label);
     };
-    mkSel("Who", config.whoIds, rec.who, (v) => (rec.who = v));
+    mkSel("Who", config.whoIds, rec.who, (v) => (rec.who = v), false, nameOf);
     mkSel("Kind", config.types, rec.type, (v) => (rec.type = v));
     if (config.topics.length) {
       mkSel("Skill / standard", config.topics, rec.topic || "", (v) => (rec.topic = v), true);
@@ -1013,7 +1026,7 @@
     row.innerHTML = `
       <div class="rec-main">
         <div class="rec-line">
-          <span class="rec-who">${escapeHtml(rec.who)}</span>
+          <span class="rec-who">${escapeHtml(nameOf(rec.who))}</span>
           <span class="rec-type">${escapeHtml(rec.type)}</span>
           <span class="rec-date">${escapeHtml(friendlyDate(rec.date))}</span>
           ${rec.topic ? `<span class="topic-chip">${escapeHtml(rec.topic)}</span>` : ""}
@@ -1411,6 +1424,10 @@
     const data = await OrganiserStore.load();
     records = Array.isArray(data.records) ? data.records : [];
     items = Array.isArray(data.items) ? data.items : [];
+    // READ ONLY, and never saved from here — this page keeps records, the
+    // People page keeps people. It is read so a dropdown can say "Aisha"
+    // instead of "p1", which is the whole of what it is for.
+    contacts = Array.isArray(data.contacts) ? data.contacts : [];
     config = normaliseConfig(data.recordConfig);
     if (!config) {
       config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));

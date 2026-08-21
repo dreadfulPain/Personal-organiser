@@ -38,6 +38,31 @@ export function makeEl(tag, reg) {
     removeChild(c) { this.children = this.children.filter((x) => x !== c); },
     remove() { if (this._parent) this._parent.removeChild(this); },
     replaceChildren(...cs) { this.children = []; cs.forEach((c) => this.appendChild(c)); },
+    // A PAGE THAT HALF-RENDERS STILL PASSES. week.js builds part of itself with
+    // insertAdjacentHTML; without it here the render threw, the page came out
+    // with two controls instead of its real set, and "all 2 controls survive
+    // being pressed" was true and meant nothing.
+    insertAdjacentHTML(where, html) {
+      this._html = where === "afterbegin" ? String(html) + (this._html || "") : (this._html || "") + String(html);
+    },
+    insertAdjacentElement(where, node) {
+      if (where === "afterbegin") this.children.unshift(node);
+      else this.children.push(node);
+      if (node) node._parent = this;
+      return node;
+    },
+    cloneNode() { return makeEl(this.tagName, reg); },
+    getElementsByTagName() { return []; },
+    getElementsByClassName() { return []; },
+    matches() { return false; },
+    scrollTo() {},
+    select() {},
+    // A <select> has options, and code that fills one reads them back to keep
+    // the current choice. Without this, people.js threw mid-render and the page
+    // came out half-built — passing, and testing almost nothing.
+    get options() { return this.children.filter((c) => c && c.tagName === "OPTION"); },
+    get selectedOptions() { return this.options.filter((o) => o.selected); },
+    get length() { return this.children.length; },
     addEventListener(n, f) { (this._on[n] = this._on[n] || []).push(f); },
     removeEventListener(n, f) { this._on[n] = (this._on[n] || []).filter((x) => x !== f); },
     setAttribute(k, v) { if (k === "id") this.id = v; if (k === "type") this.type = v; },

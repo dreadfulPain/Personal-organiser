@@ -98,7 +98,12 @@
       L.ascending(config).forEach((lv) => {
         const cell = document.createElement("div");
         cell.className = "cl-cell" + (lv === target ? " target" : "");
-        const whos = [...byWho.entries()].filter(([, r]) => String(r.level) === lv).map(([w]) => w).sort();
+        // SORTED BY NAME, not by id. Ids sort in whatever order they were
+        // created, which puts the class in an order nobody can read.
+        const whos = [...byWho.entries()]
+          .filter(([, r]) => String(r.level) === lv)
+          .map(([w]) => w)
+          .sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
         const nm = L.levelName(config, lv);
         const top = document.createElement("div");
         top.className = "cl-celltop";
@@ -109,7 +114,11 @@
         const body = document.createElement("div");
         body.className = "cl-cellwhos";
         body.innerHTML = whos.length
-          ? whos.map((w) => `<span class="cl-who">${escapeHtml(w)}</span>`).join("")
+          // THE NAME, NOT THE ID. Every other line in this file looks the name
+          // up; this one didn't, so the grid you actually look at said "p1"
+          // where it meant "Aisha" — and a row full of ids still renders
+          // perfectly, it just stops meaning anything.
+          ? whos.map((w) => `<span class="cl-who">${escapeHtml(nameOf(w))}</span>`).join("")
           : `<span class="cl-cellempty">—</span>`;
         cell.append(top, body);
         line.appendChild(cell);

@@ -222,10 +222,42 @@ const DATA = {
   scheduleConfig: { dayStart: "08:00", dayEnd: "17:00", minGapMinutes: 10 },
   pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [{ id: "work", name: "work", hints: [] }],
   targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [],
+  // THE TEN STORES THIS FIXTURE NEVER FILLED.
+  //
+  // Every page that reads one of them rendered its empty state, so "all 3
+  // controls survive being pressed" was true and meant almost nothing — the
+  // controls that do the work had never been drawn, let alone pressed.
+  // before-planning.html came out with none at all.
+  pastoralNotes: [{ id: "pn1", who: "p1", topicId: "t:settling in", choice: "settling in",
+    said: "settling in", note: "quieter than usual", date: TODAY, at: TODAY + "T09:00:00Z" }],
+  toldLog: [{ id: "tl1", who: "p1", person: "Mum", direction: "out", note: "mentioned the reading",
+    date: TODAY, at: TODAY + "T09:00:00Z" }],
+  worked: { [TODAY]: 90 },
+  areas: [{ id: "work", label: "Work" }, { id: "prof", label: "Professional" }],
+  tried: [{ id: "tr1", who: "p1", approach: "read aloud together", skill: "Reading",
+    date: TODAY, group: "9A", whoIds: ["p1"], note: "" }],
+  lessons: [{ id: "ls1", date: TODAY, slotId: "b1", group: "9A", skill: "Reading",
+    plan: "Objective: read aloud\nWe will: paired reading", targets: ["R1"],
+    at: TODAY + "T09:00:00Z" }],
+  lessonConfig: { headings: ["Objective", "We will"] },
+  rotas: [{ id: "ro1", name: "Reading aloud", memberIds: ["p1", "p2"], lastDone: {}, tried: {} }],
+  syllabus: { name: "Reading", targets: [{ code: "R1", strand: "Reading", text: "reads aloud" }] },
+  attendance: [{ id: "at1", group: "9A", date: TODAY, slotId: "b1", away: ["p2"], late: [],
+    note: "", at: TODAY + "T09:00:00Z" }],
 };
 
-const OLD = ["index.html", "timeline.html", "records.html", "class.html",
-             "people.html", "portfolio.html", "looking-back.html"];
+// EVERY PAGE, FOUND RATHER THAN LISTED — the same lesson as everywhere else.
+// This was seven names typed out, and ten pages had never had a single control
+// pressed on them. A button that throws the moment you touch it looks exactly
+// like a button that works, right up until you touch it.
+//
+// help.html is prose with no controls; compare.html is a measuring bench that
+// needs a model to do anything. Both are named rather than quietly dropped.
+const SKIP = { "help.html": "prose only", "compare.html": "needs an engine to do anything" };
+const OLD = fs
+  .readdirSync(new URL("../public/", import.meta.url))
+  .filter((f) => f.endsWith(".html") && !SKIP[f])
+  .sort();
 
 // ---------------------------------------------------------------------------
 sec("Press everything, and see what dies");

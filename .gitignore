@@ -5,6 +5,8 @@ node_modules/
 
 # your own saved data — never committed to the repo
 data/
+# where the test runner parks it while the suites run
+.organiser-data-while-testing.json
 
 # design tracker is kept by you (uploaded each session), not committed here
 Organiser_App_Tracker.md

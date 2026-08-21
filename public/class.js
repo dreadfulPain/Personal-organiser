@@ -563,7 +563,11 @@
     records = Array.isArray(data.records) ? data.records : [];
     config = data.recordConfig || null;
     contacts = Array.isArray(data.contacts) ? data.contacts : [];
-    if (config && config.title) $("#clTitle").textContent = "Skills — " + config.title;
+    // Only when the log has been given a name of its own. Left at its default
+    // this read "Skills — Student records", which is two names for the same
+    // page stuck together and tells you nothing.
+    if (config && config.title && config.title !== "Student records")
+      $("#clTitle").textContent = "Skills — " + config.title;
     $("#ckBtn").addEventListener("click", renderChecklist);
     $("#exportAllBtn").addEventListener("click", exportAll);
     $("#folderBtn").addEventListener("click", saveIntoFolders);

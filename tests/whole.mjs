@@ -325,6 +325,15 @@ sec("OUT — what a page with data actually shows");
 sec("DOWN — all 22 stores through a real server, at once");
 {
   const dataDir = path.join(REPO, "data");
+  // NEVER DESTROY WHAT WAS ALREADY THERE. This used to delete the whole data
+  // directory when it finished — on the machine somebody actually uses the app
+  // on, that is their file. Running the tests wiped a timetable and a class
+  // list mid-session, which is exactly the failure this suite exists to catch,
+  // committed by the suite itself.
+  const liveFile = path.join(dataDir, "organiser-data.json");
+  const aside = liveFile + ".test-aside";
+  const hadLive = fs.existsSync(liveFile);
+  if (hadLive) fs.renameSync(liveFile, aside);
   const port = 8000 + Math.floor(Math.random() * 900);
   const srv = spawn("node", [path.join(REPO, "server.js")], { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -355,8 +364,14 @@ sec("DOWN — all 22 stores through a real server, at once");
        STORES.filter((k) => k !== "items" && JSON.stringify(after[k]) !== JSON.stringify(FULL[k])).join(", "));
     ok("and the one you did save is changed", after.items.length === 1 && after.items[0].id === "only");
 
-    fs.rmSync(dataDir, { recursive: true, force: true });
-  } finally { srv.kill(); }
+  } finally {
+    srv.kill();
+    // Put the machine back as we found it: our test file goes, theirs comes back.
+    try {
+      fs.rmSync(liveFile, { force: true });
+      if (hadLive) fs.renameSync(aside, liveFile);
+    } catch { /* best effort */ }
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

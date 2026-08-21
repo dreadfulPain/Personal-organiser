@@ -236,18 +236,45 @@
         )
       : [];
 
+    // AND WHAT YOU WROTE IN THE RECORD LOG.
+    //
+    // A line with no level attached — "kept flipping the sign" — is the most
+    // ordinary thing a teacher writes down and very close to the most useful
+    // thing to have in front of you while planning the next lesson. It appeared
+    // on this page nowhere: `notes` only ever read pastoral notes, and the
+    // emptiness test below counted levels and set answers only. So a class you
+    // HAD written about announced itself as "nothing recorded for this group
+    // yet" and hid every section.
+    const RECENT_DAYS = 30;
+    const today = o.today || "";
+    const withinDays = (iso) => {
+      if (!today || !/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return false;
+      const days = Math.round((new Date(today + "T12:00:00") - new Date(iso + "T12:00:00")) / 86400000);
+      return days >= 0 && days <= RECENT_DAYS;
+    };
+    const nameById = new Map(members.map((m) => [m.id, m.name || m.id]));
+    const written = (o.records || [])
+      .filter((r) => r && r.summary && !r.level && nameById.has(r.who) && withinDays(r.date))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .map((r) => ({ id: r.who, name: nameById.get(r.who), topic: r.topic || r.type || "noted", said: r.summary }));
+
     return {
       group: o.group || "",
       members,
       skills: bySkills,
       tallies,
       answers,
-      notes,
+      notes: notes.concat(written),
       coverage: coverage(members, o.targeted, o.today || ""),
       ask: toAsk(o.pastoralNotes || [], o.pastoralTopics || [], members, o.today || "", o.askLimit),
       // Nobody has anything recorded at all — say that, rather than drawing an
       // empty page that looks like a class with no needs.
-      empty: !members.length || (!bySkills.some((s) => s.rows.some((r) => r.level)) && !tallies.length),
+      // EMPTY MEANS THERE IS NOTHING TO SHOW, not "nobody has a level". A page
+      // whose whole promise is remembering the class for you must not declare
+      // the class blank while holding things you wrote about them.
+      empty:
+        !members.length ||
+        (!bySkills.some((s) => s.rows.some((r) => r.level)) && !tallies.length && !notes.length && !written.length),
     };
   }
 

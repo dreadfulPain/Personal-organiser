@@ -47,6 +47,47 @@ const run = (f) =>
     });
   });
 
+// ---------------------------------------------------------------------------
+// YOUR OWN DATA SURVIVES THE TESTS.
+//
+// Ten of these suites finish by deleting the app's data directory, because each
+// of them was written to clean up after itself and the app has exactly one
+// place to put data. Run them on the machine you actually use the organiser on
+// — which is the normal case for one person with one laptop — and your
+// timetable, your class lists and your term's records go with them. That
+// happened here, mid-session, to a real set-up week.
+//
+// Fixed in ONE place rather than ten, and rather than in the ten that will be
+// eleven next month. A suite can delete whatever it likes; the file it would
+// have destroyed isn't there while it runs, and is put back afterwards.
+const LIVE = join(HERE, "..", "data", "organiser-data.json");
+// OUTSIDE data/, because that is the directory the suites delete — put the copy
+// in there and the very thing meant to protect it goes with it.
+const ASIDE = join(HERE, "..", ".organiser-data-while-testing.json");
+const hadLive = fs.existsSync(LIVE);
+if (hadLive) {
+  try {
+    fs.renameSync(LIVE, ASIDE);
+    console.log("  (your saved data is set aside while these run, and put back after)\n");
+  } catch (e) {
+    console.log(`\n  STOPPING: couldn't move your data file out of the way — ${e.message}`);
+    console.log("  The tests delete it, so they are not being run.\n");
+    process.exit(1);
+  }
+}
+function giveItBack() {
+  if (!hadLive) return;
+  try {
+    fs.rmSync(LIVE, { force: true });
+    fs.renameSync(ASIDE, LIVE);
+  } catch (e) {
+    console.log(`\n  YOUR DATA IS IN ${ASIDE} — couldn't move it back: ${e.message}\n`);
+  }
+}
+// Whatever happens, including Ctrl-C.
+process.on("exit", giveItBack);
+process.on("SIGINT", () => { giveItBack(); process.exit(130); });
+
 let pass = 0;
 let fail = 0;
 const broken = [];

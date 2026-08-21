@@ -572,4 +572,24 @@ sec("Through the real server, onto the real disk");
   }
 }
 
+// ---------------------------------------------------------------------------
+sec("And running the tests doesn't cost you your own data");
+{
+  // Ten suites finish by deleting the app's data directory, because each was
+  // written to tidy up after itself and the app has one place to put data. On
+  // the machine somebody actually uses the organiser on — one person, one
+  // laptop, the ordinary case — that is their timetable and their class lists.
+  // It happened here mid-session to a real set-up week.
+  const runner = fs.readFileSync(path.join(REPO_ROOT, "tests", "run.mjs"), "utf8");
+  ok("the runner puts your saved file somewhere safe before it starts",
+     /renameSync\(LIVE, ASIDE\)/.test(runner), "nothing moves the live data file out of the way");
+  ok("and puts it back afterwards", /renameSync\(ASIDE, LIVE\)/.test(runner), "nothing restores it");
+  // AND NOT INSIDE data/, which is the directory the suites delete — a copy in
+  // there goes with the thing it was protecting.
+  const aside = (runner.match(/const ASIDE = ([^;]+);/) || [])[1] || "";
+  ok("somewhere the suites don't delete", !/"data"/.test(aside), aside.trim());
+  ok("it happens whatever else goes wrong", /process\.on\("exit"/.test(runner),
+     "nothing restores it if a suite crashes the run");
+}
+
 done();

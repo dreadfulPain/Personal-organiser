@@ -125,4 +125,46 @@ sec("And its links land on the thing they promised");
   });
 }
 
+// ---------------------------------------------------------------------------
+sec("The class you set up is the class every page knows about");
+{
+  // TWO PLACES HOLDING "WHO MY STUDENTS ARE", AND ONLY ONE OF THEM KNOWING.
+  // You could paste seventeen students into People, open the record log, and be
+  // offered five made-up placeholders — S01 to S05 — with nothing to say your
+  // class existed.
+  const rec = fs.readFileSync(path.join(PUB, "records.js"), "utf8");
+  ok("the record log offers the people you actually have",
+     /function whoOptions\(\)/.test(rec) && /contacts\s*\n?\s*\.filter/.test(rec),
+     "the who picker is still a hand-typed list of ids");
+  const pickers = [...rec.matchAll(/fillSelect\("#(?:recWho|fWho)",\s*(\w+\(\))/g)].map((m) => m[1]);
+  ok("everywhere it asks who", pickers.length >= 2 && pickers.every((x) => x === "whoOptions()"),
+     JSON.stringify(pickers));
+
+  // AND THE SAME QUESTION GETS THE SAME ANSWER EVERYWHERE. "Which lesson" was
+  // fixed on the register — that day's blocks, wearing their times — and left
+  // as all twenty-one in no order on the lessons page, five of them identically
+  // named. One question, two answers, on two pages you use in the same hour.
+  for (const [file, what] of [["attendpage.js", "the register"], ["lessons.js", "the lessons page"]]) {
+    const src = fs.readFileSync(path.join(PUB, file), "utf8");
+    ok(`${what} offers the lessons that run that day`,
+       /blocksOn\(schedule,/.test(src), "it lists every block on the timetable, whatever day it is");
+    ok(`${what} says what time each one is`, /fmtTime\(/.test(src), "the entries carry no time to tell them apart");
+  }
+}
+
+// ---------------------------------------------------------------------------
+sec("And what you wrote about a class is there when you plan for it");
+{
+  // "Everything you already know about a class, laid out to plan against" —
+  // which counted a level and a set answer, and nothing else. Write "kept
+  // flipping the sign" about a student in the record log and the page said
+  // "nothing recorded for this group yet" and hid every section on it.
+  const cp = fs.readFileSync(path.join(PUB, "classplan.js"), "utf8");
+  ok("a note without a level still counts as something recorded",
+     /!notes\.length && !written\.length/.test(cp),
+     "empty still means 'nobody has a level'");
+  ok("and it is handed to the page to show",
+     /notes: notes\.concat\(written\)/.test(cp), "what you wrote is never passed on");
+}
+
 done();

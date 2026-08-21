@@ -26,6 +26,8 @@ import { DATA } from "./_data.mjs";
 import { checker } from "./_check.mjs";
 const { ok, done, sec } = checker();
 
+const TODAY_ISO = new Date().toISOString();
+
 const DUMP = [
   "i start on the 24th but the kids dont start till sept 1st",
   "need to do my visa medical before i can get paid",
@@ -149,6 +151,40 @@ sec("And nothing can collapse the box it is written in");
   ok("and nothing hands it a measurement taken before it was drawn",
      !/style\.height\s*=\s*Math\.min\([^)]*\|\|\s*0/.test(js),
      "an unmeasured box is being given its measurement");
+}
+
+// ---------------------------------------------------------------------------
+sec("Naming somebody is not promising them something");
+{
+  // ANY mention of a person on your list used to come back as "promised to"
+  // them — so "Li Wei struggled with negative numbers today" became a job you
+  // owed Li Wei, wearing a chip that said so and sorted up the list for it.
+  // Naming a student is the single most ordinary thing a teacher types.
+  const people = [
+    { id: "p1", name: "Li Wei", group: "10A", details: {}, createdAt: TODAY_ISO },
+    { id: "p2", name: "Helen Zhou", group: "staff", details: {}, createdAt: TODAY_ISO },
+  ];
+  const said = async (text) => {
+    const r = await open("index.html", { ...DATA, items: [], schedule: [], contacts: people });
+    r.byId.get("dump").value = text;
+    (r.byId.get("sortBtn")._on.click || []).forEach((f) => f({ preventDefault() {} }));
+    await r.settle();
+    await r.settle();
+    (r.byId.get("addBtn")._on.click || []).forEach((f) => f({ preventDefault() {} }));
+    await r.settle();
+    return (r.state.items || [])[0] || {};
+  };
+  ok("something you noticed about somebody owes them nothing",
+     (await said("li wei really struggled with negative numbers today")).promisedTo === "",
+     JSON.stringify(await said("li wei really struggled with negative numbers today")));
+  // BUT THE LINK IS STILL WORTH KEEPING when the sentence is aimed at them.
+  // "Email Helen about the trip" is a thing Helen is waiting on.
+  ok("and something aimed at somebody still is",
+     (await said("email Helen about the trip")).promisedTo === "Helen Zhou",
+     JSON.stringify((await said("email Helen about the trip")).promisedTo));
+  ok("as is one you actually promised",
+     (await said("i promised li wei id look at his working")).promisedTo === "Li Wei",
+     JSON.stringify((await said("i promised li wei id look at his working")).promisedTo));
 }
 
 done();

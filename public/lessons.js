@@ -93,6 +93,14 @@
   // visible rather than a score to be trusted. Ticking one is the judgement;
   // the app never makes it, because "these words overlap" and "this lesson
   // taught that" are not the same claim and only you can tell them apart.
+  // 09:35 → 9:35 AM, however this machine writes times.
+  function fmtTime(hm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || ""));
+    if (!m) return "";
+    return new Date(2000, 0, 1, Number(m[1]), Number(m[2]))
+      .toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
   function renderTargets() {
     const el = $("#lsTargets");
     if (!el) return;
@@ -407,13 +415,30 @@
         ss.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
     }
     const sl = $("#lsSlot");
-    if (sl)
+    if (sl) {
+      // THAT DAY'S LESSONS, WEARING THEIR TIMES. A full timetable put all
+      // twenty-one blocks in here, in no order, including five identical "Reg
+      // 10F" entries — so picking the right one meant counting down the list
+      // and hoping. The register had exactly this and was fixed; this is the
+      // same question asked on a different page.
+      const when = (($("#lsDate") || {}).value || "").trim() || todayISO();
+      const S = window.OrganiserSchedule;
+      const onDay =
+        S && S.blocksOn
+          ? S.blocksOn(schedule, when).filter((b) => b && b.id && !b.blocksDay && !b.noLessons)
+          : schedule.filter((x) => x && x.id);
+      const keep = sl.value;
       sl.innerHTML =
         `<option value="">not on the timetable</option>` +
-        schedule
-          .filter((x) => x && x.id)
-          .map((x) => `<option value="${esc(x.id)}">${esc(x.label || x.id)}</option>`)
+        onDay
+          .slice()
+          .sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))
+          .map((x) => `<option value="${esc(x.id)}">${esc((x.start ? fmtTime(x.start) + " " : "") + (x.label || x.id))}</option>`)
           .join("");
+      // A slot chosen for Monday isn't on Tuesday's list. Quietly keeping it
+      // would file the plan against a lesson that didn't happen.
+      sl.value = onDay.some((x) => x.id === keep) ? keep : "";
+    }
     // Only things still open, and only ones that look like work rather than
     // appointments — but the list is never filtered by guessing at titles.
     const it = $("#lsItem");
@@ -689,6 +714,12 @@
     if (btn) btn.addEventListener("click", save);
     const wh = $("#lsWhich");
     if (wh) wh.addEventListener("change", () => { where = wh.value; renderAll(); });
+    // WHICH LESSONS THERE ARE DEPENDS ON WHICH DAY IT IS. The list was built
+    // once when the page opened and never again, so choosing a different day
+    // left you picking from the first day's lessons — or, out of term, from
+    // nothing at all with no way to tell why.
+    const dd = $("#lsDate");
+    if (dd) dd.addEventListener("change", renderPickers);
     wireList();
     wireHeadings();
     wireSyllabus();

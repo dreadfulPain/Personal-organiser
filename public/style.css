@@ -2692,6 +2692,12 @@ body {
 }
 .rec-summary-input {
   width: 100%;
+  /* Grows to what you wrote — see growBox(). The floor keeps a box that was
+     measured before it was drawn from collapsing to nothing. */
+  resize: none;
+  overflow: hidden;
+  min-height: 1.6em;
+  line-height: 1.4;
   font: inherit;
   color: var(--ink);
   background: transparent;

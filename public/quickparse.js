@@ -81,14 +81,27 @@
     take(/(下)?(周|週|星期)([一二三四五六日天])/, (m) => nextWeekday(CN_DAYS[m[3]], !!m[1]));
     take(/\b(\d{4})-(\d{2})-(\d{2})\b/, (m) => `${m[1]}-${m[2]}-${m[3]}`);
     take(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/, (m) => `${new Date().getFullYear()}-${pad2(+m[1])}-${pad2(+m[2])}`);
-    // "14 sep" / "sep 14" / "14th september"
-    take(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTHS.join("|")})[a-z]*\\b`), (m) => {
+    // "14 sep" / "sep 14" / "14th september" / "the 10th OF september" / with a year.
+    //
+    // THE "of" IS NOT OPTIONAL DECORATION. "the 10th of September" is one of the
+    // two ordinary ways to write a date in English and it was read as no date at
+    // all — so a parents evening typed exactly as anyone would type it went in
+    // with nothing against it and never appeared on a calendar.
+    //
+    // The year is taken when it's given, because filing next February's date
+    // under this year puts it in the past, where the app then describes it as
+    // something you are still waiting on.
+    const MO = MONTHS.join("|");
+    const yearOf = (y) => (y ? Number(y) : new Date().getFullYear());
+    take(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MO})[a-z]*\\.?(?:,?\\s+(\\d{4}))?\\b`), (m) => {
       const mo = MONTHS.indexOf(m[2]) + 1;
-      return `${new Date().getFullYear()}-${pad2(mo)}-${pad2(+m[1])}`;
+      return `${yearOf(m[3])}-${pad2(mo)}-${pad2(+m[1])}`;
     });
-    take(new RegExp(`\\b(${MONTHS.join("|")})[a-z]*\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`), (m) => {
+    // The (?!\d) is load-bearing: without it "March 2026" reads as the 20th of
+    // March with 26 left over.
+    take(new RegExp(`\\b(${MO})[a-z]*\\.?\\s+(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)?(?!\\d)(?:,?\\s+(\\d{4}))?\\b`), (m) => {
       const mo = MONTHS.indexOf(m[1]) + 1;
-      return `${new Date().getFullYear()}-${pad2(mo)}-${pad2(+m[2])}`;
+      return `${yearOf(m[3])}-${pad2(mo)}-${pad2(+m[2])}`;
     });
     // Bare numbers: day-first, which is how it's written outside the US. Only
     // when it can't be anything else, so a wrong reading is rare and visible.
@@ -148,8 +161,15 @@
 
   // Only ever people you already have. It cannot invent a colleague, which is
   // the whole reason this is safe to run without anyone checking a model.
+  // A doing word pointed straight at somebody — the thing you do TO a person,
+  // as opposed to a name that merely turns up in a sentence.
+  const TO_A_PERSON =
+    /\b(email|e-?mail|call|ring|phone|message|text|ask|tell|remind|chase|thank|invite|see|meet|pay|send|write to|reply to|respond to|get back to|speak to|talk to)\s+(?:to\s+|up\s+)?$/i;
+  // The same idea where the script has no spaces to hang it on.
+  const TO_A_PERSON_CJK = /给|找|联系|聯繫|告诉|告訴|问|問|提醒|回复|回覆|通知|发给|發給|打给|打給/;
+
   function readPeople(text, contacts) {
-    const out = { person: "", waitingOn: "" };
+    const out = { person: "", waitingOn: "", directed: false };
     const N = window.OrganiserNames;
     if (!N || !Array.isArray(contacts) || !contacts.length) return out;
     // Ordinary words that turn up inside names ("Dave THE plumber") and would
@@ -181,6 +201,20 @@
       const inside = unspaced && asked.replace(/\s/g, "").includes(whole.replace(/\s/g, ""));
       if (whole === asked || whole.startsWith(asked + " ") || inside || (N.formsOf(found.contact) || []).some((f) => N.norm(f) === asked)) {
         out.person = found.contact.name;
+        // WAS THE SENTENCE AIMED AT THEM, or were they merely in it?
+        //
+        // "email Helen about the trip" is something you owe Helen. "Li Wei
+        // struggled with negative numbers today" is something you noticed about
+        // Li Wei, and naming a student is the single most ordinary thing a
+        // teacher types. Both used to come back wearing "promised to" — one of
+        // them a commitment nobody made, sorted up the list for it.
+        const at = String(text).toLowerCase().indexOf(t.toLowerCase());
+        // Chinese has no spaces, so there is no gap in front of the name to
+        // look at — the marker for "this is aimed at somebody" is a word like
+        // 给 or 联系 sitting anywhere in the sentence instead.
+        out.directed = unspaced
+          ? TO_A_PERSON_CJK.test(String(text))
+          : at > 0 && TO_A_PERSON.test(String(text).slice(0, at));
         break;
       }
     }
@@ -213,6 +247,10 @@
   // otherwise, and this is how you say otherwise.
   const SOMEDAY = /\b(sometime|some ?day|one day|whenever|no rush|eventually|at some point|when i (?:get|have) (?:a )?(?:time|chance|minute)|if i (?:get|have) time)\b|有空|以后再说/i;
   const HARD = /\b(deadline|due|must be|has to be|no later than|by end of|cut off|cutoff)\b/i;
+  // Somebody actually said they would. Ordinary English for having given your
+  // word — not merely for having mentioned a person.
+  const PROMISE =
+    /\b(promis\w+|i said i|said i(?:'?d| would| will)|told (?:\w+ ){1,3}i|owe \w+|get back to|come back to|report back|let (?:\w+ ){1,3}know)\b|答应|说好/i;
   // AN ARRANGEMENT WITH SOMEBODY, rather than work with a date on it. Kept to
   // words that mean the thing itself in ordinary English — no school words, no
   // list of the kinds of meeting a school happens to hold.
@@ -405,7 +443,14 @@
       goalId: "",
       standardId: "",
       openLoop: false,
-      promisedTo: who.waitingOn ? "" : who.person,
+      // A NAME IN A SENTENCE IS NOT A PROMISE. Any mention of somebody on your
+      // list used to become "promised to" them — so "Li Wei struggled with
+      // negative numbers today" came back as a job you owed Li Wei, wearing a
+      // chip saying so and sorted up the list for it. Naming a student is the
+      // single most ordinary thing a teacher types.
+      //
+      // A promise needs somebody to have made one.
+      promisedTo: who.waitingOn ? "" : PROMISE.test(raw) || who.directed ? who.person : "",
       waitingOn: who.waitingOn,
       remindAt: "",
       remindedAt: null,

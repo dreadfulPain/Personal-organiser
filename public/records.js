@@ -373,7 +373,7 @@
             weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
           }),
           config: {
-            whoIds: config.whoIds,
+            whoIds: whoOptions(),
             types: config.types,
             fields: config.fields || {},
             topics: config.topics || [],
@@ -488,7 +488,7 @@
       const whoSel = card.querySelector(".rp-who");
       const typeSel = card.querySelector(".rp-type");
       if (!p.who) whoSel.appendChild(new Option("— who? —", "")); // never guessed for you
-      config.whoIds.forEach((w) => whoSel.appendChild(new Option(nameOf(w), w)));
+      whoOptions().forEach((w) => whoSel.appendChild(new Option(nameOf(w), w)));
       config.types.forEach((t) => typeSel.appendChild(new Option(t, t)));
       whoSel.value = p.who;
       typeSel.value = p.type;
@@ -860,6 +860,41 @@
   // which was which. The name comes from the People page; when there isn't one
   // the id is shown, because inventing a name would be worse than a bare id.
   let contacts = [];
+
+  // WHO YOU CAN LOG SOMETHING ABOUT.
+  //
+  // This used to be config.whoIds alone — a hand-typed, comma-separated list of
+  // ids that starts life as S01 to S05. So you could paste seventeen students
+  // into People, come to this page, and be offered five made-up placeholders
+  // with no sign your class existed. Two places holding "who my students are",
+  // and only one of them knowing.
+  //
+  // Your own list comes first, in the order you read a register. Ids you typed
+  // by hand are kept alongside: they are how you practise with fake ones before
+  // real names go anywhere near the app, which this page asks you to do. Once
+  // there are real people the five placeholders stop being offered, because by
+  // then they are not a class, they are clutter.
+  function whoOptions() {
+    const real = contacts
+      .filter((c) => c && c.id)
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+      .map((c) => c.id);
+    const typed = (config.whoIds || []).filter((w) => !real.includes(w));
+    const placeholders = DEFAULT_CONFIG.whoIds;
+    return real.concat(real.length ? typed.filter((w) => !placeholders.includes(w)) : typed);
+  }
+
+  // Grow a box to whatever is written in it. Never below one line: a row
+  // measured before it is on the page measures nothing, and an inline height of
+  // zero hides the text completely.
+  function growBox(el) {
+    if (!el) return;
+    el.style.height = "auto";
+    const h = el.scrollHeight || 0;
+    el.style.height = h > 0 ? Math.min(h, 200) + "px" : "";
+  }
+
   function nameOf(id) {
     const c = contacts.find((x) => x && x.id === id);
     return (c && c.name) || id;
@@ -913,7 +948,7 @@
       label.appendChild(sel);
       head.appendChild(label);
     };
-    mkSel("Who", config.whoIds, rec.who, (v) => (rec.who = v), false, nameOf);
+    mkSel("Who", whoOptions(), rec.who, (v) => (rec.who = v), false, nameOf);
     mkSel("Kind", config.types, rec.type, (v) => (rec.type = v));
     if (config.topics.length) {
       mkSel("Skill / standard", config.topics, rec.topic || "", (v) => (rec.topic = v), true);
@@ -1043,7 +1078,7 @@
           }
           ${rec.sourceText ? `<button class="src-chip" type="button" title="Show what this was translated from">original</button>` : ""}
         </div>
-        <input class="rec-summary-input" type="text" value="${escapeHtml(rec.summary)}" aria-label="What happened (editable)" />
+        <textarea class="rec-summary-input" rows="1" aria-label="What happened (editable)">${escapeHtml(rec.summary)}</textarea>
         ${filledExtra.length ? `<div class="rec-extra-line">${filledExtra.map(([k, v]) => `<span class="rec-extra-k">${escapeHtml(k)}:</span> ${escapeHtml(v)}`).join(" · ")}</div>` : ""}
         ${
           confirmingId === rec.id && unchecked
@@ -1079,6 +1114,12 @@
     }
     if (expandedId === rec.id) row.querySelector(".rec-main").appendChild(detailArea(rec));
     const summaryInput = row.querySelector(".rec-summary-input");
+    // A NOTE YOU CANNOT READ IS NOT A RECORD. This sat in a one-line input, so
+    // "struggled with negative numbers, kept flipping the sign" came back on
+    // screen as "struggled with negative numbers, kept fli" — cut mid-word,
+    // looking exactly like the end of it had been lost.
+    growBox(summaryInput);
+    summaryInput.addEventListener("input", (e) => growBox(e.target));
     summaryInput.addEventListener("change", (e) => {
       const v = e.target.value.trim();
       if (v) rec.summary = v;
@@ -1122,9 +1163,9 @@
     $("#recTitle").textContent = config.title;
     document.title = config.title;
     $("#recNote").textContent = config.note || "";
-    fillSelect("#recWho", config.whoIds);
+    fillSelect("#recWho", whoOptions());
     fillSelect("#recType", config.types);
-    fillSelect("#fWho", config.whoIds, "everyone");
+    fillSelect("#fWho", whoOptions(), "everyone");
     fillSelect("#fType", config.types, "every kind");
     fillSelect("#recTopic", config.topics, "— skill —");
     fillSelect("#recLevel", config.levels, "— level —");
@@ -1450,7 +1491,7 @@
     // Arriving from the Class checklist: ?who=S03&unchecked=1 lands filtered.
     const qs = new URLSearchParams(location.search);
     const qWho = qs.get("who");
-    if (qWho && config.whoIds.includes(qWho)) filters.who = qWho;
+    if (qWho && whoOptions().includes(qWho)) filters.who = qWho;
     if (qs.get("unchecked") === "1") filters.unchecked = true;
     // Arriving from a skill on the Class page: land ON that skill's evidence
     // rather than at the door being told to find it again in the filter.

@@ -61,9 +61,11 @@
     el.className = "item wk-item";
     // The time the week has set aside for it, or the time you set by hand.
     const t =
-      p && !p.pinnedByHand && window.OrganiserSchedule
-        ? fmtTime(OrganiserSchedule.toHM(p.start))
-        : fmtTime(it.time);
+      p && p.noTime
+        ? ""
+        : p && !p.pinnedByHand && window.OrganiserSchedule
+          ? fmtTime(OrganiserSchedule.toHM(p.start))
+          : fmtTime(it.time);
     el.innerHTML = `
       <button class="tick" aria-label="Mark done" title="Mark done"></button>
       ${t ? `<div class="tl-time">${escapeHtml(t)}</div>` : ""}
@@ -71,6 +73,7 @@
         <div class="item-title">${escapeHtml(it.title)}</div>
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type] || "Note"}</span>
+          ${p && p.noTime ? `<span class="when">no time set</span>` : ""}
           ${p && p.early ? `<span class="when">ahead of ${escapeHtml(dayName(it.date))}</span>` : ""}
           ${it.deadlineType === "hard" ? `<span class="when due">hard deadline</span>` : ""}
           ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
@@ -145,8 +148,16 @@
       const pinned = items
         .filter((x) => !x.done && x.date === iso && x.time && !seen.has(x.id))
         .map((x) => ({ itemId: x.id, start: 0, pinnedByHand: true }));
+      // Things that happen ON this day at an hour nobody has said — a meeting
+      // you know is Thursday and not much else. They are not planned into a
+      // gap, so they'd otherwise vanish from the one view you'd look for them
+      // in. Drawn with no time, because there isn't one.
+      const untimed = ((plan && plan.onTheDay) || [])
+        .filter((x) => x.date === iso && !seen.has(x.id))
+        .map((x) => ({ itemId: x.id, start: -1, noTime: true }));
       const day = placed
         .concat(pinned)
+        .concat(untimed)
         .map((p) => ({ ...p, it: items.find((x) => x.id === p.itemId) }))
         .filter((p) => p.it && !p.it.done)
         .sort((a, b) => a.start - b.start);

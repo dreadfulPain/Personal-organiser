@@ -564,6 +564,16 @@
     });
     window.addEventListener("pagehide", () => OrganiserStore.flushBeacon());
     render();
+    // ARRIVE WITH IT ALREADY OPEN. Set up sends people here to paste a class
+    // list; landing on a page with the box shut is a second search for the
+    // thing they were just sent to do.
+    if (/#class\b/.test(location.hash || "")) {
+      const box = document.getElementById("pplPasteBox");
+      if (box) {
+        box.open = true;
+        box.scrollIntoView({ block: "start" });
+      }
+    }
   }
 
   init();

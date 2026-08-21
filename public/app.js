@@ -144,6 +144,21 @@
     return it.type === "task" && !it.done && !it.date && !it.promisedTo;
   }
 
+  // A CHECK-BACK YOU CANNOT READ IS NOT A CHECK. The title sat in a one-line
+  // input, so anything longer than the box was clipped mid-word with the rest
+  // of the sentence out of sight — and this is the one moment the app asks you
+  // to confirm it read you correctly.
+  function growTitle(el) {
+    if (!el) return;
+    el.style.height = "auto";
+    const h = el.scrollHeight || 0;
+    // A CARD THAT IS NOT ON THE PAGE YET HAS NO HEIGHT. scrollHeight comes back
+    // 0 before it is laid out, and setting that collapses the box to nothing —
+    // which made the whole title vanish and left a check-back card asking you
+    // to confirm a blank line.
+    el.style.height = h > 0 ? Math.min(h, 220) + "px" : "";
+  }
+
   function escapeHtml(s) {
     return (s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
@@ -498,7 +513,7 @@
       // (the People row is appended after the card is built, below)
       card.innerHTML = `
         <div class="cb-head">
-          <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
+          <textarea class="cb-title" rows="1" aria-label="What it is">${escapeHtml(it.title)}</textarea>
           <button class="cb-remove" type="button" aria-label="Remove this">remove</button>
         </div>
         <div class="cb-summary">${escapeHtml(checkbackSummary(it))}</div>
@@ -561,7 +576,12 @@
       const refreshSummary = () => {
         card.querySelector(".cb-summary").textContent = checkbackSummary(pending[i]);
       };
-      card.querySelector(".cb-title").addEventListener("input", (e) => (pending[i].title = e.target.value));
+      const titleBox = card.querySelector(".cb-title");
+      titleBox.addEventListener("input", (e) => {
+        pending[i].title = e.target.value;
+        growTitle(e.target);
+      });
+      growTitle(titleBox);
       card.querySelector(".cb-type").addEventListener("change", (e) => {
         pending[i].type = e.target.value;
         refreshSummary();
@@ -784,7 +804,7 @@
     }
     card.innerHTML = `
       <div class="cb-head">
-        <input class="cb-title" type="text" value="${escapeHtml(it.title)}" aria-label="What it is" />
+        <textarea class="cb-title" rows="1" aria-label="What it is">${escapeHtml(it.title)}</textarea>
         <button class="cb-remove" type="button" aria-label="Remove this completely">remove</button>
       </div>
       <div class="cb-row">
@@ -834,6 +854,7 @@
       <div class="ed-actions"><button class="link ed-done" type="button">done editing</button></div>
     `;
     // Save as you go; don't re-render mid-edit (it would yank focus / jump zones).
+    growTitle(card.querySelector(".cb-title"));
     card.querySelector(".cb-title").addEventListener("change", (e) => {
       const v = e.target.value.trim();
       if (v) it.title = v;
@@ -2052,6 +2073,18 @@
   }
 
   // ---------- storage status + "your data" footer ----------
+  // A SIGNPOST, ONLY WHILE IT IS ANY USE. There was nothing anywhere saying
+  // where to start, and the timetable — the thing everything else fits around —
+  // was behind a collapsed panel on another page. This says so once, on the
+  // page you land on, and disappears the moment anything at all is set up.
+  function renderNewHere() {
+    const el = $("#newHere");
+    if (!el) return;
+    const nothingYet =
+      !(schedule || []).length && !(contacts || []).length && !(items || []).length;
+    el.hidden = !nothingYet;
+  }
+
   function renderStorageStatus(s) {
     const el = $("#storageStatus");
     if (!el) return;
@@ -2244,6 +2277,7 @@
 
     renderZones();
     renderWaiting();
+    renderNewHere();
     if (data.migratedNote) setStatus(data.migratedNote);
     await checkHealth();
     checkForClusterGoal(); // gentle, only if there's a real pile of loose tasks

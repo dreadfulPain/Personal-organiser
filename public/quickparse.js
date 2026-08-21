@@ -213,6 +213,13 @@
   // otherwise, and this is how you say otherwise.
   const SOMEDAY = /\b(sometime|some ?day|one day|whenever|no rush|eventually|at some point|when i (?:get|have) (?:a )?(?:time|chance|minute)|if i (?:get|have) time)\b|有空|以后再说/i;
   const HARD = /\b(deadline|due|must be|has to be|no later than|by end of|cut off|cutoff)\b/i;
+  // AN ARRANGEMENT WITH SOMEBODY, rather than work with a date on it. Kept to
+  // words that mean the thing itself in ordinary English — no school words, no
+  // list of the kinds of meeting a school happens to hold.
+  //
+  // "meet the deadline" is not an arrangement, and it says so itself: HARD
+  // matches it, and a sentence about a deadline is about a deadline.
+  const ARRANGE = /\b(meet|meets|meeting|appointment|interview)\b/i;
   const QUICK = /\b(quick|quickly|just|briefly|two minutes|5 ?min)\b/i;
   const BIG = /\b(whole|all of|write up|draft|plan out|big|entire|redo)\b/i;
 
@@ -301,6 +308,31 @@
     return out.filter(Boolean);
   }
 
+  // Words that cannot be the last thing in a sentence. If taking the date out
+  // would leave the line ending on one of these, the date was load-bearing and
+  // the line is left exactly as it was typed.
+  const DANGLES = /\b(till|until|on|by|before|after|from|to|at|in|of|for|and|but|or|with|the|a|an|is|are|was|were|be|than|then|that|this|its|it's)$/i;
+
+  // Take `phrase` out of `text` — but only when it sits at one end and what is
+  // left still reads as something. Anywhere else, or anything less, and the
+  // line comes back untouched.
+  function cutIfClean(text, phrase, leaders) {
+    const esc = String(phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const lead = `(?:\\b(?:${leaders})\\s+)?`;
+    const tail = new RegExp(`\\s*${lead}${esc}\\s*$`, "i");
+    if (tail.test(text)) {
+      const left = text.replace(tail, "").replace(/[\s,;:-]+$/, "").trim();
+      if (left && !DANGLES.test(left)) return left;
+      return text;
+    }
+    const head = new RegExp(`^\\s*${lead}${esc}\\s*[,:：-]?\\s*`, "i");
+    if (head.test(text)) {
+      const left = text.replace(head, "").trim();
+      if (left) return left;
+    }
+    return text;
+  }
+
   // One line of plain text → the same shape the AI half returns, so both roads
   // into the app produce the identical thing and the check-back can't tell them
   // apart. Fields it can't see are left empty; nothing is ever guessed.
@@ -314,21 +346,21 @@
     const when = readWhen(forWhen);
     const who = readPeople(raw, contacts);
 
-    // Strip the time phrase out of the title — "call the dentist on tuesday"
+    // Take the time phrase out of the title — "call the dentist on tuesday"
     // should become "call the dentist", not repeat itself.
+    //
+    // BUT ONLY WHERE IT LEAVES A SENTENCE BEHIND. This used to cut the phrase
+    // out wherever it sat, which is the very thing the "urgent" rule below
+    // refuses to do: "meet my mentor sarah thursday morning" came back as "meet
+    // my mentor sarah morning", and "the kids dont start till sept 1st" as "the
+    // kids dont start till". Words you typed, changed into something you
+    // didn't, on the one screen that asks you to confirm it read you right.
     let title = raw;
-    if (when.timeText) {
-      title = title
-        .replace(new RegExp(`\\b(at|from)?\\s*${when.timeText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"), " ")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
-    if (when.matched) {
-      title = title
-        .replace(new RegExp(`\\b(on|by|before|for)?\\s*${when.matched.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), " ")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
+    if (when.timeText) title = cutIfClean(title, when.timeText, "at|from|by|around|about");
+    // "till" and "until" are deliberately NOT lead-ins here. "start till sept
+    // 1st" would otherwise be cut as one phrase, leaving "the kids dont start"
+    // — which reads fine and means the opposite of what was written.
+    if (when.matched) title = cutIfClean(title, when.matched, "on|by|before|for|due");
     // "urgent: send the form" — the "urgent" has already been READ, into
     // importance. Leaving it in the title says it twice, and the title is what
     // follows the task into every reminder, every export, every printed list.
@@ -355,7 +387,11 @@
       // mid-word with nothing to show that it had. Long is a display problem,
       // and a display problem is not solved by deleting what somebody wrote.
       title,
-      type: "task",
+      // A meeting happens AT its time; a task is finished BEFORE one. The
+      // difference decides whether the planner may move it earlier, so it is
+      // read here and shown in the check-back as "Event" — where you can see
+      // it and change it before anything is kept.
+      type: ARRANGE.test(raw) && !HARD.test(raw) && (when.date || when.time) ? "appointment" : "task",
       date: when.date,
       // Earliest it could happen. Never later than the deadline — if reading it
       // produced a contradiction, the reading was wrong, so it's dropped.
@@ -398,6 +434,21 @@
   // would have no date at all.
   function parseAll(text, ctx) {
     const raw = String(text || "").trim();
+    // A LINE BREAK IS A NEW THOUGHT.
+    //
+    // This only ever split a line on "and" / "then", so six things typed on six
+    // lines came back as one item with newlines inside it. It looked fine while
+    // the server was running, because the server's splitter was doing the work
+    // — which meant the front door of the app quietly stopped working the
+    // moment you opened the page by double-clicking it, the one mode this file
+    // exists to support.
+    //
+    // Done by RECURSION on purpose: everything below inherits a date from the
+    // whole text, which is right for "call the dentist and book the flights on
+    // tuesday" and wrong across a line break. Line two implies nothing about
+    // line one, so each line is parsed as if it were all you typed.
+    const lines = raw.split(/\r?\n+/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length > 1) return lines.flatMap((l) => parseAll(l, ctx));
     const parts = pieces(raw);
     if (parts.length <= 1) return [parse(raw, ctx)];
     const whole = parse(raw, ctx);

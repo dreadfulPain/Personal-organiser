@@ -38,6 +38,19 @@
   //
   // A notBefore later than the deadline is a contradiction — almost always a
   // misread phrase — so it's ignored rather than allowed to strand the task.
+  // SOME THINGS HAPPEN AT A TIME. They are not work to be finished before one.
+  //
+  // "Have the reports in by Thursday" is a deadline, and the app is right to go
+  // looking for room on Tuesday — that is the whole point of planning ahead.
+  // "Meet your mentor on Thursday" is not the same sentence. Turning up on
+  // Tuesday is not being ahead of it; it is being absent.
+  //
+  // The app used to treat every date as a deadline, so a meeting on Thursday
+  // was cheerfully booked into this afternoon and labelled "ahead of Thursday".
+  function fixedInTime(it) {
+    return !!it && it.type === "appointment" && !!it.date;
+  }
+
   function blocked(it, ctx) {
     if (!it.notBefore) return false;
     if (it.date && it.notBefore > it.date) return false; // can't both be true; trust the deadline
@@ -185,5 +198,6 @@
     return first.concat(rest);
   }
 
-  window.OrganiserPriority = { eligible, rank, reason, ordered, forPlanning, blocked, tier, droppable };
+  window.OrganiserPriority = {
+    fixedInTime, eligible, rank, reason, ordered, forPlanning, blocked, tier, droppable };
 })();

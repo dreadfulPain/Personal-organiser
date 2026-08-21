@@ -27,7 +27,11 @@
   let goals = [];
   let schedule = [];
   let cfg = null;
-  let setupOpen = false;
+  // ARRIVE WITH IT ALREADY OPEN. Set up sends you here to do one specific job;
+  // landing on the Day page with the panel shut means hunting for it a second
+  // time, which is the thing that made the timetable unfindable in the first
+  // place.
+  let setupOpen = /#setup\b/.test(location.hash || "");
   let pastedBlocks = null; // AI-read timetable rows, waiting to be checked
   let unreadableRows = []; // rows it couldn't make sense of — shown, never dropped
   let addingBlock = false;
@@ -1370,6 +1374,23 @@
   }
 
   // ---------- the week's shape (a once-a-term job) ----------
+  // Sent here for the school calendar? Open that fold and go to it.
+  function openFromLink() {
+    const h = location.hash || "";
+    if (/#calendar\b/.test(h)) {
+      const box = document.getElementById("calBox");
+      if (box) {
+        box.open = true;
+        box.scrollIntoView({ block: "start" });
+      }
+      return;
+    }
+    if (/#setup\b/.test(h)) {
+      const t = document.getElementById("setupToggle");
+      if (t) t.scrollIntoView({ block: "start" });
+    }
+  }
+
   function renderSetup() {
     const panel = $("#setup");
     const toggle = $("#setupToggle");
@@ -1839,6 +1860,45 @@
   // what a schedule IS. Untick it if these are places you're already sitting.
   let therePick = true;
   let thereMins = 0;
+  // Blank = for ever, which is the honest default for a timetable nobody has
+  // told us the term dates for. See termOffer().
+  let termFrom = "";
+  let termTo = "";
+
+  // WHEN DOES THIS TIMETABLE ACTUALLY RUN?
+  //
+  // A timetable typed in with no dates on it repeats every week for ever — which
+  // is what you want during term and quietly wrong the rest of the year. Paste
+  // one in August and the app shows your summer as fully booked: every weekday
+  // of the holidays carrying a full teaching load, in the month view whose whole
+  // promise is that an empty square is real free time.
+  //
+  // Blank still means "for ever", because that is the honest default for a
+  // timetable somebody hasn't told us the term dates for. But it is asked, here,
+  // where the timetable is being saved, instead of being a fact you find out in
+  // December.
+  function termOffer() {
+    const box = document.createElement("div");
+    box.className = "su-people";
+    if (!pastedBlocks || !pastedBlocks.length) return box;
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = termFrom || termTo
+      ? "These run between those dates and nowhere else."
+      : "Left blank, these run every week for ever — through the holidays too. Put the term's dates in and they stop at the end of it.";
+    box.appendChild(p);
+    const row = document.createElement("div");
+    row.className = "su-row";
+    const lab = document.createElement("label");
+    lab.innerHTML =
+      `runs from <input type="date" class="tm-from" value="${escapeHtml(termFrom)}" />` +
+      ` until <input type="date" class="tm-to" value="${escapeHtml(termTo)}" />`;
+    lab.querySelector(".tm-from").addEventListener("change", (e) => { termFrom = e.target.value || ""; renderSetup(); });
+    lab.querySelector(".tm-to").addEventListener("change", (e) => { termTo = e.target.value || ""; renderSetup(); });
+    row.appendChild(lab);
+    box.appendChild(row);
+    return box;
+  }
 
   function thereOffer() {
     const box = document.createElement("div");
@@ -1912,6 +1972,7 @@
       table.appendChild(row);
     });
     box.appendChild(table);
+    box.appendChild(termOffer());
     box.appendChild(thereOffer());
     box.appendChild(peopleOffer());
     box.appendChild(jobOffer());
@@ -1932,6 +1993,9 @@
           about: (b.about || []).concat(who.get(b.id) || []),
           beThere: therePick,
           getThere: therePick ? thereMins : 0,
+          // Blank stays blank, and blank means for ever.
+          from: termFrom || b.from || "",
+          to: termTo || b.to || "",
         }))
         .filter(Boolean);
       // A ROW THAT WOULDN'T SAVE IS SAID OUT LOUD. "Saved 14" when you were
@@ -1953,6 +2017,9 @@
         `Saved ${kept.length} block${kept.length === 1 ? "" : "s"}. ✓` +
         (linked ? ` ${linked} of them say who's running it.` : "") +
         (jobs ? ` ${jobs} job${jobs === 1 ? "" : "s"} added.` : "") +
+        (termFrom || termTo
+          ? ` Running ${termFrom ? `from ${calDay(termFrom)}` : "until now"}${termTo ? ` to ${calDay(termTo)}` : " onwards"}.`
+          : " They repeat every week — say when the term ends and they'll stop there.") +
         (lost ? ` ${lost} couldn't be saved — ${lost === 1 ? "it had" : "they had"} no day or date on ${lost === 1 ? "it" : "them"}.` : "")
       );
     });
@@ -2274,6 +2341,7 @@
       render();
     });
     render();
+    openFromLink();
   }
 
   init();

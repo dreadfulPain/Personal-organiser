@@ -29,7 +29,36 @@
   };
   const groups = () =>
     [...new Set(contacts.map((c) => (c && c.group) || "").filter(Boolean))].sort();
-  const members = () => contacts.filter((c) => c && c.id && (!group || c.group === group));
+  // IN THE ORDER YOU READ A REGISTER — by name. They came back in whatever order
+  // they happened to be stored in, which for a pasted class list is backwards.
+  // A register you have to hunt down is a register you take badly.
+  const members = () =>
+    contacts
+      .filter((c) => c && c.id && (!group || c.group === group))
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  // The blocks that run on the day being taken, earliest first. Falls back to
+  // the whole list only when there is no schedule module to ask.
+  function daysBlocks() {
+    const S = window.OrganiserSchedule;
+    const list =
+      S && S.blocksOn && when
+        ? S.blocksOn(schedule, when).filter((b) => !b.blocksDay && !b.noLessons)
+        : schedule.filter((x) => x && x.id);
+    return list
+      .filter((x) => x && x.id)
+      .slice()
+      .sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
+  }
+
+  // 09:30 → 9:30 AM, in whatever way this machine writes times.
+  function fmtTime(hm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || ""));
+    if (!m) return "";
+    const d = new Date(2000, 0, 1, Number(m[1]), Number(m[2]));
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
   const nameOf = (id) => {
     const c = contacts.find((x) => x && x.id === id);
     return (c && c.name) || id;
@@ -204,13 +233,28 @@
     const d = $("#atDate");
     if (d && !d.value) { d.value = when || todayISO(); when = d.value; }
     const sl = $("#atSlot");
-    if (sl)
+    if (sl) {
+      // ONLY THE LESSONS THAT ACTUALLY RUN THAT DAY, and each one wearing its
+      // time. A full timetable put all twenty-two blocks in here — including
+      // five identical "Form time" entries and the canteen duty — so choosing
+      // the right one meant counting down the list and hoping.
+      const onDay = daysBlocks();
       sl.innerHTML =
         `<option value="">any lesson</option>` +
-        schedule
-          .filter((x) => x && x.id)
-          .map((x) => `<option value="${esc(x.id)}"${x.id === slotId ? " selected" : ""}>${esc(x.label || x.id)}</option>`)
+        onDay
+          .map((x) => {
+            const t = x.start ? `${fmtTime(x.start)} ` : "";
+            return `<option value="${esc(x.id)}"${x.id === slotId ? " selected" : ""}>${esc(t + (x.label || x.id))}</option>`;
+          })
           .join("");
+      // A lesson picked on Monday isn't on the list any more once you look at
+      // Tuesday. Saying nothing and silently keeping it would file the register
+      // against a lesson that didn't happen.
+      if (slotId && !onDay.some((x) => x.id === slotId)) {
+        slotId = "";
+        sl.value = "";
+      }
+    }
   }
 
   function render() {

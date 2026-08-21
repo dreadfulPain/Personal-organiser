@@ -221,8 +221,24 @@
     // optional thing you HAVE committed to — the course you paid for, the
     // appointment you made — is booked like anything else, because it is.
     const droppable = window.OrganiserPriority.droppable;
+    const fixed = window.OrganiserPriority.fixedInTime;
     const candidates = all.filter(
-      (i) => !i.done && !i.openLoop && !droppable(i) && !i.time && i.date && i.date <= lastISO
+      (i) =>
+        !i.done && !i.openLoop && !droppable(i) && !i.time && i.date && i.date <= lastISO &&
+        // A MEETING WITH NO TIME ON IT IS NOT A GAP TO FILL. Left in, it was
+        // treated as work whose wait clears that morning, so the week put it in
+        // the LAST gap of the day — and "meet my mentor Thursday morning" came
+        // back booked for five in the afternoon. The app does not know when the
+        // meeting is; it knows which day. Inventing the hour is worse than
+        // leaving it blank, because a wrong time is one you'd act on.
+        !fixed(i)
+    );
+
+    // They belong to their day all the same, just without an hour against them.
+    // Handed back so the week and the month can draw them where they are rather
+    // than lose them for not being plannable.
+    const onTheDay = all.filter(
+      (i) => !i.done && !i.time && fixed(i) && i.date >= fromISO && i.date <= lastISO
     );
 
     const placements = [];
@@ -238,8 +254,13 @@
 
       // The earliest this could possibly happen. A notBefore later than the
       // deadline is a contradiction, so the deadline wins — see priority.js.
-      const earliest =
+      const waitUntil =
         it.notBefore && !(it.date && it.notBefore > it.date) ? it.notBefore : "";
+      // AND SOMETHING THAT HAPPENS AT A TIME CANNOT HAPPEN BEFORE IT. The week
+      // booked a meeting dated Thursday into this afternoon and wrote "ahead of
+      // Thursday" next to it, which is not a thing you can be about a meeting.
+      const fixedAt = window.OrganiserPriority.fixedInTime(it) ? it.date : "";
+      const earliest = fixedAt > waitUntil ? fixedAt : waitUntil;
 
       // A JOB TOO BIG FOR ONE DAY IS DONE IN SITTINGS.
       //
@@ -334,7 +355,7 @@
     placements.forEach((p) => byDay[p.iso].push(p));
     Object.keys(byDay).forEach((iso) => byDay[iso].sort((a, b) => a.start - b.start));
 
-    return { from: fromISO, days: span, dates, placements, wontFit, byDay };
+    return { from: fromISO, days: span, dates, placements, wontFit, byDay, onTheDay };
   }
 
   // Which jobs the week says to get on with today — including ones not due

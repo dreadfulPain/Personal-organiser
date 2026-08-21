@@ -563,7 +563,7 @@
     records = Array.isArray(data.records) ? data.records : [];
     config = data.recordConfig || null;
     contacts = Array.isArray(data.contacts) ? data.contacts : [];
-    if (config && config.title) $("#clTitle").textContent = "The class — " + config.title;
+    if (config && config.title) $("#clTitle").textContent = "Skills — " + config.title;
     $("#ckBtn").addEventListener("click", renderChecklist);
     $("#exportAllBtn").addEventListener("click", exportAll);
     $("#folderBtn").addEventListener("click", saveIntoFolders);

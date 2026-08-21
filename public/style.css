@@ -172,11 +172,30 @@ body {
 /* the tab bar — one room per question */
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 4px 18px;
   flex-wrap: wrap;
+  align-items: baseline;
   margin: 0 0 22px;
   border-bottom: 1px solid var(--line);
   padding-bottom: 8px;
+}
+/* Sixteen links in a row is a wall. Grouped, with the group said out loud —
+   the label is what lets you skip four tabs at a glance instead of reading
+   them. */
+.tabgroup {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.tabgroup-name {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  opacity: 0.7;
+  margin-right: 5px;
+  white-space: nowrap;
 }
 .tabs a {
   color: var(--ink-soft);
@@ -315,12 +334,21 @@ body {
 /* the glance: title reads as a heading (not an obvious field) — but click to fix */
 .cb-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 .cb-title {
   flex: 1;
   min-width: 0;
+  /* It grows to whatever you wrote — see growTitle(). The floor is not
+     decoration: growTitle sets an inline height, and a card measured before it
+     is on the page measures zero. That collapsed the box to nothing and left a
+     check-back asking you to confirm a blank line. A minimum here means no
+     inline height can ever hide what you typed. */
+  resize: none;
+  overflow: hidden;
+  min-height: 1.6em;
+  line-height: 1.35;
   font: inherit;
   font-size: 1.05rem;
   font-weight: 600;
@@ -4056,4 +4084,82 @@ a.btn {
 .badge.block {
   background: #e7eee9;
   color: #3d5a49;
+}
+
+/* THE WAY IN. Four steps, each saying what it buys you and whether it's done.
+   Not a wizard and not a nag — a page you can come back to. */
+.su-step {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  background: #fffefb;
+}
+.su-step.done {
+  border-left-color: var(--accent);
+  background: #fbfdfb;
+}
+.su-step-h {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+.su-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #efe9df;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  flex: none;
+}
+.su-step.done .su-step-n {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+.su-step-opt {
+  font-size: 0.74rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.su-step-why {
+  margin: 0 0 4px;
+}
+.su-step-how {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+}
+.su-step-state {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+.su-step.done .su-step-state {
+  color: var(--accent-dark);
+}
+.su-step-go {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* Said once, on the page you land on, and gone the moment anything is set up. */
+.new-here {
+  margin: 10px 2px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: #fbfdfb;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.new-here[hidden] {
+  display: none;
 }

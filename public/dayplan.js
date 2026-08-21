@@ -112,6 +112,10 @@
         !dropped.has(i.id) &&
         !i.time &&
         !i.openLoop &&
+        // A meeting is not work to fit into a gap. It happens when it happens —
+        // early is absent, and a slot the app chose for it is a time nobody
+        // agreed to. See fixedInTime().
+        !window.OrganiserPriority.fixedInTime(i) &&
         (!window.OrganiserPriority.droppable(i) || allowOptional) &&
         // WORK DUE BEYOND THE HORIZON IS FILLER, NOT INVISIBLE.
         //

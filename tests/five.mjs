@@ -749,6 +749,35 @@ sec("A date you never gave can never become a failure");
   ok("and one the app dated for you claims nothing",
      PR.reason({ ...old, date: TODAY }, { today: TODAY }) === "",
      PR.reason({ ...old, date: TODAY }, { today: TODAY }));
+  // AND A DATE THE APP SUPPLIED IS NOT A DEADLINE ANYWHERE.
+  //
+  // Anything typed without a date gets today's, so it turns up in front of you
+  // rather than sinking into a pile. Nothing recorded which dates were yours,
+  // so everything downstream treated the two the same — and twenty-four things
+  // typed on one morning came back as twenty-four deadlines due today, all
+  // marked "little room left before it's due", with a real essay deadline on
+  // Friday ranked BELOW every one of them and never planned at all.
+  {
+    const mine = { ...old, id: "m", date: TODAY, datedBy: "you", deadlineType: "soft" };
+    const theirs = { ...old, id: "t", date: TODAY, datedBy: "app", deadlineType: "soft" };
+    ok("a date you gave is one you gave", PR.gaveDate(mine) === true);
+    ok("a date the app gave is not", PR.gaveDate(theirs) === false);
+    // Anything written before the field existed has no answer, and the honest
+    // reading of "I don't know" is "not a promise you made".
+    ok("and something older than the question counts as yours",
+       PR.gaveDate({ ...old, date: TODAY }) === true);
+    // THE ORDERING IS THE POINT. Filler must never outrank work with a real
+    // deadline; that is the whole job of this file.
+    const dueFriday = { ...old, id: "f", date: "2026-09-25", datedBy: "you", deadlineType: "soft" };
+    ok("filler the app dated today does not count as due",
+       PR.rank(theirs, { today: TODAY }) === 4, String(PR.rank(theirs, { today: TODAY })));
+    ok("but a date you gave that has arrived does",
+       PR.rank(mine, { today: TODAY }) === 3, String(PR.rank(mine, { today: TODAY })));
+    ok("so real work is never pushed behind filler",
+       PR.rank(mine, { today: TODAY }) <= PR.rank(theirs, { today: TODAY }));
+    void dueFriday;
+  }
+
   // THE WALL. The app dates whatever you mention, so a fortnight of mentioning
   // things would otherwise be a fortnight of accusations.
   const app = fs.readFileSync(path.join(PUB, "app.js"), "utf8");

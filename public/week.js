@@ -139,9 +139,41 @@
 
     if (plan && plan.wontFit.length) wrap.appendChild(wontFitBox(plan));
 
+    // TODAY IS ASKED OF THE DAY PLANNER, the same one the Day page uses.
+    //
+    // The week only spreads work with a real deadline on it — that is its job.
+    // Undated work is what fills whatever is left of TODAY, and that answer
+    // lives in dayplan.js. Working it out separately here is how this page and
+    // the Day page came to describe the same morning differently.
+    const todaySlots = (() => {
+      const DP = window.OrganiserDayPlan;
+      const DS = window.OrganiserDayShape;
+      const S = window.OrganiserSchedule;
+      if (!DP || !S) return null;
+      const dayCfg = DS && DS.shapeOf ? DS.shapeOf(schedule, t, cfg).config : cfg;
+      try {
+        return DP.build(items, schedule, dayCfg, t, {
+          notBefore: minuteNow(),
+          ctx: { today: t, goalTitle: () => "" },
+        }).slots;
+      } catch {
+        return null;
+      }
+    })();
+
     for (let i = 0; i < DAYS; i++) {
       const iso = addDaysISO(t, i);
-      const placed = plan ? plan.byDay[iso] || [] : [];
+      const booked = plan ? plan.byDay[iso] || [] : [];
+      // TODAY IS BOTH. The day planner says what today's leftover time is
+      // actually going on; the week says what it has set aside for today
+      // against a deadline. Showing only the first dropped work the week had
+      // deliberately booked — an essay pile due Friday disappeared out of the
+      // whole seven days — and showing only the second is how this page and the
+      // Day page came to describe the same morning differently.
+      const placed =
+        i === 0 && todaySlots
+          ? todaySlots.concat(booked.filter((b) => !todaySlots.some((s2) => s2.itemId === b.itemId)))
+          : booked;
       const seen = new Set(placed.map((p) => p.itemId));
       // Placed by the week, plus anything you pinned to a time on this day
       // yourself — your own decision is never quietly dropped from the picture.

@@ -79,6 +79,11 @@ const DATA = {
     { ...base, id:"a", title:"Big thing due Friday", date:FRI, deadlineType:"hard" },
     { ...base, id:"b", title:"Pinned by hand", date:MON, time:"13:00" },
     { ...base, id:"c", title:"No date at all", effort:"quick" },
+    // A date the app supplied — today's, stamped on anything typed without one.
+    // It looks exactly like a date you gave unless something records which.
+    { ...base, id:"d", title:"App said today", date:MON, datedBy:"app", effort:"quick" },
+    // And a real deadline further out, soft rather than hard.
+    { ...base, id:"e", title:"Essays due Friday", date:FRI },
   ],
   schedule: [{ id:"s1", label:"Lessons", start:"09:00", end:"12:00", days:[1,2,3,4,5] }],
   scheduleConfig: { dayStart:"08:00", dayEnd:"17:00" },
@@ -92,7 +97,31 @@ sec("The Week page");
   if (out) {
     ok("the Friday job appears somewhere in the week", /Big thing due Friday/.test(out.text));
     ok("your hand-pinned item is still shown", /Pinned by hand/.test(out.text));
-    ok("undated work isn't invented into the week", !/No date at all/.test(out.text));
+    // UNDATED WORK IS NEVER BOOKED INTO A FUTURE DAY — that would be inventing a
+    // promise you never made, and it is the rule weekplan.js is built on.
+    //
+    // TODAY IS NOT A FUTURE DAY. What fills the rest of today is exactly what
+    // the Day page shows, and this page asks the same planner for it, so the two
+    // can't describe the same morning differently. The old assertion said
+    // "nowhere in the week", which also forbade today and left this page working
+    // it out for itself — that is how a Saturday came to be booked wall to wall
+    // from half seven with sixteen jobs on it.
+    const days = out.roots["#weekList"].children.filter((c) => c.className === "wk-day");
+    const later = days.slice(1).map(textOf).join(" ");
+    ok("undated work is never booked into a day that hasn't come yet",
+       !/No date at all/.test(later), later.slice(0, 200));
+    // NOR IS A DATE THE APP SUPPLIED. It is stamped on anything typed without
+    // one so it surfaces today; treating it as a deadline is how a morning's
+    // typing became a morning's worth of things to be late for.
+    ok("and neither is a date the app supplied", !/App said today/.test(later), later.slice(0, 200));
+
+    // AND A DEADLINE YOU GAVE NEVER VANISHES. This page draws today from the day
+    // planner and the rest of the week from the week planner, and for a while
+    // anything the week had booked for today fell down the gap between them —
+    // an essay pile due Friday was in none of the seven days.
+    ok("a deadline you gave is somewhere in the seven days",
+       /Essays due Friday/.test(out.text), out.text.slice(0, 240));
+    ok("and so is a hard one", /Big thing due Friday/.test(out.text), out.text.slice(0, 240));
     ok("it produced seven days", out.roots["#weekList"].children.filter(c=>c.className==="wk-day").length === 7,
        out.roots["#weekList"].children.map(c=>c.className).join(","));
   }

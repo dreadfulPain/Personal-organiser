@@ -47,6 +47,20 @@
   //
   // The app used to treat every date as a deadline, so a meeting on Thursday
   // was cheerfully booked into this afternoon and labelled "ahead of Thursday".
+  // DID YOU SAY WHEN, OR DID THE APP?
+  //
+  // Anything typed without a date gets today's, so it turns up in front of you
+  // rather than sinking into a pile. That is right, and it is NOT a deadline.
+  // Everything that reasons about lateness, pressure or running out of room has
+  // to ask this first — otherwise a morning's typing becomes a morning's worth
+  // of deadlines the app invented and then warned you about.
+  //
+  // Anything written before this field existed has no answer, and the honest
+  // reading of "I don't know" is "not a promise you made".
+  function gaveDate(it) {
+    return !!it && !!it.date && it.datedBy !== "app";
+  }
+
   function fixedInTime(it) {
     return !!it && it.type === "appointment" && !!it.date;
   }
@@ -76,7 +90,13 @@
 
   // Lower is more pressing. 0 is reserved for the guard.
   function rank(it, ctx) {
-    const dueNow = it.date && it.date <= ctx.today;
+    // "DUE" MEANS A DATE YOU GAVE HAS ARRIVED. Anything typed without one is
+    // stamped today so it surfaces, and counting that as due put every piece of
+    // undated filler in the same band as a real deadline that had come round —
+    // so eighteen things typed on one morning outranked an essay pile due
+    // Friday, and the Friday pile never got planned at all. Exactly backwards,
+    // and exactly what this file exists to get right.
+    const dueNow = gaveDate(it) && it.date <= ctx.today;
     if (it.deadlineType === "hard" && dueNow) return 0; // always first
     // A DEADLINE GETS MORE URGENT AS THE ROOM IN FRONT OF IT RUNS OUT.
     //
@@ -199,5 +219,6 @@
   }
 
   window.OrganiserPriority = {
+    gaveDate,
     fixedInTime, eligible, rank, reason, ordered, forPlanning, blocked, tier, droppable };
 })();

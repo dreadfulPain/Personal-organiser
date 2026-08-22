@@ -153,6 +153,24 @@
     return todayISO();
   }
 
+  // DID YOU SAY WHEN, OR DID THE APP?
+  //
+  // Something typed with no date on it gets today's, so it turns up in front of
+  // you rather than vanishing into a pile nobody looks at. That is right, and it
+  // is not a deadline — but nothing recorded the difference, so everything
+  // downstream treated the two the same.
+  //
+  // What that looked like: twenty-four things typed on one morning, none of them
+  // with a date in the sentence, all stamped today, and the app then worked out
+  // that twenty-four things were due today with no room for them — so all of it
+  // came back marked "little room left before it's due". Twenty-four deadlines
+  // it had invented and was now warning you about.
+  //
+  // One field, set once, here at the front door.
+  function datedBy(item) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(item.date || "") ? "you" : "app";
+  }
+
   // One reading of a clock time, shared by everything here. The same rule the
   // schedule spine uses — one or two digits for the hour, and anything that
   // isn't a time becomes nothing rather than midnight. Written out here rather
@@ -174,6 +192,7 @@
       title: item.title,
       type: item.type || "task",
       date: dateFor(item),
+      datedBy: datedBy(item),
       // TIDIED ON THE WAY IN, not trusted. This is the front door on every
       // page, and it used to keep whatever it was handed — so a time written
       // "9:05" was stored unpadded, the planner read it as 09:05 and pinned the

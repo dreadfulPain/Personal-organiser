@@ -4201,3 +4201,18 @@ a.btn {
 .cb-learn-no {
   color: var(--ink-soft);
 }
+
+/* What kind of day it is, when it isn't an ordinary working one. Said in the
+   same words the Day page uses — see OrganiserDayShape.words(). */
+.zone-shape {
+  margin: -8px 2px 10px;
+  padding: 8px 11px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: #fbfdfb;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.zone-shape[hidden] {
+  display: none;
+}

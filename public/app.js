@@ -795,6 +795,12 @@
         // always: a date the app supplied, rather than one you gave, must never
         // be able to turn into a missed deadline.
         date: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : it.someday ? "" : todayISO(),
+        // AND WHO CHOSE IT. The comment above already says a date the app
+        // supplied must never turn into a missed deadline — this is the field
+        // that lets anything downstream tell which is which. Without it,
+        // twenty-four things typed on one morning became twenty-four deadlines
+        // due today, and the app warned you about every one of them.
+        datedBy: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? "you" : "app",
         time: normaliseTime(it.time),
         deadlineType: it.deadlineType === "hard" ? "hard" : "soft",
         importance: IMPORTANCE.includes(it.importance) ? it.importance : "normal",
@@ -1203,6 +1209,7 @@
     fillZone("#comingItems", groups.coming, "Nothing coming up yet.");
     fillZone("#somedayItems", groups.someday, "No parked ideas right now.");
 
+    renderTodayShape();
     $("#todayCount").textContent = groups.today.length ? groups.today.length : "";
     $("#comingCount").textContent = groups.coming.length ? groups.coming.length : "";
     $("#somedayCount").textContent = groups.someday.length ? groups.someday.length : "";
@@ -2145,6 +2152,25 @@
   // where to start, and the timetable — the thing everything else fits around —
   // was behind a collapsed panel on another page. This says so once, on the
   // page you land on, and disappears the moment anything at all is set up.
+  // WHAT KIND OF DAY IS IT? The Day page has always said — "a day of your own,
+  // no lessons" — and this page never asked, so a Saturday morning showed
+  // eighteen jobs under the word "Today" exactly as a Wednesday would. Nothing
+  // is hidden: you may well want to do one of them. But eighteen things listed
+  // under a heading that says nothing is eighteen obligations, and on a day off
+  // that is the app making the pressure it exists to take away.
+  //
+  // Asked of the same module the Day page asks, so the two can never say
+  // different things about the same morning.
+  function renderTodayShape() {
+    const el = $("#todayShape");
+    if (!el) return;
+    const D = window.OrganiserDayShape;
+    if (!D || !D.shapeOf) { el.hidden = true; return; }
+    const said = D.words(D.shapeOf(schedule, todayISO(), scheduleConfig));
+    el.textContent = said;
+    el.hidden = !said;
+  }
+
   function renderNewHere() {
     const el = $("#newHere");
     if (!el) return;

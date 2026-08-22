@@ -425,7 +425,10 @@
   // line comes back untouched.
   function cutIfClean(text, phrase, leaders) {
     const esc = String(phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const lead = `(?:\\b(?:${leaders})\\s+)?`;
+    // "due THE 25th of September" — the article sits between the word that
+    // introduces the date and the date itself, and leaving it behind gives you
+    // "write the mid-term reports, due the".
+    const lead = `(?:\\b(?:${leaders})\\s+)?(?:the\\s+)?`;
     const tail = new RegExp(`\\s*${lead}${esc}\\s*$`, "i");
     if (tail.test(text)) {
       const left = text.replace(tail, "").replace(/[\s,;:-]+$/, "").trim();
@@ -467,7 +470,9 @@
     // "till" and "until" are deliberately NOT lead-ins here. "start till sept
     // 1st" would otherwise be cut as one phrase, leaving "the kids dont start"
     // — which reads fine and means the opposite of what was written.
-    if (when.matched) title = cutIfClean(title, when.matched, "on|by|before|for|due");
+    // "deadline" and "due" only introduce a date — take the date and leave them
+    // behind and you get "fill in the risk assessment for the trip, deadline".
+    if (when.matched) title = cutIfClean(title, when.matched, "on|by|before|for|due|deadline|deadline is|due date");
     // "urgent: send the form" — the "urgent" has already been READ, into
     // importance. Leaving it in the title says it twice, and the title is what
     // follows the task into every reminder, every export, every printed list.

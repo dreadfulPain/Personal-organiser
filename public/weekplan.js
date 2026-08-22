@@ -136,8 +136,13 @@
     const c = S.normaliseConfig(cfg);
     const span = Math.max(1, Math.min(180, Number(days) || c.planHorizonDays));
     const droppable = window.OrganiserPriority.droppable;
+    // ONLY DEADLINES YOU ACTUALLY GAVE. A date the app supplied — today's, on
+    // anything typed without one — is not something to be late for, and
+    // counting it here is how a morning of typing came back as a morning of
+    // things with "little room left before it's due" against them.
+    const gave = window.OrganiserPriority.gaveDate;
     const all = (Array.isArray(items) ? items : []).filter(
-      (i) => i && !i.done && !i.openLoop && !droppable(i) && i.date
+      (i) => i && !i.done && !i.openLoop && !droppable(i) && gave(i)
     );
     if (!all.length) return [];
 
@@ -215,6 +220,13 @@
 
     // Only dated work gets spread. Something with no date has no deadline to
     // miss — it's what the day plan uses to fill whatever's left over.
+    //
+    // AND "DATED" MEANS A DATE YOU GAVE. The app stamps today's date on
+    // anything typed without one, so everything looked dated and everything got
+    // spread: a Saturday came back booked wall to wall from half seven with
+    // sixteen jobs on it, on the same morning the home page called it a day of
+    // your own. The rule above was right all along and had quietly stopped
+    // applying to anything.
     // Droppable work is deliberately NOT spread. Booking a nice-to-have into
     // next Tuesday makes it a commitment by the back door, and the whole point
     // is that it only ever gets what's genuinely left over on the day. But an
@@ -224,7 +236,8 @@
     const fixed = window.OrganiserPriority.fixedInTime;
     const candidates = all.filter(
       (i) =>
-        !i.done && !i.openLoop && !droppable(i) && !i.time && i.date && i.date <= lastISO &&
+        !i.done && !i.openLoop && !droppable(i) && !i.time &&
+        window.OrganiserPriority.gaveDate(i) && i.date <= lastISO &&
         // A MEETING WITH NO TIME ON IT IS NOT A GAP TO FILL. Left in, it was
         // treated as work whose wait clears that morning, so the week put it in
         // the LAST gap of the day — and "meet my mentor Thursday morning" came

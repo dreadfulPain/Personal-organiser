@@ -4169,3 +4169,35 @@ a.btn {
 .new-here[hidden] {
   display: none;
 }
+
+/* Offered only at the moment you have just corrected the app, and only when
+   there is a word it could plausibly learn. One tap, or "no, just this one". */
+.cb-learn {
+  margin: 6px 0 2px;
+  font-size: 0.86rem;
+  line-height: 1.9;
+}
+.cb-learn[hidden] {
+  display: none;
+}
+.cb-learn-q {
+  color: var(--ink-soft);
+  margin-right: 4px;
+}
+.cb-learn-w,
+.cb-learn-no {
+  font: inherit;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.cb-learn-w:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.cb-learn-no {
+  color: var(--ink-soft);
+}

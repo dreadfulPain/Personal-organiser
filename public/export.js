@@ -19,11 +19,12 @@
   function newestFirst(a, b) {
     return (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || "");
   }
-  function friendlyDate(iso) {
-    if (!iso) return "";
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  }
+  // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
+  // kept their own copy of this, each subtly different, and none of them said
+  // which year a date was in. Fixing the shared one changed nothing on screen,
+  // because almost nothing was using it.
+  const friendlyDate = (iso) =>
+    OrganiserDates.dayWords(iso, { weekday: false, relative: false, year: true });
   function latestLevels(recs) {
     const m = new Map();
     recs.forEach((r) => {
@@ -127,7 +128,7 @@
   }
 
   function docShell(title, inner) {
-    const prepared = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+    const prepared = OrganiserDates.dayWords(stamp(), { weekday: false, relative: false, year: true, long: true });
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
 <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#333;line-height:1.6}
 h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.05rem;margin:26px 0 2px;border-bottom:1px solid #ddd;padding-bottom:4px}

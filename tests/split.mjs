@@ -47,7 +47,10 @@ import fs from "node:fs";
 const app = fs.readFileSync(`${REPO_ROOT}/public/app.js`,"utf8");
 ok("the no-AI path uses it", /fetch\("\/api\/split"/.test(app));
 ok("only for something worth splitting", /text\.length > 40/.test(app));
-ok("each part still goes through the pattern reader", /OrganiserQuickParse\.parseAll\(t, \{ contacts \}\)/.test(app));
+// Not pinned to the exact words of the call: that broke on a correct change
+// and never said anything about what the reader was actually given.
+ok("each part still goes through the pattern reader",
+   /OrganiserQuickParse\.parseAll\(t,\s*\{[^}]*contacts/.test(app));
 // And a part can itself be two jobs — the splitter cuts at line breaks and full
 // stops, which "update the laptop and sign into 365" has neither of.
 ok("and a part that is two jobs is cut again", /parts\.flatMap\(/.test(app));

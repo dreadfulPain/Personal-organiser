@@ -1419,6 +1419,7 @@
         <p id="ttStatus" class="su-status" hidden></p>
       </div>
       <div id="makeUp" class="su-makeup"></div>
+      <div id="fixedWords" class="su-makeup"></div>
       <div id="ttReview"></div>
       <div id="blockAdd"></div>
       <div id="blockList" class="su-list"></div>`;
@@ -1427,6 +1428,7 @@
     $("#ttPdf").addEventListener("change", readTimetablePdf);
     $("#icsFile").addEventListener("change", readIcs);
     renderMakeUp();
+    renderFixedWords();
     $("#addBlockBtn").addEventListener("click", () => {
       addingBlock = !addingBlock;
       renderSetup();
@@ -1435,6 +1437,42 @@
     if (unreadableRows.length) $("#ttReview").appendChild(unreadableBox());
     if (pastedBlocks) $("#ttReview").appendChild(reviewTable());
     renderBlockList();
+  }
+
+  // THE WORDS THAT MEAN "THIS HAPPENS AT A TIME", shown so they can be changed.
+  //
+  // A vocabulary you cannot see is not yours, and this one decides something
+  // that matters: whether the app may plan a thing earlier than the day it is
+  // on. It learns a word whenever you change something to an Event on the
+  // check-back, which is the ordinary way it fills up — this is where you look
+  // if it learned one it shouldn't have.
+  function renderFixedWords() {
+    const box = $("#fixedWords");
+    if (!box) return;
+    const c = S().normaliseConfig(cfg);
+    box.innerHTML = `
+      <details class="p-setup">
+        <summary>Words that mean something happens at a time (${c.fixedWords.length})</summary>
+        <p class="muted">A deadline means have it finished by then, so the app looks for
+          room earlier. These words mean the opposite — the thing happens when it happens,
+          and turning up early is not being ahead of it. Anything with one of these in it
+          is read as an Event, which you can always change on the check-back.</p>
+        <p class="muted">It adds a word here whenever you correct it. Edit the list however
+          you like; leave it empty and nothing is ever read as fixed.</p>
+        <label class="ls-full">One per line
+          <textarea id="fwText" rows="5">${escapeHtml(c.fixedWords.join("\n"))}</textarea>
+        </label>
+        <button type="button" id="fwSave" class="btn">Keep these words</button>
+      </details>`;
+    const btn = $("#fwSave");
+    if (btn)
+      btn.addEventListener("click", () => {
+        const list = ($("#fwText").value || "").split(/\r?\n/).map((w) => w.trim()).filter(Boolean);
+        cfg = { ...S().normaliseConfig(cfg), fixedWords: list };
+        persist();
+        renderSetup();
+        setSuStatus(`Keeping ${list.length} word${list.length === 1 ? "" : "s"}. ✓`);
+      });
   }
 
   function setSuStatus(msg) {

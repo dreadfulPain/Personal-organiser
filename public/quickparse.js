@@ -33,6 +33,14 @@
     d.setDate(d.getDate() + n);
     return isoOf(d);
   };
+  // The same, counted from a date rather than from today — "a week on Friday"
+  // is seven days after the Friday, not seven days after now.
+  const plusFrom = (iso, n) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return "";
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return isoOf(d);
+  };
 
   const DAYS = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
   const SHORT = { sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, weds: 3, thu: 4, thur: 4, thurs: 5 - 1, fri: 5, sat: 6 };
@@ -64,14 +72,39 @@
       }
     };
 
+    // BEFORE the plain "today" and "tomorrow" below, which sit inside them —
+    // take() keeps the first pattern that hits, so "a week today" was reading as
+    // today and "a week tomorrow" as tomorrow.
+    take(/\ba week (today|tomorrow)\b/, (m) => plus(m[1] === "tomorrow" ? 8 : 7));
+    take(/\ba fortnight (today|tomorrow)\b/, (m) => plus(m[1] === "tomorrow" ? 15 : 14));
     take(/\b(today|tonight|this evening)\b|今天|今晚|今日/, () => plus(0));
     take(/\bday after tomorrow\b|后天|後天/, () => plus(2));
     take(/\b(tomorrow|tmrw|tmw)\b|明天|明日/, () => plus(1));
     take(/\byesterday\b|昨天/, () => plus(-1));
+    // A WEEK FURTHER OUT THAN THE NEXT ONE. These come FIRST, because take()
+    // keeps the first pattern that hits and every shorter phrase is sitting
+    // inside these ones. "A week on Friday", asked on a Friday, was reading as
+    // today; "hand the reports in a week on Friday" was reading the "in a week"
+    // and stopping there, a week early.
+    const DAY_RE = "sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues?|weds?|thur?s?|fri|sat";
+    const dayNum = (w) => (DAYS[w] !== undefined ? DAYS[w] : SHORT[w]);
+    take(new RegExp(`\\ba week (?:on|from)\\s+(${DAY_RE})\\b`), (m) => plusFrom(nextWeekday(dayNum(m[1])), 7));
+    take(new RegExp(`\\ba fortnight (?:on|from)\\s+(${DAY_RE})\\b`), (m) => plusFrom(nextWeekday(dayNum(m[1])), 14));
+    // "Friday week" is the same thing said the other way round.
+    take(new RegExp(`\\b(${DAY_RE})\\s+week\\b`), (m) => plusFrom(nextWeekday(dayNum(m[1])), 7));
+    take(/\bin a fortnight\b|\bin two weeks\b/, () => plus(14));
+    // The last day of this month — "the reports are due end of the month".
+    take(/\bend of (?:the )?month\b|月底/, () => {
+      const n = new Date();
+      const last = new Date(n.getFullYear(), n.getMonth() + 1, 0);
+      return isoOf(last);
+    });
+
     take(/\bin (\d+) days?\b/, (m) => plus(Math.min(365, +m[1])));
     take(/\bin (a|one|\d+) weeks?\b/, (m) => plus(7 * (m[1] === "a" || m[1] === "one" ? 1 : Math.min(52, +m[1]))));
     take(/\bnext week\b|下周|下週|下星期/, () => plus(7));
     take(/\bend of (the )?week\b/, () => nextWeekday(5));
+
     // "next friday" / "on friday" / "fri"
     take(/\b(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/, (m) => nextWeekday(DAYS[m[2]], !!m[1]));
     take(/\b(next\s+)?(sun|mon|tues?|weds?|thur?s?|fri|sat)\b/, (m) => {
@@ -105,6 +138,17 @@
     });
     // Bare numbers: day-first, which is how it's written outside the US. Only
     // when it can't be anything else, so a wrong reading is rare and visible.
+    // A DASH IS USUALLY A RANGE. "exercise 4-6" and "periods 1-3" are far more
+    // common than a dashed date, so a bare "10-09" is deliberately not read —
+    // guessing there would turn a page reference into a deadline. With a year
+    // on the end there is nothing else it can be, so that one is taken.
+    take(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/, (m) => {
+      const day = +m[1];
+      const mo = +m[2];
+      if (day > 31 || mo > 12) return "";
+      const yr = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+      return `${yr}-${pad2(mo)}-${pad2(day)}`;
+    });
     take(/\b(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\b/, (m) => {
       const day = +m[1];
       const mo = +m[2];
@@ -141,6 +185,12 @@
   const LEADIN = /\b(?:after|once|not before|no earlier than|following)\s+|之后|以后|過後/i;
   function readNotBefore(text) {
     const s = String(text || "");
+    // "THE DAY AFTER TOMORROW" IS THE NAME OF A DAY, not a thing you can only
+    // start after. Read as a lead-in, the "after tomorrow" was cut out before
+    // the date reader ever saw it, and the phrase came back with no date at all.
+    // The idiom is "<a day word> after <a day word>" and nothing else looks
+    // like it.
+    if (/\b(?:the\s+)?day\s+after\s+(?:tomorrow|today)\b/i.test(s)) return { date: "", matched: "" };
     const m = LEADIN.exec(s);
     if (!m) return { date: "", matched: "" };
     // CJK lead-ins trail the date ("周五之后"); English ones lead it.
@@ -251,13 +301,32 @@
   // word — not merely for having mentioned a person.
   const PROMISE =
     /\b(promis\w+|i said i|said i(?:'?d| would| will)|told (?:\w+ ){1,3}i|owe \w+|get back to|come back to|report back|let (?:\w+ ){1,3}know)\b|答应|说好/i;
-  // AN ARRANGEMENT WITH SOMEBODY, rather than work with a date on it. Kept to
-  // words that mean the thing itself in ordinary English — no school words, no
-  // list of the kinds of meeting a school happens to hold.
+  // AN ARRANGEMENT, rather than work with a date on it.
+  //
+  // The words come from YOUR list — scheduleConfig.fixedWords, handed in on the
+  // context — because there is no fixed set of them. This was four words baked
+  // into the code, so a lesson observation, a parents evening and a duty were
+  // all read as work to be done early. The four are still the fallback for
+  // anything that hasn't got a config to hand.
   //
   // "meet the deadline" is not an arrangement, and it says so itself: HARD
   // matches it, and a sentence about a deadline is about a deadline.
-  const ARRANGE = /\b(meet|meets|meeting|appointment|interview)\b/i;
+  const ARRANGE_FALLBACK = ["meet", "meets", "meeting", "appointment", "interview"];
+  function saysArranged(text, words) {
+    // AN EMPTY LIST IS A REAL ANSWER. It means "read nothing as fixed, I will
+    // say so myself", and the config keeps it for exactly that reason — so it
+    // must not quietly become the fallback here. Only the absence of a list at
+    // all (a caller with no config to hand) falls back.
+    const list = Array.isArray(words) ? words : ARRANGE_FALLBACK;
+    const hay = " " + String(text).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ") + " ";
+    return list.some((w) => {
+      const t = String(w || "").trim().toLowerCase();
+      if (!t) return false;
+      // A phrase is looked for as a phrase; a single word only as a whole word,
+      // so "meet" never matches inside "meeting the standard".
+      return hay.includes(" " + t + " ");
+    });
+  }
   const QUICK = /\b(quick|quickly|just|briefly|two minutes|5 ?min)\b/i;
   const BIG = /\b(whole|all of|write up|draft|plan out|big|entire|redo)\b/i;
 
@@ -429,7 +498,10 @@
       // difference decides whether the planner may move it earlier, so it is
       // read here and shown in the check-back as "Event" — where you can see
       // it and change it before anything is kept.
-      type: ARRANGE.test(raw) && !HARD.test(raw) && (when.date || when.time) ? "appointment" : "task",
+      type:
+        saysArranged(raw, ctx && ctx.fixedWords) && !HARD.test(raw) && (when.date || when.time)
+          ? "appointment"
+          : "task",
       date: when.date,
       // Earliest it could happen. Never later than the deadline — if reading it
       // produced a contradiction, the reading was wrong, so it's dropped.

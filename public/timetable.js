@@ -435,7 +435,11 @@
       return "Nothing in there looked like a timetable. A grid with the times down " +
         "one side and the days across the top is what it reads best.";
     const days = r.days.length;
-    return `${r.blocks.length} lesson${r.blocks.length === 1 ? "" : "s"} read` +
+    // "BLOCKS", NOT "LESSONS". This file says at the top that nothing in it
+    // knows what a lesson is — and then told you it had read twenty-one of
+    // them, when five were form time, two were duties and two were meetings.
+    // Blocks is what the code calls them and what the save button says.
+    return `${r.blocks.length} block${r.blocks.length === 1 ? "" : "s"} read` +
       (days ? `, across ${days} day${days === 1 ? "" : "s"}` : "") + ". " +
       (r.note ? r.note + " " : "") +
       "Check them and take out anything that shouldn't be there.";

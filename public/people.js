@@ -39,11 +39,11 @@
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
   const todayISO = () => isoOf(new Date());
-  function friendlyDate(iso) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  }
+  // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
+  // kept their own copy of this, each subtly different, and none of them said
+  // which year a date was in. Fixing the shared one changed nothing on screen,
+  // because almost nothing was using it.
+  const friendlyDate = (iso) => OrganiserDates.dayWords(iso, { weekday: false, relative: false });
   function rangeCutoff() {
     if (range === "all") return "";
     const d = new Date();

@@ -95,6 +95,27 @@
     // What a "be there on time" job is called. Yours to reword — the app never
     // reads these, it only writes them.
     thereTitle: "Be at {block}",
+    // WORDS THAT MEAN "THIS HAPPENS AT A TIME".
+    //
+    // A deadline says have it done BY Thursday, and the app is right to look for
+    // room on Tuesday. A meeting on Thursday is not the same sentence: turning
+    // up on Tuesday is not being ahead of it, it is being absent. The app could
+    // only tell the two apart for four words — so a lesson observation, a
+    // parents evening and a duty were all filed as work to be done early.
+    //
+    // A LIST, NOT A RULE IN THE CODE, for the same reason the kinds of record
+    // and the names of levels are lists: these are your words, and the ones
+    // below are only where they start. The app adds to it when you correct it —
+    // change something to an Event on the check-back and the word it didn't
+    // know is remembered — and you can edit it whenever.
+    //
+    // Entries can be more than one word; each is looked for as a phrase.
+    fixedWords: [
+      "meet", "meeting", "appointment", "interview",
+      "assembly", "briefing", "observation", "observing",
+      "parents evening", "open evening", "inset", "induction", "conference",
+      "one to one", "training day",
+    ],
     leaveTitle: "Leave for {block}",
     // WHEN SOMETHING SUDDENLY TAKES OVER. Set the moment you say it has, cleared
     // when you say you're back. While it's set the app plans nothing and pings
@@ -131,6 +152,14 @@
     if (toMin(c.prepRemindAt) !== null) out.prepRemindAt = c.prepRemindAt;
     if (typeof c.prepTitle === "string" && c.prepTitle.trim()) out.prepTitle = c.prepTitle.trim().slice(0, 80);
     if (typeof c.thereTitle === "string" && c.thereTitle.trim()) out.thereTitle = c.thereTitle.trim().slice(0, 80);
+    // Yours to change, and an empty list is a real answer — it means "read
+    // nothing as fixed, I will say so myself" — so it is honoured rather than
+    // quietly replaced with the defaults.
+    if (Array.isArray(c.fixedWords)) {
+      out.fixedWords = [...new Set(
+        c.fixedWords.map((w) => String(w || "").trim().toLowerCase()).filter(Boolean).slice(0, 200)
+      )];
+    }
     if (typeof c.leaveTitle === "string" && c.leaveTitle.trim()) out.leaveTitle = c.leaveTitle.trim().slice(0, 80);
     if (c.away && typeof c.away === "object" && c.away.startedAt) {
       out.away = { label: String(c.away.label || "").slice(0, 80), startedAt: String(c.away.startedAt) };

@@ -148,6 +148,69 @@
   // input, so anything longer than the box was clipped mid-word with the rest
   // of the sentence out of sight — and this is the one moment the app asks you
   // to confirm it read you correctly.
+  // The words that mean "this happens at a time" — yours, kept with the rest of
+  // your week's settings. See scheduleConfig.fixedWords in schedule.js.
+  function fixedWords() {
+    const S = window.OrganiserSchedule;
+    return S ? S.normaliseConfig(scheduleConfig).fixedWords : null;
+  }
+
+  // Ordinary words carry no meaning about WHEN a thing is, so offering them
+  // would only invite a tap that makes the app read half of everything as an
+  // appointment.
+  const ORDINARY = new Set(
+    ("the a an and or of for to at in on by with about from is was be do did get got put my me you your "
+      + "it this that then them they we us our new old all any some not no yes i im ill id have has had "
+      + "need needs want wants go going see seen make made take taken next last week day time again "
+      + "morning afternoon evening night today tomorrow yesterday mon tue wed thu fri sat sun january "
+      + "february march april may june july august september october november december jan feb mar apr "
+      + "jun jul aug sep oct nov dec").split(" ")
+  );
+
+  // WHICH WORD MADE IT ONE? The app does not know, and guessing was worse than
+  // not learning: told that "sarah wants to observe my 9c lesson" is an Event,
+  // it took the first word that wasn't ordinary English and learned "sarah" —
+  // so from then on everything mentioning her was an appointment.
+  //
+  // So it asks. One tap, on the words it could plausibly mean, offered only at
+  // the moment you have just corrected it — and "none of these" is right there,
+  // because sometimes it is a one-off and there is no word to learn.
+  function offerToLearn(card, title) {
+    const box = card.querySelector(".cb-learn");
+    const S = window.OrganiserSchedule;
+    if (!box || !S) return;
+    const cfg = S.normaliseConfig(scheduleConfig);
+    const known = new Set(cfg.fixedWords);
+    const names = new Set(
+      (contacts || []).flatMap((c) => String((c && c.name) || "").toLowerCase().split(/\s+/)).filter(Boolean)
+    );
+    const words = [...new Set(
+      String(title || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+    )].filter((w) => w.length > 3 && !ORDINARY.has(w) && !names.has(w) && !known.has(w) && !/^\d+$/.test(w));
+    // Nothing worth offering — either no candidate words, or the sentence
+    // already has a word it knows in it, so it was read as an Event anyway and
+    // you were correcting something else about it.
+    const already = [...known].some((w) =>
+      (" " + String(title || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ") + " ")
+        .includes(" " + w + " "));
+    if (!words.length || already) return;
+    box.hidden = false;
+    box.innerHTML =
+      `<span class="cb-learn-q">Is one of these words what makes it happen at a set time?</span> ` +
+      words.slice(0, 6).map((w) => `<button type="button" class="cb-learn-w">${escapeHtml(w)}</button>`).join(" ") +
+      ` <button type="button" class="cb-learn-no">no, just this one</button>`;
+    box.querySelectorAll(".cb-learn-w").forEach((b) =>
+      b.addEventListener("click", () => {
+        const word = b.textContent;
+        scheduleConfig = { ...cfg, fixedWords: cfg.fixedWords.concat([word]) };
+        OrganiserStore.save({ scheduleConfig });
+        box.hidden = true;
+        setStatus(`Noted — anything with "${word}" in it happens at a set time. Change that under your week's shape.`);
+      })
+    );
+    box.querySelector(".cb-learn-no").addEventListener("click", () => { box.hidden = true; });
+  }
+
   function growTitle(el) {
     if (!el) return;
     el.style.height = "auto";
@@ -172,14 +235,11 @@
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   }
 
-  function friendlyDate(iso) {
-    if (!iso) return "";
-    const t = todayISO();
-    if (iso === t) return "Today";
-    if (iso === addDaysISO(t, 1)) return "Tomorrow";
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-  }
+  // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
+  // kept their own copy of this, each subtly different, and none of them said
+  // which year a date was in. Fixing the shared one changed nothing on screen,
+  // because almost nothing was using it.
+  const friendlyDate = (iso) => OrganiserDates.dayWords(iso);
   // An optional "undo" rides along on the status line. Rule 4: small reversible
   // things just happen, and the way back is one tap — never an "are you sure?"
   // asked before the fact.
@@ -517,6 +577,7 @@
           <button class="cb-remove" type="button" aria-label="Remove this">remove</button>
         </div>
         <div class="cb-summary">${escapeHtml(checkbackSummary(it))}</div>
+        <div class="cb-learn" hidden></div>
         <button class="cb-adjust" type="button" aria-expanded="false">Adjust details</button>
         <div class="cb-controls" hidden>
           <div class="cb-row">
@@ -583,7 +644,14 @@
       });
       growTitle(titleBox);
       card.querySelector(".cb-type").addEventListener("change", (e) => {
+        const was = pending[i].type;
         pending[i].type = e.target.value;
+        // YOU CORRECTING IT IS THE APP BEING TOLD. Changing something to an
+        // Event says "this kind of thing happens at a time", and the word that
+        // makes it that kind of thing is sitting in the title. Remember it, and
+        // the next parents evening — or observation, or fire drill — is read
+        // right without anybody typing a list.
+        if (e.target.value === "appointment" && was !== "appointment") offerToLearn(card, pending[i].title);
         refreshSummary();
       });
       card.querySelector(".cb-date").addEventListener("change", (e) => {
@@ -678,7 +746,7 @@
     // didn't want is one tap to undo.
     const made = parts.flatMap((t) =>
       window.OrganiserQuickParse
-        ? OrganiserQuickParse.parseAll(t, { contacts })
+        ? OrganiserQuickParse.parseAll(t, { contacts, fixedWords: fixedWords() })
         : [{ title: t, type: "task", date: "", time: "", deadlineType: "soft", importance: "normal", effort: "medium", tags: [], whenText: "", goalId: "", openLoop: false, promisedTo: "", remindAt: "", remindedAt: null }]
     );
     pending = made;

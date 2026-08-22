@@ -43,12 +43,11 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
-  function friendlyDate(iso) {
-    if (!iso) return "";
-    if (iso === todayISO()) return "today";
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-  }
+  // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
+  // kept their own copy of this, each subtly different, and none of them said
+  // which year a date was in. Fixing the shared one changed nothing on screen,
+  // because almost nothing was using it.
+  const friendlyDate = (iso) => OrganiserDates.dayWords(iso, { lower: true });
 
   // Seeded ONCE if absent, then fully user-owned. These strings are data, not
   // behaviour — the vocabulary, each kind's optional detail fields, the profile

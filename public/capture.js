@@ -403,7 +403,12 @@
       barState.items = barState.items || [];
       const QP = window.OrganiserQuickParse;
       const guesses = QP
-        ? QP.parseAll(text, { contacts: barState.contacts || [] })
+        ? QP.parseAll(text, {
+            contacts: barState.contacts || [],
+            fixedWords: window.OrganiserSchedule
+              ? OrganiserSchedule.normaliseConfig(barState.scheduleConfig).fixedWords
+              : null,
+          })
         : [{ title: text, type: "task" }];
       // ONE THING GOES STRAIGHT IN. Capture is meant to be a single tap, and
       // making you confirm "call the dentist" would take that away.
@@ -503,6 +508,10 @@
       recordConfig: data.recordConfig || null,
       portfolio: data.portfolio || null,
       contacts: data.contacts || [],
+      // The words that mean "this happens at a time". The same box on eleven
+      // other pages has to read a sentence the same way the home page does —
+      // one question, one answer, wherever you happen to be standing.
+      scheduleConfig: data.scheduleConfig || null,
       aiAvailable: false,
     };
     if (OrganiserStore.mode === "file") {

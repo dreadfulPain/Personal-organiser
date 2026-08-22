@@ -42,16 +42,28 @@
     const o = opts || {};
     const today = isoOf(new Date());
     if (o.relative !== false) {
-      if (iso === today) return "Today";
+      // Some places say it mid-sentence ("noted today") and want it lower case.
+      // That was one of the small differences that had six pages each keeping
+      // their own copy of this function.
+      const said = (w) => (o.lower ? w.toLowerCase() : w);
+      if (iso === today) return said("Today");
       const d = at(today);
       d.setDate(d.getDate() + 1);
-      if (iso === isoOf(d)) return "Tomorrow";
+      if (iso === isoOf(d)) return said("Tomorrow");
       d.setDate(d.getDate() - 2);
-      if (iso === isoOf(d)) return "Yesterday";
+      if (iso === isoOf(d)) return said("Yesterday");
     }
-    const fmt = { day: "numeric", month: "short" };
+    // A document handed to somebody else writes the month out — "22 August
+    // 2026" rather than "22 Aug" — and that is the only difference, so it lives
+    // here rather than in two more private copies of this function.
+    const fmt = { day: "numeric", month: o.long ? "long" : "short" };
     if (o.weekday !== false) fmt.weekday = "short";
-    if (o.year) fmt.year = "numeric";
+    // A DIFFERENT YEAR ALWAYS SAYS SO. "Tue, Feb 2" for something seventeen
+    // months out reads as this coming February — the same words the app uses
+    // for a date six weeks away — and the one number that tells them apart was
+    // the one being left off. Asking for the year still forces it on; not
+    // asking no longer means "hide it even when it matters".
+    if (o.year || iso.slice(0, 4) !== today.slice(0, 4)) fmt.year = "numeric";
     return at(iso).toLocaleDateString(undefined, fmt);
   }
 

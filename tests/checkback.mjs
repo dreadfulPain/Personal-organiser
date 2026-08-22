@@ -21,6 +21,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { open } from "./_dom.mjs";
 import { DATA } from "./_data.mjs";
 import { checker } from "./_check.mjs";
@@ -185,6 +186,86 @@ sec("Naming somebody is not promising them something");
   ok("as is one you actually promised",
      (await said("i promised li wei id look at his working")).promisedTo === "Li Wei",
      JSON.stringify((await said("i promised li wei id look at his working")).promisedTo));
+}
+
+// ---------------------------------------------------------------------------
+sec("Correcting it teaches it, and it asks what it learned");
+{
+  // THE APP CANNOT KNOW WHICH WORDS MEAN "THIS HAPPENS AT A TIME". It had four
+  // baked in, so a lesson observation, a parents evening and a duty were all
+  // read as work to be done early — and turning up early to a meeting is not
+  // being ahead of it.
+  //
+  // Guessing which word was worse than not learning: told that "sarah wants to
+  // observe my 9c lesson" is an Event, it took the first word that wasn't
+  // ordinary English and learned "sarah", so from then on everything mentioning
+  // her was an appointment. So it asks, once, at the moment you correct it.
+  const people = [{ id: "p1", name: "Sarah Coe", group: "staff", details: {}, createdAt: TODAY_ISO }];
+  const r = await open("index.html", { ...DATA, items: [], schedule: [], contacts: people });
+  r.byId.get("dump").value = "sarah wants to observe my 9c lesson thursday";
+  (r.byId.get("sortBtn")._on.click || []).forEach((f) => f({ preventDefault() {} }));
+  await r.settle();
+  await r.settle();
+
+  // ASK THE CARD, not the document. The stand-in browser memoises per element,
+  // so document.querySelector(".cb-type") hands back a different stub from the
+  // one the card wired — firing a change on it does nothing at all, and the
+  // test would pass by never running the thing it is testing.
+  const card = r.created.filter((e) => String(e.className).includes("cb-card"))[0];
+  ok("there is a card to correct", !!card, "no check-back card was drawn");
+  const type = card.querySelector(".cb-type");
+  ok("with a kind on it you can change", !!(type._on && type._on.change), "nothing listens for a change");
+  type.value = "appointment";
+  (type._on.change || []).forEach((f) => f({ target: type }));
+  await r.settle();
+
+  const offer = String(card.querySelector(".cb-learn").innerHTML || "");
+  ok("it asks which word made it one", /what makes it happen at a set time/i.test(offer), offer.slice(0, 140));
+  ok("and offers the word that actually does", />observe</.test(offer), offer.slice(0, 240));
+  // NEVER A PERSON'S NAME. That was the bug: it is the first word in the
+  // sentence that isn't ordinary English, and it means nothing about when.
+  ok("never somebody's name", !/>sarah</i.test(offer), offer.slice(0, 240));
+  ok("never an ordinary word", !/>(wants|the|my)</i.test(offer), offer.slice(0, 240));
+  // AND IT IS ALWAYS ALLOWED TO BE A ONE-OFF.
+  ok("with a way to say there isn't one", /just this one/i.test(offer), offer.slice(-140));
+}
+
+sec("And a word it has learned is read that way from then on");
+{
+  const ctx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
+    isNaN, parseInt, parseFloat };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  ["names.js", "quickparse.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(REPO_ROOT, "public", f), "utf8"), ctx));
+  const read = (t, fixedWords) => ctx.OrganiserQuickParse.parse(t, { fixedWords });
+
+  ok("without the word, it is work with a date on it",
+     read("the head will observe my lesson on friday", []).type === "task",
+     read("the head will observe my lesson on friday", []).type);
+  ok("with it, it happens when it happens",
+     read("the head will observe my lesson on friday", ["observe"]).type === "appointment",
+     read("the head will observe my lesson on friday", ["observe"]).type);
+  // A WHOLE PHRASE COUNTS TOO — most of the things a school arranges are two
+  // words, and half a phrase matching would be worse than none.
+  ok("a phrase works as a phrase",
+     read("parents evening on the 10th of september", ["parents evening"]).type === "appointment");
+  ok("and half of one does not",
+     read("ring the parents on friday", ["parents evening"]).type === "task");
+  // A WHOLE WORD, NOT PART OF ONE. "meet" must not match inside "meeting the
+  // standard" — and must not match inside a longer word at all.
+  ok("a word is a whole word", read("meeting the standard by friday", ["meet"]).type === "task",
+     read("meeting the standard by friday", ["meet"]).type);
+  // AND A DEADLINE IS STILL A DEADLINE, however many words it has been taught.
+  ok("a sentence about a deadline stays one",
+     read("i must meet the deadline on friday", ["meet"]).type === "task",
+     read("i must meet the deadline on friday", ["meet"]).type);
+  // AN EMPTY LIST IS A REAL ANSWER: "read nothing as fixed, I will say so
+  // myself". It must not quietly fall back to the words built in.
+  ok("an empty list means nothing is read as fixed",
+     read("meeting on friday", []).type === "task", read("meeting on friday", []).type);
+  ok("and no list at all still has something sensible to go on",
+     read("meeting on friday", undefined).type === "appointment", read("meeting on friday", undefined).type);
 }
 
 done();

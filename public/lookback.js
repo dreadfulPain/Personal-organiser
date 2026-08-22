@@ -24,13 +24,12 @@
   function isoOf(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
-  function friendlyDate(stamp) {
-    if (!stamp) return "";
-    const iso = isoOf(new Date(stamp));
-    if (iso === isoOf(new Date())) return "today";
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-  }
+  // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
+  // kept their own copy of this, each subtly different, and none of them said
+  // which year a date was in. Fixing the shared one changed nothing on screen,
+  // because almost nothing was using it.
+  const friendlyDate = (stamp) =>
+    stamp ? OrganiserDates.dayWords(isoOf(new Date(stamp)), { lower: true }) : "";
 
   function persist() {
     OrganiserStore.save({ items, waiting });
@@ -182,8 +181,7 @@
       .reverse()
       .map((x) => {
         const pct = Math.round((x.total / most) * 100);
-        const when = new Date(x.saturday + "T12:00:00")
-          .toLocaleDateString(undefined, { day: "numeric", month: "short" });
+        const when = OrganiserDates.dayWords(x.saturday, { weekday: false, relative: false });
         const split = Object.entries(x.areas)
           .sort((a, b) => b[1] - a[1])
           .map(([k, m]) => `${k} ${S.durationWords(m)}`)

@@ -240,7 +240,7 @@
       // the right one meant counting down the list and hoping.
       const onDay = daysBlocks();
       sl.innerHTML =
-        `<option value="">any lesson</option>` +
+        `<option value="">any slot</option>` +
         onDay
           .map((x) => {
             const t = x.start ? `${fmtTime(x.start)} ` : "";

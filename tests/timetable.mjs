@@ -330,7 +330,7 @@ sec("And all of it on the page, not just in the modules");
   const table = r.created.filter((e) => String(e.className).includes("su-trow"));
   ok("it read without reaching for the model", table.length === 25, String(table.length));
   ok("and says what it found",
-     /25 lessons read/.test(String(r.get("#ttStatus").textContent)),
+     /25 blocks read/.test(String(r.get("#ttStatus").textContent)),
      String(r.get("#ttStatus").textContent));
 
   const save = r.created.find((e) => String(e.textContent) === "Save these blocks");
@@ -453,6 +453,29 @@ sec("Booking leave over a teaching day says what it costs");
   ok("and the days still go in",
      (r.state.schedule || []).filter((b) => b.blocksDay).length === 2,
      String((r.state.schedule || []).filter((b) => b.blocksDay).length));
+}
+
+// ---------------------------------------------------------------------------
+// AND IT NEVER CLAIMS TO KNOW WHAT IT IS READING.
+//
+// The head of timetable.js says nothing in it knows what a lesson is — and then
+// its one sentence to a person said "21 blocks read" as "21 LESSONS read",
+// about a grid where five were form time, two were duties and two were
+// meetings. A file that contradicts its own rule in its own words is the rule
+// not holding.
+{
+  const src = fs.readFileSync(path.join(REPO_ROOT, "public", "timetable.js"), "utf8");
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const said = [...code.matchAll(/[`"']([^`"']*\blessons?\b[^`"']*)[`"']/gi)].map((m) => m[1]);
+  ok("no sentence it shows you calls a block a lesson", said.length === 0, JSON.stringify(said));
+  const T = sb.OrganiserTimetable;
+  if (T) {
+    ok("it counts blocks", /2 blocks read/.test(T.words({ blocks: [{}, {}], days: [1, 2], note: "" })),
+       T.words({ blocks: [{}, {}], days: [1, 2], note: "" }));
+    ok("and one of them reads as one",
+       /1 block read/.test(T.words({ blocks: [{}], days: [1], note: "" })),
+       T.words({ blocks: [{}], days: [1], note: "" }));
+  }
 }
 
 if (gaps.length) {

@@ -31,11 +31,12 @@
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
-  function friendlyDate(iso) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  }
+  // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
+  // kept their own copy of this, each subtly different, and none of them said
+  // which year a date was in. Fixing the shared one changed nothing on screen,
+  // because almost nothing was using it.
+  const friendlyDate = (iso) =>
+    OrganiserDates.dayWords(iso, { weekday: false, relative: false, year: true });
 
   // Seeded once if absent — the UK Teachers' Standards (2011) as editable data.
   const DEFAULT_PORTFOLIO = {
@@ -421,7 +422,7 @@
       }
       body += `</section>`;
     }
-    const prepared = new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+    const prepared = OrganiserDates.dayWords(todayISO(), { weekday: false, relative: false, year: true, long: true });
     const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(pf.title)}</title>
 <style>body{font-family:Georgia,serif;max-width:720px;margin:40px auto;padding:0 20px;color:#333;line-height:1.6}
 h1{font-size:1.6rem;margin:0 0 4px}h2{font-size:1.1rem;margin:28px 0 6px;border-bottom:1px solid #ddd;padding-bottom:4px}

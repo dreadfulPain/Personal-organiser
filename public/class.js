@@ -24,11 +24,11 @@
   //
   // Falling back only when the list is empty can't overwrite anybody's setup:
   // if you have a marking list, it is used exactly as before.
-  function markable() {
-    const own = (config && Array.isArray(config.whoIds) ? config.whoIds : []).filter(Boolean);
-    if (own.length) return own;
-    return contacts.filter((c) => c && c.id).map((c) => c.id);
-  }
+  // ASKED OF ONE PLACE — see OrganiserLevels.whoList. This used to fall back to
+  // your contacts only when the configured list was empty, and it never is: it
+  // starts as five placeholders. So this page told a teacher with a real class
+  // that "5 have no record for this skill: S01, S02, S03, S04, S05".
+  const markable = () => OrganiserLevels.whoList(config, contacts);
   // And a name to show for it, since a fallback list is full of ids nobody
   // recognises. Falls back to the id, which is what this page always showed.
   function nameOf(id) {
@@ -538,7 +538,7 @@
     const written = [];
     const failed = [];
 
-    const csv = X.resultsCsv(records, config);
+    const csv = X.resultsCsv(records, config, markable(), nameOf);
     const r1 = await X.saveToFolder(`results-${day}.csv`, csv, { bom: true });
     r1.ok ? written.push(r1.fallback ? "results (downloaded)" : r1.path) : failed.push(r1.message);
 

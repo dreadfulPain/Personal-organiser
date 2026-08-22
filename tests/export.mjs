@@ -82,7 +82,18 @@ sec("A skill with nothing recorded says so, rather than looking fine");
   // "never looked at".
   ok("the one never assessed says so in words",
      /Writing,,not assessed yet/.test(csv), csv);
-  ok("and the header names the columns", /^id,skill,level,in words,dated,from/.test(csv), lines[0]);
+  ok("and the header names the columns", /^id,name,skill,level,in words,dated,from/.test(csv), lines[0]);
+  // A SPREADSHEET NOBODY CAN READ IS NOT A DOCUMENT. Once ids came from your
+  // contacts rather than being S01 to S05, they were internal strings — so the
+  // file a head of department opens said nothing about anybody.
+  const named = X.resultsCsv([rec({ id: "a", topic: "Reading", level: "3" })], CONFIG,
+    ["p1"], (id) => (id === "p1" ? "Aisha Patel" : id));
+  ok("a name is on every row", /p1,Aisha Patel,Reading/.test(named), named);
+  ok("and the id is still there to join back on", /^p1,/m.test(named), named);
+  // Given no way to look a name up, it says the id rather than inventing one.
+  ok("with no names to hand it says the id",
+     /p1,p1,Reading/.test(X.resultsCsv([rec({ id: "a", topic: "Reading", level: "3" })], CONFIG, ["p1"])),
+     X.resultsCsv([rec({ id: "a", topic: "Reading", level: "3" })], CONFIG, ["p1"]));
 }
 
 // ---------------------------------------------------------------------------

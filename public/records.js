@@ -873,16 +873,7 @@
   // real names go anywhere near the app, which this page asks you to do. Once
   // there are real people the five placeholders stop being offered, because by
   // then they are not a class, they are clutter.
-  function whoOptions() {
-    const real = contacts
-      .filter((c) => c && c.id)
-      .slice()
-      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
-      .map((c) => c.id);
-    const typed = (config.whoIds || []).filter((w) => !real.includes(w));
-    const placeholders = DEFAULT_CONFIG.whoIds;
-    return real.concat(real.length ? typed.filter((w) => !placeholders.includes(w)) : typed);
-  }
+  const whoOptions = () => OrganiserLevels.whoList(config, contacts);
 
   // Grow a box to whatever is written in it. Never below one line: a row
   // measured before it is on the page measures nothing, and an inline height of

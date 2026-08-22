@@ -31,6 +31,10 @@
 (function () {
   "use strict";
 
+  // What recordConfig.whoIds starts as, before there is anybody real. Named
+  // here because whoList() has to know which ids are only a starting point.
+  const PLACEHOLDERS = ["S01", "S02", "S03", "S04", "S05"];
+
   // Seeded only onto the factory numeric scale — see seedNames() for the guard.
   const DEFAULT_LEVEL_NAMES = { 4: "Exceeding", 3: "Proficient", 2: "Developing", 1: "Beginning" };
   const DEFAULT_TARGET = "3";
@@ -278,7 +282,45 @@
     return config;
   }
 
+  // WHO IS THIS LOG ABOUT?
+  //
+  // Three files each decided this for themselves, and two of them were wrong in
+  // the same way: recordConfig.whoIds starts life as five placeholders — S01 to
+  // S05 — so "if the list is empty, use your contacts" could never fire, and the
+  // Skills page told a teacher with a real class that "5 have no record for this
+  // skill: S01, S02, S03, S04, S05". The export was worse: the spreadsheet a
+  // head of department opens would have had five rows about people who don't
+  // exist and none about the class.
+  //
+  // Your own list first, in the order you read a register. Ids you typed by hand
+  // are kept alongside — that is how you practise with fake ones before real
+  // names go near the app, which the record page asks you to do — and the five
+  // placeholders stop being offered the moment there is anybody real, because by
+  // then they are not a class, they are clutter.
+  function whoList(config, contacts) {
+    const typed = ((config && config.whoIds) || []).filter(Boolean);
+    // A LIST YOU CHOSE WINS. If you have typed a marking list, you typed it to
+    // mark those people and not the other twenty-eight — adding your whole
+    // register to it would make the list you set pointless.
+    //
+    // The five placeholders are not a list anybody chose. They are what the
+    // field starts as, which is why "if the list is empty, use your contacts"
+    // could never fire: it never is.
+    const untouched =
+      typed.length === PLACEHOLDERS.length && PLACEHOLDERS.every((w) => typed.includes(w));
+    if (typed.length && !untouched) return typed;
+    const real = (Array.isArray(contacts) ? contacts : [])
+      .filter((c) => c && c.id)
+      .slice()
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+      .map((c) => c.id);
+    // Nobody real yet — the placeholders are the starting point the record page
+    // asks you to practise with, so they stay until there is a class.
+    return real.length ? real : typed;
+  }
+
   window.OrganiserLevels = {
+    whoList,
     DEFAULT_LEVEL_NAMES,
     DEFAULT_TARGET,
     levels,

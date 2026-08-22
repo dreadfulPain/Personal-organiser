@@ -204,15 +204,30 @@ ${inner}
 
   // One row per id per skill, with the level as BOTH the working number and the
   // parent wording — so the spreadsheet is useful to you and safe to hand on.
-  function resultsCsv(records, config) {
-    const rows = [["id", "skill", "level", "in words", "dated", "from"]];
-    (config.whoIds || []).forEach((who) => {
+  // WHO THE SPREADSHEET IS ABOUT is given, not guessed. It used to read
+  // config.whoIds directly — the hand-typed list that starts as five
+  // placeholders — so the file a head of department opens would have had five
+  // rows about people who don't exist and none about the actual class.
+  // A NAME COLUMN, because a spreadsheet nobody can read is not a document.
+  // The id stayed the only thing identifying a row, and once ids came from your
+  // contacts rather than being S01 to S05 they were internal strings —
+  // "mt3v7fbo7pwla" — so the file a head of department opens said nothing about
+  // anybody. The id is kept alongside for joining back to the app.
+  //
+  // nameOf is supplied by the caller, like `who` is: this file never learns what
+  // a person is, and never reaches for a store.
+  function resultsCsv(records, config, who, nameOf) {
+    const name = typeof nameOf === "function" ? nameOf : (x) => x;
+    const rows = [["id", "name", "skill", "level", "in words", "dated", "from"]];
+    const list = Array.isArray(who) && who.length ? who : config.whoIds || [];
+    list.forEach((who) => {
       const usable = (records || []).filter((r) => r.who === who && r.topic && !needsCheck(r));
       const lv = latestLevels(usable);
       (config.topics || []).forEach((topic) => {
         const v = lv.get(topic);
         rows.push([
           who,
+          name(who),
           topic,
           v ? v.level : "",
           v ? parentWord(config, v.level) : "not assessed yet",

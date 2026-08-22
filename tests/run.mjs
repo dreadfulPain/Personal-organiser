@@ -78,6 +78,11 @@ if (hadLive) {
 function giveItBack() {
   if (!hadLive) return;
   try {
+    // THE DIRECTORY MAY BE GONE. The suites delete data/ outright, so putting
+    // the file back needs somewhere to put it — without this the restore failed
+    // with ENOENT and left somebody's timetable sitting in a dotfile they had
+    // no reason to know about.
+    fs.mkdirSync(join(HERE, "..", "data"), { recursive: true });
     fs.rmSync(LIVE, { force: true });
     fs.renameSync(ASIDE, LIVE);
   } catch (e) {

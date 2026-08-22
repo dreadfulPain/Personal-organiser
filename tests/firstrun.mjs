@@ -20,6 +20,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 //   · and does it stay describing rather than start nagging
 
 import fs from "node:fs";
+import vm from "node:vm";
 import path from "node:path";
 import { open } from "./_dom.mjs";
 import { DATA } from "./_data.mjs";
@@ -132,10 +133,48 @@ sec("The class you set up is the class every page knows about");
   // You could paste seventeen students into People, open the record log, and be
   // offered five made-up placeholders — S01 to S05 — with nothing to say your
   // class existed.
+  // ASKED AS A PROPERTY, not as "is the code in this file". Three files each
+  // decided who the log was about, and two were wrong the same way; the answer
+  // moved into the one module all three load, which broke a test that had
+  // pinned WHERE the code lived rather than what had to be true of it.
+  const decide = ["records.js", "class.js", "export.js"];
+  decide.forEach((f) => {
+    const src = fs.readFileSync(path.join(PUB, f), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    ok(`${f} doesn't work out who the log is about on its own`,
+       !/config\.whoIds/.test(src) || /whoList|who\b/.test(src),
+       "it reads config.whoIds directly, which starts as five placeholders");
+  });
+  const lv = fs.readFileSync(path.join(PUB, "levels.js"), "utf8");
+  ok("one place answers it", /function whoList\(/.test(lv), "no shared answer exists");
+  ok("and it prefers the people you actually have", /sort\(\(a, b\) =>/.test(lv) && /contacts/.test(lv),
+     "it doesn't look at your contacts at all");
+  // AND THE RULE ITSELF, run rather than read.
+  {
+    const ctx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp, isNaN };
+    ctx.window = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(PUB, "levels.js"), "utf8"), ctx);
+    const L = ctx.OrganiserLevels;
+    const SEED = { whoIds: ["S01", "S02", "S03", "S04", "S05"] };
+    const CLASS = [{ id: "b", name: "Ben" }, { id: "a", name: "Amara" }];
+    // The seed is not a list anybody chose — that is why "if the list is empty,
+    // use your contacts" could never fire: it never is.
+    ok("your class beats the placeholders", JSON.stringify(L.whoList(SEED, CLASS)) === '["a","b"]',
+       JSON.stringify(L.whoList(SEED, CLASS)));
+    ok("in the order you read a register", L.whoList(SEED, CLASS)[0] === "a");
+    // BUT A LIST YOU TYPED WINS. You typed it to mark those people and not the
+    // other twenty-eight; adding your whole register back would make it pointless.
+    ok("a marking list you chose is used as you chose it",
+       JSON.stringify(L.whoList({ whoIds: ["b"] }, CLASS)) === '["b"]',
+       JSON.stringify(L.whoList({ whoIds: ["b"] }, CLASS)));
+    // And with nobody real yet, the placeholders are the practice run the
+    // record page asks you to do first.
+    ok("with no class yet, the placeholders stay",
+       L.whoList(SEED, []).length === 5, JSON.stringify(L.whoList(SEED, [])));
+  }
+
   const rec = fs.readFileSync(path.join(PUB, "records.js"), "utf8");
-  ok("the record log offers the people you actually have",
-     /function whoOptions\(\)/.test(rec) && /contacts\s*\n?\s*\.filter/.test(rec),
-     "the who picker is still a hand-typed list of ids");
   const pickers = [...rec.matchAll(/fillSelect\("#(?:recWho|fWho)",\s*(\w+\(\))/g)].map((m) => m[1]);
   ok("everywhere it asks who", pickers.length >= 2 && pickers.every((x) => x === "whoOptions()"),
      JSON.stringify(pickers));

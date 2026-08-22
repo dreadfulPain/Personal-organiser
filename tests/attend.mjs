@@ -231,5 +231,53 @@ sec("It still knows nothing about schools");
      !/truant|persistent|unauthorised|bad|good attendance|score/i.test(clean));
 }
 
+// ---------------------------------------------------------------------------
+sec("The sentence over the list adds up to the list");
+{
+  // It counted only the ones it flags, while the list below shows everybody who
+  // has missed anything. So a class with one frequent absence and one single
+  // day read "1 is away often." over two names, and the reader had to work out
+  // which one it meant.
+  const mk = (id, away, late, oftenAway, missingNow) =>
+    ({ id, away, late, oftenAway, missingNow, of: 8, pct: Math.round((away / 8) * 100) });
+  const said = (rows) => A.summary(rows, 8);
+
+  ok("nothing missed says so", said([]) === "Nobody has missed a session on the registers taken.",
+     said([]));
+  ok("one often away and one odd day accounts for both",
+     said([mk("a", 2, 2, true, false), mk("b", 1, 0, false, false)]) ===
+       "1 is away often · 1 has missed at least one.",
+     said([mk("a", 2, 2, true, false), mk("b", 1, 0, false, false)]));
+  const three = said([mk("a", 4, 0, true, true), mk("b", 3, 0, true, false), mk("c", 1, 0, false, false)]);
+  ok("and the numbers add up to the rows",
+     three.match(/\d+/g).map(Number).reduce((x, y) => x + y, 0) === 3, three);
+  // COUNTS AND NAMES, NEVER A VERDICT. Nobody is described, only counted.
+  ok("and it never says what any of it means",
+     !/\b(poor|bad|concern|worrying|unacceptable|problem)\b/i.test(three), three);
+}
+
+// ---------------------------------------------------------------------------
+sec("And the page for one person answers the question a parent asks");
+{
+  // The person page promises "everything about one person on one screen — for
+  // when someone is on the phone and you have about two seconds". It had a
+  // block for what CURRICULUM they missed, which needs lesson plans to work
+  // out — so with none written it stayed hidden and the page said nothing at
+  // all about attendance. The app had the answer on the register page the whole
+  // time; the page whose whole job is one-person-one-screen was the one that
+  // didn't ask for it.
+  const js = fs.readFileSync(`${REPO_ROOT}/public/person.js`, "utf8");
+  const html = fs.readFileSync(`${REPO_ROOT}/public/person.html`, "utf8");
+  ok("the person page asks how often they are here", /AT\.pattern\(/.test(js),
+     "it never asks the attendance module about this person");
+  ok("and says it in the module's own words", /AT\.words\(/.test(js),
+     "it writes its own sentence, so the two pages can drift apart");
+  ok("with somewhere on the page to put it", /id="pHereBlock"/.test(html), "no block for it");
+  // AND ONLY WHEN THERE IS SOMETHING TO SAY. A class with no registers taken
+  // must not get a heading with nothing under it.
+  ok("hidden when no register has been taken", /block\.hidden = !pat \|\| !pat\.sessions/.test(js),
+     "it shows the block even with nothing in it");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

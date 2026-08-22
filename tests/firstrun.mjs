@@ -206,4 +206,30 @@ sec("And what you wrote about a class is there when you plan for it");
      /notes: notes\.concat\(written\)/.test(cp), "what you wrote is never passed on");
 }
 
+// ---------------------------------------------------------------------------
+sec("People are listed in the order you read a register, everywhere");
+{
+  // FOUR PAGES DECIDED THIS AND TWO GOT IT WRONG. A pasted class list comes
+  // back in whatever order it was stored in, which is backwards — so the person
+  // picker read "Xu Jing, Ma Lin, Lena Fischer, Kai Nakamura, Jodie Blake" while
+  // the register two clicks away read them the other way up. A register you have
+  // to hunt down is a register you take badly, and a picker you have to hunt
+  // down is worse: you are on the phone to a parent.
+  //
+  // Checked as a property of every file that puts people on screen, so a fifth
+  // page can't quietly join them.
+  const LISTS_PEOPLE = ["person.js", "rotapage.js", "attendpage.js", "classplan.js", "levels.js", "people.js"];
+  LISTS_PEOPLE.forEach((f) => {
+    const src = fs.readFileSync(path.join(PUB, f), "utf8");
+    // Any sort keyed on the name counts; what must not happen is no sort at all.
+    ok(`${f} puts them in name order`, /\bname[^;]*\.localeCompare\(/.test(src),
+       "it lists people in whatever order they happen to be stored in");
+    // AND IT MUST SURVIVE SOMEBODY WITH NO NAME. One row without one throws
+    // inside the comparator and takes the whole page down with it.
+    const cmp = (src.match(/\bsort\(\([^)]*\)\s*=>[^\n]*name[^\n]*localeCompare[^\n]*/g) || []);
+    cmp.forEach((line) =>
+      ok(`${f}: and survives somebody with no name`, /String\(/.test(line), line.trim().slice(0, 110)));
+  });
+}
+
 done();

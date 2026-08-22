@@ -212,7 +212,14 @@
   function create(e) {
     e.preventDefault();
     const group = ($("#roGroup").value || "").trim();
-    const memberIds = contacts.filter((c) => c && c.id && (!group || c.group === group)).map((c) => c.id);
+    // IN THE ORDER YOU READ A REGISTER. A round goes by longest-since-a-turn,
+    // but the list it is built from is the one you check against your register,
+    // and it came back in whatever order it was stored in.
+    const memberIds = contacts
+      .filter((c) => c && c.id && (!group || c.group === group))
+      .slice()
+      .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
+      .map((c) => c.id);
     if (!memberIds.length) return;
     const made = R().normalise({
       id: `rota${Date.now().toString(36)}`,

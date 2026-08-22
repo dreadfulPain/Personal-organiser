@@ -245,6 +245,42 @@
   // Above the syllabus block, because it changes how the rest of the page
   // reads. Four targets below target looks like one thing when they were there
   // for all of it and quite another when they weren't.
+  // HOW OFTEN THEY ARE HERE.
+  //
+  // The block below this one says what CURRICULUM they missed, which needs
+  // lesson plans to work out — so with none written it stayed hidden and this
+  // page showed nothing at all about attendance. That is the two-second
+  // question somebody on the phone is asking, the app had the answer on the
+  // register page, and the page whose whole job is "one person, one screen"
+  // was the one that didn't say it.
+  //
+  // Asked of the same module the register asks, and shown in its words, so the
+  // two pages can never describe the same child differently.
+  function renderHere() {
+    const AT = window.OrganiserAttend;
+    const block = $("#pHereBlock");
+    if (!AT || !block) return;
+    const me = contacts.find((c) => c && c.id === who);
+    const pat = who && me ? AT.pattern(attendance, who, me.group, todayISO()) : null;
+    block.hidden = !pat || !pat.sessions;
+    if (block.hidden) return;
+    const w = $("#pHereWords");
+    if (w) w.textContent = AT.words(pat);
+    const c = $("#pHereCount");
+    if (c) {
+      // ONLY WHEN THE SENTENCE ABOVE HASN'T GOT ONE. A run of absences is told
+      // as "away the last two times — do you know why?", which is the right
+      // thing to say and carries no total; every other case already says "away
+      // 2 of 8". Printing both gave the same fact twice with "late 2" on the
+      // end of each.
+      const needsCount = pat.run >= 2;
+      c.textContent = needsCount
+        ? `In for ${pat.sessions - pat.away} of ${pat.sessions} registers taken.`
+        : "";
+      c.hidden = !needsCount;
+    }
+  }
+
   function renderMissed() {
     const AT = window.OrganiserAttend;
     const block = $("#pMissBlock");
@@ -535,6 +571,7 @@
     renderChart();
     renderPastoral();
     renderTopics();
+    renderHere();
     renderMissed();
     renderSyllabus();
     renderTriedForm();
@@ -547,8 +584,13 @@
     if (!sel) return;
     sel.innerHTML =
       `<option value="">choose…</option>` +
+      // IN THE ORDER YOU READ A REGISTER. Every other list of people in the
+      // app sorts by name; these two came back in whatever order they were
+      // stored in, which for a pasted class list is backwards.
       contacts
         .filter((c) => c && c.id)
+        .slice()
+        .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
         .map((c) => `<option value="${esc(c.id)}"${c.id === who ? " selected" : ""}>${esc(c.name || c.id)}</option>`)
         .join("");
     sel.addEventListener("change", () => {

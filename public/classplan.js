@@ -56,7 +56,7 @@
       };
     });
     const order = { below: 0, "nothing recorded": 1, "at or above": 2 };
-    rows.sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+    rows.sort((a, b) => order[a.state] - order[b.state] || String(a.name || a.id).localeCompare(String(b.name || b.id)));
     return {
       skill,
       target: target || "",
@@ -172,7 +172,7 @@
         others: g.length - 1,
       });
     });
-    rows.sort((a, b) => a.rank - b.rank || b.age - a.age || a.name.localeCompare(b.name));
+    rows.sort((a, b) => a.rank - b.rank || b.age - a.age || String(a.name || a.id).localeCompare(String(b.name || b.id)));
     const n = Math.max(1, Number(limit) || 6);
     return { rows: rows.slice(0, n), more: Math.max(0, rows.length - n), people: rows.length };
   }

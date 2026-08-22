@@ -473,7 +473,9 @@
       list.appendChild(h);
       inGroup
         .slice()
-        .sort((a, b) => a.name.localeCompare(b.name))
+        // Guarded like every other list of people in the app: a contact with no
+        // name is a row that throws here and takes the whole page with it.
+        .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
         .forEach((c) => list.appendChild(personCard(c)));
     });
   }

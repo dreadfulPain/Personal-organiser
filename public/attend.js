@@ -200,10 +200,16 @@
     if (!rows.length) return "Nobody has missed a session on the registers taken.";
     const now = rows.filter((r) => r.missingNow).length;
     const often = rows.filter((r) => r.oftenAway && !r.missingNow).length;
+    // EVERY ROW IS ACCOUNTED FOR. This counted only the ones it flags, and the
+    // list below shows everybody who has missed anything — so a class with one
+    // frequent absence and one single day read "1 is away often." over two
+    // names. A sentence that summarises a list has to add up to the list, or
+    // the reader has to work out which name it meant.
+    const rest = rows.length - now - often;
     const bits = [];
     if (now) bits.push(`${now} ${now === 1 ? "has" : "have"} missed several in a row`);
     if (often) bits.push(`${often} ${often === 1 ? "is" : "are"} away often`);
-    if (!bits.length) return `${rows.length} of ${total} have missed at least one.`;
+    if (rest > 0) bits.push(`${rest} ${rest === 1 ? "has" : "have"} missed at least one`);
     return bits.join(" · ") + ".";
   }
 

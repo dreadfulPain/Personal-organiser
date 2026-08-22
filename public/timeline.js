@@ -1638,19 +1638,32 @@
     box.querySelector(".mu-add").addEventListener("click", () => {
       const date = box.querySelector(".mu-date").value;
       const day = Number(box.querySelector(".mu-day").value);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      // NOTHING HAPPENING IS NOT AN ANSWER. Pressing this with no date in the
+      // box did nothing at all and said nothing at all — so the only way to
+      // find out why was to guess.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        setSuStatus("Which date is it? Put the day in first and I'll move the timetable onto it.");
+        return;
+      }
       const made2 = Sx.normaliseBlock({
         label: `runs as ${DAY_NAMES[day]}`,
         start: "00:00", end: "23:59", date, runsAs: day, source: "hand",
       });
       if (!made2) return;
       // One per date. Saying it twice is a correction, not a second day.
+      const replacing = Sx.normalise(schedule).some((x) => x.date === date && x.runsAs !== null);
       schedule = Sx.normalise(schedule)
         .filter((x) => !(x.date === date && x.runsAs !== null))
         .concat([made2]);
       persist();
       renderSetup();
       render();
+      // Said out loud, like every other action in this panel. The row appearing
+      // below is real feedback, but it is the only action here that didn't also
+      // say what it had done.
+      setSuStatus(
+        `${replacing ? "Changed" : "Added"} — ${OrganiserDates.dayWords(date)} runs ${DAY_NAMES[day]}'s timetable. ✓`
+      );
     });
   }
 
@@ -2286,13 +2299,24 @@
       const to = box.querySelector(".sw-to").value;
       const moved = /^\d{4}-\d{2}-\d{2}$/.test(to)
         ? S().normaliseBlock({
-            label: b.label,
+            // EVERYTHING THE ORIGINAL WAS, then the three things a swap
+            // changes. This used to name the fields to carry across — label,
+            // about, prep, swappable — and quietly dropped the rest, so the
+            // lesson you teach on the new day came back as scenery: not
+            // somewhere you have to be, no journey time, none of the day
+            // markers. It read "ON" in the week where every other lesson read
+            // "BE THERE". A list of fields to copy is a list that goes out of
+            // date the next time a block learns something new.
+            ...b,
+            // A new block, not the same one twice. normaliseBlock gives it an id.
+            id: "",
+            // A one-off on a date, not a pattern — and the original's swaps are
+            // not this one's.
+            days: [],
+            skip: [],
             start: box.querySelector(".sw-start").value || b.start,
             end: box.querySelector(".sw-end").value || b.end,
             date: to,
-            about: b.about,
-            prep: b.prep,
-            swappable: b.swappable,
             source: "hand",
           })
         : null;

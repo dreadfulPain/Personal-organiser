@@ -156,7 +156,14 @@
     // typed by anybody: the app puts today on whatever you mention, so calling
     // those overdue tomorrow would build a wall of accusations out of things
     // you only said out loud.
-    if (it.date && it.date < ctx.today) return it.deadlineType === "hard" ? "overdue" : "still waiting";
+    // AND THE SAME COMMENT NOW HAS A FIELD BEHIND IT. "Most of them were never
+    // typed by anybody" was true and unknowable until datedBy existed; now it
+    // is a question that can be asked. A date the app supplied has nothing to
+    // say about a day gone past — nobody was waiting for anything. Saying
+    // "still waiting" anyway put a week of ordinary undated jobs in the same
+    // breath as three things somebody had actually said they'd do.
+    if (gaveDate(it) && it.date < ctx.today)
+      return it.deadlineType === "hard" ? "overdue" : "still waiting";
     // AND THE SAME IS TRUE OF TODAY. This said "due today" for any date landing
     // on today, hard or soft — so five things typed this morning with no date on
     // them at all came back stamped "due today", five deadlines the app had

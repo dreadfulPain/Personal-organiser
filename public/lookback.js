@@ -54,16 +54,45 @@
     if (isNaN(t)) return false;
     return t >= Date.now() - days * 24 * 60 * 60 * 1000;
   }
+  // WHAT TO SPLIT BY WHEN NOBODY HAS SPLIT ANYTHING.
+  //
+  // This grouped by tags — which is the wrong field twice over. The parts of
+  // your life are `areas`, and the rest of this very file already asks
+  // OrganiserAreas for them; and rule one of the whole app is that you never
+  // categorise anything before entering it. So on any honest install nothing
+  // carried a tag, every finished thing fell into "(no category)", and the
+  // headline of this page was one bar reading 100% — a chart shaped like an
+  // answer with nothing in it.
+  //
+  // So it asks the one place that knows about areas, and where there genuinely
+  // are none it splits by something the app already knows without anybody
+  // having told it anything: how heavy each thing was. "Nine quick things and
+  // one draining one" is a true and useful sentence about a week, and it costs
+  // the person nothing to have it.
+  const HEAVINESS = { quick: "quick things", medium: "ordinary things", draining: "draining things" };
+  const heaviness = (it) => HEAVINESS[it && it.effort] || HEAVINESS.medium;
+
   function computeBreakdown(done, days) {
     const counts = new Map(); // area -> count of finished things
     let n = 0;
-    done.forEach((it) => {
-      if (!withinRange(it.completedAt, days)) return;
+    const inRange = done.filter((it) => withinRange(it.completedAt, days));
+    const A = window.OrganiserAreas;
+    const areasOf = (it) => (A ? A.on(it) : Array.isArray(it.areas) ? it.areas.filter(Boolean) : []);
+    // Only when NOT ONE of them has been put anywhere. One thing with an area
+    // on it means the split is real and the rest belong in "(not sorted)".
+    const anyArea = inRange.some((it) => areasOf(it).length);
+    inRange.forEach((it) => {
       n++;
-      const tags = Array.isArray(it.tags) ? it.tags.filter(Boolean) : [];
-      if (!tags.length) counts.set("(no category)", (counts.get("(no category)") || 0) + 1);
-      else tags.forEach((tg) => counts.set(tg, (counts.get(tg) || 0) + 1));
+      if (!anyArea) {
+        const k = heaviness(it);
+        counts.set(k, (counts.get(k) || 0) + 1);
+        return;
+      }
+      const areas = areasOf(it);
+      if (!areas.length) counts.set("(not sorted)", (counts.get("(not sorted)") || 0) + 1);
+      else areas.forEach((a) => counts.set(a, (counts.get(a) || 0) + 1));
     });
+    const by = anyArea ? "areas" : "heaviness";
     const total = [...counts.values()].reduce((a, b) => a + b, 0);
     let rows = [...counts.entries()]
       .map(([area, count]) => ({ area, count, pct: total ? Math.round((count / total) * 100) : 0 }))
@@ -75,7 +104,7 @@
       head.push({ area: "other areas", count: tailCount, pct: total ? Math.round((tailCount / total) * 100) : 0 });
       rows = head;
     }
-    return { rows, n };
+    return { rows, n, by };
   }
   function renderMirror() {
     const section = $("#mirror");
@@ -89,7 +118,7 @@
     section.hidden = false;
     document.querySelectorAll(".mr-range").forEach((b) => b.classList.toggle("active", b.dataset.range === range));
     const days = (RANGES.find((r) => r.key === range) || RANGES[0]).days;
-    const { rows, n } = computeBreakdown(done, days);
+    const { rows, n, by } = computeBreakdown(done, days);
     body.innerHTML = "";
     if (!n) {
       body.innerHTML = `<p class="empty">Nothing finished in this stretch — that's fine.</p>`;
@@ -97,7 +126,28 @@
     }
     const intro = document.createElement("p");
     intro.className = "mr-intro";
-    intro.textContent = `${n} thing${n === 1 ? "" : "s"} finished. Here's how that spread across areas:`;
+    // A BAR AT 100% IS NOT A PICTURE OF ANYTHING. Whatever it split by, if
+    // everything landed in one row then there is nothing here to see, and
+    // drawing a full-width bar to say so dresses up "no answer" as an answer.
+    // Said in a sentence instead, which is both shorter and true.
+    if (rows.length < 2) {
+      intro.textContent =
+        `${n} thing${n === 1 ? "" : "s"} finished` +
+        (rows[0] ? `, all of them ${rows[0].area}` : "") +
+        (by === "areas"
+          ? "."
+          : ". Nothing here is sorted into parts of your life yet — once things are, this splits by those instead.");
+      body.appendChild(intro);
+      return;
+    }
+    // THE SENTENCE SAYS WHAT THE BARS ARE. A chart that claims to be about
+    // areas when it is really about how heavy things were is a chart that lies
+    // quietly, which is worse than one that says nothing.
+    intro.textContent =
+      `${n} thing${n === 1 ? "" : "s"} finished. ` +
+      (by === "areas"
+        ? "Here's how that spread across areas:"
+        : "Nothing here is sorted into parts of your life, so this splits it by how heavy each one was:");
     body.appendChild(intro);
     const max = rows[0] ? rows[0].count : 1; // bar relative to the top area (a comparison, not a goal)
     rows.forEach((r) => {

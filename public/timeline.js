@@ -130,6 +130,17 @@
         });
         row.appendChild(b);
       });
+      // A LINE THAT SAID BOTH ENDS ITSELF. "National Day holiday 1-7 October"
+      // is seven days, and the app now reads it as seven — but reading it and
+      // SAYING it are different, and a row that quietly covers a week while
+      // showing one date is the app knowing something it hasn't told you. No
+      // tick here: there is nothing to decide, only something to see.
+      if (mark && !mark.canSpan && mark.ranged && mark.to > mark.from) {
+        const run = document.createElement("span");
+        run.className = "muted cal-end";
+        run.textContent = `to ${calDay(mark.to)} — ${mark.days} days, as written`;
+        row.appendChild(run);
+      }
       // THE RUN-ON. A holiday arrives as two lines — begins, ends — and only
       // you know which pairs are a stretch and which are two separate days.
       // Offered only where pressing it would change something.

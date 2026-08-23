@@ -589,6 +589,102 @@ sec("From that line to a timetable that knows when it applies");
   ok("the Saturday before term is still your own", D.kindOf(sched, "2026-08-29", CFG) === "own");
 }
 
+// ---------------------------------------------------------------------------
+sec("Every line a school calendar actually has on it");
+{
+  // A CORPUS, not a handful of phrases. Calendars were being read one shape at
+  // a time, and each fix looked complete because the line that prompted it now
+  // worked. What that missed:
+  //
+  //   "Term 1 starts Tuesday 25 August 2026" came back as NO DATE AT ALL — and
+  //   so did "Term 1 ends Friday 22 January 2027". A standalone digit anywhere
+  //   ahead of the date ("Term 1", "Term 2", "Semester 1", "Week 1", which is
+  //   how nearly every school labels its terms) fitted the date shape at "1
+  //   starts", wasn't a month, and the reader gave up on the line instead of
+  //   looking further along it. Those two lines are the entire point of this
+  //   panel — they are what stops a timetable running through the summer — and
+  //   they were the two it dropped, silently.
+  //
+  //   "National Day holiday 1-7 October 2026" kept the 7th and lost the other
+  //   six days, so Golden Week showed as six teaching days.
+  const C = sb.OrganiserCalPlan;
+  const one = (line) => (C.read(line, { year: 2026 }).rows || [])[0] || null;
+  const dateOf = (line) => (one(line) || {}).date || "";
+  const endOf = (line) => (one(line) || {}).endsOn || "";
+  const nameOf = (line) => (one(line) || {}).label || "";
+
+  const DAYS = [
+    ["Staff return Monday 24 August 2026", "2026-08-24"],
+    ["Term 1 starts Tuesday 25 August 2026", "2026-08-25"],
+    ["Term 1 ends Friday 22 January 2027", "2027-01-22"],
+    ["Term 2 starts 6 January 2027", "2027-01-06"],
+    ["Semester 1 ends 22 January 2027", "2027-01-22"],
+    ["Week 1 begins 25 August 2026", "2026-08-25"],
+    ["Parents evening 15 October 2026", "2026-10-15"],
+    ["INSET day 9 November 2026", "2026-11-09"],
+    ["Y11 mocks start Jan 12 2027", "2027-01-12"],
+    ["Open day 2026-11-21", "2026-11-21"],
+    ["Sports day 03/07/2027", "2027-07-03"],
+  ];
+  DAYS.forEach(([line, want]) =>
+    ok(`"${line}"`, dateOf(line) === want, `${dateOf(line) || "(no date at all)"} — wanted ${want}`));
+
+  // AND THE NAME SURVIVES. The label was built by deleting everything that
+  // looked date-shaped rather than the date that was found, so "Term 1 starts
+  // Tuesday 25 August 2026" came back called "Term Tuesday".
+  ok('"Term 1 starts…" is still called Term 1', /Term 1/.test(nameOf(DAYS[1][0])), nameOf(DAYS[1][0]));
+  ok('"Semester 1 ends…" is still called Semester 1',
+     /Semester 1/.test(nameOf("Semester 1 ends 22 January 2027")), nameOf("Semester 1 ends 22 January 2027"));
+  ok("and no year is left sitting in the name",
+     !/\b20\d{2}\b/.test(DAYS.map(([l]) => nameOf(l)).join(" ")),
+     DAYS.map(([l]) => nameOf(l)).find((n) => /\b20\d{2}\b/.test(n)));
+
+  sec("And a holiday written as a range is all of the days in it");
+  const RANGES = [
+    ["Mid-Autumn Festival holiday 25-27 September 2026", "2026-09-25", "2026-09-27"],
+    ["National Day holiday 1-7 October 2026", "2026-10-01", "2026-10-07"],
+    ["September 25-27, 2026 Mid-Autumn", "2026-09-25", "2026-09-27"],
+    ["Half term 25 September - 3 October 2026", "2026-09-25", "2026-10-03"],
+    ["Spring Festival 15 February to 21 February 2027", "2027-02-15", "2027-02-21"],
+    // The one that crosses a new year, where the year has to be on both ends.
+    ["Winter break 20 December 2026 - 5 January 2027", "2026-12-20", "2027-01-05"],
+  ];
+  RANGES.forEach(([line, from, to]) => {
+    ok(`"${line}" starts on ${from}`, dateOf(line) === from, dateOf(line) || "(none)");
+    ok(`and runs to ${to}`, endOf(line) === to, endOf(line) || "(one day only)");
+  });
+  // AND IT COUNTS THEM WITHOUT BEING ASKED. Pairing two separate lines stays a
+  // tick, because that is a guess; a range on one line was written by a person
+  // saying both ends in one breath, so it is not.
+  {
+    const rows = RANGES.map(([l]) => one(l)).filter(Boolean);
+    rows.forEach((r) => { r.kind = "no lessons"; });
+    const p = C.plan(rows);
+    const golden = p.find((x) => /National Day/.test(x.label));
+    ok("Golden Week is seven days, untouched", golden && golden.days === 7,
+       golden ? String(golden.days) : "(not planned)");
+    ok("and the winter break crosses the new year", 
+       (p.find((x) => /Winter break/.test(x.label)) || {}).to === "2027-01-05",
+       JSON.stringify((p.find((x) => /Winter break/.test(x.label)) || {}).to));
+  }
+
+  sec("And a number that is not a date is still not a date");
+  // The dash rule that keeps "exercise 4-6" from becoming the 4th of June has
+  // to survive all of the above — a month name in the line is what separates a
+  // real range from a page reference.
+  [
+    ["exercise 4-6 due 10 November 2026", "2026-11-10", ""],
+    ["periods 1-3 covered 12 November 2026", "2026-11-12", ""],
+    ["Room 214 open day 3 March 2027", "2027-03-03", ""],
+  ].forEach(([line, want, noEnd]) => {
+    ok(`"${line}" is one day`, dateOf(line) === want, dateOf(line) || "(none)");
+    ok("and not a range", endOf(line) === noEnd, endOf(line));
+  });
+  // A heading is not a date, however many of them a calendar has.
+  ["March 2026", "Autumn term", "Term dates 2026-27"].forEach((line) =>
+    ok(`"${line}" is not a date`, dateOf(line) === "", dateOf(line)));
+}
+
 if (gaps.length) {
   console.log("\nWhat is not there\n" + "-".repeat(17));
   gaps.forEach((g) => console.log("  · " + g));

@@ -50,28 +50,122 @@
   // as the 20th of March, because "2026" splits into a day and a two-digit
   // year — which is why the day number in each pattern below carries a (?!\d):
   // it refuses to be the front of a longer number.
-  function dateIn(text, defaultYear) {
+  // THE FIRST THING THAT LOOKS RIGHT IS NOT NECESSARILY THE DATE.
+  //
+  // Every one of the word patterns below used .match() without /g, which stops
+  // at the first place the SHAPE fits — and then, if the word there turned out
+  // not to be a month, gave up on the whole line instead of looking further
+  // along it.
+  //
+  // So "Term 1 starts Tuesday 25 August 2026" came back as no date at all. The
+  // shape "<number> <word>" fits at "1 starts"; "starts" is not a month; and
+  // the 25th of August, sitting four words to the right in plain sight, was
+  // never reached. Same for "Term 1 ends Friday 22 January 2027", "Term 2",
+  // "Semester 1", "Week 1" — a standalone digit anywhere ahead of the date
+  // killed the line.
+  //
+  // Those two lines are the whole reason this panel exists: term start and term
+  // end are what stop a timetable repeating through the summer. They were the
+  // two it dropped, and it dropped them without a word.
+  //
+  // Every pattern now walks the line and keeps the first match that is really a
+  // date, rather than the first match that is merely date-shaped.
+  // A MISS MUST NOT EAT THE REST OF THE LINE EITHER.
+  //
+  // "Term 1 ends 22 January 2027" fits the shape at "1 ends 22" — the optional
+  // YEAR group happily swallowing the 22, which is the day. "ends" is not a
+  // month, so that match is thrown away — and with it the 22, leaving only
+  // " January 2027", which has no day in it and matches nothing.
+  //
+  // So a rejected match rewinds to one character past where it started rather
+  // than skipping everything it consumed. Rejecting a guess must never cost the
+  // line the letters that guess happened to cover.
+  function firstMonthMatch(s, re, monthAt) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(s))) {
+      const mo = MONTHS.indexOf(String(m[monthAt]).slice(0, 3).toLowerCase());
+      if (mo >= 0) return { m, mo };
+      re.lastIndex = m.index + 1;
+    }
+    return null;
+  }
+
+  // The date, and the exact words it was read off — so the label can take out
+  // that and nothing else. See labelOf.
+  function findDate(text, defaultYear) {
     const s = String(text || "");
+    const at = (m, isoDate) => ({ iso: isoDate, text: m[0] });
     // 2026-08-24 / 2026/8/24
     let m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
-    if (m) return iso(+m[1], +m[2], +m[3]);
+    if (m) return at(m, iso(+m[1], +m[2], +m[3]));
     // 24 August 2026 / 24 Aug 26 / 24th August
-    m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?!\d)\s+([A-Za-z]{3,9})\.?\s*(\d{2,4})?\b/);
-    if (m) {
-      const mo = MONTHS.indexOf(m[2].slice(0, 3).toLowerCase());
-      if (mo >= 0) return iso(year(m[3], defaultYear), mo + 1, +m[1]);
-    }
+    let hit = firstMonthMatch(s, /\b(\d{1,2})(?:st|nd|rd|th)?(?!\d)\s+([A-Za-z]{3,9})\.?\s*(\d{2,4})?\b/g, 2);
+    if (hit) return at(hit.m, iso(year(hit.m[3], defaultYear), hit.mo + 1, +hit.m[1]));
     // August 24, 2026 / Aug 24
-    m = s.match(/\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?!\d)\s*,?\s*(\d{2,4})?\b/);
-    if (m) {
-      const mo = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
-      if (mo >= 0) return iso(year(m[3], defaultYear), mo + 1, +m[2]);
-    }
+    hit = firstMonthMatch(s, /\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?!\d)\s*,?\s*(\d{2,4})?\b/g, 1);
+    if (hit) return at(hit.m, iso(year(hit.m[3], defaultYear), hit.mo + 1, +hit.m[2]));
     // 24/08/2026 — day first, because a calendar that writes it this way is
     // almost never American, and the ISO form above catches the other order.
     m = s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
-    if (m && +m[1] <= 31 && +m[2] <= 12) return iso(year(m[3], defaultYear), +m[2], +m[1]);
-    return "";
+    if (m && +m[1] <= 31 && +m[2] <= 12) return at(m, iso(year(m[3], defaultYear), +m[2], +m[1]));
+    return { iso: "", text: "" };
+  }
+
+  // "25-27 SEPTEMBER" IS THREE DAYS, NOT ONE.
+  //
+  // Every Chinese school calendar is full of these — Mid-Autumn, National Day,
+  // Spring Festival — and so is every other calendar around a bank holiday.
+  // Read as a single date, "National Day holiday 1-7 October 2026" kept the 7th
+  // and lost the other six, so Golden Week showed as six teaching days, with a
+  // stray "1" left sitting in the row's name.
+  //
+  // Pairing two SEPARATE lines is deliberately not done — see plan() below, and
+  // the calendar that married an INSET day to the start of a break and wrote
+  // off seven weeks. This is the other case entirely: one line, both ends said
+  // by the person who wrote it, in one breath. Nothing is being inferred.
+  //
+  // A month name has to be in it. That is what separates "1-7 October" from
+  // "exercise 4-6", which is a page reference and not three days off.
+  const DASH = "[-–—]|\\bto\\b|\\buntil\\b";
+  function rangeIn(text, defaultYear) {
+    const s = String(text || "");
+    const MO = "[A-Za-z]{3,9}";
+    const month = (w) => MONTHS.indexOf(String(w).slice(0, 3).toLowerCase());
+    // 25-27 September 2026
+    let m = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:${DASH})\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MO})\\.?\\s*(\\d{2,4})?\\b`).exec(s);
+    if (m && month(m[3]) >= 0) {
+      const y = year(m[4], defaultYear), mo = month(m[3]) + 1;
+      return { from: iso(y, mo, +m[1]), to: iso(y, mo, +m[2]), text: m[0] };
+    }
+    // September 25-27, 2026
+    m = new RegExp(`\\b(${MO})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:${DASH})\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s*,?\\s*(\\d{2,4})?\\b`).exec(s);
+    if (m && month(m[1]) >= 0) {
+      const y = year(m[4], defaultYear), mo = month(m[1]) + 1;
+      return { from: iso(y, mo, +m[2]), to: iso(y, mo, +m[3]), text: m[0] };
+    }
+    // 25 September - 3 October 2026, which crosses a month end — and
+    // "20 December 2026 - 5 January 2027", which is the same thing with the
+    // year written on both ends, as it has to be when it crosses one.
+    m = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MO})\\.?\\s*(\\d{4})?\\s*(?:${DASH})\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MO})\\.?\\s*(\\d{2,4})?\\b`).exec(s);
+    if (m && month(m[2]) >= 0 && month(m[5]) >= 0) {
+      const yEnd = year(m[6], defaultYear);
+      // The start's own year if it has one; otherwise the end's, stepped back a
+      // year when the months say it crossed New Year.
+      const yStart = m[3] ? Number(m[3]) : month(m[5]) < month(m[2]) ? yEnd - 1 : yEnd;
+      return {
+        from: iso(yStart, month(m[2]) + 1, +m[1]),
+        to: iso(m[6] ? yEnd : month(m[5]) < month(m[2]) ? yStart + 1 : yStart, month(m[5]) + 1, +m[4]),
+        text: m[0],
+      };
+    }
+    return null;
+  }
+
+  function dateIn(text, defaultYear) {
+    const r = rangeIn(text, defaultYear);
+    if (r && r.to > r.from) return r.from;
+    return findDate(text, defaultYear).iso;
   }
 
   function year(raw, fallback) {
@@ -82,12 +176,22 @@
   }
 
   // Everything left once the date is taken out — that's what it's called.
-  function labelOf(line, isoDate) {
-    let s = String(line || "")
-      .replace(/\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, " ")
-      .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\.?\s*\d{0,4}\b/g, " ")
-      .replace(/\b[A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*\d{0,4}\b/g, " ")
-      .replace(/\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b/g, " ")
+  //
+  // IT USED TO TAKE OUT EVERYTHING DATE-SHAPED, not the date. So "Term 1 starts
+  // Tuesday 25 August 2026" lost "1 starts" as well — the same false match that
+  // stopped the line being read at all — and came back called "Term Tuesday".
+  // Reading the date and naming the row are the same question asked twice, and
+  // the two answers had drifted; now the second one is told what the first
+  // found and removes exactly that.
+  function labelOf(line, isoDate, defaultYear) {
+    const raw = String(line || "");
+    const range = rangeIn(raw, defaultYear);
+    const found = range && range.to > range.from ? range : findDate(raw, defaultYear);
+    let s = found.text ? raw.replace(found.text, " ") : raw;
+    // Any trailing year the pattern left behind — "…25 August" then "2026" as
+    // its own word — is part of the date, not part of the name.
+    s = s
+      .replace(/\b(?:19|20)\d{2}\b/g, " ")
       .replace(/[\t|]+/g, " ")
       .replace(/\s{2,}/g, " ")
       .replace(/^[\s\-–—:•*]+|[\s\-–—:•*]+$/g, "")
@@ -132,9 +236,13 @@
         if (!line) return;
         const d = dateIn(line, useYear);
         if (!d) return;
+        const range = rangeIn(line, useYear);
         rows.push({
           date: d,
-          label: labelOf(line, d) || "(no name)",
+          // Both ends, when the line itself gave both — see rangeIn. Nothing is
+          // paired across lines here; that stays a decision you tick.
+          endsOn: range && range.to > range.from ? range.to : "",
+          label: labelOf(line, d, useYear) || "(no name)",
           line,
           // Whether the year came off the line itself or was borrowed. Shown,
           // because a borrowed year is the one thing here that can be quietly
@@ -202,12 +310,17 @@
       // so that the page offers the tick on exactly the rows where ticking it
       // would change something — a tick that does nothing when pressed is
       // worse than no tick.
-      const canSpan = !!next && next.date > r.date;
-      const ranged = !!r.spans && canSpan;
-      const to = ranged ? next.date : r.date;
+      // A line that carried BOTH ENDS ITSELF needs no tick and takes no second
+      // row with it — "1-7 October" is one line and one holiday. Only the
+      // pairing of two separate lines is a decision, because only that one is a
+      // guess.
+      const ownEnd = r.endsOn && r.endsOn > r.date ? r.endsOn : "";
+      const canSpan = !ownEnd && !!next && next.date > r.date;
+      const ranged = !!ownEnd || (!!r.spans && canSpan);
+      const to = ownEnd || (ranged ? next.date : r.date);
       out.push({
         row: r,
-        endRow: ranged ? next : null,
+        endRow: ownEnd ? null : ranged ? next : null,
         ranged,
         canSpan,
         // Where it would land, and how far, if you ticked it.
@@ -223,7 +336,7 @@
           ? r.label.replace(/\s*(begins?|starts?)\s*$/i, "").trim() || r.label
           : r.label,
       });
-      i += ranged ? 2 : 1;
+      i += ownEnd ? 1 : ranged ? 2 : 1;
     }
     return out;
   }

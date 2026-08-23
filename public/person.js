@@ -37,7 +37,12 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   // Asked of one place — see OrganiserNames.nameOf. Six files each had their
   // own copy of this and they had already drifted apart.
-  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
+  // One person at a time — there is nothing for a tag to be redundant against.
+  const shownIds = () => [];
+  // NAME PLUS THE WORD THAT TELLS THEM APART — see OrganiserNames.saidAs. A
+  // tag every row on this page shares is dropped, because it separates nobody.
+  const personWords = (id) =>
+    OrganiserNames.saidAs(contacts, id, { sharedBy: OrganiserNames.sharedTag(contacts, shownIds()) });
   const ago = (iso) => {
     if (!iso) return "";
     const d = Math.round((new Date(todayISO() + "T12:00:00") - new Date(iso + "T12:00:00")) / 86400000);
@@ -113,7 +118,7 @@
     }
     el.innerHTML = C().overTime(series, {
       yMin: 1, yMax: Math.max(2, asc.length), yTicks,
-      alt: `How ${nameOf(who)} has gone, by skill, over time`,
+      alt: `How ${personWords(who)} has gone, by skill, over time`,
       valueLabel: "skill",
     });
   }
@@ -560,7 +565,7 @@
 
   function renderAll() {
     const t = $("#pTitle");
-    if (t) t.textContent = who ? nameOf(who) : "One person";
+    if (t) t.textContent = who ? personWords(who) : "One person";
     // Nothing to write on until you've said who — writing a note against nobody
     // is the one way to lose one entirely.
     const forms = [$("#pToldForm"), $("#pTriedForm")];

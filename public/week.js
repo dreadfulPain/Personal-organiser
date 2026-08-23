@@ -16,6 +16,14 @@
   let items = [];
   let schedule = [];
   let cfg = null;
+  let contacts = [];
+
+  // WHICH PERSON, not just a name — see OrganiserNames.saidAs. This page printed
+  // a bare "promised to Nick" while the home page had already learned to say
+  // which Nick, so the same task read two different ways depending on which
+  // page you happened to be standing on.
+  const personWords = (name) =>
+    window.OrganiserNames ? OrganiserNames.saidAs(contacts, name) : String(name || "");
 
   const $ = (sel) => document.querySelector(sel);
   function escapeHtml(s) {
@@ -74,7 +82,7 @@
           ${p && p.noTime ? `<span class="when">no time set</span>` : ""}
           ${p && p.early ? `<span class="when">ahead of ${escapeHtml(dayName(it.date))}</span>` : ""}
           ${it.deadlineType === "hard" ? `<span class="when due">hard deadline</span>` : ""}
-          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
+          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
           ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
         </div>
       </div>`;
@@ -262,10 +270,12 @@
     items = data.items || [];
     schedule = data.schedule || [];
     cfg = data.scheduleConfig || null;
+    contacts = data.contacts || [];
     OrganiserStore.onExternalChange((state) => {
       items = state.items || items;
       schedule = state.schedule || schedule;
       cfg = state.scheduleConfig || cfg;
+      contacts = state.contacts || contacts;
       render();
     });
     render();

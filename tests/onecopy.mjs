@@ -39,6 +39,14 @@ const PUB = join(REPO_ROOT, "public");
 // rather than guessed at.
 const WATCHED = {
   nameOf: { owner: "names.js", via: "OrganiserNames.nameOf", what: "what a person is called" },
+  // A DIFFERENT QUESTION FROM nameOf, kept separate on purpose. nameOf is the
+  // bare name — for matching, for sorting, for a file somebody reads back in.
+  // personWords is how a person is WRITTEN FOR SOMEBODY TO READ, which has to
+  // carry the word that separates two people called Nick. Six places printed a
+  // bare promisedTo straight out, so half the app could tell them apart and
+  // half could not.
+  personWords: { owner: null, via: "OrganiserNames.saidAs", what: "a person, written so you know which one" },
+  tagOf: { owner: "names.js", via: "OrganiserNames.tagOf", what: "which one a person is" },
   timeWords: { owner: "dates.js", via: "OrganiserDates.timeWords", what: "a clock time in words" },
   fmtTime: { owner: null, via: "OrganiserDates.timeWords", what: "a clock time in words" },
   dayWords: { owner: "dates.js", via: "OrganiserDates.dayWords", what: "a date in words" },

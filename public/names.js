@@ -136,8 +136,21 @@
     const list = Array.isArray(contacts) ? contacts.filter((c) => c && c.name) : [];
     if (!wanted) return { state: "new", contact: null, suggestions: [] };
 
-    const exact = list.find((c) => formsOf(c).some((f) => norm(f) === wanted));
-    if (exact) return { state: "matched", contact: exact, suggestions: [] };
+    // TWO PEOPLE WITH THE SAME NAME IS NOT A MATCH, IT IS A QUESTION.
+    //
+    // This took the FIRST exact hit and linked it, silently — while the rule
+    // four lines further down, for people found by first name, already said
+    // that two candidates must be asked about. The same rule, applied in one
+    // branch and not the other, which is how these things always go.
+    //
+    // The cost of the miss is the whole reason this file exists. A staff list
+    // says Nick is running the open evening; two of your people are called
+    // Nick and one of them is you; the app picked one and said nothing. Either
+    // you have been given a job you never agreed to, or somebody else's job has
+    // quietly become yours, and nothing anywhere would ever have told you.
+    const exact = list.filter((c) => formsOf(c).some((f) => norm(f) === wanted));
+    if (exact.length === 1) return { state: "matched", contact: exact[0], suggestions: [] };
+    if (exact.length > 1) return { state: "nearly", contact: null, suggestions: exact.slice(0, 4) };
 
     // Same name, different spacing — the unspaced-script case, and also how
     // "Wang Wei" finds a contact you taught as "wangwei".
@@ -341,6 +354,111 @@
     return (c && String(c.name || "").trim()) || key;
   }
 
+  // WHICH ONE? — the question a name on its own cannot answer.
+  //
+  // There are two people called Nick. One of them is you. A document arrives
+  // saying Nick is running the open evening, and there is no way on earth to
+  // tell from the word "Nick" whether that is a job you have just been given or
+  // somebody else's job entirely. The same goes for HR at this school and HR at
+  // the last one, for the two Wangs in 9A, and for every parent who shares a
+  // surname with their child's form tutor.
+  //
+  // So a person is written with the thing that tells them apart, in brackets
+  // after the name. What that thing IS is never decided here — §0.2. It is
+  // whatever the person using the app said it was:
+  //
+  //   · the tag they typed on that person — "SHSID", "Head of Y9", "my brother"
+  //   · failing that, the group they are in — "9A", "colleague", "parent"
+  //
+  // And "you" beats both, because that is the one confusion that costs you
+  // something you cannot get back: a job you never agreed to, sitting on your
+  // list, or somebody else's job quietly becoming yours.
+  const TAG_MAX = 24;
+  function tagOf(contact) {
+    if (!contact) return "";
+    if (contact.isMe) return "you";
+    const tag = String(contact.tag || "").trim();
+    if (tag) return tag.slice(0, TAG_MAX);
+    return String(contact.group || "").trim().slice(0, TAG_MAX);
+  }
+
+  // HOW A PERSON IS WRITTEN ON SCREEN, everywhere, once.
+  //
+  // Takes an id OR a bare name, because the app holds both: a record knows a
+  // contact's id, while a task that says "promised to Nick" holds nothing but
+  // the four letters somebody typed. Both are the same question and they got
+  // different answers — the id sites went through nameOf and the name sites
+  // printed the raw string, so half the app could tell two people apart and
+  // half could not.
+  //
+  // Bare where there is nothing to add, so a list of one class doesn't turn
+  // into "Li Wei (9A), Zhang Min (9A), Chen Hao (9A)" — a tag every single row
+  // shares tells you nothing and is just more to read.
+  function saidAs(contacts, who, opts) {
+    const list = Array.isArray(contacts) ? contacts.filter(Boolean) : [];
+    const o = opts || {};
+    const key = who == null ? "" : String(who);
+    if (!key.trim()) return "";
+    let c = list.find((x) => x.id === who);
+    let name = "";
+    if (c) {
+      name = String(c.name || "").trim() || key;
+    } else {
+      // A NAME, NOT AN ID. Resolved the same way everything else resolves one,
+      // so "Nick" finds the same person here as it does anywhere else.
+      const hit = look(key, list);
+      if (hit.state === "matched" && hit.contact) c = hit.contact;
+      name = c ? String(c.name || "").trim() || key : key;
+      // TWO PEOPLE IT COULD BE IS THE WHOLE POINT OF THIS. Saying nothing there
+      // would be the app quietly picking one.
+      if (!c && hit.state === "nearly" && hit.suggestions.length > 1) {
+        const tags = hit.suggestions.map(tagOf).filter(Boolean);
+        return tags.length > 1 ? `${key} (which one? ${tags.join(" or ")})` : key;
+      }
+    }
+    const tag = tagOf(c);
+    if (!tag) return name;
+    // Everyone in view shares it, so it separates nobody — see above.
+    if (o.sharedBy && o.sharedBy === tag) return name;
+    return `${name} (${tag})`;
+  }
+
+  // A TAG EVERYBODY IN VIEW SHARES SEPARATES NOBODY. On 9A's register every
+  // single row would read "(9A)" — four more characters per line, on a page
+  // somebody is scanning down, carrying no information at all. Handed the list
+  // that is about to be drawn, this says what to leave off.
+  function sharedTag(contacts, whos) {
+    const list = Array.isArray(whos) ? whos : [];
+    if (list.length < 2) return "";
+    const tags = new Set(
+      list.map((w) => {
+        const c = (Array.isArray(contacts) ? contacts : []).find((x) => x && x.id === w);
+        return tagOf(c);
+      })
+    );
+    if (tags.size !== 1) return "";
+    const only = [...tags][0];
+    // "you" is never suppressed. If a list is somehow all you, that is worth
+    // seeing rather than hiding.
+    return only === "you" ? "" : only;
+  }
+
+  // WHO CANNOT BE TOLD APART. Two people whose names read the same AND whose
+  // tags read the same are, on screen, one person — which is worse than having
+  // no tags at all, because the brackets promise a distinction that isn't
+  // there. Handed back so the People page can say so and offer to fix it.
+  function muddled(contacts) {
+    const list = Array.isArray(contacts) ? contacts.filter((c) => c && c.name) : [];
+    const by = new Map();
+    list.forEach((c) => {
+      const key = `${norm(c.name)}|${norm(tagOf(c))}`;
+      if (!by.has(key)) by.set(key, []);
+      by.get(key).push(c);
+    });
+    return [...by.values()].filter((g) => g.length > 1);
+  }
+
   window.OrganiserNames = {
-    nameOf, look, namesIn, peopleIn, couldBeName, remember, formsOf, pinyinCouldBe, distance, nearEnough, norm };
+    nameOf, tagOf, saidAs, sharedTag, muddled,
+    look, namesIn, peopleIn, couldBeName, remember, formsOf, pinyinCouldBe, distance, nearEnough, norm };
 })();

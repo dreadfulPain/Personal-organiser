@@ -488,7 +488,7 @@
       const whoSel = card.querySelector(".rp-who");
       const typeSel = card.querySelector(".rp-type");
       if (!p.who) whoSel.appendChild(new Option("— who? —", "")); // never guessed for you
-      whoOptions().forEach((w) => whoSel.appendChild(new Option(nameOf(w), w)));
+      whoOptions().forEach((w) => whoSel.appendChild(new Option(personWords(w), w)));
       config.types.forEach((t) => typeSel.appendChild(new Option(t, t)));
       whoSel.value = p.who;
       typeSel.value = p.type;
@@ -888,7 +888,12 @@
 
   // Asked of one place — see OrganiserNames.nameOf. Six files each had their
   // own copy of this and they had already drifted apart.
-  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
+  // Everybody this page can log against.
+  const shownIds = () => whoOptions();
+  // NAME PLUS THE WORD THAT TELLS THEM APART — see OrganiserNames.saidAs. A
+  // tag every row on this page shares is dropped, because it separates nobody.
+  const personWords = (id) =>
+    OrganiserNames.saidAs(contacts, id, { sharedBy: OrganiserNames.sharedTag(contacts, shownIds()) });
 
   function fillSelect(sel, values, allLabel) {
     const el = $(sel);
@@ -903,7 +908,7 @@
     values.forEach((v) => {
       const o = document.createElement("option");
       o.value = v;
-      o.textContent = nameOf(v);
+      o.textContent = personWords(v);
       el.appendChild(o);
     });
     if ([...el.options].some((o) => o.value === current)) el.value = current;
@@ -938,7 +943,7 @@
       label.appendChild(sel);
       head.appendChild(label);
     };
-    mkSel("Who", whoOptions(), rec.who, (v) => (rec.who = v), false, nameOf);
+    mkSel("Who", whoOptions(), rec.who, (v) => (rec.who = v), false, personWords);
     mkSel("Kind", config.types, rec.type, (v) => (rec.type = v));
     if (config.topics.length) {
       mkSel("Skill / standard", config.topics, rec.topic || "", (v) => (rec.topic = v), true);
@@ -1051,7 +1056,7 @@
     row.innerHTML = `
       <div class="rec-main">
         <div class="rec-line">
-          <span class="rec-who">${escapeHtml(nameOf(rec.who))}</span>
+          <span class="rec-who">${escapeHtml(personWords(rec.who))}</span>
           <span class="rec-type">${escapeHtml(rec.type)}</span>
           <span class="rec-date">${escapeHtml(friendlyDate(rec.date))}</span>
           ${rec.topic ? `<span class="topic-chip">${escapeHtml(rec.topic)}</span>` : ""}

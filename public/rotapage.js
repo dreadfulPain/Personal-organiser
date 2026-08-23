@@ -33,7 +33,13 @@
 
   // Asked of one place — see OrganiserNames.nameOf. Six files each had their
   // own copy of this and they had already drifted apart.
-  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
+  // A rota is the case this exists for: colleagues, from anywhere, whose names
+  // are exactly what gets muddled. Never dropped.
+  const shownIds = () => [];
+  // NAME PLUS THE WORD THAT TELLS THEM APART — see OrganiserNames.saidAs. A
+  // tag every row on this page shares is dropped, because it separates nobody.
+  const personWords = (id) =>
+    OrganiserNames.saidAs(contacts, id, { sharedBy: OrganiserNames.sharedTag(contacts, shownIds()) });
   const waitWords = (w) => {
     if (!Number.isFinite(w)) return "no turn yet";
     if (w <= 0) return "today";
@@ -77,7 +83,7 @@
     el.innerHTML = due
       .map(
         (x) =>
-          `<div class="ro-up"><div class="p-thead"><strong>${esc(nameOf(x.id))}</strong>` +
+          `<div class="ro-up"><div class="p-thead"><strong>${esc(personWords(x.id))}</strong>` +
           `<span class="p-state">last turn ${esc(waitWords(x.waited))}` +
           (x.tries ? ` · ${x.tries} ${x.tries === 1 ? "try" : "tries"} that couldn't happen` : "") +
           `</span></div>` +
@@ -104,7 +110,7 @@
     el.innerHTML = stuck
       .map(
         (x) =>
-          `<div class="ro-row"><span>${esc(nameOf(x.id))}</span>` +
+          `<div class="ro-row"><span>${esc(personWords(x.id))}</span>` +
           `<span class="p-state">${x.tries} tries at this time, none of them worked</span>` +
           `<button type="button" class="link ro-clear" data-id="${esc(x.id)}">sorted it</button></div>`
       )
@@ -119,7 +125,7 @@
       .queue(r, todayISO())
       .map(
         (x, i) =>
-          `<div class="ro-row"><span>${i + 1}. ${esc(nameOf(x.id))}</span>` +
+          `<div class="ro-row"><span>${i + 1}. ${esc(personWords(x.id))}</span>` +
           `<span class="p-state">${esc(waitWords(x.waited))}</span></div>`
       )
       .join("");
@@ -180,9 +186,9 @@
     const next = R().insteadOf(r, id, todayISO());
     if (!next) { box.innerHTML = `<p class="muted">Nobody else in the round.</p>`; return; }
     box.innerHTML =
-      `<p class="muted">${esc(nameOf(id))} keeps their place — they come back round first. ` +
-      `Next in line is ${esc(nameOf(next.id))}, and taking a turn now costs them nothing.</p>` +
-      `<button type="button" class="btn ro-swap" data-id="${esc(next.id)}">did it with ${esc(nameOf(next.id))}</button>`;
+      `<p class="muted">${esc(personWords(id))} keeps their place — they come back round first. ` +
+      `Next in line is ${esc(personWords(next.id))}, and taking a turn now costs them nothing.</p>` +
+      `<button type="button" class="btn ro-swap" data-id="${esc(next.id)}">did it with ${esc(personWords(next.id))}</button>`;
   }
 
   // Today's turn as an ordinary piece of work, so the day plan sizes and places
@@ -194,7 +200,7 @@
     const due = R().due(r, iso);
     if (!due.length) return;
     const made = due
-      .map((x) => R().taskFor(r, x.id, `${r.title || "A turn"} — ${nameOf(x.id)}`, iso))
+      .map((x) => R().taskFor(r, x.id, `${r.title || "A turn"} — ${personWords(x.id)}`, iso))
       .filter(Boolean)
       // Twice in a day would be two of the same job on the list, and the second
       // one is never the one you tick off.

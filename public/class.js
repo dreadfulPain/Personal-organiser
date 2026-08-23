@@ -33,7 +33,13 @@
   // recognises. Falls back to the id, which is what this page always showed.
   // Asked of one place — see OrganiserNames.nameOf. Six files each had their
   // own copy of this and they had already drifted apart.
-  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
+  // Everybody this page is about — one class, so they nearly always share a
+  // class tag and it is dropped.
+  const shownIds = () => markable();
+  // NAME PLUS THE WORD THAT TELLS THEM APART — see OrganiserNames.saidAs. A
+  // tag every row on this page shares is dropped, because it separates nobody.
+  const personWords = (id) =>
+    OrganiserNames.saidAs(contacts, id, { sharedBy: OrganiserNames.sharedTag(contacts, shownIds()) });
 
   function persist() {
     OrganiserStore.save({ records });
@@ -102,7 +108,7 @@
         const whos = [...byWho.entries()]
           .filter(([, r]) => String(r.level) === lv)
           .map(([w]) => w)
-          .sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+          .sort((a, b) => personWords(a).localeCompare(personWords(b)));
         const nm = L.levelName(config, lv);
         const top = document.createElement("div");
         top.className = "cl-celltop";
@@ -117,7 +123,7 @@
           // up; this one didn't, so the grid you actually look at said "p1"
           // where it meant "Aisha" — and a row full of ids still renders
           // perfectly, it just stops meaning anything.
-          ? whos.map((w) => `<span class="cl-who">${escapeHtml(nameOf(w))}</span>`).join("")
+          ? whos.map((w) => `<span class="cl-who">${escapeHtml(personWords(w))}</span>`).join("")
           : `<span class="cl-cellempty">—</span>`;
         cell.append(top, body);
         line.appendChild(cell);
@@ -129,7 +135,7 @@
       const foot = document.createElement("p");
       foot.className = "cl-missing";
       foot.textContent = missing.length
-        ? `${missing.length} with no record for this skill: ${missing.map(nameOf).join(", ")}`
+        ? `${missing.length} with no record for this skill: ${missing.map(personWords).join(", ")}`
         : "everyone has a record for this skill";
       card.appendChild(foot);
       wrap.appendChild(card);
@@ -344,7 +350,7 @@
       row.className = "ms-row";
       const name = document.createElement("span");
       name.className = "ms-who";
-      name.textContent = nameOf(who);
+      name.textContent = personWords(who);
       const now = document.createElement("span");
       const work = L.workFor(records, who, session.skill);
       // "confirmed 3×" reads as strong. With no work behind it, it's the
@@ -399,7 +405,7 @@
     const foot = document.createElement("p");
     foot.className = "ms-missing";
     foot.textContent = missing.length
-      ? `${missing.length} still with no record for this skill: ${missing.map(nameOf).join(", ")}`
+      ? `${missing.length} still with no record for this skill: ${missing.map(personWords).join(", ")}`
       : "everyone has a record for this skill ✓";
     box.appendChild(foot);
 
@@ -537,7 +543,10 @@
     const written = [];
     const failed = [];
 
-    const csv = X.resultsCsv(records, config, markable(), nameOf);
+    // A FILE, NOT A SCREEN. The brackets are there to stop YOU confusing two
+    // people while you read; a spreadsheet is data, gets sorted and matched and
+    // read back in, and a bracket is not part of anybody's name.
+    const csv = X.resultsCsv(records, config, markable(), (id) => OrganiserNames.nameOf(contacts, id));
     const r1 = await X.saveToFolder(`results-${day}.csv`, csv, { bom: true });
     r1.ok ? written.push(r1.fallback ? "results (downloaded)" : r1.path) : failed.push(r1.message);
 

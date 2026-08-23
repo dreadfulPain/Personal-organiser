@@ -81,6 +81,66 @@
     if (!out.note) out.note = DEFAULT_CONFIG.note;
     return out;
   }
+  // THE WORD THAT TELLS TWO PEOPLE APART.
+  //
+  // There are two people called Nick. There is HR at this school and HR at the
+  // last one. A name on its own cannot separate them, and the app writing one
+  // of them down and getting on with it is how a job you never agreed to ends
+  // up on your list.
+  //
+  // Left blank it falls back to the kind or class they're in, which is enough
+  // for most people — a student is "(9A)" without anybody typing anything. It
+  // is here for the ones where it isn't.
+  function tagLine(person) {
+    const wrap = document.createElement("label");
+    wrap.className = "cb-field ppl-tag";
+    wrap.innerHTML =
+      `<span class="cb-lbl">Which one are they? — shown in brackets after their name</span>`;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = person.tag || "";
+    // The placeholder is examples, not a list to pick from: whatever tells YOU
+    // which one this is, is the right answer.
+    input.placeholder = person.group
+      ? `blank means “${person.group}”`
+      : "e.g. their school, their job, their year group";
+    input.addEventListener("change", (e) => {
+      const v = e.target.value.trim().slice(0, 24);
+      if (v) person.tag = v;
+      else delete person.tag;
+      persist();
+      render();
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  // AND THE ONE THAT MATTERS MOST. A document says Nick is running the open
+  // evening. Whether that is you decides whether you have just been given a
+  // job, and there is nothing in the word "Nick" that says. Ticked here, you
+  // are written as "Nick (you)" everywhere, and a paper naming the other Nick
+  // stops looking like it named you.
+  //
+  // One person only — ticking somebody else unticks whoever had it, because two
+  // of you is not a thing and a leftover tick would be worse than none.
+  function meLine(person) {
+    const wrap = document.createElement("label");
+    wrap.className = "cb-field ppl-me";
+    wrap.innerHTML = `<span class="cb-lbl">Is this you?</span>`;
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = !!person.isMe;
+    box.addEventListener("change", (e) => {
+      contacts.forEach((c) => { if (c && c !== person) delete c.isMe; });
+      if (e.target.checked) person.isMe = true;
+      else delete person.isMe;
+      persist();
+      render();
+    });
+    wrap.appendChild(box);
+    return wrap;
+  }
+
   // Everything the app knows this person is called. Shown on their card so the
   // learning is visible and correctable — a spelling it picked up wrongly must
   // be as easy to remove as it was to add.
@@ -110,6 +170,10 @@
       // rather than typed, but editable here like everything else.
       aka: (Array.isArray(c && c.aka) ? c.aka : []).map((x) => String(x).trim()).filter(Boolean).slice(0, 8),
       group: (c && c.group ? String(c.group) : "").trim(),
+      // Which one they are, when the name doesn't say — see tagLine, and
+      // OrganiserNames.tagOf, which is the one place that decides what shows.
+      ...(c && c.tag ? { tag: String(c.tag).trim().slice(0, 24) } : {}),
+      ...(c && c.isMe ? { isMe: true } : {}),
       details: c && c.details && typeof c.details === "object" ? c.details : {},
       workLog: (Array.isArray(c && c.workLog) ? c.workLog : [])
         .map((w) => ({
@@ -134,13 +198,27 @@
   }
 
   // ----- what's actually live with a person (computed, never a score) -----
-  function nameMatches(a, b) {
-    a = (a || "").trim().toLowerCase();
-    b = (b || "").trim().toLowerCase();
-    return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
-  }
+  // DOES THIS NAME MEAN THIS PERSON? — asked of names.js, which is where that
+  // question lives. This file had its own answer and it was a much looser one:
+  // a.includes(b) || b.includes(a), so a job promised to "Nick" was counted
+  // against Nick, Nicky and Nicholas alike, and a job promised to "Li" belonged
+  // to every Li on the roster. It also never once admitted a doubt — the card
+  // said "1 promised to them" against BOTH people called Nick, definitively,
+  // twice, for one promise.
+  //
+  // SURE and MAYBE are different facts and are now shown as different facts. A
+  // promise the app cannot place is not evidence about either person; it is a
+  // question, and the card says so instead of answering it twice.
   function openPromises(person) {
-    return items.filter((i) => !i.done && nameMatches(i.promisedTo, person.name));
+    const sure = [];
+    const maybe = [];
+    items.forEach((i) => {
+      if (i.done || !i.promisedTo) return;
+      const hit = OrganiserNames.look(i.promisedTo, contacts);
+      if (hit.state === "matched" && hit.contact && hit.contact.id === person.id) sure.push(i);
+      else if (hit.state === "nearly" && hit.suggestions.some((c) => c.id === person.id)) maybe.push(i);
+    });
+    return { sure, maybe, length: sure.length };
   }
   function mentions(person) {
     const n = (person.name || "").toLowerCase();
@@ -299,10 +377,12 @@
     card.innerHTML = `
       <div class="ppl-head">
         <button class="ppl-name" type="button">${escapeHtml(person.name)}</button>
+        ${OrganiserNames.tagOf(person) ? `<span class="ppl-tag-chip" title="How this person is told apart from anyone else with the same name">(${escapeHtml(OrganiserNames.tagOf(person))})</span>` : ""}
         ${(person.aka || []).length ? `<span class="ppl-aka-chip" title="Other ways this name gets written">${(person.aka || []).map(escapeHtml).join(" · ")}</span>` : ""}
-        <span class="ppl-group">${escapeHtml(person.group || "")}</span>
+        ${OrganiserNames.tagOf(person) === (person.group || "") ? "" : `<span class="ppl-group">${escapeHtml(person.group || "")}</span>`}
         ${wIn || wOut ? `<span class="work-chip" title="Work passed between you in ${escapeHtml(RANGE_WORDS[range])}">${wIn} to you · ${wOut} from you</span>` : ""}
-        ${promises.length ? `<span class="promise-chip">${promises.length} promised to them</span>` : ""}
+        ${promises.sure.length ? `<span class="promise-chip">${promises.sure.length} promised to them</span>` : ""}
+        ${promises.maybe.length ? `<span class="promise-chip promise-maybe" title="Somebody else here has the same name, so the app cannot say which of you this was promised to">${promises.maybe.length} might be theirs</span>` : ""}
         <span class="ppl-quick">
           <button class="link q-in" type="button" title="They passed work to me — logs straight away">+ to me</button>
           <button class="link q-out" type="button" title="I passed work to them — logs straight away">+ from me</button>
@@ -338,6 +418,8 @@
       });
       gl.appendChild(gsel);
       grid.appendChild(gl);
+      grid.appendChild(tagLine(person));
+      grid.appendChild(meLine(person));
       grid.appendChild(akaLine(person));
       fields.forEach((f) => {
         const label = document.createElement("label");
@@ -364,11 +446,20 @@
       live.className = "ppl-live";
       const ms = mentions(person);
       let html = "";
-      if (promises.length) {
+      const promiseRows = (list) => list
+        .map((t) => `<div class="ppl-live-row">${escapeHtml(t.title)}${t.date ? ` <span class="gt-when">${escapeHtml(friendlyDate(t.date))}</span>` : ""}</div>`)
+        .join("");
+      if (promises.sure.length) {
         html += `<p class="ppl-live-title">You've promised them</p>`;
-        html += promises
-          .map((t) => `<div class="ppl-live-row">${escapeHtml(t.title)}${t.date ? ` <span class="gt-when">${escapeHtml(friendlyDate(t.date))}</span>` : ""}</div>`)
-          .join("");
+        html += promiseRows(promises.sure);
+      }
+      // SAID AS A QUESTION, because that is what it is. Somebody else here has
+      // the same name, so listing these under "you've promised them" would be
+      // the app deciding something it has no way of knowing — twice, once on
+      // each of their cards.
+      if (promises.maybe.length) {
+        html += `<p class="ppl-live-title">Might be theirs — someone else here has this name</p>`;
+        html += promiseRows(promises.maybe);
       }
       if (ms.length) {
         html += `<p class="ppl-live-title">Recently noted</p>`;
@@ -456,13 +547,31 @@
 
     const list = $("#pplList");
     list.innerHTML = "";
+    // WHEN THE BRACKETS DON'T HELP. Two people whose names read the same AND
+    // whose tags read the same come out identical on screen — which is worse
+    // than no tags at all, because now the app looks like it has told them
+    // apart. Said here, once, with the names in it, so the fix is obvious.
+    const same = OrganiserNames.muddled(contacts);
+    if (same.length) {
+      const warn = document.createElement("p");
+      warn.className = "muted ppl-muddled";
+      warn.textContent =
+        same
+          .map((g) => `${g.length} people here read as “${OrganiserNames.saidAs(contacts, g[0].id)}”`)
+          .join("; ") +
+        ". Open one and give it something to tell them apart — a school, a job, a year group.";
+      list.appendChild(warn);
+    }
     const visible = contacts.filter((c) => {
       if (filters.group && c.group !== filters.group) return false;
       if (filters.name && !c.name.toLowerCase().includes(filters.name)) return false;
       return true;
     });
     if (!visible.length) {
-      list.innerHTML = `<p class="empty">${contacts.length ? "Nobody matches that." : "No one here yet. Add a name above — details can come later."}</p>`;
+      list.insertAdjacentHTML(
+        "beforeend",
+        `<p class="empty">${contacts.length ? "Nobody matches that." : "No one here yet. Add a name above — details can come later."}</p>`
+      );
       return;
     }
     // group them under their kind, so colleagues and parents stay distinct

@@ -171,7 +171,11 @@
     if (it.date && it.date === ctx.today && it.deadlineType === "hard") return "due today";
     if (ctx && ctx.tight && ctx.tight.has && ctx.tight.has(it.id))
       return "little room left before it's due";
-    if (it.promisedTo) return "promised to " + it.promisedTo;
+    // WHICH person, not just a name — two of them are called Nick. Asked of the
+    // caller the same way goalTitle is, because this file is below the one that
+    // holds your contacts and has no business reaching up for them.
+    if (it.promisedTo)
+      return "promised to " + (ctx && ctx.personWords ? ctx.personWords(it.promisedTo) : it.promisedTo);
     if (isHigh(it)) return "matters a lot";
     const g = goalOf(it, ctx);
     if (g) return "toward " + g;

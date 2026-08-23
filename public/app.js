@@ -75,6 +75,16 @@
     const g = goals.find((x) => x && x.id === id);
     return g ? g.title || "" : "";
   }
+  // WHICH PERSON, not just what they are called.
+  //
+  // A task holds a bare name — "promised to Nick" is four letters and nothing
+  // else. Six places on this page printed those four letters straight out, so
+  // the app could not tell you which Nick and did not admit it. Asked of one
+  // place now — OrganiserNames.saidAs — which adds the word that separates them
+  // and, where it genuinely cannot tell, says so instead of choosing.
+  function personWords(name) {
+    return window.OrganiserNames ? OrganiserNames.saidAs(contacts, name) : String(name || "");
+  }
   // A task can be "for" a portfolio standard — show its short code (or title).
   function standardLabelById(id) {
     if (!id || !portfolio || !Array.isArray(portfolio.points)) return "";
@@ -518,7 +528,7 @@
     if (eff === "quick") parts.push("quick");
     else if (eff === "draining") parts.push("draining");
     if (it.openLoop) parts.push("needs finishing");
-    if (it.promisedTo) parts.push("promised to " + it.promisedTo);
+    if (it.promisedTo) parts.push("promised to " + personWords(it.promisedTo));
     const tags = Array.isArray(it.tags) ? it.tags : [];
     if (tags.length) parts.push(tags.join(", "));
     const gTitle = goalTitleById(it.goalId);
@@ -1057,7 +1067,7 @@
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
           ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
-          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
+          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
           ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
           ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
@@ -1179,7 +1189,7 @@
       <div class="item-meta">
         <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
         ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
-        ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
+        ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
         ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
         ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
         ${overdue ? `<span class="when overdue">overdue</span>` : ""}
@@ -1286,7 +1296,7 @@
   // from the same definition. One answer to "what matters", used twice — so the
   // two screens can never quietly start disagreeing with each other.
   function priorityCtx() {
-    return { today: todayISO(), goalTitle: goalTitleById, tight: tightNow() };
+    return { today: todayISO(), goalTitle: goalTitleById, personWords, tight: tightNow() };
   }
 
   // See timeline.js — the same question, asked the same way, so the two pages
@@ -1829,7 +1839,7 @@
         <div class="lp-main">
           <div class="lp-title">${escapeHtml(it.title)}</div>
           <div class="item-meta">
-            ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(it.promisedTo)}</span>` : ""}
+            ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
             <span class="lp-since">${escapeHtml(openSince(it))}</span>
             ${due ? `<span class="when${it.deadlineType === "hard" ? " due" : ""}">${it.deadlineType === "hard" ? "due " : ""}${escapeHtml(due)}</span>` : ""}
             ${ping ? `<span class="ping-info">${escapeHtml(ping)}</span>` : ""}
@@ -1997,7 +2007,7 @@
         <div class="wo-main">
           <div class="wo-title">${escapeHtml(it.title)}</div>
           <div class="wo-meta">
-            <span class="wo-who">${escapeHtml(it.waitingOn)}</span>
+            <span class="wo-who">${escapeHtml(personWords(it.waitingOn))}</span>
             <span class="wo-since">${escapeHtml(sinceWords(it))}</span>
             ${asked ? `<span class="wo-asked">asked you ${asked}×</span>` : ""}
             ${it.remindAt && !it.remindedAt ? `<span class="ping-info">${escapeHtml(fmtRemind(it))}</span>` : ""}
@@ -2020,7 +2030,7 @@
         armWaiting(it, ASK_EVERY_DAYS);
         persist();
         renderZones();
-        setStatus(`Kept waiting on ${it.waitingOn} — back in ${ASK_EVERY_DAYS} days. ✓`);
+        setStatus(`Kept waiting on ${personWords(it.waitingOn)} — back in ${ASK_EVERY_DAYS} days. ✓`);
       });
       mk("stop asking", () => {
         it.waitingOn = "";

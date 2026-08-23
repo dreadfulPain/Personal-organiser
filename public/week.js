@@ -19,14 +19,15 @@
 
   const $ = (sel) => document.querySelector(sel);
   function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) => ({
+    return (s || "").toString().replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
-  function isoOf(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
-  const todayISO = () => isoOf(new Date());
+  // Asked of one place — see OrganiserDates.isoOf.
+  const isoOf = (d) => OrganiserDates.isoOf(d);
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
   function addDaysISO(iso, n) {
     const d = new Date(iso + "T12:00:00");
     d.setDate(d.getDate() + n);
@@ -39,13 +40,10 @@
       weekday: "long", day: "numeric", month: "short",
     });
   }
-  function fmtTime(t) {
-    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
-    if (!m) return "";
-    const d = new Date();
-    d.setHours(+m[1], +m[2], 0, 0);
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
+  // Asked of one place — see OrganiserDates.timeWords. Five files had their own
+  // and no two were the same; the week's insisted on a two-digit hour, which
+  // is the difference that has already cost this app once.
+  const fmtTime = (t) => OrganiserDates.timeWords(t);
 
   function complete(id) {
     const it = items.find((x) => x.id === id);

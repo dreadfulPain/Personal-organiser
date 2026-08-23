@@ -22,11 +22,10 @@
   const esc = (s) =>
     String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const todayISO = () => {
-    const d = new Date();
-    const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
+
   const groups = () =>
     [...new Set(contacts.map((c) => (c && c.group) || "").filter(Boolean))].sort();
   // IN THE ORDER YOU READ A REGISTER — by name. They came back in whatever order
@@ -52,12 +51,10 @@
   }
 
   // 09:30 → 9:30 AM, in whatever way this machine writes times.
-  function fmtTime(hm) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || ""));
-    if (!m) return "";
-    const d = new Date(2000, 0, 1, Number(m[1]), Number(m[2]));
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
+  // Asked of one place — see OrganiserDates.timeWords. Five files had their own
+  // and no two were the same; the week's insisted on a two-digit hour, which
+  // is the difference that has already cost this app once.
+  const fmtTime = (t) => OrganiserDates.timeWords(t);
 
   // Asked of one place — see OrganiserNames.nameOf. Six files each had their
   // own copy of this and they had already drifted apart.

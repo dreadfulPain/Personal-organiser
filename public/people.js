@@ -35,10 +35,11 @@
     }[c]));
   }
   const pad2 = (n) => String(n).padStart(2, "0");
-  function isoOf(d) {
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
-  const todayISO = () => isoOf(new Date());
+  // Asked of one place — see OrganiserDates.isoOf.
+  const isoOf = (d) => OrganiserDates.isoOf(d);
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
   // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
   // kept their own copy of this, each subtly different, and none of them said
   // which year a date was in. Fixing the shared one changed nothing on screen,

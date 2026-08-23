@@ -28,11 +28,10 @@
   const esc = (s) =>
     String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const todayISO = () => {
-    const d = new Date();
-    const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
+
   const ago = (iso) => {
     if (!iso) return "";
     const d = Math.round((new Date(todayISO() + "T12:00:00") - new Date(iso + "T12:00:00")) / 86400000);
@@ -94,12 +93,10 @@
   // the app never makes it, because "these words overlap" and "this lesson
   // taught that" are not the same claim and only you can tell them apart.
   // 09:35 → 9:35 AM, however this machine writes times.
-  function fmtTime(hm) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || ""));
-    if (!m) return "";
-    return new Date(2000, 0, 1, Number(m[1]), Number(m[2]))
-      .toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
+  // Asked of one place — see OrganiserDates.timeWords. Five files had their own
+  // and no two were the same; the week's insisted on a two-digit hour, which
+  // is the difference that has already cost this app once.
+  const fmtTime = (t) => OrganiserDates.timeWords(t);
 
   function renderTargets() {
     const el = $("#lsTargets");

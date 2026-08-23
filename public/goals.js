@@ -30,12 +30,14 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const now = () => new Date().toISOString();
   function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) => ({
+    return (s || "").toString().replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }
 
-  const todayISO = () =>
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
     window.OrganiserSchedule ? OrganiserSchedule.isoOf(new Date()) : new Date().toISOString().slice(0, 10);
 
   function persist() {

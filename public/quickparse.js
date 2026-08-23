@@ -27,6 +27,11 @@
   "use strict";
 
   const pad2 = (n) => String(n).padStart(2, "0");
+  // ITS OWN, DELIBERATELY. dates.js is the layer that turns things into words
+  // for a person; this file is the layer underneath, and every other module
+  // stands on it. Depending upwards would mean the spine could not be run — or
+  // tested — without the presentation on top of it, which is the wrong way up.
+  // Checked as a pair by tests/onecopy.mjs so the two cannot drift apart.
   const isoOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const plus = (n) => {
     const d = new Date();

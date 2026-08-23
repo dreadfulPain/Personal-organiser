@@ -41,7 +41,7 @@
   let contacts = []; // the People page's list — see markable()
 
   function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) => ({
+    return (s || "").toString().replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
   }

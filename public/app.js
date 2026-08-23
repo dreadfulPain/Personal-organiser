@@ -34,10 +34,11 @@
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-  function isoOf(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
-  const todayISO = () => isoOf(new Date());
+  // Asked of one place — see OrganiserDates.isoOf.
+  const isoOf = (d) => OrganiserDates.isoOf(d);
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
   function addDaysISO(iso, n) {
     const d = new Date(iso + "T12:00:00");
     d.setDate(d.getDate() + n);
@@ -53,13 +54,10 @@
   // One or two digits for the hour, like everything else that reads a clock
   // time here. It used to insist on two, so a time written "9:05" simply
   // vanished off the row while the planner went on using it.
-  function fmtTime(t) {
-    const m = /^(\d{1,2}):(\d{2})$/.exec((t || "").toString().trim());
-    if (!m) return "";
-    const d = new Date();
-    d.setHours(+m[1], +m[2], 0, 0);
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
+  // Asked of one place — see OrganiserDates.timeWords. Five files had their own
+  // and no two were the same; the week's insisted on a two-digit hour, which
+  // is the difference that has already cost this app once.
+  const fmtTime = (t) => OrganiserDates.timeWords(t);
   function normaliseTags(t) {
     if (!Array.isArray(t)) return [];
     return t.map((x) => String(x).trim().toLowerCase()).filter(Boolean).slice(0, 4);
@@ -223,7 +221,7 @@
   }
 
   function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) => ({
+    return (s || "").toString().replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
       "<": "&lt;",
       ">": "&gt;",

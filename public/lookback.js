@@ -13,7 +13,7 @@
   const $ = (sel) => document.querySelector(sel);
 
   function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, (c) => ({
+    return (s || "").toString().replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
       "<": "&lt;",
       ">": "&gt;",
@@ -21,9 +21,8 @@
       "'": "&#39;",
     }[c]));
   }
-  function isoOf(d) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
+  // Asked of one place — see OrganiserDates.isoOf.
+  const isoOf = (d) => OrganiserDates.isoOf(d);
   // ONE WAY OF WRITING A DATE, for the whole app — see dates.js. Six files
   // kept their own copy of this, each subtly different, and none of them said
   // which year a date was in. Fixing the shared one changed nothing on screen,

@@ -15,6 +15,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { everyModule } from "./_dom.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -181,8 +182,11 @@ sec("The page: four seconds to take it");
   const sb2 = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
     Promise, setTimeout, document: doc, location: { hash: "" } };
   sb2.window = sb2; sb2.globalThis = sb2; vm.createContext(sb2);
-  ["levels.js", "attend.js"].forEach((f) =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb2));
+  // EVERY module, derived — see everyModule() in _dom.mjs. This runs a whole
+  // PAGE script, and a page loads all of them; naming a handful by hand goes
+  // stale the moment the page needs one more, and the failure then shows up
+  // inside the PAGE as "X is not defined".
+  everyModule(sb2);
   const state = {
     attendance: [], contacts: CLASS, schedule: [{ id:"s1", label:"period 3", days:[2] }],
     lessons: [{ id:"l1", taught:true, date:"2026-09-01", group:"9A", title:"Settings", targets:["W.3.d"] }],

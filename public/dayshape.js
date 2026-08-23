@@ -39,11 +39,21 @@
   // rename; the app never reads the words, only their order.
   const STARTING_PARTS = ["first thing", "before lunch", "after lunch", "evening"];
 
+  // Asked of the schedule spine, which is the one place that decides what a
+  // clock time is. This had its own reading and the two disagreed: "9:99" is
+  // 639 minutes here and not a time at all there, so a hand-edited or restored
+  // config could have a day starting at a quarter to eleven according to one
+  // module and no day at all according to the other.
+  //
+  // The fallback is kept for the case where this module is used without the
+  // spine — no page in the app does, but a test might.
   const toMin = (hm) => {
+    if (window.OrganiserSchedule) return OrganiserSchedule.toMin(hm);
     const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || "").trim());
     if (!m) return null;
-    const n = Number(m[1]) * 60 + Number(m[2]);
-    return n >= 0 && n <= 1440 ? n : null;
+    const h = Number(m[1]);
+    const mm = Number(m[2]);
+    return h > 23 || mm > 59 ? null : h * 60 + mm;
   };
 
   function ownDay(config) {

@@ -24,9 +24,12 @@
   const pad2 = (n) => String(n).padStart(2, "0");
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-  function isoOf(d) {
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
+  // ITS OWN, DELIBERATELY. dates.js is the layer that turns things into words
+  // for a person; this file is the layer underneath, and every other module
+  // stands on it. Depending upwards would mean the spine could not be run — or
+  // tested — without the presentation on top of it, which is the wrong way up.
+  // Checked as a pair by tests/onecopy.mjs so the two cannot drift apart.
+  const isoOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   // "09:05" → 545. Anything unparseable → null, never a silent 0 (a bad parse
   // landing at midnight would quietly blank out a morning).
   function toMin(t) {
@@ -41,7 +44,12 @@
     const m = Math.max(0, Math.min(24 * 60 - 1, Math.round(mins)));
     return pad2(Math.floor(m / 60)) + ":" + pad2(m % 60);
   }
+  // Asked of one place — see OrganiserDates.timeWords. This went through toMin
+  // first, which accepts more than a clock time does, so the two could disagree
+  // about the same string. Falls back to its own reading only when dates.js
+  // isn't there, which no page in the app is.
   function fmtTime(t) {
+    if (window.OrganiserDates) return OrganiserDates.timeWords(toHM(toMin(t)));
     const mins = toMin(t);
     if (mins === null) return "";
     const d = new Date();

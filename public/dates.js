@@ -37,6 +37,30 @@
   //   opts.weekday— include the day name (a plan: knowing it's a Tuesday is
   //                 half the information)
   //   opts.relative — say "Today"/"Tomorrow"/"Yesterday" when they apply
+  // A CLOCK TIME, WRITTEN THE ONE WAY.
+  //
+  // Five files had their own version of this and no two were the same. One of
+  // them — the week's — insisted on a two-digit hour, which is the exact
+  // difference that has already cost this app once: a time stored "9:05" was
+  // pinned by the planner and showed as nothing at all in the list, so the row
+  // said one thing and the plan another. That was found and fixed in app.js,
+  // and left standing in week.js, because there were five of them.
+  //
+  // One or two digits for the hour. Anything that isn't a time is nothing,
+  // never midnight — a blank is visibly missing, and midnight is a lie you act
+  // on.
+  function timeWords(hm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm == null ? "" : hm).trim());
+    if (!m) return "";
+    const h = Number(m[1]);
+    const mins = Number(m[2]);
+    if (h > 23 || mins > 59) return "";
+    return new Date(2000, 0, 1, h, mins).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
   function dayWords(iso, opts) {
     if (!isISO(iso)) return "";
     const o = opts || {};
@@ -98,5 +122,10 @@
     return `${Math.round(days / 30)} months`;
   }
 
-  window.OrganiserDates = { dayWords, daysWords, agoWords, isoOf, isISO };
+  // Today, as yyyy-mm-dd. Fourteen files worked this out for themselves, in
+  // four different spellings — all agreeing, which is exactly the state nameOf
+  // and fmtTime were in before one of them was quietly changed.
+  const today = () => isoOf(new Date());
+
+  window.OrganiserDates = { timeWords, dayWords, daysWords, agoWords, isoOf, isISO, today };
 })();

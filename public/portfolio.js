@@ -22,10 +22,11 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const nowISO = () => new Date().toISOString();
   const pad2 = (n) => String(n).padStart(2, "0");
-  function isoOf(d) {
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  }
-  const todayISO = () => isoOf(new Date());
+  // Asked of one place — see OrganiserDates.isoOf.
+  const isoOf = (d) => OrganiserDates.isoOf(d);
+  // Asked of one place — see OrganiserDates.today(). Fourteen files worked this
+  // out for themselves, in four spellings that all agreed. So did nameOf, once.
+  const todayISO = () => OrganiserDates.today();
   function escapeHtml(s) {
     return (s || "").toString().replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",

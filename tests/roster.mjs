@@ -11,6 +11,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { everyModule } from "./_dom.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -140,9 +141,11 @@ sec("The page: paste, look, add");
     Option: function (t, v) { const e = makeEl("option", created); e.textContent = t; e.value = v; return e; },
     URLSearchParams, navigator: { onLine: true } };
   sb2.window = sb2; sb2.addEventListener = () => {}; vm.createContext(sb2);
-  ["roster.js", "names.js", "quickparse.js"].forEach((f) => {
-    try { vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb2); } catch {}
-  });
+  // EVERY module, derived — see everyModule() in _dom.mjs. This runs a whole
+  // PAGE script, and a page loads all of them; naming a handful by hand goes
+  // stale the moment the page needs one more, and the failure then shows up
+  // inside the PAGE as "X is not defined".
+  everyModule(sb2);
   const state = { contacts: [{ id: "p0", name: "Wang Wei", group: "9A" }], contactConfig: null,
     items: [], records: [], goals: [] };
   const saves = [];

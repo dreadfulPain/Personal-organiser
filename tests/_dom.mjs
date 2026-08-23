@@ -39,10 +39,18 @@ export const read = (f) => fs.readFileSync(path.join(PUB, f), "utf8");
 // Returns what failed rather than swallowing it: a file chosen for putting
 // something on window IS a module, so one that throws on the way in is a real
 // failure and not "probably a page script".
+// NAMED, not quietly skipped. capture.js puts helpers on window like a module
+// AND mounts itself onto the page at the bottom of the file, so loading it into
+// a bare sandbox starts a page that isn't there — and its init is async, so the
+// failure escapes any try around the load and lands somewhere unrelated. It is
+// the only file in the app shaped like this; if another appears, somebody
+// should have to think about it rather than find out this way.
+const MOUNTS_ITSELF = { "capture.js": "puts a capture bar on the page as it loads" };
+
 export function everyModule(sb) {
   const failed = [];
   fs.readdirSync(PUB)
-    .filter((f) => f.endsWith(".js") && f !== "store.js")
+    .filter((f) => f.endsWith(".js") && f !== "store.js" && !MOUNTS_ITSELF[f])
     .filter((f) => /window\.Organiser[A-Za-z]*\s*=/.test(read(f)))
     .forEach((f) => {
       try {

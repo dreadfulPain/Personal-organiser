@@ -809,10 +809,9 @@
   // An id is not a person. A block that says "about c8x2k" tells you nothing,
   // and the whole reason for linking one to People is so the day can say who.
   function aboutWords(ids) {
-    const names = (ids || []).map((id) => {
-      const c = contacts.find((x) => x && x.id === id);
-      return c ? c.name : id;
-    });
+    // THE ONE THAT HAD DRIFTED. This returned c.name with no fallback, so a
+    // contact saved without a name put "with undefined" on the day.
+    const names = (ids || []).map((id) => OrganiserNames.nameOf(contacts, id));
     return "with " + names.join(", ");
   }
 

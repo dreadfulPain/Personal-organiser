@@ -32,10 +32,9 @@
     const p = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
-  const nameOf = (id) => {
-    const c = contacts.find((x) => x && x.id === id);
-    return (c && c.name) || id;
-  };
+  // Asked of one place — see OrganiserNames.nameOf. Six files each had their
+  // own copy of this and they had already drifted apart.
+  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
   const waitWords = (w) => {
     if (!Number.isFinite(w)) return "no turn yet";
     if (w <= 0) return "today";

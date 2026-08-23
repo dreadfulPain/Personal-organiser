@@ -31,10 +31,9 @@
   const markable = () => OrganiserLevels.whoList(config, contacts);
   // And a name to show for it, since a fallback list is full of ids nobody
   // recognises. Falls back to the id, which is what this page always showed.
-  function nameOf(id) {
-    const c = contacts.find((x) => x && x.id === id);
-    return (c && c.name) || id;
-  }
+  // Asked of one place — see OrganiserNames.nameOf. Six files each had their
+  // own copy of this and they had already drifted apart.
+  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
 
   function persist() {
     OrganiserStore.save({ records });

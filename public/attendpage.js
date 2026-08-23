@@ -59,10 +59,9 @@
     return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
 
-  const nameOf = (id) => {
-    const c = contacts.find((x) => x && x.id === id);
-    return (c && c.name) || id;
-  };
+  // Asked of one place — see OrganiserNames.nameOf. Six files each had their
+  // own copy of this and they had already drifted apart.
+  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
 
   // ---- taking it ----------------------------------------------------------
   function renderTake() {

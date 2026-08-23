@@ -15,6 +15,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { everyModule } from "./_dom.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -73,8 +74,10 @@ async function openPersonPage(data) {
     Promise, setTimeout, document: doc, location: { hash: "" } };
   sb.window = sb; sb.globalThis = sb;
   vm.createContext(sb);
-  ["levels.js", "chart.js", "pastoral.js", "told.js", "tried.js", "classplan.js", "rota.js"].forEach((f) =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb));
+  // EVERY module, derived — see everyModule() in _dom.mjs. This runs a whole
+  // PAGE script, and a page loads all of them; naming a handful by hand went
+  // stale the moment the page needed one more.
+  everyModule(sb);
   const state = { ...data };
   sb.OrganiserStore = {
     load: async () => state,
@@ -404,8 +407,10 @@ Assessment:
     Promise, setTimeout, document: doc, location: { hash: "" } };
   sb.window = sb; sb.globalThis = sb;
   vm.createContext(sb);
-  ["levels.js","names.js","schedule.js","tried.js","lessonplan.js"].forEach((f) =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb));
+  // EVERY module, derived — see everyModule() in _dom.mjs. This runs a whole
+  // PAGE script, and a page loads all of them; naming a handful by hand went
+  // stale the moment the page needed one more.
+  everyModule(sb);
   const state = { lessons: [], lessonConfig: null, contacts: CLASS, records: [],
     recordConfig: { topics:["Reading","Writing"], levels:["4","3","2","1"], targetLevel:"3" },
     schedule: [{ id:"s1", label:"Period 3", start:"11:00", end:"12:00", days:[2] }],

@@ -268,8 +268,10 @@
   }
 
   function deletePerson(id) {
-    const p = contacts.find((c) => c.id === id);
-    if (!p || !confirm(`Remove ${p.name} from your people list?`)) return;
+    // Guarded like every other lookup: one null row in the list and this throws
+    // on c.id, taking the page down on a delete.
+    const p = contacts.find((c) => c && c.id === id);
+    if (!p || !confirm(`Remove ${OrganiserNames.nameOf(contacts, id)} from your people list?`)) return;
     contacts = contacts.filter((c) => c.id !== id);
     persist();
     render();

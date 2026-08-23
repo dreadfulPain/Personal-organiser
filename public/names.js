@@ -321,5 +321,26 @@
     return true;
   }
 
-  window.OrganiserNames = { look, namesIn, peopleIn, couldBeName, remember, formsOf, pinyinCouldBe, distance, nearEnough, norm };
+  // WHAT IS THIS PERSON CALLED?
+  //
+  // Six files each answered this, and by the time anybody counted they had
+  // already drifted: five returned `c.name || id`, and the one on the Day page
+  // returned `c.name` — so a contact saved without a name rendered the day as
+  // "with undefined". An id on screen is a lookup that quietly failed and still
+  // looks like a row; the word "undefined" is the same failure without even
+  // that much.
+  //
+  // The id is the honest fallback in every case — for somebody who isn't on
+  // your list, and for somebody who is but has no name against them. Inventing
+  // a name would be worse than a bare code, and a bare code at least tells you
+  // where to go and fix it.
+  function nameOf(contacts, id) {
+    const key = id == null ? "" : String(id);
+    if (!key) return "";
+    const c = (Array.isArray(contacts) ? contacts : []).find((x) => x && x.id === id);
+    return (c && String(c.name || "").trim()) || key;
+  }
+
+  window.OrganiserNames = {
+    nameOf, look, namesIn, peopleIn, couldBeName, remember, formsOf, pinyinCouldBe, distance, nearEnough, norm };
 })();

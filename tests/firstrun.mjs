@@ -232,4 +232,59 @@ sec("People are listed in the order you read a register, everywhere");
   });
 }
 
+// ---------------------------------------------------------------------------
+sec("What a person is called is worked out in one place");
+{
+  // SIX FILES EACH ANSWERED THIS, and by the time anybody counted they had
+  // already drifted: five returned `c.name || id`, and the one on the Day page
+  // returned `c.name` — so a contact saved without a name rendered the day as
+  // "with undefined". Not a hypothetical: the copies were identical when I
+  // first counted them and were not by the time I looked again.
+  // What must live in one place is DERIVING A DISPLAY NAME — a lookup that
+  // wants the whole contact (to check somebody exists before deleting them, say)
+  // is a different job and stays where it is.
+  const own = fs.readdirSync(PUB)
+    .filter((f) => f.endsWith(".js") && f !== "names.js")
+    .filter((f) => {
+      const src = fs.readFileSync(path.join(PUB, f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      // The copied shape exactly: a lookup in CONTACTS whose result is then read
+      // for a name. An area's name, or a module's own map of what it was handed,
+      // is a different question and stays where it is.
+      // Found BY ID and then read for a name: that is the shape all six copies
+      // had. Searching contacts by name (does this person exist yet?) is the
+      // opposite direction and a different job. The \\b after "name" matters —
+      // without it this matches ".nameOf", the shared call itself.
+      // [\\s\\S] rather than [^)]: the predicate opens with "((x) =>", so anything
+      // stopping at the first bracket never reaches the ".id ===" it is looking
+      // for — and the guard passed with a copy put back in front of it.
+      return [...src.matchAll(/contacts\s*\.find\([\s\S]{0,60}?\.id\s*===/g)]
+        .some((m) => /\.name\b/.test(src.slice(m.index, m.index + 160)));
+    });
+  ok("nothing works out a display name for itself any more", own.length === 0,
+     `still has its own copy: ${own.join(", ")}`);
+
+  const N = (() => {
+    const ctx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp, isNaN };
+    ctx.window = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(PUB, "names.js"), "utf8"), ctx);
+    return ctx.OrganiserNames;
+  })();
+  const CLASS = [{ id: "p1", name: "Ma Lin" }, { id: "p2", name: "" }, { id: "p3" }, null];
+  ok("somebody on your list is called what you called them", N.nameOf(CLASS, "p1") === "Ma Lin");
+  // THE ID IS THE HONEST FALLBACK EVERY TIME. Inventing a name would be worse
+  // than a bare code, and a bare code at least says where to go and fix it.
+  ok("somebody saved without one shows the id, never the word undefined",
+     N.nameOf(CLASS, "p2") === "p2", JSON.stringify(N.nameOf(CLASS, "p2")));
+  ok("and somebody with no name field at all is the same",
+     N.nameOf(CLASS, "p3") === "p3", JSON.stringify(N.nameOf(CLASS, "p3")));
+  ok("somebody not on your list is their id", N.nameOf(CLASS, "p9") === "p9");
+  ok("a null row in the list doesn't take the page down", N.nameOf(CLASS, "p1") === "Ma Lin");
+  ok("no id is nothing, not the word undefined", N.nameOf(CLASS, "") === "" && N.nameOf(CLASS, null) === "");
+  ok("and no list at all still answers", N.nameOf(null, "p1") === "p1");
+  ok("it never returns undefined", [undefined, null, "", "p1", "p2", "p3", "zz"]
+     .every((x) => typeof N.nameOf(CLASS, x) === "string"));
+}
+
 done();

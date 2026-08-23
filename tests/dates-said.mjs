@@ -39,12 +39,24 @@ const iso = (d) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 const plus = (n) => { const d = new Date(TODAY); d.setDate(d.getDate() + n); return iso(d); };
-// The next date that falls on this weekday. Today doesn't count as "next".
+// THE NEXT DATE THAT FALLS ON THIS WEEKDAY, COUNTING TODAY.
+//
+// "On Sunday", typed on a Sunday, means today. It is genuinely ambiguous — you
+// might have said "today" if you meant today — but the two ways of being wrong
+// are not equally bad. Read as today and you meant next week: the thing sits on
+// today's list, you see it, you move it. Read as next week and you meant today:
+// it is invisible for seven days and you miss it. So it counts today.
+const onDow = (dow, extra = 0) => {
+  const d = new Date(TODAY);
+  d.setDate(d.getDate() + ((dow - d.getDay() + 7) % 7) + extra);
+  return iso(d);
+};
+// And the same weekday when you said "NEXT" — that one never means today,
+// because saying "next Sunday" on a Sunday is the one phrasing that settles it.
 const nextDow = (dow, extra = 0) => {
   const d = new Date(TODAY);
-  let step = (dow - d.getDay() + 7) % 7;
-  if (step === 0) step = 7;
-  d.setDate(d.getDate() + step + extra);
+  const step = (dow - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + (step === 0 ? 7 : step) + extra);
   return iso(d);
 };
 const endOfMonth = () => iso(new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0));
@@ -75,9 +87,9 @@ sec("Days named by their name");
   // Today never counts as "on Friday" when today IS Friday: you would have said
   // today. Saying the wrong one here books a week's work into an hour.
   const cases = [
-    ["on monday", nextDow(1)], ["on friday", nextDow(5)], ["fri", nextDow(5)],
-    ["next tuesday", nextDow(2)], ["on sun", nextDow(0)],
-    ["end of the week", nextDow(5)],
+    ["on monday", onDow(1)], ["on friday", onDow(5)], ["fri", onDow(5)],
+    ["next tuesday", nextDow(2)], ["on sun", onDow(0)],
+    ["end of the week", onDow(5)],
   ];
   cases.forEach(([say, want]) => ok(`"${say}"`, read(say) === want, `${read(say) || "(none)"} — wanted ${want}`));
 }
@@ -87,14 +99,14 @@ sec("A week further out than that");
   // THE ONE THAT BROKE. Every phrase here has a plain weekday sitting inside
   // it, so whichever pattern is tried first wins — and the plain one was.
   const cases = [
-    ["a week on friday", nextDow(5, 7)],
+    ["a week on friday", onDow(5, 7)],
     // "Hand the reports IN, a week on Friday" — the "in" belongs to "hand in",
     // and reading "in a week" and stopping there put it seven days early.
-    ["in a week on friday", nextDow(5, 7)],
-    ["a week from monday", nextDow(1, 7)],
-    ["friday week", nextDow(5, 7)],
-    ["tuesday week", nextDow(2, 7)],
-    ["a fortnight on monday", nextDow(1, 14)],
+    ["in a week on friday", onDow(5, 7)],
+    ["a week from monday", onDow(1, 7)],
+    ["friday week", onDow(5, 7)],
+    ["tuesday week", onDow(2, 7)],
+    ["a fortnight on monday", onDow(1, 14)],
     ["a week today", plus(7)],
     ["a week tomorrow", plus(8)],
     ["end of the month", endOfMonth()],

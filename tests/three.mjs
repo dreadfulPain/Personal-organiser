@@ -9,6 +9,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { everyModule } from "./_dom.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -51,8 +52,10 @@ async function openRota(data) {
   const sb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
     Promise, setTimeout, document: doc, location: { hash: "" } };
   sb.window = sb; sb.globalThis = sb; vm.createContext(sb);
-  ["schedule.js", "rota.js"].forEach((f) =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb));
+  // EVERY module, derived — see everyModule() in _dom.mjs. This runs a whole
+  // PAGE script, and a page loads all of them; naming two by hand went stale
+  // the moment rotapage.js needed a third.
+  everyModule(sb);
   const state = { ...data };
   sb.OrganiserStore = { load: async () => state, save(p) { Object.assign(state, p); },
     onExternalChange() {} };

@@ -36,10 +36,9 @@
   const esc = (s) =>
     String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const nameOf = (id) => {
-    const c = contacts.find((x) => x && x.id === id);
-    return (c && c.name) || id;
-  };
+  // Asked of one place — see OrganiserNames.nameOf. Six files each had their
+  // own copy of this and they had already drifted apart.
+  const nameOf = (id) => OrganiserNames.nameOf(contacts, id);
   const ago = (iso) => {
     if (!iso) return "";
     const d = Math.round((new Date(todayISO() + "T12:00:00") - new Date(iso + "T12:00:00")) / 86400000);

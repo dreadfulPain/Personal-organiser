@@ -23,6 +23,37 @@ import vm from "node:vm";
 const PUB = join(REPO_ROOT, "public");
 export const read = (f) => fs.readFileSync(path.join(PUB, f), "utf8");
 
+
+// EVERY MODULE THE APP HAS, into a sandbox — derived, never listed.
+//
+// A module is a file that ends by putting something on window; that is
+// mechanical, so a new one cannot be forgotten. Suites that run a whole PAGE
+// script need all of them, because that is what a page loads — and every time
+// one of them named a handful by hand instead, it went stale the moment a page
+// needed one more. The failure then surfaced inside the page as "X is not
+// defined", pointing at the page rather than at the list that forgot it.
+//
+// A suite testing ONE module in isolation should still name what it wants: that
+// list is a deliberate statement about what the module depends on.
+//
+// Returns what failed rather than swallowing it: a file chosen for putting
+// something on window IS a module, so one that throws on the way in is a real
+// failure and not "probably a page script".
+export function everyModule(sb) {
+  const failed = [];
+  fs.readdirSync(PUB)
+    .filter((f) => f.endsWith(".js") && f !== "store.js")
+    .filter((f) => /window\.Organiser[A-Za-z]*\s*=/.test(read(f)))
+    .forEach((f) => {
+      try {
+        vm.runInContext(read(f), sb, { filename: f });
+      } catch (e) {
+        failed.push(`${f}: ${e.message}`);
+      }
+    });
+  return failed;
+}
+
 export function makeEl(tag, reg) {
   const el = {
     tagName: String(tag || "div").toUpperCase(),

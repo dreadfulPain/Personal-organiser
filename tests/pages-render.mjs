@@ -21,10 +21,21 @@ const MODULE_FILES = fs
   .filter((f) => f.endsWith(".js") && f !== "store.js")
   .filter((f) => /window\.Organiser[A-Za-z]*\s*=/.test(fs.readFileSync(`${REPO}/public/${f}`, "utf8")));
 
+// A FILE IN THIS LIST IS A MODULE BY DEFINITION — it was chosen for putting
+// something on window. So one that throws on the way in is a real failure, and
+// swallowing it made a module that didn't load indistinguishable from one that
+// isn't a module at all: every page that used it then failed with "X is not
+// defined", pointing at the page rather than at the module that never arrived.
 function loadModules(sb) {
+  const failed = [];
   MODULE_FILES.forEach((f) => {
-    try { vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb); } catch { /* a page script, not a module */ }
+    try {
+      vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb);
+    } catch (e) {
+      failed.push(`${f}: ${e.message}`);
+    }
   });
+  return failed;
 }
 
 function makeEl(tag) {
@@ -60,10 +71,11 @@ async function renderPage(file, ids, data) {
   };
   sb.window = sb; sb.globalThis = sb;
   vm.createContext(sb);
-  loadModules(sb);
+  const notLoaded = loadModules(sb);
   sb.OrganiserStore = { load: async () => data, save(){}, onExternalChange(){} };
   vm.runInContext(fs.readFileSync(`${REPO}/public/${file}`,"utf8"), sb);
   await new Promise(r => setTimeout(r, 20));
+  if (notLoaded.length) console.log('  !! modules that did not load: ' + notLoaded.join('; '));
   return { roots, text: Object.values(roots).map(textOf).join(" ") };
 }
 
@@ -211,8 +223,12 @@ sec("One person, on one screen");
   const sb3 = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
     Promise, setTimeout, document: doc, location: { hash: "#s1" } };
   sb3.window = sb3; sb3.globalThis = sb3; vm.createContext(sb3);
-  ["levels.js","chart.js","pastoral.js","told.js"].forEach(f =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`,"utf8"), sb3));
+  // DERIVED, like the other two sandboxes in this file. This one named four
+  // modules by hand and went stale the moment person.js needed a fifth — and
+  // the failure surfaced as "OrganiserNames is not defined" inside the page,
+  // pointing at the page rather than at the list that had forgotten it.
+  const bad3 = loadModules(sb3);
+  if (bad3.length) console.log("  !! sb3 modules that did not load: " + bad3.join("; "));
   sb3.OrganiserStore = { load: async () => ({
     contacts: [{ id:"s1", name:"S01" }, { id:"s2", name:"S02" }],
     records: [
@@ -250,8 +266,11 @@ sec("One person, on one screen");
   const sb4 = { ...sb3, document: { querySelector(s){ return roots2[s] || (roots2[s] = makeEl("div")); },
     createElement: makeEl }, location: { hash: "" } };
   sb4.window = sb4; sb4.globalThis = sb4; vm.createContext(sb4);
-  ["levels.js","chart.js","pastoral.js","told.js"].forEach(f =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`,"utf8"), sb4));
+  // DERIVED, like every other sandbox in this file. A hand-written list of
+  // modules goes stale the moment a page needs one more, and the failure shows
+  // up inside the PAGE as "X is not defined" — pointing at the page rather than
+  // at the list that forgot it.
+  loadModules(sb4);
   let e2 = null;
   try { vm.runInContext(fs.readFileSync(`${REPO}/public/person.js`,"utf8"), sb4);
         await new Promise(r => setTimeout(r, 20)); } catch (e) { e2 = e; }
@@ -263,8 +282,11 @@ sec("One person, on one screen");
     Promise, setTimeout, document: { querySelector(s){ return roots3[s] || (roots3[s] = makeEl("div")); },
       createElement: makeEl }, location: { hash: "#s1" } };
   sb5.window = sb5; sb5.globalThis = sb5; vm.createContext(sb5);
-  ["levels.js","chart.js","pastoral.js","told.js"].forEach(f =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`,"utf8"), sb5));
+  // DERIVED, like every other sandbox in this file. A hand-written list of
+  // modules goes stale the moment a page needs one more, and the failure shows
+  // up inside the PAGE as "X is not defined" — pointing at the page rather than
+  // at the list that forgot it.
+  loadModules(sb5);
   sb5.OrganiserStore = { load: async () => ({ contacts:[{id:"s1",name:"S01"}], records:[],
     recordConfig: null, pastoralTopics:[], pastoralNotes:[], toldLog:[] }),
     save(){}, onExternalChange(){}, mode:"server" };
@@ -309,9 +331,11 @@ sec("Before you plan");
     Promise, setTimeout, document: { querySelector(s){ return roots[s] || (roots[s] = makeEl("div")); },
       createElement: makeEl }, location: { hash: "#9A" } };
   sbp.window = sbp; sbp.globalThis = sbp; vm.createContext(sbp);
-  ["levels.js","pastoral.js","chart.js","rota.js","names.js","tried.js","lessonplan.js",
-   "classplan.js"].forEach(f =>
-    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`,"utf8"), sbp));
+  // DERIVED, like every other sandbox in this file. A hand-written list of
+  // modules goes stale the moment a page needs one more, and the failure shows
+  // up inside the PAGE as "X is not defined" — pointing at the page rather than
+  // at the list that forgot it.
+  loadModules(sbp);
   const P = sbp.window.OrganiserPastoral;
   let notes = [];
   [["s1","video"],["s2","video"],["s3","doing"],["s4","video"],["s5","reading"]]

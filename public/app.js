@@ -2399,15 +2399,35 @@
     }
     try {
       const data = await OrganiserStore.importFile(file);
-      items = data.items || [];
-      waiting = data.waiting || [];
-      goals = data.goals || [];
-      records = data.records || [];
-      recordConfig = data.recordConfig || null;
-      OrganiserStore.save({ items, waiting, goals, records, recordConfig });
+      // ALL OF IT — see OrganiserStore.replaceAll. This named five stores by
+      // hand and there are twenty-two, so a restore onto a fresh laptop brought
+      // back your tasks and your student records and quietly left behind your
+      // class list, your timetable, every register you had ever taken, your
+      // lesson plans, your portfolio and your pastoral notes. And then said
+      // "Restored from your backup. ✓" over the top of it.
+      const put = OrganiserStore.replaceAll(data);
+      items = put.items || [];
+      waiting = put.waiting || [];
+      goals = put.goals || [];
+      records = put.records || [];
+      recordConfig = put.recordConfig || null;
       renderZones();
       renderWaiting();
-      setStatus("Restored from your backup. ✓");
+      // WHAT CAME BACK, counted. A tick on its own is what let a half-restore
+      // look like a whole one — and this is the one moment in the app where
+      // being wrong is unrecoverable, because the thing you are restoring FROM
+      // is all you have left.
+      const counts = OrganiserStore.storeNames()
+        .map((k) => [k, Array.isArray(put[k]) ? put[k].length : 0])
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([k, n]) => `${n} ${k}`);
+      setStatus(
+        counts.length
+          ? `Restored from your backup — ${counts.join(", ")}. Other pages have theirs back too. ✓`
+          : "That backup was empty — nothing has been changed."
+      );
     } catch (err) {
       setStatus(err.message || "Couldn't read that backup.");
     }

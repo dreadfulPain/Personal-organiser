@@ -381,12 +381,38 @@
     });
   }
 
+  // PUTTING A BACKUP BACK — ALL OF IT.
+  //
+  // Restoring was done by hand-listing five stores in app.js: items, waiting,
+  // goals, records, recordConfig. There are twenty-two. So a teacher on a fresh
+  // laptop, holding a backup file with everything in it, got their tasks and
+  // their student records back — and lost their class list, their timetable,
+  // every register they had ever taken, their lesson plans, their portfolio and
+  // their pastoral notes. Under the words "Restored from your backup. ✓".
+  //
+  // The same failure store.js already had once, when load() returned ten of the
+  // twenty-two and the next save blanked the rest. The cure was this table, and
+  // restoring is now on it too: whatever a store is, if the backup has it, it
+  // comes back.
+  //
+  // take() drops anything of the wrong shape, so a hand-edited or half-written
+  // file cannot hand a page something it will try to loop over.
+  function replaceAll(doc) {
+    const all = take(doc);
+    save(all);
+    return all;
+  }
+
   window.OrganiserStore = {
     load,
     save,
     flush,
     exportNow,
     importFile,
+    replaceAll,
+    // The names of every store there is, for anything that has to speak about
+    // all of them rather than guess at a list.
+    storeNames: () => STORES.map(([k]) => k),
     flushBeacon,
     onStatus: (cb) => {
       if (typeof cb === "function") statusCbs.push(cb);

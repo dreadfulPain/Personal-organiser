@@ -33,9 +33,21 @@
 
   // Asked of one place — see OrganiserNames.nameOf. Six files each had their
   // own copy of this and they had already drifted apart.
-  // A rota is the case this exists for: colleagues, from anywhere, whose names
-  // are exactly what gets muddled. Never dropped.
-  const shownIds = () => [];
+  // WHO IS IN THIS PARTICULAR ROUND.
+  //
+  // This returned nothing at all, on the reasoning that a rota is colleagues
+  // from anywhere and their names are exactly what gets muddled. True of a duty
+  // rota — and wrong for the round this page's own description is about, which
+  // is a class. Walking one through, every row read "(9A)": eight in the queue,
+  // two up today, the stuck one, and twice in a single sentence about swapping.
+  // A tag everybody in view shares separates nobody and is only more to read.
+  //
+  // Asked of the round instead of assumed, so a class round drops it and a staff
+  // rota — where two of them really are called Nick — keeps it.
+  const shownIds = () => {
+    const r = current();
+    return (r && Array.isArray(r.memberIds) ? r.memberIds : []).slice();
+  };
   // NAME PLUS THE WORD THAT TELLS THEM APART — see OrganiserNames.saidAs. A
   // tag every row on this page shares is dropped, because it separates nobody.
   const personWords = (id) =>

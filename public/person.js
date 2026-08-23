@@ -93,6 +93,69 @@
   }
 
   // ---- 2. how it's gone -------------------------------------------------
+  // WHAT YOU ACTUALLY WROTE ABOUT THEM.
+  //
+  // This page says at the top that it is everything about one person on one
+  // screen, for when somebody is on the phone and you have two seconds. It
+  // showed the tiles, the graph and four empty sections, and not one of the
+  // sentences anybody had written — while the records page held five of them
+  // about Li Wei, including "third missed deadline this half term, mum emailed".
+  //
+  // A level is a number somebody assigned. The sentence is what happened. On the
+  // phone, and in a report, the sentence is the answer and the number is not —
+  // and this whole app is built on the idea that your own words are the thing
+  // worth keeping.
+  //
+  // EVERY KIND, not just the academic ones. The question a parent asks does not
+  // arrive sorted into categories, and a behaviour note is exactly the one you
+  // must not have to go looking for.
+  const SAID_MAX = 12;
+  function renderSaid() {
+    const el = $("#pSaid");
+    const block = $("#pSaidBlock");
+    const more = $("#pSaidMore");
+    if (!el || !block) return;
+    block.hidden = !who;
+    if (!who) return;
+    const mine = records
+      .filter((r) => r && r.who === who && String(r.summary || "").trim())
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    if (!mine.length) {
+      el.innerHTML =
+        `<p class="muted">Nothing written down yet. A line after a lesson is worth more later than it feels at the time.</p>`;
+      if (more) more.hidden = true;
+      return;
+    }
+    el.innerHTML = mine
+      .slice(0, SAID_MAX)
+      .map((r) => {
+        // The kind and the skill are context, not the point — the sentence is
+        // the point, so it goes first and everything else sits under it.
+        const bits = [];
+        if (r.type) bits.push(esc(r.type));
+        if (r.topic) bits.push(esc(r.topic));
+        if (r.level) bits.push(esc(r.level));
+        return (
+          `<div class="p-said-row">` +
+          `<div class="p-said-words">${esc(r.summary)}</div>` +
+          `<div class="p-said-meta muted">${esc(OrganiserDates.dayWords(r.date))}` +
+          (bits.length ? ` · ${bits.join(" · ")}` : "") +
+          (r.followUp ? ` · <strong>needs a follow-up</strong>` : "") +
+          `</div></div>`
+        );
+      })
+      .join("");
+    // A COUNT, NOT A SILENT CUT. Twelve is enough to read on a phone call;
+    // pretending there were only twelve would be the app deciding what you had
+    // seen.
+    if (more) {
+      const rest = mine.length - SAID_MAX;
+      more.hidden = rest <= 0;
+      more.textContent =
+        rest > 0 ? `${rest} more on the record log — this shows the ${SAID_MAX} most recent.` : "";
+    }
+  }
+
   function renderChart() {
     const el = $("#pChart");
     if (!el) return;
@@ -572,6 +635,7 @@
     forms.forEach((f) => { if (f) f.hidden = !who; });
     renderTiles();
     renderChart();
+    renderSaid();
     renderPastoral();
     renderTopics();
     renderHere();

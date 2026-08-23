@@ -306,8 +306,25 @@
     $("#recSummary").value = "";
     $("#recTags").value = "";
     $("#recFollowUp").checked = false;
+    // A LEVEL BELONGS TO ONE PIECE OF WORK AND MUST NOT FOLLOW THE NEXT ONE.
+    //
+    // The summary, the tags and the follow-up tick were cleared and the level
+    // was not — so marking Sofia a 3 and then typing a behaviour note about Li
+    // Wei gave Li Wei a 3 as well, silently, in his record. Levels feed the
+    // skills page and every report that comes off it, so that is a mark on a
+    // child that nobody ever gave them.
+    //
+    // The SKILL deliberately stays. Working down a set of books against one
+    // skill is the ordinary way this gets used, and re-picking it thirty times
+    // would be its own kind of wrong — but it is said out loud below rather
+    // than left to be noticed.
+    $("#recLevel").value = "";
     $("#recSummary").focus();
-    setStatus(rec.followUp ? "Logged — and a follow-up task with a morning reminder is in your list. ✓" : "Logged. ✓");
+    const held = !$("#recTopic").hidden && $("#recTopic").value ? $("#recTopic").value : "";
+    setStatus(
+      (rec.followUp ? "Logged — and a follow-up task with a morning reminder is in your list. ✓" : "Logged. ✓") +
+        (held ? ` Still on “${held}” — change it above when you move on.` : "")
+    );
     render();
   }
   function deleteRecord(id) {

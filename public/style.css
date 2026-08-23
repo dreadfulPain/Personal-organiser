@@ -3788,6 +3788,20 @@ a.btn {
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
 
+/* WHAT YOU WROTE ABOUT SOMEBODY. The sentence is the thing being read, so it
+   gets the size and the weight; the date, the kind and the level are the small
+   print under it. Same card as a record row, because it is one. */
+.p-said-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow);
+}
+.p-said-words { line-height: 1.45; }
+.p-said-meta { font-size: 0.78rem; margin-top: 4px; }
+
 /* Writing something in, under the heading it belongs to. Set answers are
    buttons — one tap, no typing, and nothing to spell. */
 .p-add { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }

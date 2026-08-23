@@ -184,6 +184,34 @@ function sentences(src) {
     const text = m[0].trim();
     if (text) out.push(frag(text, m.index, m.index + m[0].length, { source: "sentence" }));
   }
+  return glueNumbers(out, src);
+}
+
+// A FULL STOP BETWEEN TWO DIGITS IS NOT THE END OF A SENTENCE.
+//
+// "gate duty tues and thurs before school from 7.40, mr chen does mon wed fri"
+// came back as two things: "…from 7." and "40, mr chen does mon wed fri" — the
+// second of which went on the list, as a task, dated tomorrow. 7.40 is how most
+// of the English-speaking world writes twenty to eight, so this was not an odd
+// input; it was Tuesday.
+//
+// Done as a mend afterwards rather than inside the pattern above, because that
+// pattern is doing something subtle with `m` and `$` already and every edit to
+// it has cost a day. This is the same rule stated once: if a piece ends on a
+// digit-and-dot and the next one starts with a digit, they were never two
+// pieces. Prices, version numbers and "section 3.2" are mended by it too.
+function glueNumbers(frags, src) {
+  const out = [];
+  for (const f of frags) {
+    const prev = out[out.length - 1];
+    if (prev && /\d\.$/.test(prev.text) && /^\d/.test(f.text)) {
+      prev.text = prev.text + f.text;
+      prev.end = f.end;
+      continue;
+    }
+    out.push(f);
+  }
+  return out.length ? out : [frag(src, 0, src.length, { source: "whole" })];
   return out.length ? out : [frag(src, 0, src.length, { source: "whole" })];
 }
 

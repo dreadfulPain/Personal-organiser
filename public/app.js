@@ -502,6 +502,14 @@
     if (when) {
       const hard = it.deadlineType === "hard" && it.date;
       parts.push((hard ? "due " : "") + when);
+      // SAID OUT LOUD, BECAUSE THE DATE ON ITS OWN IS A HALF-TRUTH. "Gate duty
+      // every Tuesday and Thursday" went on as one task on one Tuesday, reading
+      // exactly like something that happens once — and after that Tuesday there
+      // was no gate duty anywhere in the app. The date is right as far as it
+      // goes; this says how far that is.
+      if (it.repeatsText) parts.push(`only this one — “${it.repeatsText}” lives in your timetable`);
+    } else if (it.repeatsText) {
+      parts.push(`“${it.repeatsText}” — things that come round live in your timetable`);
     }
     const imp = importanceOf(it);
     if (imp === "high") parts.push("matters a lot");
@@ -713,6 +721,13 @@
     else $("#checkback").hidden = false;
   }
 
+  // Asked of roster.js, which is the file that reads a class everywhere else.
+  // Working it out here would be a second answer to a question that already has
+  // one, and second answers drift.
+  function classPaste(text, made) {
+    return !!(window.OrganiserRoster && OrganiserRoster.looksLikeRegister(text, made));
+  }
+
   // NO MODEL — but that's no reason to hand back one lump. The splitter is
   // plain code, so a pasted thread still becomes separate lines; then patterns
   // read the date, time, urgency and anyone already in People off each one.
@@ -752,8 +767,24 @@
     $("#dump").value = "";
     $("#dump").style.height = "auto";
     const readAny = window.OrganiserQuickParse && made.some((m) => OrganiserQuickParse.foundAnything(m));
-    $("#checkbackHeading").textContent =
-      made.length > 1
+    // A CLASS LIST IS NOT A LIST OF JOBS.
+    //
+    // The capture bar sits on every page, People included, and somebody who
+    // scrolls up on that page finds a big box asking what's on their mind. Paste
+    // a register into it and you get one task per child, named after the child —
+    // twenty-four to-dos called "Li Wei 9A", and children's names now living in
+    // the task list instead of the one place on this page that warns you about
+    // what a synced folder means.
+    //
+    // The app already knows what a register looks like: roster.js reads one, and
+    // the People page has asked it that question all along. This is the front
+    // door asking the same one rather than working it out again — and it only
+    // ever OFFERS. Nothing is moved, nothing is refused; the cards are still
+    // sitting there if a list of names really was a list of jobs.
+    const looksLikeClass = classPaste(text, made);
+    $("#checkbackHeading").textContent = looksLikeClass
+      ? `That reads more like a class list than ${made.length} jobs — People is where a class goes, and it keeps them out of your task list. Add them here anyway if you meant to.`
+      : made.length > 1
         ? `Split into ${made.length} — drop any that aren't things to do.`
         : readAny
           ? "Read what I could — check it and add."

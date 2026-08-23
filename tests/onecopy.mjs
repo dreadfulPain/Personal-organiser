@@ -197,6 +197,67 @@ sec("And where a copy is kept on purpose, the two still agree");
   ok("including single-digit months and days",
      D.isoOf(new Date(2026, 0, 5)) === "2026-01-05" && S.isoOf(new Date(2026, 0, 5)) === "2026-01-05",
      `${D.isoOf(new Date(2026, 0, 5))} / ${S.isoOf(new Date(2026, 0, 5))}`);
+
+  // THE VALIDITY RULE, WHICH THREE FILES EACH HELD SEPARATELY. timetable.js
+  // allowed hour 24; dates.js and schedule.js refused it. So a block written
+  // "24:00" was accepted on the way in, stored, and then invisible — nothing
+  // that draws a time would draw it. quickparse said the same about "9:99".
+  // An hour is out of range in the same place for all of them or one of them is
+  // storing something the rest cannot show.
+  const T = run("timetable.js").OrganiserTimetable;
+  const clocks = ["24:00", "23:59", "9:99", "00:00", "12:30"];
+  const disagree = clocks.filter((c) => {
+    const good = [T.timeOf(c) !== "", D.timeWords(c) !== "", S.toMin(c) !== null];
+    return good.some(Boolean) && !good.every(Boolean);
+  });
+  ok("what counts as a real clock time is one rule, not three",
+     disagree.length === 0,
+     disagree.map((c) => `${c}: timetable=${JSON.stringify(T.timeOf(c))} dates=${JSON.stringify(D.timeWords(c))} schedule=${JSON.stringify(S.toMin(c))}`).join("; "));
+}
+
+// ---------------------------------------------------------------------------
+sec("And where one thing ends and the next begins is one answer");
+{
+  // TWO SPLITTERS. The server's, in pipeline.js, and the browser's, in
+  // quickparse.js — because the app has to work with the server off, opened by
+  // double-clicking the file. Which one runs is invisible to the person typing,
+  // so if they disagree the app behaves differently for reasons nobody can see.
+  //
+  // They did. Typing "gate duty tues and thurs before school from 7.40, mr chen
+  // does mon wed fri" gave the browser one thing and the server two — the
+  // second of which was a task called "40, mr chen does mon wed fri", dated
+  // tomorrow. 7.40 is how most of the English-speaking world writes twenty to
+  // eight, so this was not a strange thing to type.
+  const { splitFragments } = await import("../pipeline.js");
+  const qctx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
+    isNaN, parseInt, parseFloat, Intl };
+  qctx.window = qctx;
+  vm.createContext(qctx);
+  ["names.js", "quickparse.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), qctx));
+  const Q = qctx.OrganiserQuickParse;
+
+  // Things a teacher types where a full stop is not the end of anything.
+  const SAID = [
+    "gate duty tues and thurs before school from 7.40, mr chen does mon wed fri",
+    "assembly at 9.10 tomorrow",
+    "parents evening 6.30pm on thursday",
+    "the trip costs 12.50 a head",
+    "cover for sarah period 3 on friday",
+    "worried about li wei in 9a, his mum emailed me",
+  ];
+  SAID.forEach((line) => {
+    const server = splitFragments(line).length;
+    const browser = Q.parseAll(line, {}).length;
+    ok(`"${line.slice(0, 44)}…" is the same number of things either way`,
+       server === browser, `server made ${server}, browser made ${browser}`);
+  });
+  // AND NEITHER OF THEM MAY CUT A NUMBER IN HALF, which is the specific way
+  // they came apart.
+  const broken = SAID.filter((line) =>
+    splitFragments(line).some((f) => /\d\.$/.test(f.text)) ||
+    Q.parseAll(line, {}).some((r) => /\d\.$/.test(r.title)));
+  ok("and nothing comes back ending mid-number", broken.length === 0, broken.join(" | "));
 }
 
 done();

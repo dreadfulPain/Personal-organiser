@@ -54,11 +54,15 @@
     if (!m) return "";
     let h = Number(m[1]);
     const mins = Number(m[2]);
-    if (!Number.isFinite(h) || !Number.isFinite(mins) || mins > 59 || h > 24) return "";
+    // 23, NOT 24. This said 24, and dates.js and schedule.js both said 23 — so a
+    // block written "24:00" was accepted here, stored, and then invisible
+    // everywhere, because everything that draws a time refuses to draw that one.
+    // Refused up front is worse for nobody and visible to everybody.
+    if (!Number.isFinite(h) || !Number.isFinite(mins) || mins > 59 || h > 23) return "";
     const ap = (m[3] || "").toLowerCase();
     if (ap === "pm" && h < 12) h += 12;
     if (ap === "am" && h === 12) h = 0;
-    if (h > 24) return "";
+    if (h > 23) return "";
     return `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
   }
 

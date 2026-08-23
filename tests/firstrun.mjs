@@ -105,9 +105,69 @@ sec("The page that says where to start");
 }
 
 // ---------------------------------------------------------------------------
+sec("And it says the same number of things as it shows");
+{
+  // WRITTEN OUT BY HAND, IN TWO SENTENCES, ON TWO PAGES. The home page said
+  // "Four things to set up" and then named three of them; the setup page said
+  // "Four things, once" and showed four. A step had been added and neither
+  // sentence had heard about it.
+  //
+  // Somebody who cannot hold a count in their head reads "four" against a list
+  // of three and assumes they have missed something — which is the exact
+  // feeling this app exists to remove. So both sentences are built from the
+  // list now, and this is what stops them being written out again.
+  const sctx = { console, document: null };
+  sctx.window = sctx;
+  const seen = { count: [], names: [] };
+  sctx.document = {
+    readyState: "complete",
+    addEventListener() {},
+    querySelectorAll: (sel) => {
+      const key = sel === ".nh-count" ? "count" : sel === ".nh-names" ? "names" : null;
+      if (!key) return [];
+      const el = {};
+      Object.defineProperty(el, "textContent", { set: (v) => seen[key].push(v), get: () => "" });
+      return [el];
+    },
+  };
+  vm.createContext(sctx);
+  vm.runInContext(read("steps.js"), sctx);
+  const S = sctx.OrganiserSteps;
+
+  ok("there is one list of things to set up", S && Array.isArray(S.list) && S.list.length >= 3,
+     JSON.stringify(S && S.names && S.names()));
+  ok("the number it says is the number it has", seen.count[0] === S.countWord(),
+     `${seen.count[0]} vs ${S.countWord()}`);
+  // AND THE NAMES ARE ALL OF THEM. This is the half that was actually wrong:
+  // the count was four and the naming stopped at three.
+  const said = seen.names[0] || "";
+  const missing = S.names().filter((n) => !said.toLowerCase().includes(n.toLowerCase()));
+  ok("and it names every one of them", missing.length === 0, `never mentioned: ${missing.join(", ")}`);
+
+  // NEITHER PAGE MAY GO BACK TO WRITING IT OUT. A number typed into the prose
+  // is a copy of something that lives somewhere else, and it will drift again.
+  ["index.html", "setup.html"].forEach((page) => {
+    const words = read(page).replace(/<!--[\s\S]*?-->/g, "");
+    const hard = /\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+things\b/i.exec(words);
+    ok(`${page} doesn't write the number out itself`,
+       !hard || /nh-count/.test(words.slice(Math.max(0, hard.index - 120), hard.index + 20)),
+       hard ? hard[0] : "");
+    ok(`and ${page} loads the list that knows it`, /steps\.js/.test(read(page)), "steps.js is not loaded");
+  });
+}
+
+// ---------------------------------------------------------------------------
 sec("And its links land on the thing they promised");
 {
-  const js = read("setup.js");
+  // ASKED OF THE LIST, NOT OF A FILE. This read setup.js by name, so moving the
+  // list into steps.js — which is what stopped the two "how many things"
+  // sentences drifting apart — broke a test that had nothing to say about
+  // where the list lives. What matters is that every step goes somewhere real,
+  // wherever the steps are kept.
+  const js = fs.readdirSync(PUB)
+    .filter((f) => f.endsWith(".js"))
+    .map((f) => read(f))
+    .join("\n");
   const gos = [...js.matchAll(/go:\s*"([^"]+)"/g)].map((m) => m[1]);
   ok("every step has somewhere to go", gos.length >= 3, JSON.stringify(gos));
   gos.forEach((g) => {

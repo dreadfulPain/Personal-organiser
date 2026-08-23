@@ -170,5 +170,41 @@
     return bits.join(" · ") + ".";
   }
 
-  window.OrganiserRoster = { grid, cells, suggest, read, words };
+  // DOES THIS READ AS A REGISTER RATHER THAN A LIST OF JOBS?
+  //
+  // The capture bar sits on every page, People included, and somebody who
+  // scrolls up on that page finds a big box asking what's on their mind. Paste a
+  // register into it and you got one task per child, named after the child —
+  // twenty-four to-dos called "Li Wei 9A", with children's names now living in
+  // the task list instead of the one page that warns you what a synced folder
+  // means for them.
+  //
+  // This file already knows what a register looks like, because reading one is
+  // its whole job. Asked here, the front door gets the same answer the People
+  // page gets rather than working out its own.
+  //
+  // DELIBERATELY HARD TO TRIGGER. Saying this over a real list of jobs is worse
+  // than never saying it — it would send somebody to People to fix something
+  // that was already right. So all of it has to hold at once: several rows, laid
+  // out in columns the way a spreadsheet pastes, every row the same shape, no
+  // row that reads as a job, and nothing anywhere carrying a date or a time. A
+  // register has no deadlines in it; a list of jobs nearly always has one.
+  //
+  // And it only ever OFFERS. Nothing is moved and nothing is refused — the cards
+  // are still there if a list of names really was a list of jobs.
+  function looksLikeRegister(text, items) {
+    const list = Array.isArray(items) ? items : [];
+    if (list.length < 3) return false;
+    if (list.some((m) => m && (m.date || m.time || m.promisedTo || m.waitingOn))) return false;
+    // "Email Li Wei" is a job about a person, not a person.
+    const Q = typeof window !== "undefined" && window.OrganiserQuickParse;
+    if (Q && list.some((m) => Q.startsWithDoing(m && m.title))) return false;
+    const g = grid(text);
+    if (!g || g.columns < 2 || g.rows.length < 3) return false;
+    return g.rows.every(
+      (r) => r.length === g.columns && r.every((c) => c && c.split(/\s+/).length <= 4)
+    );
+  }
+
+  window.OrganiserRoster = { grid, cells, suggest, read, words, looksLikeRegister };
 })();

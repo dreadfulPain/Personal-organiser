@@ -60,10 +60,61 @@
     return isoOf(d);
   }
 
+  // HALF THE WORLD WRITES A TIME WITH A DOT. "at 9.10", "duty from 7.40",
+  // "parents evening 6.30pm" — ordinary British, Irish and Australian writing,
+  // and the house style of most international schools.
+  //
+  // Read as a date, which is what happened, "assembly at 9.10" became the 9th
+  // of October: seven weeks away, on a card that looked perfectly confident,
+  // and the assembly tomorrow morning had nothing against it at all. "call mum
+  // at 8.02" went to the 8th of February. The word "at" was sitting right there
+  // — the plainest signal in English that a time follows and a date does not.
+  //
+  // So the clock is read FIRST and taken out of the way, and the date reader
+  // never sees it. A dot only counts as a clock when something says it is one:
+  // a word that introduces a time, or an am/pm on the end. Everywhere else
+  // "10.09" is still the 10th of September, which is the other ordinary way to
+  // write a date and is equally somebody's normal.
+  const CLOCK_LEADIN = "at|from|till?|until|by|before|after|around|about|starts?|starting|@";
+  function readClock(t) {
+    const say = (h, m, ap) => {
+      let hr = +h;
+      const mi = m === undefined || m === "" ? 0 : +m;
+      // AN IMPOSSIBLE TIME IS NOT A TIME. "9:99" came back as "09:99" — stored,
+      // carried around, and then invisible, because everything that puts a time
+      // on the screen refuses to draw one. dates.js and schedule.js already
+      // agreed it was nonsense; this file was the one that disagreed.
+      if (mi > 59) return "";
+      if (/pm/.test(ap || "") && hr < 12) hr += 12;
+      if (/am/.test(ap || "") && hr === 12) hr = 0;
+      return hr <= 23 ? `${pad2(hr)}:${pad2(mi)}` : "";
+    };
+    const tries = [
+      // A colon is always a clock, whoever wrote it.
+      [/\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?\b/, (m) => say(m[1], m[2], m[3])],
+      // A dot is a clock when a word says so, or when am/pm does.
+      [new RegExp(`\\b(?:${CLOCK_LEADIN})\\s*(\\d{1,2})\\.(\\d{2})\\s*(am|pm)?\\b`), (m) => say(m[1], m[2], m[3])],
+      [/\b(\d{1,2})\.(\d{2})\s*(am|pm)\b/, (m) => say(m[1], m[2], m[3])],
+      // An hour on its own needs am/pm to be a time at all.
+      [/\b(?:at\s+)(\d{1,2})\s*(am|pm)\b/, (m) => say(m[1], 0, m[2])],
+      [/\b(\d{1,2})\s*(am|pm)\b/, (m) => say(m[1], 0, m[2])],
+    ];
+    for (const [re, fn] of tries) {
+      const m = re.exec(t);
+      if (!m) continue;
+      const hm = fn(m);
+      if (hm) return { hm, text: m[0].trim() };
+    }
+    return { hm: "", text: "" };
+  }
+
   // Returns { date, time, matched } — matched is the exact text it read it off,
   // so the caller can strip it out of the title.
   function readWhen(text) {
-    const t = " " + text.toLowerCase() + " ";
+    let t = " " + text.toLowerCase() + " ";
+    // Out of the way before any date pattern runs — see readClock above.
+    const clock = readClock(t);
+    if (clock.text) t = t.replace(clock.text, " ".repeat(clock.text.length));
     let date = "";
     let matched = "";
     const take = (re, fn) => {
@@ -154,28 +205,21 @@
       const yr = m[3].length === 2 ? 2000 + +m[3] : +m[3];
       return `${yr}-${pad2(mo)}-${pad2(day)}`;
     });
-    take(/\b(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\b/, (m) => {
+    take(/\b(\d{1,2})([\/.])(\d{1,2})(?:[\/.](\d{2,4}))?\b/, (m) => {
       const day = +m[1];
-      const mo = +m[2];
+      const mo = +m[3];
       if (day > 31 || mo > 12) return "";
-      const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear();
+      // A DOT BETWEEN TWO SINGLE DIGITS IS A SECTION NUMBER, not a date — the
+      // same reasoning as the dash above. "Exercise 4.6" and "section 2.3" are
+      // far more common in a teacher's writing than a date written 4.6, and
+      // reading one as the 4th of June turns a page reference into a deadline.
+      // Written as a date it comes with a padded day, a year, or a slash.
+      if (m[2] === "." && !m[4] && !/^\d{2}$/.test(m[1])) return "";
+      const yr = m[4] ? (m[4].length === 2 ? 2000 + +m[4] : +m[4]) : new Date().getFullYear();
       return `${yr}-${pad2(mo)}-${pad2(day)}`;
     });
 
-    let time = "";
-    const tm =
-      /\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?\b/.exec(t) ||
-      /\b(?:at\s+)(\d{1,2})\s*(am|pm)\b/.exec(t) ||
-      /\b(\d{1,2})\s*(am|pm)\b/.exec(t);
-    if (tm) {
-      let h = +tm[1];
-      const mins = /^\d{2}$/.test(tm[2] || "") ? +tm[2] : 0;
-      const ap = (tm[3] || tm[2] || "").toString();
-      if (/pm/.test(ap) && h < 12) h += 12;
-      if (/am/.test(ap) && h === 12) h = 0;
-      if (h <= 23) time = `${pad2(h)}:${pad2(mins)}`;
-    }
-    return { date, time, matched, timeText: tm ? tm[0].trim() : "" };
+    return { date, time: clock.hm, matched, timeText: clock.text };
   }
 
   // "after the parent meeting on friday", "not before monday" — the earliest
@@ -541,10 +585,47 @@
       // is filed, not here — this half never invents a date, it only reports
       // whether you said one and whether you said it wasn't urgent.
       someday: SOMEDAY.test(raw),
+      // The words that said this happens again — see readRepeat.
+      repeatsText: readRepeat(raw),
       // Says plainly where this came from, so the check-back can be honest
       // about how much thought went into it.
       by: "patterns",
     };
+  }
+
+  // "EVERY TUESDAY AND THURSDAY" IS NOT NEXT TUESDAY.
+  //
+  // A teacher's week is mostly things that happen again: gate duty, briefing,
+  // clubs, the Friday meeting. Typed in, "gate duty every tuesday and thursday"
+  // came back as one task on one Tuesday, looking completely settled — and
+  // after that Tuesday it was gone, along with every duty after it. The word
+  // "every" is the plainest thing anybody can say to mean it comes round again,
+  // and nothing was reading it.
+  //
+  // What this does NOT do is invent a repeat. Things that come round live in
+  // the timetable, where a week already knows how to hold them; a task does not
+  // repeat and pretending otherwise would be a second answer to a question the
+  // timetable already answers. So this reads the words and says them back, and
+  // the check-back offers to put it where repeating things go. The date stays
+  // on it, because the next Tuesday IS the next one — it just isn't the last.
+  const REPEAT = new RegExp(
+    "\\b(?:every|each)\\s+(?:other\\s+)?" +
+      "(?:day|week|fortnight|month|morning|afternoon|evening|night|" +
+      "sunday|monday|tuesday|wednesday|thursday|friday|saturday|" +
+      "sun|mon|tues?|weds?|thur?s?|fri|sat)\\b" +
+      "(?:\\s*(?:,|and|&)\\s*(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|" +
+      "sun|mon|tues?|weds?|thur?s?|fri|sat)\\b)*" +
+      // "on Tuesdays" — the plural is doing the same job as "every".
+      "|\\bon\\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)s\\b" +
+      "|\\b(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)s\\b" +
+      "|\\b(?:daily|weekly|fortnightly|monthly)\\b",
+    "i"
+  );
+  const REPEAT_CN = /每(?:天|日|周|週|星期|月)[一二三四五六日天]?/;
+  function readRepeat(text) {
+    const s = String(text || "");
+    const m = REPEAT.exec(s) || REPEAT_CN.exec(s);
+    return m ? m[0].trim() : "";
   }
 
   // Did it actually find anything, or is this just the raw sentence back? Used
@@ -598,6 +679,7 @@
   }
 
   window.OrganiserQuickParse = {
-    parse, parseAll, pieces, dropLeadIn, startsWithDoing, readWhen, readPeople, foundAnything,
+    parse, parseAll, pieces, dropLeadIn, startsWithDoing, readWhen, readClock, readRepeat,
+    readPeople, foundAnything,
   };
 })();

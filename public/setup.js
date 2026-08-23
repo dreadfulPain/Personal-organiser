@@ -24,60 +24,9 @@
     String(t == null ? "" : t).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  // Each step: what it is, why it is worth doing, where it happens, and how to
-  // tell whether it has been. The "done" test reads real data — never a flag
-  // saying it was done, which can be true of an empty result.
-  const STEPS = [
-    {
-      title: "Your timetable",
-      why:
-        "Your lessons, form time, duties and meetings. Everything else works around " +
-        "these: the day plans into the gaps between them, the week stops calling a " +
-        "teaching day free, and nothing gets booked over a lesson.",
-      how: "Paste it from a spreadsheet, open the PDF, or import a calendar file.",
-      go: "timeline.html#setup",
-      goWords: "Set up my timetable",
-      done: (d) => (d.schedule || []).filter((b) => b && !b.blocksDay && !b.noLessons).length,
-      doneWords: (n) => `${n} block${n === 1 ? "" : "s"} in.`,
-    },
-    {
-      title: "Your term dates",
-      why:
-        "When term starts and ends, INSET days, holidays. Without them a timetable " +
-        "repeats every week for ever, so the summer shows as fully booked and the " +
-        "month view says you have no free time when you have six weeks of it.",
-      how: "Paste or open the calendar the school sent you.",
-      go: "timeline.html#calendar",
-      goWords: "Read in the school calendar",
-      done: (d) =>
-        (d.schedule || []).filter((b) => b && (b.noLessons || b.blocksDay || b.from || b.to)).length,
-      doneWords: (n) => `${n} date${n === 1 ? "" : "s"} the timetable knows about.`,
-    },
-    {
-      title: "Your classes",
-      why:
-        "Who is in each group. The register works from this, and so does anything " +
-        "that says a name rather than a code.",
-      how: "Copy the names out of your register and paste the lot in — one per line, " +
-        "or two columns for name and class.",
-      go: "people.html#class",
-      goWords: "Paste a class in",
-      done: (d) => (d.contacts || []).length,
-      doneWords: (n) => `${n} ${n === 1 ? "person" : "people"} on your list.`,
-    },
-    {
-      title: "The parts of your life",
-      why:
-        "Work, home, whatever else you keep separate. Only useful if you want the app " +
-        "to keep them apart — plenty of people never need this one.",
-      how: "Name them however you name them.",
-      go: "index.html",
-      goWords: "Home",
-      optional: true,
-      done: (d) => (d.areas || []).length,
-      doneWords: (n) => `${n} named.`,
-    },
-  ];
+  // The list itself lives in steps.js, so the home page's sentence and this
+  // page's sentence are the same fact — see the note at the top of that file.
+  const STEPS = window.OrganiserSteps.list;
 
   function render(data) {
     const wrap = $("#suSteps");

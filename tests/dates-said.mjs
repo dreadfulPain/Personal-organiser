@@ -191,6 +191,91 @@ sec("A time of day, separately from the day");
   ok('"buy 3 folders" has no time in it', Q.parse("buy 3 folders", {}).time === "");
 }
 
+sec("And the same time written with a dot, which is how most people write it");
+{
+  // THE ONE THAT MOVED APPOINTMENTS BY MONTHS. A dot is the ordinary British,
+  // Irish and Australian way to write a time, and the house style of most
+  // international schools — and every one of these was read as a DATE.
+  // "Assembly at 9.10" was filed on the 9th of October, seven weeks out, on a
+  // card that looked perfectly sure of itself, and tomorrow morning's assembly
+  // had nothing against it at all. "Call mum at 8.02" went to the 8th of
+  // February. The word "at" was sitting right there in every one of them.
+  const at = (phrase) => Q.parse(`meeting ${phrase}`, {}).time || "";
+  const on = (phrase) => Q.parse(`meeting ${phrase}`, {}).date || "";
+  const cases = [
+    ["at 9.10", "09:10"], ["at 11.05", "11:05"], ["at 8.02", "08:02"],
+    ["at 4.10", "04:10"], ["at 08.15", "08:15"], ["at 15.30", "15:30"],
+    ["from 7.40", "07:40"], ["by 12.05", "12:05"], ["until 3.45", "03:45"],
+    ["starts 9.30", "09:30"],
+    // With am/pm no lead-in word is needed — the pm IS the lead-in.
+    ["6.30pm", "18:30"], ["7.45am", "07:45"],
+    // AND THE ONE THAT WAS WORSE THAN NOTHING. "2.15pm" read the 2 and the pm,
+    // threw the .15 away, and came back 15:00 — three quarters of an hour late,
+    // silently, in a field that looked filled in properly.
+    ["2.15pm", "14:15"],
+  ];
+  cases.forEach(([say, want]) => {
+    ok(`"${say}" is a time`, at(say) === want, `${at(say) || "(none)"} — wanted ${want}`);
+    ok(`and "${say}" is not a date`, on(say) === "", on(say));
+  });
+  // AND THE OTHER HALF OF THE SAME COIN. "10.09" with nothing to say it is a
+  // clock is still the 10th of September, which is equally somebody's normal.
+  ok('"10.09" on its own is still a date', read("10.09") === `${thisYear}-09-10`, read("10.09"));
+  // A dot between two single digits is a section number. "Exercise 4.6" read as
+  // the 4th of June turns a page reference into a deadline — the same reasoning
+  // that already stopped "exercise 4-6" being read.
+  ok('"exercise 4.6" is not a date', read("exercise 4.6") === "", read("exercise 4.6"));
+  ok('"section 2.3" is not a date', read("section 2.3") === "", read("section 2.3"));
+  // Money is not a time. Without a word saying "clock", it is left alone.
+  ok('"pay 7.40 for the trip" has no time in it',
+     Q.parse("pay 7.40 for the trip", {}).time === "", Q.parse("pay 7.40 for the trip", {}).time);
+
+  // A KNOWN LIMIT, WRITTEN DOWN RATHER THAN QUIETLY TRUE. "Parents evening at
+  // 6.30" almost certainly means the evening, and the app reads 06:30 — the
+  // same as it has always read "6:30", because the alternative is guessing
+  // which half of the day somebody meant. It is shown on the check-back before
+  // anything is kept, so it is wrong where you can see it rather than wrong in
+  // a list. If that ever changes it must change for both spellings at once.
+  ok('a bare "6.30" and a bare "6:30" agree, whatever they decide',
+     at("at 6.30") === at("at 6:30"), `${at("at 6.30")} vs ${at("at 6:30")}`);
+}
+
+sec("And a time that cannot exist is not a time");
+{
+  // "9:99" came back as "09:99" — stored, carried around, and then invisible
+  // everywhere, because everything that draws a time refuses to draw that one.
+  // dates.js and schedule.js both already said it was nonsense; this was the
+  // one file that disagreed, and disagreeing quietly is the whole problem.
+  const at = (phrase) => Q.parse(`meeting ${phrase}`, {}).time || "";
+  [["at 9:99", ""], ["at 9.99", ""], ["at 25:00", ""], ["at 9:60", ""]].forEach(([say, want]) =>
+    ok(`"${say}"`, at(say) === want, `${at(say) || "(none)"} — wanted ${want || "(none)"}`));
+}
+
+sec("And words that say it comes round again");
+{
+  // A teacher's week is mostly things that happen again. "Gate duty every
+  // Tuesday and Thursday" went on as one task on one Tuesday, looking entirely
+  // settled — and after that Tuesday there was no gate duty in the app at all.
+  const again = (s) => Q.parse(s, {}).repeatsText || "";
+  [
+    "gate duty every tuesday and thursday",
+    "staff briefing every monday",
+    "yard duty on tuesdays",
+    "book club thursdays",
+    "weekly team meeting",
+    "every day",
+    "每周五开会",
+  ].forEach((s) => ok(`"${s}" is heard as happening again`, again(s) !== "", "(heard nothing)"));
+  // AND IT MUST NOT SEE ONE THAT ISN'T THERE. Saying so on a one-off would send
+  // people to the timetable to fix something that was already right.
+  [
+    "call the dentist tomorrow",
+    "reports due a week on friday",
+    "buy whiteboard pens",
+    "parents evening on thursday",
+  ].forEach((s) => ok(`"${s}" is not`, again(s) === "", again(s)));
+}
+
 // ---------------------------------------------------------------------------
 sec("And a date is written the same way everywhere");
 {

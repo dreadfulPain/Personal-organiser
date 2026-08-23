@@ -214,5 +214,58 @@ sec("An absence that stopped being news");
      !/should|truant|neglect|failed|poor/i.test(A.words(stale)), A.words(stale));
 }
 
+sec("And a register pasted into the wrong box is offered the right one");
+{
+  // THE CAPTURE BAR IS ON EVERY PAGE, People included. Somebody who scrolls up
+  // on that page meets a big box asking what's on their mind; paste a register
+  // into it and you got one task per child, named after the child — a task list
+  // full of children's names, kept away from the one page that says out loud
+  // what a synced folder means for them.
+  //
+  // Asked of this file, because reading a register is what this file does. The
+  // front door working it out again would be a second answer to a question that
+  // already had one.
+  // The real cards the front door would build, from the real reader — so this
+  // can't pass on a shape the app never actually produces.
+  const qb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl };
+  qb.window = qb;
+  vm.createContext(qb);
+  ["names.js", "quickparse.js", "roster.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), qb));
+  const Q = qb.OrganiserQuickParse;
+  const R = qb.OrganiserRoster; // the same module, next to the reader it asks
+  const cards = (text) => Q.parseAll(text, {});
+  const asked = (text) => R.looksLikeRegister(text, cards(text));
+
+  const CLASS_TAB = "Li Wei\t9A\nZhang Min\t9A\nChen Hao\t9A\nWang Yu\t9A";
+  const CLASS_COMMA = "Li Wei, 9A\nZhang Min, 9A\nChen Hao, 9A\nWang Yu, 9A";
+  ok("a register pasted in is spotted", asked(CLASS_TAB), "read as jobs");
+  ok("however the columns were separated", asked(CLASS_COMMA), "read as jobs");
+
+  // AND IT MUST ALMOST NEVER FIRE. Saying this over a real list of jobs sends
+  // somebody off to fix something that was already right, which is worse than
+  // never saying it at all.
+  const NOT = {
+    "an ordinary brain dump":
+      "buy whiteboard pens\nring the dentist tomorrow\nmark 9A books\nemail sarah about the trip",
+    "jobs that are about people":
+      "email li wei about homework\ncall zhang mins mum\nsee chen hao at break",
+    "a list of things with dates on":
+      "reports friday\ntrip forms monday\nparents evening tuesday\ninset day wednesday",
+    "a shopping list": "pens\npaper\nglue\nscissors",
+    "two names and no more": "Li Wei\t9A\nZhang Min\t9A",
+    "one line": "Li Wei 9A",
+    "nothing at all": "",
+  };
+  Object.entries(NOT).forEach(([what, text]) =>
+    ok(`${what} is left alone`, !asked(text), "wrongly offered People"));
+
+  // It OFFERS. Nothing is moved and nothing is refused — the cards are still
+  // there, because a list of names really might have been a list of jobs.
+  ok("and the things typed are still there to add", cards(CLASS_TAB).length === 4,
+     String(cards(CLASS_TAB).length));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

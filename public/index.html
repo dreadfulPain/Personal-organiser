@@ -51,10 +51,13 @@
            thought out of their head should be able to do that first; this is
            for the moment afterwards, when they look up and wonder what else
            there is. Gone the moment there is anything set up. -->
+      <!-- The count and the names are filled in from steps.js, because they are
+           the same fact as the list on the setup page and were written out by
+           hand here until they disagreed with it. -->
       <p id="newHere" class="new-here" hidden>
-        New here? <a href="setup.html">Four things to set up</a> — your
-        timetable, your term dates and your classes. The app works without
-        them; it fits your actual week with them.
+        New here? <a href="setup.html"><span class="nh-count">Four</span> things to set up</a> —
+        <span class="nh-names">your timetable, your term dates and your classes</span>. The app
+        works without them; it fits your actual week with them.
       </p>
 
       <!-- THE CHECK-BACK: a glance and a tap before anything is filed -->
@@ -173,6 +176,7 @@
 
     <script src="nav.js" defer></script>
     <script src="voice.js" defer></script>
+    <script src="steps.js" defer></script>
     <script src="dates.js" defer></script>
     <script src="store.js" defer></script>
     <script src="saving.js" defer></script>
@@ -185,6 +189,7 @@
     <script src="levels.js" defer></script>
     <script src="meeting.js" defer></script>
     <script src="names.js" defer></script>
+    <script src="roster.js" defer></script>
     <script src="quickparse.js" defer></script>
     <script src="areas.js" defer></script>
     <script src="capture.js" defer></script>

@@ -1365,10 +1365,19 @@ async function handleDiagnose(res) {
     } catch {
       /* none yet */
     }
+    // ONE SENTENCE, ONE STORY. This read "nothing saved yet · last saved
+    // 8/23/2026, 3:45:03 AM", which is two answers to the same question sitting
+    // next to each other disagreeing. The file HAD been written; it was just
+    // empty. Somebody checking whether their work is safe should not have to
+    // work out which half to believe, so an empty file says it is empty and
+    // stops there.
+    const size = `${backups} backup${backups === 1 ? "" : "s"} · ${human(folderSize(DATA_DIR))} in total.`;
     add(
       "Your writing",
       "ok",
-      `${counts.length ? counts.join(", ") : "nothing saved yet"} · last saved ${doc.savedAt ? new Date(doc.savedAt).toLocaleString() : "never"} · ${backups} backup${backups === 1 ? "" : "s"} · ${human(folderSize(DATA_DIR))} in total.`
+      counts.length
+        ? `${counts.join(", ")} · last saved ${doc.savedAt ? new Date(doc.savedAt).toLocaleString() : "never"} · ${size}`
+        : `Nothing written down yet — the file is here and empty, waiting. · ${size}`
     );
     add("Where it lives", "info", DATA_FILE);
     if (/onedrive|dropbox|google ?drive|icloud/i.test(DATA_FILE)) {

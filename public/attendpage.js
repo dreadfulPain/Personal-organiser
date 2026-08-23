@@ -50,6 +50,37 @@
       .sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
   }
 
+  // IS THERE ANYTHING ON, THE DAY BEING LOOKED AT?
+  //
+  // A press of Keep on a day with no lessons wrote a full register anyway —
+  // everybody present, silently — and that is not a harmless extra row. The
+  // whole point of this page is the run of absences it notices, and a phantom
+  // register dilutes it: "Away the last 5 times. Do you know why?" became
+  // "Away 5 of 6 — 83%" from one accidental press on a Sunday. The one signal
+  // worth having got quieter because of a day nobody taught.
+  //
+  // Not blocked — a Saturday trip is a real thing to record, and the app does
+  // not get to tell somebody which days they worked. Said, and defaulted away
+  // from, which is where the accidental press comes from.
+  function aSchoolDay() {
+    if (!schedule.length) return true; // no timetable to disagree with
+    return daysBlocks().length > 0;
+  }
+
+  // The most recent day this timetable actually had something on, at or before
+  // today — where a register belongs when you open the page on a Sunday.
+  function lastTaughtDay() {
+    const S = window.OrganiserSchedule;
+    if (!S || !S.blocksOn || !schedule.length) return todayISO();
+    const d = new Date();
+    for (let i = 0; i < 14; i++) {
+      const iso = OrganiserDates.isoOf(d);
+      if (S.blocksOn(schedule, iso).filter((b) => !b.blocksDay && !b.noLessons).length) return iso;
+      d.setDate(d.getDate() - 1);
+    }
+    return todayISO();
+  }
+
   // 09:30 → 9:30 AM, in whatever way this machine writes times.
   // Asked of one place — see OrganiserDates.timeWords. Five files had their own
   // and no two were the same; the week's insisted on a two-digit hour, which
@@ -79,9 +110,11 @@
       .find((s) => s.date === when && s.slotId === slotId);
     const words = $("#atTakenWords");
     if (words)
-      words.textContent = existing
-        ? `Already taken for this one — tapping changes it rather than adding a second.`
-        : `Nobody is marked away until you tap them.`;
+      words.textContent =
+        (aSchoolDay() ? "" : `Your timetable has nothing on this day. Keeping this still records a register for it. `) +
+        (existing
+          ? `Already taken for this one — tapping changes it rather than adding a second.`
+          : `Nobody is marked away until you tap them.`);
     el.innerHTML = ms
       .map(
         (m) =>
@@ -104,8 +137,26 @@
     s.late.forEach((x) => late.add(x));
   }
 
+  // EVERY OTHER ACTION IN THIS APP SAYS WHAT IT DID. This one saved the
+  // register and changed nothing you could see — and it is done in twenty
+  // seconds with a class in front of you, which is exactly when "did that
+  // take?" matters. Pressed twice because nothing happened is the ordinary
+  // outcome, and while a second press is harmless here, being unsure is not.
+  function setStatus(msg) {
+    const el = $("#atStatus");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.hidden = !msg;
+    clearTimeout(setStatus._t);
+    if (msg) setStatus._t = setTimeout(() => { el.hidden = true; el.textContent = ""; }, 5000);
+  }
+
   function save() {
-    if (!group || !when) return;
+    // AND SAYS WHY NOT. Pressing it with no class chosen did nothing at all,
+    // silently — the same fault the make-up-day button had, on a different
+    // page, and it was worth saying there too.
+    if (!group) return setStatus("Choose a class first — the register doesn't know whose it is.");
+    if (!when) return setStatus("Pick a day first.");
     attendance = A().take(
       attendance,
       { group, slotId, away: [...away], late: [...late] },
@@ -113,6 +164,19 @@
     );
     OrganiserStore.save({ attendance });
     render();
+    // WHAT IT KEPT, not just that it kept something. A register whose whole
+    // point is that you only tap the exceptions should say which exceptions it
+    // has — that is the one thing you'd want to check before walking away.
+    const n = away.size + late.size;
+    const bits = [];
+    if (away.size) bits.push(`${away.size} away`);
+    if (late.size) bits.push(`${late.size} late`);
+    const day = OrganiserDates.dayWords(when, { lower: true });
+    setStatus(
+      n
+        ? `Kept for ${group}, ${day} — ${bits.join(" and ")}. ✓`
+        : `Kept for ${group}, ${day} — everyone in. ✓`
+    );
   }
 
   // ---- who has stopped coming ---------------------------------------------
@@ -268,7 +332,10 @@
     lessons = Array.isArray(data.lessons) ? data.lessons : [];
     records = Array.isArray(data.records) ? data.records : [];
     recordConfig = data.recordConfig || null;
-    when = todayISO();
+    // NOT BLINDLY TODAY. Opened on a Sunday, this offered a Sunday register and
+    // one press turned it into a real one — see aSchoolDay above. The day it
+    // lands on is shown in the date box, so nothing is hidden by choosing it.
+    when = lastTaughtDay();
     const gs = groups();
     if (gs.length === 1) group = gs[0];
     wire();

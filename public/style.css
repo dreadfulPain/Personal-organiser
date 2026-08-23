@@ -3936,6 +3936,9 @@ a.btn {
   padding: 7px 10px; font: inherit; font-size: 0.95rem; color: var(--ink);
   border: 1px solid var(--line); border-radius: 8px; }
 .ls-actions { margin-top: 12px; }
+/* What just happened, said under the button that did it. Quiet, and gone
+   again after a few seconds — it is a confirmation, not a notice board. */
+.ls-status { margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-soft); }
 /* What the app read, shown before anything is kept — never straight in. */
 .ls-preview { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--line);
   border-radius: 10px; background: #fff; }

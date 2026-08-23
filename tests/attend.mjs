@@ -180,7 +180,10 @@ sec("The page: four seconds to take it");
   const el = (x) => (els[x] = els[x] || makeEl(x));
   const doc = { querySelector: (x) => el(x), createElement: makeEl, querySelectorAll: () => [] };
   const sb2 = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
-    Promise, setTimeout, document: doc, location: { hash: "" } };
+    // clearTimeout as well as setTimeout: the shared harness in _dom.mjs has
+    // had both for a while and this stand-in had only one, so a page using the
+    // ordinary pair threw here and nowhere else.
+    Promise, setTimeout, clearTimeout, document: doc, location: { hash: "" } };
   sb2.window = sb2; sb2.globalThis = sb2; vm.createContext(sb2);
   // EVERY module, derived — see everyModule() in _dom.mjs. This runs a whole
   // PAGE script, and a page loads all of them; naming a handful by hand goes
@@ -281,6 +284,57 @@ sec("And the page for one person answers the question a parent asks");
   // must not get a heading with nothing under it.
   ok("hidden when no register has been taken", /block\.hidden = !pat \|\| !pat\.sessions/.test(js),
      "it shows the block even with nothing in it");
+}
+
+// ---------------------------------------------------------------------------
+sec("Keeping a register says what it kept");
+{
+  // IT SAID NOTHING. Pressed, the register saved and the screen did not change
+  // in any way you could see — and this is done in twenty seconds with a class
+  // in front of you, so "did that take?" matters more here than almost
+  // anywhere. Pressing again because nothing happened is the ordinary outcome.
+  const src = fs.readFileSync(`${REPO}/public/attendpage.js`, "utf8");
+  const save = (src.match(/function save\(\)[\s\S]*?\n  \}/) || [""])[0];
+  ok("there is a save", save.length > 100, "save() has gone or changed shape");
+  ok("and it says so afterwards", /setStatus\(/.test(save), "it still saves in silence");
+  // WHAT it kept, not just that it kept something. A register whose whole point
+  // is that you only tap the exceptions should say which exceptions it has.
+  ok("naming the class", /\$\{group\}/.test(save), save.slice(-400));
+  ok("and how many were out", /away\.size/.test(save) && /late\.size/.test(save), save.slice(-400));
+  ok("and saying plainly when nobody was", /everyone in/.test(save), save.slice(-400));
+  // AND SAYS WHY NOT. Pressing it with nothing chosen did nothing at all,
+  // silently — the same fault the make-up-day button had on another page.
+  ok("pressing it with no class says why not", /Choose a class first/.test(save), save.slice(0, 300));
+  ok("and the status is announced, not just drawn",
+     /role="status"/.test(fs.readFileSync(`${REPO}/public/attend.html`, "utf8")),
+     "a screen reader hears nothing");
+}
+
+sec("And a day with nothing on it does not quietly become a register");
+{
+  // THE ONE THAT COST SOMETHING. Opened on a Sunday, the page offered a Sunday
+  // register, and one press wrote a full one — everybody present, silently.
+  // That is not a harmless extra row: this page exists for the run of absences
+  // it notices, and the phantom register diluted it. "Away the last 5 times. Do
+  // you know why?" became "Away 5 of 6 — 83%" from a single accidental press on
+  // a day nobody taught.
+  const src = fs.readFileSync(`${REPO}/public/attendpage.js`, "utf8");
+  ok("the page knows whether anything is on that day", /function aSchoolDay\(/.test(src),
+     "nothing checks the timetable before offering a register");
+  ok("and opens on a day that had something on", /function lastTaughtDay\(/.test(src),
+     "it still opens blindly on today");
+  ok("which is what the date box is set from", /when = lastTaughtDay\(\)/.test(src),
+     "the default is still todayISO()");
+  // NOT BLOCKED. A Saturday trip is a real thing to record, and the app does not
+  // get to tell somebody which days they worked — it says so and steps aside.
+  ok("but an empty day is still allowed, with a word",
+     /Keeping this still records a register for it/.test(src),
+     "either it blocks the day or it says nothing about it");
+  ok("and nothing refuses to save on it",
+     !/aSchoolDay\(\)[\s\S]{0,80}return;/.test(src), "it now refuses days off");
+  // A TIMETABLE IT HASN'T GOT CANNOT DISAGREE WITH ANYBODY.
+  ok("with no timetable at all every day counts", /if \(!schedule\.length\) return true/.test(src),
+     "somebody with no timetable gets told their days are wrong");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

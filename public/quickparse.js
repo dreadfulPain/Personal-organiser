@@ -268,19 +268,12 @@
   const TO_A_PERSON_CJK = /给|找|联系|聯繫|告诉|告訴|问|問|提醒|回复|回覆|通知|发给|發給|打给|打給/;
 
   function readPeople(text, contacts) {
-    const out = { person: "", waitingOn: "", directed: false };
+    const out = { person: "", personId: "", waitingOn: "", directed: false };
     const N = window.OrganiserNames;
     if (!N || !Array.isArray(contacts) || !contacts.length) return out;
-    // Ordinary words that turn up inside names ("Dave THE plumber") and would
-    // otherwise match half the roster.
-    const SKIP = new Set(
-      ("the a an and or of for to at in on by with about from is was be do did get got put "
-        + "my me you your it this that then them they we us our new old all any some not no yes")
-        .split(" ")
-    );
     const words = String(text)
       .split(/[^\p{L}\p{N}一-鿿]+/u)
-      .filter((w) => w.length > 1 && !SKIP.has(w.toLowerCase()));
+      .filter((w) => w.length > 1 && !NOT_A_PERSON.has(w.toLowerCase()));
     // Try two-word runs first, so "Helen Zhou" beats "Helen".
     const tries = [];
     for (let i = 0; i < words.length; i++) {
@@ -299,7 +292,24 @@
       const unspaced = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/.test(asked);
       const inside = unspaced && asked.replace(/\s/g, "").includes(whole.replace(/\s/g, ""));
       if (whole === asked || whole.startsWith(asked + " ") || inside || (N.formsOf(found.contact) || []).some((f) => N.norm(f) === asked)) {
-        out.person = found.contact.name;
+        // WHICH PERSON, AS A FACT — and your word for them, left alone.
+        //
+        // This wrote the CONTACT'S name over what you typed, and that turned out
+        // to destroy the very thing it was meant to preserve. Somebody called
+        // Nick who goes by Caddy types "owe caddy the predictions"; the app
+        // learns Caddy means Nick; and from then on the note reads "promised to
+        // Nick" — which, with two Nicks on the staff, is a question where an
+        // answer used to be. Learning the second name made the app WORSE at
+        // knowing who was meant.
+        //
+        // The identity is the id. The words are yours.
+        out.personId = found.contact.id || "";
+        // A DIFFERENT NAME, not a different capitalisation. "Caddy" and "Nick"
+        // are two names and both are theirs; "li wei" and "Li Wei" are one name
+        // typed in a hurry, and a person's name has a proper spelling.
+        const sameName = N.norm(found.contact.name) === asked;
+        const known = (N.formsOf(found.contact) || []).some((f) => N.norm(f) === asked);
+        out.person = !sameName && known ? t : found.contact.name;
         // WAS THE SENTENCE AIMED AT THEM, or were they merely in it?
         //
         // "email Helen about the trip" is something you owe Helen. "Li Wei
@@ -330,7 +340,89 @@
     } else if (out.person && /\bwaiting\b|\bno (?:reply|answer|response)\b|hasn't (?:replied|got back)/i.test(text)) {
       out.waitingOn = out.person;
     }
+    if (!out.person) out.maybe = whoAfterAsking(text, contacts);
     return out;
+  }
+
+  // A NAME THE APP HAS NEVER SEEN IS NOT INVISIBLE.
+  //
+  // Everything above only ever finds somebody ALREADY on your list, which is
+  // right — inventing contacts out of prose gave us "Xianmian Building" and
+  // "Saturday". But it left the app deaf to the one case that matters most:
+  //
+  //   "promised caddy the moderation samples by friday"
+  //
+  // Caddy is a person. Caddy is, in fact, you — under the name half the school
+  // uses. The app had no idea Caddy was even a word worth asking about, so the
+  // whole business of learning a second name for somebody could never start.
+  //
+  // WHAT THIS USES IS GRAMMAR, NOT VOCABULARY (§0.2). "Promised X", "told X",
+  // "owe X" — in each of those the very next word is who. That is a far
+  // narrower thing than "any capitalised word in the sentence", which is what
+  // was tried before and what filled the list with buildings.
+  //
+  // AND IT NEVER FILLS ANYTHING IN. It comes back as `maybe`, not as `person`,
+  // so nothing is stored and nothing is claimed. The check-back asks, once, and
+  // if the answer is silly you ignore a line. If it is Caddy, the app knows for
+  // ever after — and knows it is you.
+  // Two words are taken, not one, and the second dropped if it is plainly not
+  // part of a name — because "Li Wei" and "Mrs Zhao" are both two words, and
+  // taking only the first of those gives you a person called Mrs.
+  const ASKING =
+    /\b(?:promis\w+|told|owe[ds]?|remind(?:ed)?|emailed?|messaged?|asked|ask|ring|rang|call(?:ed)?|chase[d]?)\s+([\p{L}][\p{L}'’-]{0,29})(?:\s+([\p{L}][\p{L}'’-]{0,29}))?/iu;
+  // A word that only ever introduces a name, never is one.
+  const JUST_A_TITLE = /^(mr|mrs|ms|miss|mx|dr|prof|professor|sir)\.?$/i;
+  // WORDS THAT ARE PLAINLY NOT A NAME.
+  //
+  // There were two of these lists — one inside readPeople to stop "Dave THE
+  // plumber" matching half the roster, and one here — which is the same
+  // question answered twice and one list learning something the other never
+  // hears about. One list, used by both.
+  //
+  // Not a dictionary and never will be: it is the handful of ordinary words
+  // that actually turn up where a name is expected, plus the contractions a
+  // brain dump loses its apostrophes to — "told caddy id do it" was coming back
+  // with somebody called "caddy id".
+  const NOT_A_PERSON = new Set(
+    ("the a an and or of for to at in on by with about from is was be do did does get got put " +
+      "my me you your his her their our its it them him they we us this that then these those " +
+      "new old all any some not no yes both each " +
+      "everyone everybody someone somebody anyone nobody myself yourself himself herself " +
+      "themselves ourselves back up out off if when what who again faithfully " +
+      "delivery results parents staff class students kids " +
+      "id ive ill im hes shes theyre well cant wont didnt dont said says know knows " +
+      "will would should could can into over after before so but")
+      .split(" ")
+  );
+  function whoAfterAsking(text, contacts) {
+    const m = ASKING.exec(String(text || ""));
+    if (!m) return "";
+    const tidy = (w) => (w || "").replace(/[’']s$/, "");
+    const ordinary = (w) => !w || NOT_A_PERSON.has(w.toLowerCase());
+    const first = tidy(m[1]);
+    const second = tidy(m[2]);
+    // "Mrs" on its own is a title with the name missing — if the word after it
+    // is ordinary too, nobody was named at all.
+    if (JUST_A_TITLE.test(first)) {
+      if (ordinary(second) || second.length < 2) return "";
+      return `${first} ${second}`;
+    }
+    if (ordinary(first) || first.length < 2) return "";
+    const who = !ordinary(second) && second.length > 1 ? `${first} ${second}` : first;
+    // Already somebody you have? Then it isn't a question — the code above
+    // either matched them or is about to be asked a different one.
+    const N = window.OrganiserNames;
+    if (!N || !Array.isArray(contacts)) return who;
+    // MATCHED means the code above already had them, so there is nothing to
+    // ask. NEARLY does NOT: "owe nick the predictions", with two Nicks on the
+    // staff, matched neither of them and fell through here, and the whole thing
+    // — the promise, the person, the question — vanished without a word. An
+    // ambiguous name is the case that most needs asking about.
+    if (N.look(who, contacts).state === "matched") return "";
+    // "Li Wei" isn't on the list but "Li" is: that is a near miss about one
+    // person, not a stranger, and the code above already handles it.
+    if (who !== first && N.look(first, contacts).state === "matched") return "";
+    return who;
   }
 
   // The Chinese words sit OUTSIDE the \b(...)\b group on purpose. \b is an ASCII
@@ -577,7 +669,14 @@
       //
       // A promise needs somebody to have made one.
       promisedTo: who.waitingOn ? "" : PROMISE.test(raw) || who.directed ? who.person : "",
+      // WHICH person that name meant, when this half already knew — kept so the
+      // answer never has to be worked out from the letters again.
+      contactId: who.personId || "",
       waitingOn: who.waitingOn,
+      // A WORD THAT LOOKS LIKE SOMEBODY, offered rather than believed — see
+      // whoAfterAsking. Never stored on the task; the check-back asks and
+      // whatever you answer is what gets kept.
+      maybePerson: who.maybe || "",
       remindAt: "",
       remindedAt: null,
       // DID YOU SAY IT COULD WAIT? Only ever set from your own words. What the

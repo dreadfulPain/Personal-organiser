@@ -188,6 +188,180 @@ sec("And nothing writes a person on screen its own way");
 }
 
 // ---------------------------------------------------------------------------
+sec("And the other way round: two names, one person");
+{
+  // "I might introduce myself as Caddy to avoid confusion, but some people
+  // still call me Nick and some call me Caddy."
+  //
+  // Both are their name. Neither is a nickname for the other, and neither is a
+  // misspelling — which is the point, because misspellings were the only case
+  // the app had a path for.
+  const ME = [
+    { id: "p1", name: "Nick", isMe: true, aka: ["Caddy", "Cadders"] },
+    { id: "p2", name: "Nick", group: "colleague", tag: "Head of Y9" },
+    { id: "p5", name: "Sarah Kane", group: "colleague" },
+  ];
+  ok("the other name finds the same person", N.look("Caddy", ME).state === "matched" &&
+     N.look("Caddy", ME).contact.id === "p1", N.look("Caddy", ME).state);
+  ok("however it is capitalised", N.look("caddy", ME).contact.id === "p1");
+  ok("and a third name too", N.look("Cadders", ME).contact.id === "p1");
+  // AND IT DOESN'T DRAG THE AMBIGUITY WITH IT. "Caddy" is unambiguous even
+  // though "Nick" isn't — that is the entire reason for having the other name.
+  ok("the name that isn't shared is not a question",
+     N.look("Caddy", ME).state === "matched" && N.look("Nick", ME).state === "nearly");
+
+  // YOUR WORD BACK, NOT THE APP'S PREFERRED ONE. Writing "Caddy" and being
+  // shown "Nick" is the app correcting you about what somebody is called.
+  ok("what you wrote is what you see", N.saidAs(ME, "Caddy") === "Caddy (you)", N.saidAs(ME, "Caddy"));
+  ok("and the tag still says who it is", /\(you\)/.test(N.saidAs(ME, "Cadders")), N.saidAs(ME, "Cadders"));
+  // A PARTIAL NAME IS THE OPPOSITE CASE and still opens out, because "Sarah" is
+  // less than the person's name and the fuller one tells you more.
+  ok("but half a name still fills out", N.saidAs(ME, "Sarah") === "Sarah Kane (colleague)",
+     N.saidAs(ME, "Sarah"));
+
+  // ONCE SETTLED, IT STAYS SETTLED. A second Caddy joining the school next year
+  // must not change what a task written this year has always meant.
+  const LATER = ME.concat([{ id: "p9", name: "Caddy", group: "parent" }]);
+  ok("a new arrival makes the bare name a question again",
+     N.look("Caddy", LATER).state === "nearly", N.look("Caddy", LATER).state);
+  ok("but a task that already knows is unaffected",
+     N.saidAs(LATER, "Caddy", { id: "p1" }) === "Caddy (you)", N.saidAs(LATER, "Caddy", { id: "p1" }));
+  ok("and it is still the right person", N.saidAs(LATER, "Nick", { id: "p2" }) === "Nick (Head of Y9)",
+     N.saidAs(LATER, "Nick", { id: "p2" }));
+
+  // Teaching it one is remembering, not guessing — the same machinery that
+  // learns how you spell a name in pinyin.
+  const fresh = { id: "x", name: "Nick" };
+  ok("a name can be taught", N.remember(fresh, "Caddy") === true);
+  ok("and then it matches", N.look("Caddy", [fresh]).state === "matched");
+  ok("teaching the same one twice changes nothing", N.remember(fresh, "caddy") === false,
+     JSON.stringify(fresh.aka));
+}
+
+sec("And the app offers to be told, instead of making a second you");
+{
+  // THE PATH THAT WASN'T THERE. The app knew what to do with a spelling it half
+  // recognised, and what to do with one it didn't recognise at all — but "add
+  // Caddy to People" was the ONLY thing on offer for a name it had never seen.
+  // So you ended up with two contacts who were both you, and from then on half
+  // your work was filed under each.
+  const app = fs.readFileSync(path.join(PUB, "app.js"), "utf8");
+  ok("a name it has never seen can be attached to somebody you have",
+     /another name for someone/i.test(app), "the only option is still to add a new person");
+  ok("and being told is remembered", /OrganiserNames\.remember\(/.test(app), "nothing is learned");
+  // AND CONFIRMING MUST NOT REWRITE WHAT YOU TYPED. It used to set the task's
+  // name to the contact's, so the spelling it had just learned vanished from
+  // the one place it mattered.
+  ok("confirming a name leaves your words alone",
+     !/it\[field\]\s*=\s*c\.name/.test(app), "it still overwrites what you typed");
+  // The link is the id, and the id is kept — see the settled-answer test above.
+  ok("the link is kept on the task", /contactId: \(it\.contactId/.test(app), "contactId is not saved");
+}
+
+// ---------------------------------------------------------------------------
+sec("And a name it has never seen is asked about, not ignored");
+{
+  // FOUND BY WALKING THROUGH IT AS A TEACHER. Everything above only ever found
+  // somebody ALREADY on the list, which is right — inventing contacts out of
+  // prose gave us "Xianmian Building" and "Saturday". But it left the app deaf
+  // to the one case that started all this: "promised caddy the moderation
+  // samples" went in with no person on it at all, so the business of learning a
+  // second name for somebody could never even begin.
+  const qb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl };
+  qb.window = qb;
+  vm.createContext(qb);
+  ["names.js", "quickparse.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), qb));
+  const Q = qb.OrganiserQuickParse;
+  const C = [
+    { id: "p1", name: "Nick", isMe: true, aka: ["caddy"] },
+    { id: "p2", name: "Nick", tag: "Head of Y9" },
+    { id: "p5", name: "Sarah Kane" },
+  ];
+  const read = (s) => Q.parse(s, { contacts: C });
+
+  // GRAMMAR, NOT VOCABULARY. After "promised", "told", "owe", the next word is
+  // who — far narrower than "any capitalised word", which is what filled the
+  // list with buildings last time it was tried.
+  [
+    ["promised caddy the moderation samples by friday", "caddy"],
+    ["told mrs zhao id sort it", "mrs zhao"],
+    ["emailed li wei about homework", "li wei"],
+    // "Mum" names a person as surely as any name does — by what she is to you
+    // rather than by what she is called, which is how most people refer to
+    // most of the people closest to them.
+    ["call mum at 8.02", "mum"],
+  ].forEach(([say, want]) => {
+    const r = read(say);
+    ok(`"${say}" offers ${want}`, (r.maybePerson || r.promisedTo).toLowerCase().includes(want.split(" ")[0]),
+       `maybe=${JSON.stringify(r.maybePerson)} promisedTo=${JSON.stringify(r.promisedTo)}`);
+  });
+  // AND IT NEVER FILLS ANYTHING IN. Offered, not believed — asked of a list
+  // that has never heard of Caddy, which is the state this starts from.
+  const stranger = Q.parse("promised caddy the samples", { contacts: [{ id: "p5", name: "Sarah Kane" }] });
+  ok("nothing is put on the task until you answer", stranger.promisedTo === "", stranger.promisedTo);
+  ok("but the word is held out to be asked about", stranger.maybePerson === "caddy", stranger.maybePerson);
+
+  // AND IT MUST STAY QUIET THE REST OF THE TIME, or it is a line people learn
+  // to ignore, which is worse than no line.
+  [
+    "promised the samples by friday",
+    "promised delivery by friday",
+    "promised myself id stop",
+    "ask everyone to bring a pen",
+    "chase the trip letter",
+    "mark 9a books",
+    "asked mrs about it",
+  ].forEach((say) => {
+    const r = read(say);
+    ok(`"${say}" names nobody`, !r.maybePerson, r.maybePerson);
+  });
+}
+
+sec("And an ambiguous name is a question, not silence");
+{
+  const qb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl };
+  qb.window = qb;
+  vm.createContext(qb);
+  ["names.js", "quickparse.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), qb));
+  const Q = qb.OrganiserQuickParse;
+  const C = [
+    { id: "p1", name: "Nick", isMe: true, aka: ["caddy"] },
+    { id: "p2", name: "Nick", tag: "Head of Y9" },
+  ];
+
+  // "owe nick the predictions", with two Nicks on the staff, matched neither
+  // and fell through everything — the promise, the person and the question all
+  // vanished without a word.
+  const amb = Q.parse("owe nick the y9 predictions", { contacts: C });
+  ok("two Nicks does not mean no Nick", !!amb.maybePerson, "the name disappeared entirely");
+  ok("and it is still your word that gets asked about", amb.maybePerson === "nick", amb.maybePerson);
+
+  // LEARNING THE SECOND NAME MUST NOT MAKE IT WORSE. This is the one the
+  // walkthrough caught: readPeople wrote the CONTACT'S name over what was
+  // typed, so "owe caddy…" — unambiguous — was stored as "Nick", which with two
+  // Nicks is a question where an answer used to be.
+  const known = Q.parse("owe caddy the y9 predictions", { contacts: C });
+  ok("the word that identified them survives", known.promisedTo === "caddy", known.promisedTo);
+  ok("and which person it was is kept as a fact", known.contactId === "p1", known.contactId);
+  const N2 = qb.OrganiserNames;
+  ok("so it still reads unambiguously",
+     N2.saidAs(C, known.promisedTo, { id: known.contactId }) === "caddy (you)",
+     N2.saidAs(C, known.promisedTo, { id: known.contactId }));
+
+  // AND THE QUESTION HAS TO BE ANSWERABLE. "did you mean Nick / Nick?" was what
+  // this actually said — two buttons, identical, one of them you.
+  const app = fs.readFileSync(path.join(PUB, "app.js"), "utf8");
+  ok("the people it offers are told apart",
+     !/b\.textContent = c\.name;/.test(app), 'the suggestion buttons still say just "Nick"');
+  ok("and they are written the one way everything is written",
+     /b\.textContent = OrganiserNames\.saidAs\(/.test(app), "they build their own label");
+}
+
+// ---------------------------------------------------------------------------
 sec("And nobody works out for themselves whether a name means a person");
 {
   // A FOURTH ANSWER TO THE SAME QUESTION, and a much looser one. people.js had

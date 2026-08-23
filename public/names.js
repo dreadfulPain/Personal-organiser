@@ -399,16 +399,40 @@
     const o = opts || {};
     const key = who == null ? "" : String(who);
     if (!key.trim()) return "";
-    let c = list.find((x) => x.id === who);
+    // ALREADY SETTLED BEATS WORKING IT OUT AGAIN. Once you have told the app
+    // that this task's "Caddy" is that Nick, the answer is a fact it holds, and
+    // re-deriving it from four letters every time it draws the row is how a
+    // settled thing comes unsettled — a second Caddy joining the school later
+    // must not change what this task has always meant.
+    let c = (o.id && list.find((x) => x.id === o.id)) || list.find((x) => x.id === who);
     let name = "";
-    if (c) {
+    if (o.id && c) {
+      const asWritten = norm(c.name) !== norm(key) && formsOf(c).some((f) => norm(f) === norm(key));
+      name = asWritten ? key.trim() : String(c.name || "").trim() || key;
+    } else if (c) {
       name = String(c.name || "").trim() || key;
     } else {
       // A NAME, NOT AN ID. Resolved the same way everything else resolves one,
       // so "Nick" finds the same person here as it does anywhere else.
       const hit = look(key, list);
       if (hit.state === "matched" && hit.contact) c = hit.contact;
-      name = c ? String(c.name || "").trim() || key : key;
+      // YOUR WORD BACK, NOT THE APP'S PREFERRED ONE.
+      //
+      // Somebody who introduces themselves as Caddy to avoid being confused
+      // with the other Nick gets called Caddy by half the school and Nick by
+      // the rest — and both are their name, not a nickname for it. Writing
+      // "Caddy" and being shown "Nick" is the app correcting you about what
+      // somebody is called.
+      //
+      // So a name it recognises AS WRITTEN stays as written. A partial or a
+      // near miss still fills out — "Sarah" is less than the person's name and
+      // opening it out to "Sarah Kane" tells you more, which is the opposite
+      // case.
+      // A different NAME keeps your word; a different capitalisation does not —
+      // "Caddy" and "Nick" are two names and both are theirs, while "li wei"
+      // and "Li Wei" are one name typed in a hurry.
+      const asWritten = c && norm(c.name) !== norm(key) && formsOf(c).some((f) => norm(f) === norm(key));
+      name = asWritten ? key.trim() : c ? String(c.name || "").trim() || key : key;
       // TWO PEOPLE IT COULD BE IS THE WHOLE POINT OF THIS. Saying nothing there
       // would be the app quietly picking one.
       if (!c && hit.state === "nearly" && hit.suggestions.length > 1) {

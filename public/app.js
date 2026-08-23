@@ -82,8 +82,13 @@
   // the app could not tell you which Nick and did not admit it. Asked of one
   // place now — OrganiserNames.saidAs — which adds the word that separates them
   // and, where it genuinely cannot tell, says so instead of choosing.
-  function personWords(name) {
-    return window.OrganiserNames ? OrganiserNames.saidAs(contacts, name) : String(name || "");
+  // `of` is the thing the name came off — a task carries contactId once you
+  // have settled which person it meant, and a settled answer beats working it
+  // out from four letters again every time the row is drawn.
+  function personWords(name, of) {
+    if (!window.OrganiserNames) return String(name || "");
+    const id = of && of.contactId ? of.contactId : "";
+    return OrganiserNames.saidAs(contacts, name, id ? { id } : undefined);
   }
   // A task can be "for" a portfolio standard — show its short code (or title).
   function standardLabelById(id) {
@@ -432,6 +437,12 @@
     const fields = [
       ["promisedTo", it.promisedTo, "promised to"],
       ["waitingOn", it.waitingOn, "waiting on"],
+      // A WORD THAT LOOKS LIKE SOMEBODY, offered rather than believed — see
+      // whoAfterAsking in quickparse.js. Nothing is on the task yet: whichever
+      // of the answers below you give is what puts it there. Left alone, the
+      // task keeps your sentence and gains nothing, which is the right outcome
+      // when the word wasn't a person after all.
+      ...(it.promisedTo || !it.maybePerson ? [] : [["promisedTo", it.maybePerson, "promised to"]]),
     ].filter(([, v]) => v);
     if (!fields.length) return null;
 
@@ -444,7 +455,10 @@
         it.contactId = found.contact.id || "";
         const chip = document.createElement("span");
         chip.className = "cb-known";
-        chip.textContent = `${label} ${found.contact.name} · in People ✓`;
+        // YOUR WORD, AND WHO IT IS — the summary a line above already said
+        // "promised to caddy (you)", and this chip was saying "promised to
+        // Nick" about the same task, on the same card, at the same moment.
+        chip.textContent = `${label} ${personWords(name, it)} · in People ✓`;
         row.appendChild(chip);
         shown = true;
         return;
@@ -463,14 +477,23 @@
           const b = document.createElement("button");
           b.type = "button";
           b.className = "link";
-          b.textContent = c.name;
+          // "did you mean Nick / Nick?" was what this actually said with two of
+          // them on the staff — two buttons, identical, one of them you. The
+          // whole point of the question is being able to tell them apart.
+          b.textContent = OrganiserNames.saidAs(contacts, c.id);
           b.addEventListener("click", () => {
             // You've just told it that this spelling means this person. Keep
             // that — it's how "Wang Wei" finds 王伟 instantly next time, and
             // it's knowledge no built-in table could have.
             noteUse("name-question", "", found.bridge ? "matched" : "accepted");
             const learned = OrganiserNames.remember(c, name);
-            it[field] = c.name;
+            it[field] = name;
+            it.maybePerson = "";
+            // YOUR WORD STAYS. This used to overwrite what you typed with the
+            // contact's name — so "promised to Caddy" became "promised to
+            // Nick", the app quietly correcting you about what somebody is
+            // called, and the spelling it had just learned was gone from the
+            // one place it mattered. The link is the id; the words are yours.
             it.contactId = c.id || "";
             if (learned) OrganiserStore.save({ contacts });
             renderCheckback();
@@ -486,12 +509,59 @@
       add.textContent = found.state === "nearly" ? `no — add ${name}` : `add ${name} to People`;
       add.addEventListener("click", () => {
         noteUse("name-question", "", found.state === "nearly" ? "rejected" : "added");
-        contacts.push({ id: uid(), name, group: "", note: "", createdAt: new Date().toISOString(), workLog: [] });
+        const made = { id: uid(), name, group: "", note: "", createdAt: new Date().toISOString(), workLog: [] };
+        contacts.push(made);
+        it[field] = name;
+        it.maybePerson = "";
+        it.contactId = made.id;
         OrganiserStore.save({ contacts });
         renderCheckback();
         setStatus(`${name} is in People now. ✓`);
       });
       wrap.appendChild(add);
+
+      // TWO NAMES, ONE PERSON — the other half of the same problem.
+      //
+      // Somebody who introduces themselves as Caddy, to avoid being confused
+      // with the other Nick, gets called Caddy by half the school and Nick by
+      // the rest. Both are their name. The app knew what to do when it half
+      // recognised a spelling, and knew what to do when it recognised none —
+      // but "add Caddy to People" was the ONLY thing on offer for a name it
+      // had never seen, so you ended up with two contacts who were both you,
+      // and from then on half your work was filed under each.
+      //
+      // Nothing here guesses. A name it has never seen and a person already on
+      // your list have nothing in common that any amount of cleverness could
+      // find; only you know. So it asks, once, and then remembers for ever —
+      // which is exactly how the app learns to read pinyin, and the same
+      // machinery does it.
+      if (found.state !== "matched" && contacts.length) {
+        const sel = document.createElement("select");
+        sel.className = "cb-alias";
+        sel.setAttribute("aria-label", `Is “${name}” somebody already on your list?`);
+        sel.appendChild(new Option("…or another name for someone", ""));
+        contacts
+          .slice()
+          .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+          .forEach((c) => sel.appendChild(new Option(OrganiserNames.saidAs(contacts, c.id), c.id)));
+        sel.addEventListener("change", (e) => {
+          const c = contacts.find((x) => x.id === e.target.value);
+          if (!c) return;
+          noteUse("name-question", "", "alias");
+          const learned = OrganiserNames.remember(c, name);
+          it[field] = name;
+          it.maybePerson = "";
+          it.contactId = c.id || "";
+          OrganiserStore.save({ contacts });
+          renderCheckback();
+          setStatus(
+            learned
+              ? `Noted — “${name}” is another name for ${OrganiserNames.saidAs(contacts, c.id)}. I'll know from now on. ✓`
+              : `Linked to ${OrganiserNames.saidAs(contacts, c.id)}. ✓`
+          );
+        });
+        wrap.appendChild(sel);
+      }
       row.appendChild(wrap);
     });
     return shown ? row : null;
@@ -528,7 +598,7 @@
     if (eff === "quick") parts.push("quick");
     else if (eff === "draining") parts.push("draining");
     if (it.openLoop) parts.push("needs finishing");
-    if (it.promisedTo) parts.push("promised to " + personWords(it.promisedTo));
+    if (it.promisedTo) parts.push("promised to " + personWords(it.promisedTo, it));
     const tags = Array.isArray(it.tags) ? it.tags : [];
     if (tags.length) parts.push(tags.join(", "));
     const gTitle = goalTitleById(it.goalId);
@@ -868,6 +938,11 @@
         // Both readers produce it; it has to survive the trip into storage.
         notBefore: /^\d{4}-\d{2}-\d{2}$/.test(it.notBefore || "") ? it.notBefore : "",
         promisedTo: (it.promisedTo || "").toString().trim().slice(0, 40),
+        // WHICH PERSON THAT NAME MEANT, once you have said. Kept, or the answer
+        // is worked out again from four letters every time the row is drawn —
+        // and a second Caddy joining the school next year would silently change
+        // what this task has always meant.
+        contactId: (it.contactId || "").toString(),
         remindAt: typeof it.remindAt === "string" ? it.remindAt : "",
         remindedAt: null,
         done: false,
@@ -1067,7 +1142,7 @@
         <div class="item-meta">
           <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
           ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
-          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
+          ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo, it))}</span>` : ""}
           ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
           ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
           ${label ? `<span class="when ${overdue ? "overdue" : ""}${showDue ? " due" : ""}">${showDue ? "due " : ""}${escapeHtml(label)}${overdue ? " · overdue" : ""}</span>` : ""}
@@ -1189,7 +1264,7 @@
       <div class="item-meta">
         <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
         ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
-        ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
+        ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo, it))}</span>` : ""}
         ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
         ${effWord ? `<span class="effort-word eff-${eff}">${effWord}</span>` : ""}
         ${overdue ? `<span class="when overdue">overdue</span>` : ""}
@@ -1839,7 +1914,7 @@
         <div class="lp-main">
           <div class="lp-title">${escapeHtml(it.title)}</div>
           <div class="item-meta">
-            ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo))}</span>` : ""}
+            ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo, it))}</span>` : ""}
             <span class="lp-since">${escapeHtml(openSince(it))}</span>
             ${due ? `<span class="when${it.deadlineType === "hard" ? " due" : ""}">${it.deadlineType === "hard" ? "due " : ""}${escapeHtml(due)}</span>` : ""}
             ${ping ? `<span class="ping-info">${escapeHtml(ping)}</span>` : ""}
@@ -2007,7 +2082,7 @@
         <div class="wo-main">
           <div class="wo-title">${escapeHtml(it.title)}</div>
           <div class="wo-meta">
-            <span class="wo-who">${escapeHtml(personWords(it.waitingOn))}</span>
+            <span class="wo-who">${escapeHtml(personWords(it.waitingOn, it))}</span>
             <span class="wo-since">${escapeHtml(sinceWords(it))}</span>
             ${asked ? `<span class="wo-asked">asked you ${asked}×</span>` : ""}
             ${it.remindAt && !it.remindedAt ? `<span class="ping-info">${escapeHtml(fmtRemind(it))}</span>` : ""}
@@ -2030,7 +2105,7 @@
         armWaiting(it, ASK_EVERY_DAYS);
         persist();
         renderZones();
-        setStatus(`Kept waiting on ${personWords(it.waitingOn)} — back in ${ASK_EVERY_DAYS} days. ✓`);
+        setStatus(`Kept waiting on ${personWords(it.waitingOn, it)} — back in ${ASK_EVERY_DAYS} days. ✓`);
       });
       mk("stop asking", () => {
         it.waitingOn = "";

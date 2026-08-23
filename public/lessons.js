@@ -22,6 +22,7 @@
   let where = "";         // which class the "where we are" half is about
   let grading = "";       // the id of the lesson whose marking grid is open
   let editing = ""; // the id of the plan whose "afterwards" box is open
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
   const $ = (s) => document.querySelector(s);
   const LP = () => window.OrganiserLessonPlan;
@@ -57,9 +58,90 @@
   // paste box follows: never straight in. If the app read your plan wrongly you
   // need to see that now, while you still have the plan in front of you — not
   // in six weeks when a count looks odd.
+  // WORK THE PLAN SETS, WITH A DAY ON IT.
+  //
+  // "Homework: finish the annotation, due Thursday" is a sentence this app
+  // reads perfectly everywhere else and read nowhere here. A plan is where
+  // homework is actually set, so a deadline is written into one most weeks —
+  // and Thursday arrived with nothing anywhere to say the work was owed. The
+  // teacher who has to remember it is the one whose record already says
+  // "third missed deadline this half term".
+  //
+  // OFFERED, NEVER TAKEN. This page's own promise is that it never writes a
+  // plan and never marks one; making a task out of your plan without being
+  // asked would be the same overreach in a different direction. It reads the
+  // line, shows the day it landed on, and waits.
+  //
+  // Only a line that SETS work counts. Every plan has dates in it — the date at
+  // the top, "we did this last Tuesday" — and offering those would be noise on
+  // every single paste, which is worse than offering nothing.
+  const SETS_WORK = /^\s*(?:homework|hw|prep|assignment|independent study|due|deadline|to be handed in|hand in)\b\s*[:\-–—]?\s*(.*)$/i;
+  function owedIn(text) {
+    const Q = window.OrganiserQuickParse;
+    if (!Q) return null;
+    for (const raw of String(text || "").split(/\r?\n/)) {
+      const m = SETS_WORK.exec(raw);
+      if (!m) continue;
+      const said = (m[1] || "").trim();
+      if (!said) continue;
+      const r = Q.parse(said, {});
+      // A day is the whole point. "Homework: finish the annotation" with no
+      // when is a note, not a deadline, and the app has nothing to add to it.
+      if (!r.date) continue;
+      return { line: raw.trim(), title: r.title || said, date: r.date };
+    }
+    return null;
+  }
+
+  function renderOwed() {
+    const el = $("#lsOwed");
+    if (!el) return;
+    const found = owedIn(($("#lsPaste").value || ""));
+    if (!found) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.innerHTML =
+      `<p class="muted">This plan sets work for <strong>${esc(OrganiserDates.dayWords(found.date))}</strong> — ` +
+      `“${esc(found.line)}”.</p>`;
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "link";
+    add.textContent = `Put “${found.title}” on my list for ${OrganiserDates.dayWords(found.date)}`;
+    add.addEventListener("click", () => {
+      const group = ($("#lsGroup").value || "").trim();
+      items = items.concat([{
+        id: uid(),
+        // The class in the title, because "collect the annotations" a fortnight
+        // later means nothing without knowing whose.
+        title: group ? `${found.title} — ${group}` : found.title,
+        type: "task",
+        date: found.date,
+        // YOU GAVE THIS DATE, not the app — it came off your own plan. Anything
+        // downstream that treats an app-supplied date more gently must not
+        // treat this one that way.
+        datedBy: "you",
+        time: "",
+        deadlineType: "hard",
+        importance: "normal",
+        effort: "medium",
+        tags: [],
+        whenText: found.line,
+        goalId: "", standardId: "", openLoop: false, areas: [],
+        plannedMinutes: 0, spentMinutes: 0,
+        promisedTo: "", waitingOn: "", contactId: "",
+        remindAt: "", remindedAt: null,
+        done: false, createdAt: new Date().toISOString(),
+      }]);
+      OrganiserStore.save({ items });
+      el.innerHTML = `<p class="muted">On your list for ${esc(OrganiserDates.dayWords(found.date))}. ✓</p>`;
+      renderAll();
+    });
+    el.appendChild(add);
+  }
+
   function preview() {
     const el = $("#lsPreview");
     if (!el) return;
+    renderOwed();
     const text = ($("#lsPaste").value || "").trim();
     if (!text) { el.hidden = true; el.innerHTML = ""; return; }
     const p = LP().parse(text, lessonConfig);

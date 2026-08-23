@@ -3939,6 +3939,11 @@ a.btn {
 /* What the app read, shown before anything is kept — never straight in. */
 .ls-preview { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--line);
   border-radius: 10px; background: #fff; }
+/* Work the plan sets, offered rather than taken. Quiet: it must not compete
+   with the plan itself, and on most pastes it isn't there at all. */
+.ls-owed { margin: 10px 0; padding: 10px 14px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface); }
+.ls-owed p { margin: 0 0 4px; }
 .ls-title { font-weight: 600; margin: 6px 0; }
 .ls-part { margin-top: 12px; }
 .ls-part h3 { font-size: 0.9rem; margin: 0 0 4px; }

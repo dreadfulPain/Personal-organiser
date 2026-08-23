@@ -218,5 +218,47 @@ sec("It has never heard of a school");
      (src.match(banned) || [])[0]);
 }
 
+// ---------------------------------------------------------------------------
+sec("Starter, main, plenary — the ordinary three-part lesson");
+{
+  // TWO THIRDS OF IT WAS HERE. "Main" and "plenary" were both seeded and
+  // "starter" was not, so a plan written the most ordinary way there is came
+  // back with its starter glued onto the end of the learning objective:
+  //
+  //   "to explain how a writer builds tension Starter (5 min): read the
+  //    opening paragraph, one word each for how it feels"
+  //
+  // and the objective is the one line that gets reused — the skill and the
+  // evidence hang off it. Found by pasting a real plan in.
+  const PLAN = [
+    "9A English — Monday",
+    "Learning objective: to explain how a writer builds tension",
+    "",
+    "Starter (5 min): read the opening paragraph, one word each for how it feels",
+    "Main (25 min): annotate the extract for short sentences",
+    "Plenary (10 min): one sentence each — what did the writer do and why",
+  ].join("\n");
+  const p = LP.parse(PLAN, null);
+  ok("the objective is only the objective",
+     p.objective === "to explain how a writer builds tension", JSON.stringify(p.objective));
+  ok("and it has not swallowed the starter",
+     !/starter/i.test(p.objective), JSON.stringify(p.objective));
+  const taught = (p.ways || []).join(" | ");
+  ok("the starter is part of how you taught it", /opening paragraph/.test(taught), taught);
+  ok("and so is the main", /annotate the extract/.test(taught), taught);
+  ok("the plenary is how you checked it",
+     (p.checks || []).join(" | ").includes("one sentence each"), JSON.stringify(p.checks));
+
+  // AND THE OTHER NAMES FOR THE SAME THING, because half of them are what the
+  // department down the corridor calls it.
+  ["Do now", "Bell work", "Settler", "Warm up", "Retrieval practice", "Hook"].forEach((word) => {
+    const one = LP.parse(`Objective: to know the water cycle\n${word}: label the diagram from memory`, null);
+    ok(`"${word}" is a way of teaching`, (one.ways || []).join(" ").includes("label the diagram"),
+       `objective=${JSON.stringify(one.objective)} ways=${JSON.stringify(one.ways)}`);
+    ok(`and "${word}" leaves the objective alone`,
+       one.objective === "to know the water cycle", JSON.stringify(one.objective));
+  });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

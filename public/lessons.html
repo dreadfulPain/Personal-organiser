@@ -49,6 +49,12 @@
           <select id="lsItem"></select>
         </label>
         <div id="lsPreview" class="ls-preview" hidden></div>
+
+        <!-- A DEADLINE WRITTEN INSIDE A PLAN IS STILL A DEADLINE. "Homework:
+             finish the annotation, due Thursday" is a date this app reads
+             perfectly anywhere else and read nowhere here, so Thursday arrived
+             with nothing to say the work was owed. Offered, never taken. -->
+        <div id="lsOwed" class="ls-owed" hidden></div>
         <!-- WHICH TARGETS THIS IS AGAINST. Offered, never decided — see
              syllabus.js on why a word count must not make this call. -->
         <div id="lsTargets" class="ls-targets" hidden></div>
@@ -172,6 +178,7 @@
     <script src="review.js" defer></script>
     <script src="attain.js" defer></script>
     <script src="attend.js" defer></script>
+    <script src="quickparse.js" defer></script>
     <script src="lessonplan.js" defer></script>
     <script src="lessons.js" defer></script>
   </body>

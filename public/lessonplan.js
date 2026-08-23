@@ -44,8 +44,21 @@
   const STARTING_HEADINGS = {
     objective: ["learning objective", "learning objectives", "objective", "objectives",
       "aim", "aims", "lo", "walt", "success criteria", "outcome", "outcomes"],
+    // STARTER, MAIN, PLENARY is the three-part lesson, and two thirds of it was
+    // here. "Main" and "plenary" were both known and "starter" was not — so a
+    // plan written the most ordinary way there is came back with its starter
+    // glued onto the end of the learning objective:
+    //
+    //   "to explain how a writer builds tension Starter (5 min): read the
+    //    opening paragraph, one word each for how it feels"
+    //
+    // and the objective is the one line that gets used again — it is what the
+    // skill and the evidence hang off. A starter and a main are both teaching,
+    // so both live here.
     ways: ["activities", "activity", "procedure", "lesson outline", "tasks", "task",
-      "method", "how", "steps", "sequence", "main", "body"],
+      "method", "how", "steps", "sequence", "main", "body",
+      "starter", "starter activity", "do now", "bell work", "bellwork", "settler",
+      "warm up", "warmup", "hook", "retrieval", "retrieval practice", "recap"],
     checks: ["assessment", "assessments", "how i will know", "how i'll know", "check",
       "checking", "checks", "plenary", "exit ticket", "evidence", "evaluation"],
   };

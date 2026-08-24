@@ -3788,6 +3788,12 @@ a.btn {
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
 
+/* Work already in the app, ticked against a standard on the Lessons page.
+   Set apart from what you wrote up here, because they are different things. */
+.pf-taught { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--line); }
+.pf-taught p { margin: 0 0 4px; font-size: 0.82rem; }
+.pf-taught-row { margin: 4px 0; font-size: 0.9rem; }
+
 /* A FACE. The thumbnail sits with the name because that is where you look for
    it; the big one sits on the open card where you set it. */
 .ppl-thumb { width: 32px; height: 32px; border-radius: 50%; object-fit: cover;

@@ -17,6 +17,7 @@
   // mean three copies of everything and no way to keep them in step.)
   let pf = null; // { title, points:[{id,code,title}], evidence:[{id,pointIds:[],date,note,files:[]}] }
   let items = []; // the shared task pool — tasks linked to a standard live here too
+  let lessons = []; // plans you already ticked against a standard — see taughtFor
 
   const $ = (sel) => document.querySelector(sel);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -289,17 +290,79 @@
     return row;
   }
 
+  // WORK YOU HAVE ALREADY DONE, AND ALREADY LABELLED.
+  //
+  // A term in the app — a timetable, a class, plans written and taught, a term
+  // of assessment — and the portfolio said "no evidence yet" against all nine
+  // standards. Two of those plans had TS4 and TS6 ticked on them BY HAND, on
+  // the Lessons page, and this page never asked.
+  //
+  // That is the worst kind of gap: not something the app couldn't know, but
+  // something it was told and then didn't look at. A week before a review, with
+  // the evidence sitting one page away, "no evidence yet" is simply false.
+  //
+  // ONLY WHAT WAS TICKED. Records, registers and the rest are not dragged in on
+  // a resemblance — nobody labelled them, and deciding for somebody which
+  // standard their register proves would be the app writing their portfolio.
+  // These are shown, never counted as your written evidence, and never edited
+  // from here: they belong to the lesson.
+  // AND THE TWO HALVES DISAGREE ABOUT WHAT NAMES A STANDARD. A point here is
+  // { id: "ts4", code: "TS4" }; tasks link by the ID and the Lessons page ticks
+  // by the CODE. One thing, two names, and whichever you match on you miss half
+  // the app — which is precisely how "no evidence yet" survived a term of work.
+  // Matched on either, folded, so it finds them whoever wrote them.
+  const sameStandard = (a, b) =>
+    String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+
+  function taughtFor(point) {
+    const names = [point.id, point.code].filter(Boolean);
+    return lessons
+      .filter(
+        (l) =>
+          l && Array.isArray(l.targets) && l.targets.some((t) => names.some((n) => sameStandard(t, n)))
+      )
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  }
+
   function pointCard(point) {
     const ev = evidenceFor(point.id);
     const card = document.createElement("section");
     card.className = "pf-card";
     const n = ev.length;
+    const taught = taughtFor(point);
+    // TWO DIFFERENT THINGS, COUNTED SEPARATELY. What you wrote up as evidence is
+    // yours; a lesson you ticked this standard on is a fact the app already
+    // held. Adding them together would flatter the count and hide which is
+    // which — but a standard with a taught lesson under it is not "no evidence
+    // yet" either, and saying so was the whole fault.
+    const said = n
+      ? `${n} piece${n === 1 ? "" : "s"} of evidence`
+      : taught.length
+        ? "nothing written up yet"
+        : "no evidence yet";
     card.innerHTML = `
       <div class="pf-head">
         <h2 class="pf-code">${escapeHtml(point.code || "")}</h2>
-        <span class="pf-count ${n ? "" : "gap"}">${n ? `${n} piece${n === 1 ? "" : "s"} of evidence` : "no evidence yet"}</span>
+        <span class="pf-count ${n || taught.length ? "" : "gap"}">${said}</span>
       </div>
       <p class="pf-title">${escapeHtml(point.title)}</p>
+      ${
+        taught.length
+          ? `<div class="pf-taught"><p class="muted">Already in your app — ${taught.length} lesson${taught.length === 1 ? "" : "s"} you ticked this standard on:</p>` +
+            taught
+              .slice(0, 5)
+              .map(
+                (l) =>
+                  `<div class="pf-taught-row">${escapeHtml(l.title || l.group || "a lesson")}` +
+                  (l.date ? ` <span class="muted">${escapeHtml(OrganiserDates.dayWords(l.date, { relative: false }))}</span>` : "") +
+                  (l.objective ? `<div class="muted">${escapeHtml(l.objective)}</div>` : "") +
+                  `</div>`
+              )
+              .join("") +
+            (taught.length > 5 ? `<p class="muted">${taught.length - 5} more on the Lessons page.</p>` : "") +
+            `</div>`
+          : ""
+      }
       <div class="pf-evs"></div>`;
     const evs = card.querySelector(".pf-evs");
     ev.forEach((e) => evs.appendChild(evidenceRow(point, e)));
@@ -374,7 +437,12 @@
       list.innerHTML = `<p class="empty">No points yet — add some in “Set up this portfolio” below.</p>`;
       return;
     }
-    const points = showGaps ? pf.points.filter((p) => evidenceFor(p.id).length === 0) : pf.points;
+    // THE SAME TEST THE BADGE USES. This asked only about written evidence, so
+    // once a taught lesson could sit under a standard the filter and the card
+    // disagreed on the same page: "no evidence yet" in the list, two lessons on
+    // the card. A gap is a standard with nothing against it at all.
+    const bare = (p) => evidenceFor(p.id).length === 0 && taughtFor(p).length === 0;
+    const points = showGaps ? pf.points.filter(bare) : pf.points;
     if (!points.length) {
       list.innerHTML = `<p class="empty">Every point has evidence. 🎉</p>`;
       return;
@@ -405,9 +473,26 @@
     let body = "";
     for (const point of pf.points) {
       const ev = evidenceFor(point.id);
+      const taught = taughtFor(point);
       if (ev.length) covered++;
       body += `<section><h2>${escapeHtml(point.code ? point.code + " — " : "")}${escapeHtml(point.title)}</h2>`;
-      if (!ev.length) body += `<p class="none">No evidence yet.</p>`;
+      // WHAT IS ALREADY IN THE APP GOES IN THE EXPORT TOO, and stays clearly
+      // separate from what you wrote up. A reviewer reading "No evidence yet"
+      // over a standard you taught two labelled lessons against is the same
+      // false sentence the screen used to show, printed.
+      if (taught.length) {
+        body += `<p class="taught"><em>Lessons taught against this standard:</em></p><ul>`;
+        for (const l of taught) {
+          body +=
+            `<li>${escapeHtml(l.title || l.group || "a lesson")}` +
+            (l.date ? ` — ${escapeHtml(friendlyDate(l.date))}` : "") +
+            (l.objective ? `: ${escapeHtml(l.objective)}` : "") +
+            `</li>`;
+        }
+        body += `</ul>`;
+      }
+      if (!ev.length && !taught.length) body += `<p class="none">No evidence yet.</p>`;
+      else if (!ev.length) body += `<p class="none">Nothing written up yet.</p>`;
       for (const e of ev) {
         body += `<div class="ev"><p><strong>${escapeHtml(friendlyDate(e.date))}</strong> — ${escapeHtml(e.note)}</p>`;
         for (const f of e.files || []) {
@@ -491,6 +576,7 @@ ${body}</body></html>`;
     const data = await OrganiserStore.load();
     pf = normalisePortfolio(data.portfolio);
     items = data.items || [];
+    lessons = data.lessons || [];
     if (!pf || !pf.points.length) {
       pf = JSON.parse(JSON.stringify(DEFAULT_PORTFOLIO));
       persist(); // seed once; from here it's your data

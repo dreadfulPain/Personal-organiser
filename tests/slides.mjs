@@ -272,4 +272,86 @@ sec("And two people you CAN tell apart are not called muddled");
      N.look("Chen", TWO).suggestions.length === 2, N.look("Chen", TWO).state);
 }
 
+// ---------------------------------------------------------------------------
+sec("Three names for one person: characters, pinyin, and an English one");
+{
+  // In an international school somebody has their name in characters, the
+  // pinyin of it, and an English name they picked — and every document writes
+  // some different pair of those. All three have to reach the same person.
+  const one = (head) => R.cardsIn(head + "\n- Head of Maths")[0];
+
+  // A SLIDE PUTS TWO IN ONE BRACKET. Kept as one string that is neither of
+  // them, "Jason" on its own then matched nobody.
+  const both = one("Mr. Wang Wei (王伟 / Jason):");
+  ok("two in a bracket become two names", both.aka.length === 2, JSON.stringify(both.aka));
+  ok("the characters", both.aka.includes("王伟"), JSON.stringify(both.aka));
+  ok("and the English one", both.aka.includes("Jason"), JSON.stringify(both.aka));
+  // Commas and Chinese punctuation separate them just as well as a slash.
+  ok("however the slide separated them",
+     one("Mr. Wang Wei (王伟, Jason):").aka.length === 2 &&
+     one("Mr. Wang Wei (王伟、Jason):").aka.length === 2,
+     JSON.stringify(one("Mr. Wang Wei (王伟、Jason):").aka));
+
+  // AND OFTEN THERE ARE NO BRACKETS AT ALL — "Wang Wei 王伟" is how most Chinese
+  // school documents write it. Splitting on where the script changes needs no
+  // vocabulary: it is the boundary between two writing systems.
+  const side = one("Wang Wei 王伟:");
+  ok("side by side is still two names", side.name === "Wang Wei" && side.aka[0] === "王伟",
+     JSON.stringify(side));
+  // Whichever the slide put first is the name. Nothing decides which is
+  // somebody's "real" one.
+  const other = one("王伟 Wang Wei:");
+  ok("and the order is theirs, not the app's", other.name === "王伟" && other.aka[0] === "Wang Wei",
+     JSON.stringify(other));
+  ok("all three at once", (() => {
+    const c = one("李梅 Li Mei (Mary):");
+    return c.name === "李梅" && c.aka.includes("Li Mei") && c.aka.includes("Mary");
+  })(), JSON.stringify(one("李梅 Li Mei (Mary):")));
+
+  // A NAME WRITTEN SOLID IS ONE NAME. Cutting "李Anna" would be inventing.
+  ok("but a name written solid is left alone", one("李Anna:").name === "李Anna", one("李Anna:").name);
+  ok("and a plain English name gains nothing", one("Dana:").aka.length === 0, JSON.stringify(one("Dana:").aka));
+}
+
+sec("And every one of those forms finds the same person");
+{
+  const N = sb.OrganiserNames;
+  const HE = [{ id: "w", name: "Mr. Wang Wei", aka: ["王伟", "Jason"] }];
+  ["Wang Wei", "王伟", "Jason", "wangwei", "Wang", "wang wei"].forEach((q) =>
+    ok(`"${q}" finds him`, N.look(q, HE).state === "matched", N.look(q, HE).state));
+
+  // AND WITHOUT BEING TAUGHT, characters and pinyin are a QUESTION, not a
+  // silent match — identifying somebody across two writing systems from a
+  // surname is not something to decide on their behalf.
+  const UNTAUGHT = [{ id: "w", name: "王伟" }];
+  ok("untaught, pinyin asks rather than assumes",
+     N.look("Wang Wei", UNTAUGHT).state === "nearly", N.look("Wang Wei", UNTAUGHT).state);
+  ok("and once taught it is instant", (() => {
+    const c = { id: "w", name: "王伟" };
+    N.remember(c, "Wang Wei");
+    return N.look("Wang Wei", [c]).state === "matched";
+  })());
+}
+
+sec("And what they do is readable, not one run-on line");
+{
+  // Somebody imported off a slide arrives with every one of their jobs in the
+  // notes, one per line — and a single-line input collapses those, so two jobs
+  // came out as "Head of MathsHigh School Master Maths Teacher". Stored
+  // perfectly, unreadable, and uneditable without breaking it further.
+  const src = read("people.js");
+  ok("a value with lines in it gets a box with lines in it",
+     /document\.createElement\(many \? "textarea" : "input"\)/.test(src),
+     "multi-line details are still shown in a one-line input");
+  ok("decided by the value, not by which field it is",
+     /const many = \/\\n\/\.test\(was\)/.test(src), "it knows which field is called notes");
+
+  // AND EVERYBODY GETS A TITLE. "Middle School Chinese Teacher" has no joining
+  // word to shorten at, so the head was the whole thing and this gave up —
+  // leaving that one person the only name on the page with nothing beside it.
+  const add = (src.match(/function tagFromRole\([\s\S]*?\n  \}/) || [""])[0];
+  ok("a role with no \"of\" in it still gives a title", /return longerTag\(r\)/.test(add),
+     "somebody whose job title has no joining word gets no title at all");
+}
+
 done();

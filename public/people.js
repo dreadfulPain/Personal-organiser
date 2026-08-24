@@ -478,7 +478,12 @@
     if (!r) return "";
     if (r.length <= TAG_MAX) return r;
     const head = r.split(/\s+\b(?:of|for|at|in|to)\b\s+/)[0].trim();
-    return head && head.length <= TAG_MAX ? head : "";
+    if (head && head.length <= TAG_MAX) return head;
+    // NO "of" TO CUT AT. "Middle School Chinese Teacher" has no joining word in
+    // it, so the head is the whole thing and this used to give up and return
+    // nothing — leaving that person the only one on the page with no title
+    // beside their name. As many whole words as fit is better than none.
+    return longerTag(r);
   }
 
   // WHERE THEY ACTUALLY DIFFER.
@@ -687,9 +692,22 @@
         const label = document.createElement("label");
         label.className = "cb-field";
         label.innerHTML = `<span class="cb-lbl">${escapeHtml(f)}</span>`;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = (person.details && person.details[f]) || "";
+        const was = (person.details && person.details[f]) || "";
+        // A THING WITH LINES IN IT NEEDS A BOX WITH LINES IN IT.
+        //
+        // Somebody imported off a slide arrives with every one of their jobs in
+        // the notes, one per line — and a single-line input collapses those, so
+        // "Head of Maths" and "High School Master Maths Teacher" came out as
+        // "Head of MathsHigh School Master Maths Teacher". Stored perfectly,
+        // unreadable, and uneditable without breaking it further.
+        //
+        // Decided by the VALUE, not by which field it is: this file does not get
+        // to know that one of them is called notes.
+        const many = /\n/.test(was);
+        const input = document.createElement(many ? "textarea" : "input");
+        if (many) input.rows = Math.min(6, was.split("\n").length);
+        else input.type = "text";
+        input.value = was;
         input.placeholder = "fine to leave blank";
         input.addEventListener("change", (e) => {
           const v = e.target.value.trim();
@@ -697,6 +715,10 @@
           if (v) person.details[f] = v;
           else delete person.details[f];
           persist();
+          // Only when the shape of it changed — a field that has just gained or
+          // lost its line breaks needs the other kind of box, and redrawing on
+          // every keystroke would take the cursor away mid-word.
+          if (/\n/.test(v) !== many) render();
         });
         label.appendChild(input);
         grid.appendChild(label);

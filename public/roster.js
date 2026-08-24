@@ -151,6 +151,34 @@
   // students use — exactly the case the app already handles once you tell it,
   // and here it is being told, in the brackets.
   const ALIAS = /^(.*?)\s*[（(]([^)）]{2,40})[)）]\s*$/;
+  // AND OFTEN THREE. In an international school somebody has their name in
+  // characters, the pinyin of it, and an English name they picked — and a slide
+  // will put two of those in one bracket: "(王伟 / Jason)". Kept as one string
+  // that is neither of them, "Jason" on its own then matches nobody.
+  const ALSO_SEP = /\s*[\/、,;，；]\s*|\s+\|\s+/;
+
+  // NAME AND NAME, SIDE BY SIDE, NO BRACKETS AT ALL — "Wang Wei 王伟", which is
+  // how most Chinese school documents write it. One person, two scripts, and
+  // splitting on where the script changes needs no vocabulary at all: it is the
+  // boundary between two writing systems, the same kind of fact as a colon.
+  const CJK_RUN = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]+/;
+  const LATIN_RUN = /[A-Za-zÀ-ɏ]{2,}/;
+  function splitScripts(name) {
+    const s = String(name || "").trim();
+    if (!CJK_RUN.test(s) || !LATIN_RUN.test(s)) return null;
+    // Only where they are separate words. "李Anna" written solid is one token
+    // somebody chose to write that way, and cutting it would be inventing.
+    const parts = s.split(/\s+/);
+    const cjk = parts.filter((p) => CJK_RUN.test(p));
+    const latin = parts.filter((p) => !CJK_RUN.test(p));
+    if (!cjk.length || !latin.length) return null;
+    // Whichever the slide put first is the name; the other is what they are
+    // also written as. Nothing here decides which is somebody's "real" name.
+    const cjkFirst = s.indexOf(cjk[0]) < s.indexOf(latin[0]);
+    return cjkFirst
+      ? { name: cjk.join(" "), also: [latin.join(" ")] }
+      : { name: latin.join(" "), also: [cjk.join(" ")] };
+  }
 
   function cardsIn(text) {
     const lines = String(text || "").split(LINE_BREAKS).filter((l) => l.trim());
@@ -167,9 +195,12 @@
       const head = asHeading(raw);
       if (!head) return;
       const m = ALIAS.exec(head);
+      const plain = (m ? m[1] : head).trim();
+      const bracketed = m ? m[2].split(ALSO_SEP).map((x) => x.trim()).filter(Boolean) : [];
+      const scripts = splitScripts(plain);
       cur = {
-        name: (m ? m[1] : head).trim(),
-        aka: m ? [m[2].trim()] : [],
+        name: scripts ? scripts.name : plain,
+        aka: [...(scripts ? scripts.also : []), ...bracketed].filter(Boolean).slice(0, 8),
         roles: [],
       };
       out.push(cur);

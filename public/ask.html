@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ask</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Ask</h1>
+        <!-- WHY THIS IS NOT A TASK LIST. A question is a different shape from a
+             job: somebody else has the answer, you can only get it when you
+             catch them, and once you have it the ANSWER is the thing worth
+             keeping. Filed as tasks they scatter, and each one waits for you to
+             happen to think of it at the moment you are standing next to the
+             person who could have told you in ten seconds. -->
+        <p class="sub">Everything you need to ask somebody, kept by who can answer
+          it — so when you catch them you ask all three, not the one you happened
+          to remember. What they tell you stays here afterwards.</p>
+      </header>
+
+      <section class="p-block">
+        <form id="akForm" class="p-form">
+          <label>What do you need to know?
+            <input id="akQ" type="text" maxlength="200"
+              placeholder="how much homework is normal for grade 1" />
+          </label>
+          <label>Who would know?
+            <select id="akWho"></select>
+          </label>
+          <button type="submit" class="btn">Keep it</button>
+        </form>
+        <p id="akStatus" class="ls-status" role="status" hidden></p>
+      </section>
+
+      <section class="p-block">
+        <h2>Still to ask</h2>
+        <p class="muted" id="akOpenWords"></p>
+        <div id="akOpen"></div>
+      </section>
+
+      <section class="p-block" id="akSentBlock" hidden>
+        <h2>Asked, waiting to hear</h2>
+        <p class="muted">Nobody is being chased here. It is only so you know what
+          you are still short of an answer on.</p>
+        <div id="akSent"></div>
+      </section>
+
+      <section class="p-block" id="akKnownBlock" hidden>
+        <h2>What you were told</h2>
+        <!-- THE POINT OF THE WHOLE PAGE. A term of these is the local knowledge
+             nobody wrote down for you — and it is exactly what you will want
+             again next September, and what the next new teacher will ask you. -->
+        <p class="muted">The things nobody thought to tell you, written down.</p>
+        <input id="akFind" type="search" placeholder="find one" aria-label="Find an answer" />
+        <div id="akKnown"></div>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="dates.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="saving.js" defer></script>
+    <script src="names.js" defer></script>
+    <script src="ask.js" defer></script>
+  </body>
+</html>

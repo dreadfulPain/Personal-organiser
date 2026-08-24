@@ -90,36 +90,89 @@ function readData() {
       /* fall through to empty */
     }
   }
-  return { version: 1, items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [], savedAt: null };
+  return emptyDoc();
+}
+
+// THE LIST OF STORES, WRITTEN ONCE — THIS END TOO.
+//
+// public/store.js has had a table for a while, and the comment two hundred lines
+// down this file already said what happens without one:
+//
+//   "THE LIST IS AN ALLOWLIST: a new store that isn't named here is silently
+//    dropped on the next write by any page that doesn't send it, which is a
+//    very quiet way to lose someone's notes."
+//
+// Somebody knew. It was still hand-copied into SIX places in this file — the
+// empty document, the normaliser, the fallback, the conflict copy, the merge and
+// the final write — and adding a store to the client did exactly what the
+// comment predicted: every question typed into it vanished on save, with no
+// error anywhere.
+//
+// One table. Adding a store means adding one line, at each end, and nothing else.
+//   name · what "none" is for it
+const STORES = [
+  ["items", []],
+  ["waiting", []],
+  ["goals", []],
+  ["records", []],
+  ["recordConfig", null],
+  ["portfolio", null],
+  ["contacts", []],
+  ["contactConfig", null],
+  ["schedule", []],
+  ["scheduleConfig", null],
+  ["pastoralTopics", []],
+  ["pastoralNotes", []],
+  ["toldLog", []],
+  ["worked", {}],
+  ["areas", []],
+  ["targeted", {}],
+  ["tried", []],
+  ["lessons", []],
+  ["lessonConfig", null],
+  ["rotas", []],
+  ["syllabus", null],
+  ["attendance", []],
+  ["asks", []],
+  ["visits", []],
+  ["visitConfig", null],
+];
+
+// The same shape rule as the client's keep(): a value is taken only if it is the
+// shape that store is, and anything else becomes "none" rather than being handed
+// on to a page that will try to loop over it.
+const blankFor = (b) => (Array.isArray(b) ? [] : b && typeof b === "object" ? {} : null);
+function fits(value, b) {
+  if (Array.isArray(b)) return Array.isArray(value);
+  const objish = value && typeof value === "object" && !Array.isArray(value);
+  return !!objish;
+}
+function emptyDoc() {
+  const o = { version: 1 };
+  STORES.forEach(([k, b]) => { o[k] = blankFor(b); });
+  o.savedAt = null;
+  return o;
+}
+// A PARTIAL SAVE LEAVES THE REST ALONE. A page saves only the stores it owns, so
+// anything the input hasn't got — or has got in the wrong shape — comes from
+// what is already on disk. Falling back rather than blanking is the whole reason
+// the goals page cannot wipe your register.
+function mergeDoc(input, current) {
+  const o = { version: 1, savedAt: new Date().toISOString() };
+  const src = input || {};
+  const was = current || {};
+  STORES.forEach(([k, b]) => {
+    o[k] = fits(src[k], b) ? src[k] : fits(was[k], b) ? was[k] : blankFor(b);
+  });
+  return o;
 }
 
 function normaliseDoc(d) {
-  return {
-    version: 1,
-    items: Array.isArray(d.items) ? d.items : [],
-    waiting: Array.isArray(d.waiting) ? d.waiting : [],
-    goals: Array.isArray(d.goals) ? d.goals : [],
-    records: Array.isArray(d.records) ? d.records : [],
-    recordConfig: d.recordConfig && typeof d.recordConfig === "object" ? d.recordConfig : null,
-    portfolio: d.portfolio && typeof d.portfolio === "object" ? d.portfolio : null,
-    contacts: Array.isArray(d.contacts) ? d.contacts : [],
-    pastoralTopics: Array.isArray(d.pastoralTopics) ? d.pastoralTopics : [],
-    pastoralNotes: Array.isArray(d.pastoralNotes) ? d.pastoralNotes : [],
-    toldLog: Array.isArray(d.toldLog) ? d.toldLog : [],
-    worked: d.worked && typeof d.worked === "object" && !Array.isArray(d.worked) ? d.worked : {},
-    areas: Array.isArray(d.areas) ? d.areas : [],
-    targeted: d.targeted && typeof d.targeted === "object" && !Array.isArray(d.targeted) ? d.targeted : {},
-    tried: Array.isArray(d.tried) ? d.tried : [],
-    lessons: Array.isArray(d.lessons) ? d.lessons : [],
-    lessonConfig: d.lessonConfig && typeof d.lessonConfig === "object" ? d.lessonConfig : null,
-    rotas: Array.isArray(d.rotas) ? d.rotas : [],
-    syllabus: d.syllabus && typeof d.syllabus === "object" ? d.syllabus : null,
-    attendance: Array.isArray(d.attendance) ? d.attendance : [],
-    contactConfig: d.contactConfig && typeof d.contactConfig === "object" ? d.contactConfig : null,
-    schedule: Array.isArray(d.schedule) ? d.schedule : [],
-    scheduleConfig: d.scheduleConfig && typeof d.scheduleConfig === "object" ? d.scheduleConfig : null,
-    savedAt: d.savedAt || null,
-  };
+  const o = { version: 1 };
+  const src = d || {};
+  STORES.forEach(([k, b]) => { o[k] = fits(src[k], b) ? src[k] : blankFor(b); });
+  o.savedAt = src.savedAt || null;
+  return o;
 }
 
 function todayStamp() {
@@ -132,7 +185,7 @@ function writeData(input, opts) {
   const baseSavedAt = opts && typeof opts.baseSavedAt === "string" ? opts.baseSavedAt : null;
   // Read the current on-disk state ONCE — used both to preserve omitted halves
   // and to guard against clobbering a shared file another machine just changed.
-  let current = { items: [], waiting: [], goals: [], records: [], recordConfig: null, portfolio: null, contacts: [], contactConfig: null, schedule: [], scheduleConfig: null, pastoralTopics: [], pastoralNotes: [], toldLog: [], worked: {}, areas: [], targeted: {}, tried: [], lessons: [], lessonConfig: null, rotas: [], syllabus: null, attendance: [], savedAt: null };
+  let current = emptyDoc();
   try {
     current = readData();
   } catch {
@@ -146,38 +199,10 @@ function writeData(input, opts) {
   if (baseSavedAt !== null && current.savedAt && current.savedAt !== baseSavedAt) {
     try {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const kept = {
-        version: 1,
-        savedAt: new Date().toISOString(),
-        // An ABSENT key means "I'm not talking about this store", and must
-        // keep what's there. An empty ARRAY means "I deleted them all", and is
-        // honoured — Array.isArray([]) is true, so that still comes through.
-        // These two were the odd ones out: every other store falls back to the
-        // stored value, and items and waiting fell back to nothing, so any save
-        // that didn't mention them emptied them.
-        items: Array.isArray(input.items) ? input.items : current.items || [],
-        waiting: Array.isArray(input.waiting) ? input.waiting : current.waiting || [],
-        goals: Array.isArray(input.goals) ? input.goals : current.goals || [],
-        records: Array.isArray(input.records) ? input.records : current.records || [],
-        recordConfig: input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null,
-        portfolio: input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null,
-        contacts: Array.isArray(input.contacts) ? input.contacts : current.contacts || [],
-        contactConfig: input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null,
-        schedule: Array.isArray(input.schedule) ? input.schedule : current.schedule || [],
-        scheduleConfig: input.scheduleConfig && typeof input.scheduleConfig === "object" ? input.scheduleConfig : current.scheduleConfig || null,
-        pastoralTopics: Array.isArray(input.pastoralTopics) ? input.pastoralTopics : current.pastoralTopics || [],
-        pastoralNotes: Array.isArray(input.pastoralNotes) ? input.pastoralNotes : current.pastoralNotes || [],
-        toldLog: Array.isArray(input.toldLog) ? input.toldLog : current.toldLog || [],
-        worked: input.worked && typeof input.worked === "object" ? input.worked : current.worked || {},
-        areas: Array.isArray(input.areas) ? input.areas : current.areas || [],
-        targeted: input.targeted && typeof input.targeted === "object" ? input.targeted : current.targeted || {},
-        tried: Array.isArray(input.tried) ? input.tried : current.tried || [],
-        lessons: Array.isArray(input.lessons) ? input.lessons : current.lessons || [],
-        lessonConfig: input.lessonConfig !== undefined ? input.lessonConfig : current.lessonConfig || null,
-        rotas: Array.isArray(input.rotas) ? input.rotas : current.rotas || [],
-        syllabus: input.syllabus !== undefined ? input.syllabus : current.syllabus || null,
-        attendance: Array.isArray(input.attendance) ? input.attendance : current.attendance || [],
-      };
+      // Everything the incoming save meant, over what is on disk — see mergeDoc.
+      // An ABSENT key means "I'm not talking about this store" and must not blank
+      // it, which is exactly as true in a conflict copy as in an ordinary write.
+      const kept = mergeDoc(input, current);
       fs.writeFileSync(path.join(BACKUP_DIR, `conflict-${stamp}.json`), JSON.stringify(kept, null, 2));
       pruneBackups();
       logEvent("save", { ok: false, why: "shared-folder-conflict" });
@@ -190,61 +215,11 @@ function writeData(input, opts) {
     throw err;
   }
 
-  // Preserve any half a save didn't include (goals, records, config).
-  const goals = Array.isArray(input.goals) ? input.goals : current.goals || [];
-  const records = Array.isArray(input.records) ? input.records : current.records || [];
-  const recordConfig =
-    input.recordConfig && typeof input.recordConfig === "object" ? input.recordConfig : current.recordConfig || null;
-  const portfolio =
-    input.portfolio && typeof input.portfolio === "object" ? input.portfolio : current.portfolio || null;
-  const contacts = Array.isArray(input.contacts) ? input.contacts : current.contacts || [];
-  const contactConfig =
-    input.contactConfig && typeof input.contactConfig === "object" ? input.contactConfig : current.contactConfig || null;
-  const schedule = Array.isArray(input.schedule) ? input.schedule : current.schedule || [];
-  const scheduleConfig =
-    input.scheduleConfig && typeof input.scheduleConfig === "object" ? input.scheduleConfig : current.scheduleConfig || null;
-  // These three are preserved the same way as everything else a partial save
-  // leaves out. THE LIST IS AN ALLOWLIST: a new store that isn't named here is
-  // silently dropped on the next write by any page that doesn't send it, which
-  // is a very quiet way to lose someone's notes.
-  const pastoralTopics = Array.isArray(input.pastoralTopics) ? input.pastoralTopics : current.pastoralTopics || [];
-  const pastoralNotes = Array.isArray(input.pastoralNotes) ? input.pastoralNotes : current.pastoralNotes || [];
-  const toldLog = Array.isArray(input.toldLog) ? input.toldLog : current.toldLog || [];
-  const worked = input.worked && typeof input.worked === "object" && !Array.isArray(input.worked) ? input.worked : current.worked || {};
-  const areas = Array.isArray(input.areas) ? input.areas : current.areas || [];
-  const targeted = input.targeted && typeof input.targeted === "object" && !Array.isArray(input.targeted) ? input.targeted : current.targeted || {};
-  const tried = Array.isArray(input.tried) ? input.tried : current.tried || [];
-  const lessons = Array.isArray(input.lessons) ? input.lessons : current.lessons || [];
-  const lessonConfig = input.lessonConfig !== undefined ? input.lessonConfig : current.lessonConfig || null;
-  const rotas = Array.isArray(input.rotas) ? input.rotas : current.rotas || [];
-  const syllabus = input.syllabus !== undefined ? input.syllabus : current.syllabus || null;
-  const attendance = Array.isArray(input.attendance) ? input.attendance : current.attendance || [];
-  const doc = {
-    version: 1,
-    savedAt: new Date().toISOString(),
-    items: Array.isArray(input.items) ? input.items : current.items || [],
-    waiting: Array.isArray(input.waiting) ? input.waiting : current.waiting || [],
-    goals,
-    records,
-    recordConfig,
-    portfolio,
-    contacts,
-    contactConfig,
-    pastoralTopics,
-    pastoralNotes,
-    toldLog,
-    worked,
-    areas,
-    targeted,
-    tried,
-    lessons,
-    lessonConfig,
-    rotas,
-    syllabus,
-    attendance,
-    schedule,
-    scheduleConfig,
-  };
+  // EVERY STORE, FROM ONE TABLE — see mergeDoc. This was twenty-odd hand-written
+  // lines, and the comment that used to sit in the middle of them said exactly
+  // what would go wrong: a store not named here is dropped on the next write by
+  // any page that doesn't send it. It then happened.
+  const doc = mergeDoc(input, current);
   const json = JSON.stringify(doc, null, 2);
 
   // Keep safety copies BEFORE overwriting: the previous version (undo a bad

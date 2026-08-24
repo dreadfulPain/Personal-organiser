@@ -3788,6 +3788,28 @@ a.btn {
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
 
+/* Things to ask, kept by who can answer them. The question is what you read;
+   everything else is small print under it. */
+.ak-group { margin: 12px 0 18px; }
+.ak-who { font-size: 0.95rem; margin: 0 0 6px; }
+.ak-row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; margin-bottom: 8px; box-shadow: var(--shadow); flex-wrap: wrap; }
+.ak-q { flex: 1 1 260px; line-height: 1.45; }
+.ak-acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ak-answerbox { flex: 1 1 100%; display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
+.ak-answerbox textarea { flex: 1 1 auto; }
+/* What you were told. The ANSWER is the thing being read here, not the question
+   — by the time you come back to this you know what you asked. */
+.ak-known { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; margin-bottom: 8px; box-shadow: var(--shadow); }
+.ak-known .ak-q { font-size: 0.85rem; color: var(--ink-soft); }
+.ak-a { line-height: 1.5; margin: 2px 0 4px; }
+
+/* One lesson you sat in on. */
+.vs-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 14px; margin-bottom: 10px; box-shadow: var(--shadow); }
+
 /* Work already in the app, ticked against a standard on the Lessons page.
    Set apart from what you wrote up here, because they are different things. */
 .pf-taught { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--line); }

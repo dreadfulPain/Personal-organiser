@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Watching others</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <div id="tabs"></div>
+      <header class="top">
+        <h1>Watching others</h1>
+        <!-- NOT LEARNING TO TEACH. Learning how THIS school teaches, which is a
+             different thing and much faster to pick up by looking than by being
+             told. The headings are what you go in looking for; without them you
+             come out with "that was good" and nothing you can use. -->
+        <p class="sub">Sitting in on somebody else's lesson — not to learn how to
+          teach, but to learn how it is done here. What you went in looking for,
+          and what you actually saw.</p>
+      </header>
+
+      <section class="p-block">
+        <p class="muted" id="vsCount"></p>
+        <details class="p-setup" id="vsNewBox">
+          <summary>Log one you've watched</summary>
+          <form id="vsForm" class="p-form">
+            <label>Whose lesson
+              <input id="vsWho" type="text" list="vsPeople" maxlength="60"
+                placeholder="whoever you sat in on" />
+              <datalist id="vsPeople"></datalist>
+            </label>
+            <label>When
+              <input id="vsDate" type="date" />
+            </label>
+            <label>What it was
+              <input id="vsWhat" type="text" maxlength="80" placeholder="Grade 1 English, period 2" />
+            </label>
+            <button type="submit" class="btn">Start one</button>
+          </form>
+          <p id="vsStatus" class="ls-status" role="status" hidden></p>
+        </details>
+      </section>
+
+      <section class="p-block">
+        <div id="vsList"></div>
+      </section>
+
+      <section class="p-block">
+        <details class="p-setup">
+          <summary>What you go in looking for</summary>
+          <!-- SEEDED, THEN YOURS — the same as the record types and the
+               portfolio points. A list you have to invent before the feature
+               works is a feature nobody uses; a list you cannot change is the
+               app telling you what matters. -->
+          <p class="muted">These are a starting point, not the app's opinion. One
+            per line — change them, cut them, add your own. Everything already
+            written stays exactly as it is.</p>
+          <label>Headings (one per line)
+            <textarea id="vsHeads" rows="9"></textarea>
+          </label>
+        </details>
+      </section>
+    </main>
+
+    <script src="nav.js" defer></script>
+    <script src="dates.js" defer></script>
+    <script src="store.js" defer></script>
+    <script src="saving.js" defer></script>
+    <script src="names.js" defer></script>
+    <script src="visits.js" defer></script>
+  </body>
+</html>

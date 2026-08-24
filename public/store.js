@@ -72,6 +72,13 @@
     ["syllabus", "organiser.syllabus.v1", null],
     // Who was actually in the room — see attend.js on why that matters twice.
     ["attendance", "organiser.attendance.v1", []],
+    // Things you need to ask somebody, and what they told you. New at a school,
+    // this is most of what you actually need and none of it is a task.
+    ["asks", "organiser.asks.v1", []],
+    // Watching somebody else teach: what you went in looking for, and what you
+    // saw. The headings are yours — see visits.js.
+    ["visits", "organiser.visits.v1", []],
+    ["visitConfig", "organiser.visitconfig.v1", null],
   ];
 
   // A fresh copy of "nothing at all", every time — never the same array twice,

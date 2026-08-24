@@ -83,10 +83,19 @@ console.log("\n--- is it stored? (all the places a field gets silently dropped) 
 // had been missed out of some of them. It works from one table now, so the
 // question is no longer "is it in all nine" but "is it in the table" — and
 // tests/store.mjs runs the file to prove the table is really the only route.
+// Read off the server's own table rather than written out by hand here.
+const serverBlock = (code(server).match(/const STORES = \[([\s\S]*?)\n\];/) || [])[1] || "";
+const serverStores = [...serverBlock.matchAll(/\[\s*"([^"]+)"/g)].map((m) => m[1]);
+ok("the server has a table of stores", serverStores.length > 5, String(serverStores.length));
+
 for (const k of stores) {
   ok(`${k}: store.js has a store for it`, TABLE.some((t) => t.key === k));
-  // server.js drops a field in three separate places if it isn't listed.
-  ok(`${k}: the server keeps it`, (code(server).match(new RegExp(`\\b${k}\\b`, "g")) || []).length >= 3,
+  // SAME QUESTION, ASKED OF THE SERVER'S TABLE. This counted the store's name
+  // three times in server.js because there were three hand-written copies of
+  // the list there — so the check went red the day those copies became one, and
+  // had never caught the thing it was written for. server.js has a table now,
+  // the same as store.js, and being in it is the whole question.
+  ok(`${k}: the server keeps it`, serverStores.includes(k),
      `${k} appears fewer than 3 times in server.js — one of writeData's copies is missing it`);
 }
 

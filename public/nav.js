@@ -30,6 +30,10 @@
       ["lessons.html", "Lessons"],
       ["rota.html", "Turns"],
       ["before-planning.html", "Before you plan"],
+      // Both new at a school and most useful in the first term — but neither
+      // stops being useful, so they sit with the ordinary teaching pages rather
+      // than in a "new here" corner that would go stale.
+      ["visits.html", "Watching others"],
     ]],
     // Named for what each page CALLS ITSELF. "Class" was the year's skills and
     // "Students" was the record log; both read as "a list of my students",
@@ -40,6 +44,7 @@
       ["person.html", "One person"],
     ]],
     ["Mine", [
+      ["ask.html", "Ask"],
       ["goals.html", "Goals"],
       ["portfolio.html", "Portfolio"],
       ["looking-back.html", "Looking back"],

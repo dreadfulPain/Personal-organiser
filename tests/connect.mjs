@@ -140,6 +140,18 @@ sec("Every store is written, read, and survives both save paths");
   // From the one shared reading of store.js, not a pattern of this file's own.
   const keys = TABLE.map((s) => s.key);
   ok("there are stores to check", keys.length > 5, String(keys.length));
+  // Read off the server's own table, the same way the client's is read off
+  // store.js — so neither side of this check is a list written out by hand here.
+  const block = (code(server).match(/const STORES = \[([\s\S]*?)\n\];/) || [])[1] || "";
+  const serverStores = [...block.matchAll(/\[\s*"([^"]+)"/g)].map((m) => m[1]);
+  ok("the server has a table of its own", serverStores.length > 5, String(serverStores.length));
+  // AND THE TWO SIDES AGREE. One table each is only half the cure if they can
+  // drift: a store on the client and not the server is data thrown away, and one
+  // on the server and not the client is a field nothing ever fills.
+  const onlyClient = keys.filter((k) => !serverStores.includes(k));
+  const onlyServer = serverStores.filter((k) => !keys.includes(k));
+  ok("and it says the same as the client's", !onlyClient.length && !onlyServer.length,
+     `client only: ${onlyClient.join(", ") || "—"} · server only: ${onlyServer.join(", ") || "—"}`);
   keys.forEach((k) => {
     const writers = scripts.filter(
       (f) => loadedBy(f).length && new RegExp(`OrganiserStore\\.save\\(\\s*\\{[^}]*\\b${k}\\b`).test(code(src[f])));
@@ -151,8 +163,20 @@ sec("Every store is written, read, and survives both save paths");
     // and read only in the same file is a local variable with extra steps.
     if (writers.length && readers.length && writers.join() === readers.join())
       notes.push(`${k} is only used by ${writers.join(", ")} — no other page sees it`);
-    ok(`${k}: kept by the server`, (code(server).match(new RegExp(`\\b${k}\\b`, "g")) || []).length >= 4,
-       `${k} appears fewer than 4 times in server.js — a copy in writeData is missing it`);
+    // THE PROPERTY, NOT THE NUMBER OF COPIES. This counted how many times the
+    // store's name appeared in server.js and wanted at least four — because
+    // there were four hand-written copies of the list. So it was pinning the
+    // disease as though it were the cure: the day those six copies became one
+    // table this went red, having never once caught the thing it was for.
+    //
+    // What actually matters is that the server KNOWS the store — one line in
+    // its table — because a store missing from it is silently dropped on the
+    // next write by any page that doesn't send it. That is not a hypothetical:
+    // it swallowed a page's worth of data the day a store was added to the
+    // client and not the server.
+    ok(`${k}: kept by the server`, serverStores.includes(k),
+       `${k} is not in server.js's STORES table — every save from a page that ` +
+       `doesn't send it will drop it, silently`);
   });
 }
 

@@ -75,26 +75,38 @@ sec("DOWN — the places a field gets silently dropped");
   ok("store.js starts from the table rather than from a list of its own",
      /let lastState = blank\(\)/.test(st) && /STORES\.forEach\(\(\[k, , b\]\) => \{ o\[k\] = blankFor\(b\)/.test(st),
      "the blank state is written out by hand again");
-  // EVERY BLANK-STATE LITERAL MUST NAME EVERY STORE. These are the objects a
-  // fresh install, an unreadable file and a first save all start from, and a
-  // store missing from one of them is a store that starts life as undefined —
-  // which reads as "no data" everywhere downstream and is indistinguishable
-  // from having lost it.
-  const blanks = [
-    ["server: the fresh document", (sv.match(/return \{ version: 1,[^;]+?\};/s) || [])[0]],
-    ["server: the fallback when the file won't read", (sv.match(/let current = \{[^;]+?\};/s) || [])[0]],
-  ];
-  for (const [what, blob] of blanks) {
-    const missing = blob ? STORES.filter((k) => !new RegExp(`\\b${k}\\s*:`).test(blob)) : STORES;
-    ok(`${what} names all ${STORES.length} stores`, missing.length === 0, `missing: ${missing.join(", ")}`);
-  }
-  for (const k of STORES) {
-    // server.js drops a field unless it is named in the blank doc, normaliseDoc,
-    // the current fallback, the conflict copy AND the written doc.
-    ok(`${k}: the server keeps it in all five places`,
-       (sv.match(new RegExp(`\\b${k}\\b`, "g")) || []).length >= 5,
-       `${k} appears ${(sv.match(new RegExp(`\\b${k}\\b`, "g")) || []).length} times in server.js, needs 5`);
-  }
+  // AND THE SERVER STARTS FROM ITS OWN TABLE, NOT A LITERAL.
+  //
+  // This used to check two hand-written blank-state objects named every store,
+  // and then that each store's name appeared in server.js at least FIVE times —
+  // because there were five hand-copied lists in there. Which means it was
+  // pinning the disease as the cure: the day those five became one table it went
+  // red, having never caught the thing it existed for.
+  //
+  // It caught nothing when it mattered, either. A store added to store.js and
+  // not to server.js was silently dropped on every save, and a whole page's
+  // worth of data went that way before anybody noticed.
+  const serverBlock = (sv.match(/const STORES = \[([\s\S]*?)\n\];/) || [])[1] || "";
+  const serverStores = [...serverBlock.matchAll(/\[\s*"([^"]+)"/g)].map((m) => m[1]);
+  ok("the server works from a table too", serverStores.length > 5, String(serverStores.length));
+  ok("and the fresh document is built from it",
+     /function emptyDoc\(\)[\s\S]{0,200}STORES\.forEach/.test(sv),
+     "the empty document is written out by hand again");
+  ok("and so is a partial save's merge",
+     /function mergeDoc\([\s\S]{0,400}STORES\.forEach/.test(sv),
+     "the merge names its stores one by one again");
+  ok("and the fallback when the file won't read", /let current = emptyDoc\(\)/.test(sv),
+     "the fallback is a literal again");
+  ok("and a conflict copy keeps the same set", /const kept = mergeDoc\(/.test(sv),
+     "the conflict copy has its own list again");
+
+  // THE TWO TABLES MUST SAY THE SAME THING. One each is only half the cure if
+  // they can drift: on the client and not the server is data thrown away; on the
+  // server and not the client is a field nothing ever fills.
+  const onlyClient = STORES.filter((k) => !serverStores.includes(k));
+  const onlyServer = serverStores.filter((k) => !STORES.includes(k));
+  ok("the two tables agree", !onlyClient.length && !onlyServer.length,
+     `client only: ${onlyClient.join(", ") || "—"} · server only: ${onlyServer.join(", ") || "—"}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +299,12 @@ const FULL = {
     everyDays: 14, lastDone: { p1: TODAY }, tried: {}, optional: true }],
   syllabus: { name: "this year", targets: [{ code: "W.3.d", text: "Use sensory language.", strand: "Writing" }] },
   attendance: [{ id: "a1", group: "9A", date: TODAY, slotId: "sl1", away: ["p2"], late: [], note: "", at: TODAY + "T09:00:00Z" }],
+  asks: [{ id: "q1", question: "how much homework is normal", whoId: "p1", asked: TODAY,
+    answer: "20 minutes a night", answeredAt: TODAY, createdAt: TODAY + "T09:00:00Z" }],
+  visits: [{ id: "v1", who: "a colleague", date: TODAY, what: "Grade 1 English",
+    notes: { "Pacing — how long on each thing": "ten minutes a task, no longer" },
+    createdAt: TODAY + "T09:00:00Z" }],
+  visitConfig: { headings: ["How tight the routines are", "Pacing — how long on each thing"] },
 };
 const EMPTY = Object.fromEntries(
   Object.entries(FULL).map(([k, v]) => [k, Array.isArray(v) ? [] : v && typeof v === "object" ? {} : null]));

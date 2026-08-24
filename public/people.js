@@ -481,6 +481,32 @@
     return head && head.length <= TAG_MAX ? head : "";
   }
 
+  // WHERE THEY ACTUALLY DIFFER.
+  //
+  // Two people called Wang Fang, one "Head of Year 7 at Somewhere High School"
+  // and one "Head of Year 7 at Elsewhere Academy". Keeping more of the phrase
+  // gave both of them "(Head of Year 7)" — more words, same label, because
+  // everything that separates them sits past the cut. This is the case the
+  // brackets exist for, said out loud two turns ago: HR at this school and HR
+  // at the last one.
+  //
+  // So when labels clash, throw away the part they share and show what is left.
+  // Nothing here reads the words: it compares them.
+  function differingPart(role, others) {
+    const mine = String(role || "").trim().split(/\s+/);
+    const rest = (others || []).map((o) => String(o || "").trim().split(/\s+/));
+    if (!rest.length) return "";
+    let same = 0;
+    while (
+      same < mine.length &&
+      rest.every((o) => o[same] && o[same].toLowerCase() === mine[same].toLowerCase())
+    ) same++;
+    // All of it shared — there is genuinely nothing to tell them apart with, and
+    // the People page says so rather than this inventing a difference.
+    if (same >= mine.length) return "";
+    return longerTag(mine.slice(same).join(" "));
+  }
+
   // As much of the phrase as fits, cut at a word rather than mid-syllable. Used
   // only when the short form would collide with somebody else's.
   function longerTag(role) {
@@ -507,13 +533,30 @@
       return;
     }
     if (cards.length) {
-      // A HEAD THAT TWO OF THEM SHARE SEPARATES NEITHER. "Principal of Shanghai
-      // High School" and "Principal of Primary & Middle School" both shorten to
-      // "Principal", and then two people sit there in identical brackets — which
-      // is worse than no brackets, because now the app looks like it has told
-      // them apart. Where the short form collides, more of the phrase is kept.
+      // A TAG ONLY HAS TO SEPARATE PEOPLE THE NAME DOESN'T.
+      //
+      // The brackets exist because two people are called Nick. Three people
+      // called Gus, Erin and Frank who are all "HR Assistant" are not confusing
+      // at all — their names do the whole job, and the tag is just telling you
+      // what they do, which is the other half of why it is there.
+      //
+      // This first cut on any shared tag, so two principals with completely
+      // different names came out "(Principal of Shanghai)" and "(Principal of
+      // Primary)" — both chopped mid-institution to avoid a collision that was
+      // never going to happen. Same rule as OrganiserNames.muddled now: it is a
+      // clash only when the NAME reads the same too.
       const heads = cards.map((c) => tagFromRole(c.roles[0]));
-      const clashes = new Set(heads.filter((h, i) => h && heads.indexOf(h) !== i));
+      const key = (i) => `${OrganiserNames.norm(cards[i].name)}|${OrganiserNames.norm(heads[i])}`;
+      const keys = cards.map((_, i) => key(i));
+      const clashing = keys.map((k, i) => heads[i] && keys.filter((x) => x === k).length > 1);
+      // For a clash, the part of the role the others don't share; failing that,
+      // as much of the phrase as fits; failing that, nothing, and the People
+      // page's own warning takes over.
+      const tagFor = (i) => {
+        if (!clashing[i]) return heads[i];
+        const others = cards.filter((_, j) => j !== i && keys[j] === keys[i]).map((c) => c.roles[0]);
+        return differingPart(cards[i].roles[0], others) || longerTag(cards[i].roles[0]) || heads[i];
+      };
       const made = cards.map((c, i) => ({
         id: uid(),
         name: c.name,
@@ -523,9 +566,7 @@
         // rather than having to be asked later.
         ...(c.aka.length ? { aka: c.aka.slice(0, 8) } : {}),
         // Which one they are, in brackets after their name — see tagFromRole.
-        ...((clashes.has(heads[i]) ? longerTag(c.roles[0]) : heads[i])
-          ? { tag: clashes.has(heads[i]) ? longerTag(c.roles[0]) : heads[i] }
-          : {}),
+        ...(tagFor(i) ? { tag: tagFor(i) } : {}),
         // EVERY LINE THEY WROTE, kept whole. The first one goes in the role
         // field because that is what it is; all of them go in the notes,
         // because a person with five jobs has five jobs and picking one for

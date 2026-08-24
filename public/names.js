@@ -474,8 +474,14 @@
   function muddled(contacts) {
     const list = Array.isArray(contacts) ? contacts.filter((c) => c && c.name) : [];
     const by = new Map();
+    // WHAT IS ON THE SCREEN, not what matches. norm() folds away the Mr/Ms/Dr
+    // on purpose, because "Dr Patel" and "Patel" are one person to look up — but
+    // "Mr. Chen" and "Ms. Chen" are two people you can tell apart at a glance,
+    // and warning that they read the same is simply untrue. Whether somebody can
+    // be distinguished is a question about the words in front of them.
+    const asShown = (t) => String(t == null ? "" : t).toLowerCase().replace(/\s+/g, " ").trim();
     list.forEach((c) => {
-      const key = `${norm(c.name)}|${norm(tagOf(c))}`;
+      const key = `${asShown(c.name)}|${asShown(tagOf(c))}`;
       if (!by.has(key)) by.set(key, []);
       by.get(key).push(c);
     });

@@ -138,7 +138,10 @@ sec("And the brackets after a name still tell people apart");
   // told them apart.
   const src = read("people.js");
   const add = (src.match(/function pasteAdd\(\)[\s\S]*?\n  \}/) || [""])[0];
-  ok("a clash is noticed", /clashes/.test(add), "two people can come out identically tagged");
+  // The PROPERTY, not the variable's name — this pinned the word "clashes" and
+  // broke when the rule got better.
+  ok("a clash is noticed", /tagFor\(/.test(add) && /filter\(\(x\) => x === k\)/.test(add),
+     "two people can come out identically tagged");
   ok("and more of the phrase is kept when it happens", /longerTag\(/.test(add),
      "a colliding short form is used anyway");
   // AND NEVER ENDING MID-THOUGHT. "Principal of Primary &" reads as a sentence
@@ -190,6 +193,83 @@ sec("And somebody you already have is not somebody new");
   // counts as knowing them — the Caddy rule, applied here too.
   ok("and it is the one place that answers that question",
      !/toLowerCase\(\)\.includes/.test(fn), "it is matching names its own way again");
+}
+
+// ---------------------------------------------------------------------------
+sec("A whole meeting's worth, including the ones who share a job");
+{
+  // A second set of slides: the office staff, three of whom have exactly the
+  // same job title. Their NAMES are different, so nothing about that is
+  // confusing — and cutting their tags to avoid a collision that was never
+  // going to happen made the labels worse, not better.
+  const OFFICE = [
+    "Dana:", "- Assistant Principal", "- Coordinator of HR", "",
+    "Erin:", "- HR Assistant", "- High School Maths Teacher", "",
+    "Frank:", "- HR Assistant", "- Middle School Chinese Teacher", "",
+    "Gus:", "- HR Assistant",
+  ].join("\n");
+  const cards = R.cardsIn(OFFICE);
+  ok("four more people", cards.length === 4, String(cards.length));
+  ok("including one with a single line", cards[3].roles.length === 1, JSON.stringify(cards[3]));
+  ok("and the two-role ones keep both",
+     cards[1].roles.length === 2 && /Maths/.test(cards[1].roles[1]), JSON.stringify(cards[1].roles));
+}
+
+sec("And a tag only has to separate people the name doesn't");
+{
+  // This cut on ANY shared tag, so two principals with completely different
+  // names came out "(Principal of Shanghai)" and "(Principal of Primary)" —
+  // both chopped mid-institution to dodge a collision that could not occur.
+  const src = read("people.js");
+  const add = (src.match(/function pasteAdd\(\)[\s\S]*?\n  \}/) || [""])[0];
+  ok("a clash is about the name as well as the tag", /OrganiserNames\.norm\(cards\[i\]\.name\)/.test(add),
+     "any shared job title still counts as a clash");
+  ok("which is the same rule the People page warns by",
+     /muddled/.test(read("names.js")), "the two definitions have come apart");
+}
+
+sec("And when names DO collide, it shows where they differ");
+{
+  // Two people called Wang Fang, one "Head of Year 7 at Somewhere High School"
+  // and one "Head of Year 7 at Elsewhere Academy". Keeping more of the phrase
+  // gave both of them "(Head of Year 7)" — more words, same label, because
+  // everything separating them sits past the cut. This is the case the brackets
+  // exist for: HR at this school and HR at the last one.
+  const src = read("people.js");
+  const fn = (src.match(/function differingPart\([\s\S]*?\n  \}/) || [""])[0];
+  ok("there is a rule for it", fn.length > 100, "clashing tags still just get truncated");
+  ok("it drops the part they share", /same\+\+/.test(fn) || /same \+= 1/.test(fn),
+     "it doesn't compare the two phrases");
+  ok("and nothing in it reads the words", !/principal|school|teacher|head/i.test(fn),
+     "it has learned some job titles");
+  // WHERE THERE IS GENUINELY NO DIFFERENCE it must not invent one — the People
+  // page's own warning is the honest answer then.
+  ok("and identical roles get no invented difference",
+     /return ""/.test(fn), "it manufactures a distinction out of nothing");
+}
+
+sec("And two people you CAN tell apart are not called muddled");
+{
+  // norm() folds away the Mr/Ms/Dr on purpose, because "Dr Patel" and "Patel"
+  // are one person to look up. But "Mr. Chen" and "Ms. Chen" are two people you
+  // can tell apart at a glance, and warning that they read the same is untrue.
+  const N = sb.OrganiserNames;
+  const TWO = [
+    { id: "a", name: "Mr. Chen", tag: "HR Assistant" },
+    { id: "b", name: "Ms. Chen", tag: "HR Assistant" },
+  ];
+  ok("a different title is a visible difference", N.muddled(TWO).length === 0,
+     JSON.stringify(N.muddled(TWO).map((g) => g.map((c) => c.name))));
+  // AND THE REAL CASE STILL FIRES.
+  const SAME = [
+    { id: "a", name: "Gus", tag: "HR Assistant" },
+    { id: "b", name: "Gus", tag: "HR Assistant" },
+  ];
+  ok("but two that really do read the same are flagged", N.muddled(SAME).length === 1,
+     JSON.stringify(N.muddled(SAME)));
+  // Still one person to LOOK UP, which is a different question and unchanged.
+  ok("and looking one up still sees past the title",
+     N.look("Chen", TWO).suggestions.length === 2, N.look("Chen", TWO).state);
 }
 
 done();

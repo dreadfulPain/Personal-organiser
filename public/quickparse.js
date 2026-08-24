@@ -150,12 +150,31 @@
     take(new RegExp(`\\b(${DAY_RE})\\s+week\\b`), (m) => plusFrom(nextWeekday(dayNum(m[1])), 7));
     take(/\bin a fortnight\b|\bin two weeks\b/, () => plus(14));
     // The last day of this month — "the reports are due end of the month".
+    // "BY THE END OF SEPTEMBER" — a whole month named, rather than this one.
+    // "End of the month" was read and this wasn't, which is the same phrase with
+    // the month said out loud, and it is how most deadlines further than a
+    // fortnight out get written. Next year's if the month has already gone, so
+    // "end of January" in November is January, not ten months ago.
+    take(new RegExp(`\\bend of (?:the )?(${MONTHS.join("|")})[a-z]*\\b`), (m) => {
+      const mo = MONTHS.indexOf(m[1]);
+      const n = new Date();
+      const yr = mo < n.getMonth() ? n.getFullYear() + 1 : n.getFullYear();
+      return isoOf(new Date(yr, mo + 1, 0));
+    });
     take(/\bend of (?:the )?month\b|月底/, () => {
       const n = new Date();
       const last = new Date(n.getFullYear(), n.getMonth() + 1, 0);
       return isoOf(last);
     });
 
+    // "WITHIN a month", "in the next fortnight" — the same span said as a limit
+    // rather than a point. "Observe three teachers within a month" is how anybody
+    // writes a target, and it was read as no date at all.
+    take(/\b(?:with)?in (?:the )?(?:next )?(a|one|\d+)?\s*months?\b/, (m) =>
+      plus(30 * (!m[1] || m[1] === "a" || m[1] === "one" ? 1 : Math.min(24, +m[1]))));
+    take(/\bwithin (?:the )?(?:next )?(a|one|\d+)?\s*(?:weeks?|fortnights?)\b/, (m) =>
+      plus(7 * (!m[1] || m[1] === "a" || m[1] === "one" ? 1 : Math.min(52, +m[1]))));
+    take(/\bwithin (?:the )?(?:next )?(\d+)\s*days?\b/, (m) => plus(Math.min(365, +m[1])));
     take(/\bin (\d+) days?\b/, (m) => plus(Math.min(365, +m[1])));
     take(/\bin (a|one|\d+) weeks?\b/, (m) => plus(7 * (m[1] === "a" || m[1] === "one" ? 1 : Math.min(52, +m[1]))));
     take(/\bnext week\b|下周|下週|下星期/, () => plus(7));
@@ -262,13 +281,28 @@
   // the whole reason this is safe to run without anyone checking a model.
   // A doing word pointed straight at somebody — the thing you do TO a person,
   // as opposed to a name that merely turns up in a sentence.
+  //
+  // AND THE TWO DIRECTIONS ARE NOT THE SAME THING. "Email Helen about the trip"
+  // is something you owe Helen. "Ask Helen how much homework is normal" is the
+  // opposite: you owe her nothing, you need something FROM her — and filing it
+  // as a promise made the app think you owed the person you were trying to get
+  // an answer out of. It sorted up the list as "your word", and her card said
+  // "1 promised to them".
+  //
+  // That is not a small misreading. "Ask, ask and ask again" is the first thing
+  // anybody tells a teacher at a new school, and the app was turning every one
+  // of those questions into a debt.
   const TO_A_PERSON =
-    /\b(email|e-?mail|call|ring|phone|message|text|ask|tell|remind|chase|thank|invite|see|meet|pay|send|write to|reply to|respond to|get back to|speak to|talk to)\s+(?:to\s+|up\s+)?$/i;
+    /\b(email|e-?mail|call|ring|phone|message|text|tell|remind|thank|invite|see|meet|pay|send|write to|reply to|respond to|get back to|speak to|talk to)\s+(?:to\s+|up\s+)?$/i;
+  // Where THEY have what you need. The job is still yours to do — you have to go
+  // and ask — so it is an ordinary task with them attached, and no promise.
+  const NEEDS_THEM =
+    /\b(ask|asking|chase|chasing|check with|check in with|find out from|run .{0,20} past|query with|clarify with)\s+(?:to\s+|up\s+)?$/i;
   // The same idea where the script has no spaces to hang it on.
   const TO_A_PERSON_CJK = /给|找|联系|聯繫|告诉|告訴|问|問|提醒|回复|回覆|通知|发给|發給|打给|打給/;
 
   function readPeople(text, contacts) {
-    const out = { person: "", personId: "", waitingOn: "", directed: false };
+    const out = { person: "", personId: "", waitingOn: "", directed: false, needsThem: false };
     const N = window.OrganiserNames;
     if (!N || !Array.isArray(contacts) || !contacts.length) return out;
     const words = String(text)
@@ -321,9 +355,13 @@
         // Chinese has no spaces, so there is no gap in front of the name to
         // look at — the marker for "this is aimed at somebody" is a word like
         // 给 or 联系 sitting anywhere in the sentence instead.
+        const before = at > 0 ? String(text).slice(0, at) : "";
+        // Asked BEFORE the owe-them frames, because several of those words turn
+        // up in both sentences and the nearer one is the one that counts.
+        out.needsThem = !unspaced && !!before && NEEDS_THEM.test(before);
         out.directed = unspaced
           ? TO_A_PERSON_CJK.test(String(text))
-          : at > 0 && TO_A_PERSON.test(String(text).slice(0, at));
+          : !out.needsThem && !!before && TO_A_PERSON.test(before);
         break;
       }
     }

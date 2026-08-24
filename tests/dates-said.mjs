@@ -276,6 +276,45 @@ sec("And words that say it comes round again");
   ].forEach((s) => ok(`"${s}" is not`, again(s) === "", again(s)));
 }
 
+sec("And a deadline said as a limit rather than a point");
+{
+  // How anybody writes a target: "observe three teachers within a month",
+  // "get the reports done by the end of September". "End of the month" was read
+  // and "end of September" was not — the same phrase with the month said out
+  // loud, and the more common of the two for anything further than a fortnight
+  // away.
+  const monthEnd = (mo) => {
+    const n = new Date();
+    const yr = mo < n.getMonth() ? n.getFullYear() + 1 : n.getFullYear();
+    return iso(new Date(yr, mo + 1, 0));
+  };
+  [
+    ["by the end of september", monthEnd(8)],
+    ["before the end of september", monthEnd(8)],
+    ["end of jan", monthEnd(0)],
+    ["end of december", monthEnd(11)],
+  ].forEach(([say, want]) => ok(`"${say}"`, read(say) === want, `${read(say) || "(none)"} — wanted ${want}`));
+
+  // A month already gone means NEXT year's. "End of January", said in November,
+  // is January — not ten months into the past, where the app would then describe
+  // it as something you had missed.
+  ok("a month already past means next year's",
+     read("end of january") >= iso(TODAY), read("end of january"));
+
+  // WITHIN a span, rather than at a point.
+  [
+    ["within a month", plus(30)],
+    ["within 2 months", plus(60)],
+    ["within 10 days", plus(10)],
+    ["within the next fortnight", plus(7)],
+  ].forEach(([say, want]) => ok(`"${say}"`, read(say) === want, `${read(say) || "(none)"} — wanted ${want}`));
+
+  // AND THE ONE THAT STILL MUST NOT BE A DATE. A month and a year with no day
+  // in it is a heading, and reading it would put a deadline nobody set.
+  ok('"march 2026" is still not a date', read("march 2026") === "", read("march 2026"));
+  ok("and neither is a bare month", read("september") === "", read("september"));
+}
+
 // ---------------------------------------------------------------------------
 sec("And a date is written the same way everywhere");
 {

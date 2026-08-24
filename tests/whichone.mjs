@@ -382,4 +382,56 @@ sec("And nobody works out for themselves whether a name means a person");
      /might be theirs/i.test(ppl), "an unplaceable promise still reads as certain");
 }
 
+// ---------------------------------------------------------------------------
+sec("Asking somebody something is not owing them something");
+{
+  // "Ask, ask and ask again" is the first thing anybody tells a teacher at a new
+  // school — and the app was turning every one of those questions into a debt.
+  //
+  // "Email Helen about the trip" is something you owe Helen: she is waiting on
+  // you. "Ask Helen how much homework is normal" is the exact opposite — you owe
+  // her nothing, you need something FROM her. Both went in as "promised to
+  // Helen", which sorted up the list as your word given, and put "1 promised to
+  // them" on her card. The app thought you owed the person you were trying to
+  // get an answer out of.
+  const qb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl };
+  qb.window = qb;
+  vm.createContext(qb);
+  ["names.js", "quickparse.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), qb));
+  const Q = qb.OrganiserQuickParse;
+  const C = [{ id: "h", name: "Helen", tag: "Assistant Principal" }];
+  const read = (s) => Q.parse(s, { contacts: C });
+
+  // WHERE YOU OWE THEM, unchanged.
+  [
+    "email Helen about the trip",
+    "send Helen the data",
+    "tell Helen the room changed",
+    "call Helen back",
+  ].forEach((s) => ok(`"${s}" is still a promise`, read(s).promisedTo === "Helen", read(s).promisedTo));
+
+  // WHERE THEY HAVE WHAT YOU NEED.
+  [
+    "ask Helen how much homework is normal",
+    "ask Helen to sign the form",
+    "check with Helen about the printing",
+    "chase Helen about the forms",
+    "find out from Helen who approves trips",
+  ].forEach((s) =>
+    ok(`"${s}" is not`, read(s).promisedTo === "", `promised to ${read(s).promisedTo}`));
+
+  // BUT THEY ARE STILL THE PERSON IT IS ABOUT. Dropping the false promise must
+  // not lose the link — you still need to catch Helen.
+  ok("and she is still attached to it", read("ask Helen how much homework is normal").contactId === "h",
+     read("ask Helen how much homework is normal").contactId);
+
+  // AND NOT A THING YOU ARE WAITING ON EITHER. You have not asked yet, so
+  // starting a chase rhythm for it would be inventing a conversation.
+  ok("nor filed as something already sent",
+     read("ask Helen how much homework is normal").waitingOn === "",
+     read("ask Helen how much homework is normal").waitingOn);
+}
+
 done();

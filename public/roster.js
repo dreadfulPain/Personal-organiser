@@ -120,6 +120,80 @@
   // the name that is kept, spacing and capitals and all.
   const fold = (s) => String(s || "").toLowerCase().replace(/\s+/g, "");
 
+  // A NAME WITH THEIR JOB UNDERNEATH IT — the other shape a list of people comes in.
+  //
+  // Everything above reads a REGISTER: one person per line, or two columns. That
+  // is not how anybody writes down the people they meet. A staff meeting slide,
+  // an org chart, a conference programme, the "who's who" page of a handbook —
+  // all of them are a name, and then what they do, as bullets under it:
+  //
+  //     Ms. A. Example:
+  //     - Principal of Somewhere High School
+  //     - Master Teacher of Mathematics
+  //     - Director of the County Mathematical Society
+  //
+  // Read as a register that is FOUR PEOPLE, one of them called "- Master Teacher
+  // of Mathematics", and the app says "4 to add." with every confidence.
+  //
+  // WHAT MARKS THE DIFFERENCE IS SHAPE, NOT WORDS (§0.2). A bullet, or an
+  // indent, means "this line belongs to the one above". Nothing here knows what
+  // a principal is, or a school, or that any of these words are job titles —
+  // only that a line hanging off another line is not a person.
+  const BULLET = /^\s*[-–—•*·▪]\s+/;
+  const INDENTED = /^(?:\t| {2,})\S/;
+  const under = (line) => BULLET.test(line) || INDENTED.test(line);
+  // "Ms. A. Example:" — the colon is punctuation introducing the list, not
+  // part of anybody's name.
+  const asHeading = (line) => String(line).trim().replace(/[:：]\s*$/, "").trim();
+
+  // TWO NAMES, ONE PERSON, WRITTEN THE WAY SLIDES WRITE IT.
+  // "Mr. C. Instance (Principal Robin)" is one man with an English name his
+  // students use — exactly the case the app already handles once you tell it,
+  // and here it is being told, in the brackets.
+  const ALIAS = /^(.*?)\s*[（(]([^)）]{2,40})[)）]\s*$/;
+
+  function cardsIn(text) {
+    const lines = String(text || "").split(LINE_BREAKS).filter((l) => l.trim());
+    const out = [];
+    let cur = null;
+    lines.forEach((raw) => {
+      if (under(raw) && cur) {
+        cur.roles.push(raw.replace(BULLET, "").trim());
+        return;
+      }
+      // A NEW HEADING. A line with nothing under it yet is a candidate; whether
+      // it turns out to be a person is decided at the end, by whether anything
+      // hung off it.
+      const head = asHeading(raw);
+      if (!head) return;
+      const m = ALIAS.exec(head);
+      cur = {
+        name: (m ? m[1] : head).trim(),
+        aka: m ? [m[2].trim()] : [],
+        roles: [],
+      };
+      out.push(cur);
+    });
+    // ONLY THE ONES THAT ACTUALLY HAD SOMETHING UNDER THEM. A plain list of
+    // names with no bullets is a register, and the register reader is better at
+    // it — this must not quietly take that job over.
+    return out.filter((c) => c.name && c.roles.length);
+  }
+
+  // Is this text written as name-then-roles rather than as a register? Most of
+  // it has to be, so one stray dash in a class list doesn't change how the whole
+  // paste is read.
+  function looksLikeCards(text) {
+    const lines = String(text || "").split(LINE_BREAKS).filter((l) => l.trim());
+    if (lines.length < 2) return false;
+    const bullets = lines.filter(under).length;
+    const cards = cardsIn(text);
+    if (!cards.length) return false;
+    // Every card has at least one role by construction; the test is whether the
+    // page is MOSTLY that, rather than a register with a note in it.
+    return bullets >= lines.length / 2;
+  }
+
   // WHAT YOU WOULD ACTUALLY GET, before anything is kept.
   //
   // Returns every row with what it would become and why it might not — an empty
@@ -206,5 +280,5 @@
     );
   }
 
-  window.OrganiserRoster = { grid, cells, suggest, read, words, looksLikeRegister };
+  window.OrganiserRoster = { grid, cells, suggest, read, words, looksLikeRegister, cardsIn, looksLikeCards };
 })();

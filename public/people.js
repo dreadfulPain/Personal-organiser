@@ -115,6 +115,85 @@
     return wrap;
   }
 
+  // A FACE. There was no way to keep one at all.
+  //
+  // You meet nine people in one meeting and you will not remember which A. Example
+  // was which by Thursday. A name and a job title are the two things that do
+  // NOT help you recognise somebody in a corridor — the photograph is the thing
+  // that does, and it was the one thing this page couldn't hold.
+  //
+  // The machinery was already here: records.js has put work samples through
+  // /api/upload into data/files/ since the beginning. People just never asked.
+  // Filed under people/<id>, so it is an ordinary file in your own folder, it
+  // backs up with everything else, and you can open it without this app.
+  function photoLine(person) {
+    const wrap = document.createElement("div");
+    wrap.className = "cb-field ppl-photo";
+    const lab = document.createElement("span");
+    lab.className = "cb-lbl";
+    lab.textContent = "Their photo — a face is what you actually recognise";
+    wrap.appendChild(lab);
+
+    if (person.photo) {
+      const img = document.createElement("img");
+      img.className = "ppl-face";
+      img.src = "/files/" + encodeURI(person.photo);
+      img.alt = `Photo of ${person.name || "this person"}`;
+      wrap.appendChild(img);
+      const drop = document.createElement("button");
+      drop.type = "button";
+      drop.className = "link";
+      drop.textContent = "remove the photo";
+      drop.addEventListener("click", () => {
+        delete person.photo;
+        persist();
+        render();
+      });
+      wrap.appendChild(drop);
+      return wrap;
+    }
+
+    // NO SERVER, NO UPLOAD. Opened by double-clicking the file there is nowhere
+    // to put one, and saying so is better than a button that does nothing.
+    if (OrganiserStore.mode !== "file") {
+      const no = document.createElement("p");
+      no.className = "muted";
+      no.textContent = "Photos need the app running from its own window — there's nowhere to put a file otherwise.";
+      wrap.appendChild(no);
+      return wrap;
+    }
+
+    const pick = document.createElement("input");
+    pick.type = "file";
+    pick.accept = "image/*";
+    pick.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const r = await fetch(
+          "/api/upload?name=" + encodeURIComponent(file.name) +
+            "&folder=" + encodeURIComponent("people/" + person.id),
+          { method: "POST", body: file }
+        );
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setStatus(j.message || "Couldn't save that photo.");
+          return;
+        }
+        const d = await r.json();
+        person.photo = d.id;
+        persist();
+        render();
+        setStatus(`Photo kept for ${OrganiserNames.saidAs(contacts, person.id)}. ✓`);
+      } catch {
+        setStatus("Couldn't save that photo — is the app window still open?");
+      }
+    });
+    wrap.appendChild(pick);
+    return wrap;
+  }
+
   // AND THE ONE THAT MATTERS MOST. A document says Nick is running the open
   // evening. Whether that is you decides whether you have just been given a
   // job, and there is nothing in the word "Nick" that says. Ticked here, you
@@ -174,6 +253,8 @@
       // OrganiserNames.tagOf, which is the one place that decides what shows.
       ...(c && c.tag ? { tag: String(c.tag).trim().slice(0, 24) } : {}),
       ...(c && c.isMe ? { isMe: true } : {}),
+      // A reference into data/files/, not the image itself — see photoLine.
+      ...(c && c.photo ? { photo: String(c.photo) } : {}),
       details: c && c.details && typeof c.details === "object" ? c.details : {},
       workLog: (Array.isArray(c && c.workLog) ? c.workLog : [])
         .map((w) => ({
@@ -297,6 +378,35 @@
     const btn = $("#pplPasteAdd");
     const cols = $("#pplCols");
     if (!R || !prev) return;
+    // THE PREVIEW HAS TO BE ABOUT THE THING THAT WILL HAPPEN. Pasting a slide
+    // showed "18 to add." from the register reader and then added 5 people from
+    // the card reader — the count and the action were about two different
+    // readings of the same paste.
+    const cards = asCards();
+    if (cards && cards.length) {
+      if (cols) cols.hidden = true;
+      if (btn) btn.hidden = false;
+      const fresh = cards.filter((c) => !c.already).length;
+      const known = cards.length - fresh;
+      if (btn) btn.hidden = !fresh;
+      if (words)
+        words.textContent =
+          `${fresh} ${fresh === 1 ? "person" : "people"}, read as a name with what they do under it.` +
+          (known ? ` ${known} already on your list.` : "");
+      if (prev) {
+        prev.hidden = false;
+        prev.innerHTML = cards
+          .map(
+            (c) =>
+              `<div class="ppl-prev-row${c.already ? " known" : ""}"><strong>${escapeHtml(c.name)}</strong>` +
+              (c.aka.length ? ` <span class="muted">also ${escapeHtml(c.aka.join(", "))}</span>` : "") +
+              (c.already ? ` <span class="muted">— already on your list</span>` : "") +
+              `<div class="muted">${c.roles.map(escapeHtml).join(" · ")}</div></div>`
+          )
+          .join("");
+      }
+      return;
+    }
     const r = pasteRead();
     const any = r && r.rows.length;
     if (prev) prev.hidden = !any;
@@ -330,7 +440,116 @@
       (r.rows.length > 40 ? `<p class="muted">and ${r.rows.length - 40} more</p>` : "");
   }
 
+  // A NAME WITH THEIR JOB UNDERNEATH IT — see OrganiserRoster.cardsIn.
+  //
+  // The register reader is for a class: one person per line. A slide from a
+  // staff meeting is the other shape entirely — a name, then what they do, as
+  // bullets under it — and read as a register it made SIX people out of one,
+  // including somebody called "- Master Teacher of Mathematics", and said "6 to
+  // add." with every confidence.
+  //
+  // Which shape a paste is gets decided by the paste, not by a setting.
+  const asCards = () => {
+    const R = window.OrganiserRoster;
+    const text = ($("#pplPaste") || {}).value || "";
+    if (!R || !R.looksLikeCards(text)) return null;
+    // SOMEBODY YOU ALREADY HAVE IS NOT SOMEBODY NEW. The register reader has
+    // always checked this; the card reader didn't, so re-pasting a slide deck to
+    // fix one typo gave you every one of them twice. Asked of names.js, which is
+    // where "does this name mean this person" lives — so a second name you have
+    // already taught it counts as knowing them.
+    return R.cardsIn(text).map((c) => {
+      const hit = OrganiserNames.look(c.name, contacts);
+      return { ...c, already: hit.state === "matched" ? hit.contact : null };
+    });
+  };
+
+  // WHAT SOMEBODY IS, SHORT ENOUGH TO SIT IN BRACKETS AFTER THEIR NAME.
+  //
+  // "Assistant Principal" fits and is exactly what you want to see beside
+  // Dana's name. "Principal of Somewhere High School" does not, and cutting it
+  // mid-word would be worse than nothing — so the head of the phrase is taken,
+  // which in English is what comes before "of" or "for" or "at". That is
+  // grammar, not domain vocabulary: the same category as the Mr/Ms/Dr this file
+  // already strips, and nothing here knows what a principal is.
+  const TAG_MAX = 24;
+  function tagFromRole(role) {
+    const r = String(role || "").trim().replace(/[,;].*$/, "");
+    if (!r) return "";
+    if (r.length <= TAG_MAX) return r;
+    const head = r.split(/\s+\b(?:of|for|at|in|to)\b\s+/)[0].trim();
+    return head && head.length <= TAG_MAX ? head : "";
+  }
+
+  // As much of the phrase as fits, cut at a word rather than mid-syllable. Used
+  // only when the short form would collide with somebody else's.
+  function longerTag(role) {
+    const r = String(role || "").trim().replace(/[,;].*$/, "");
+    if (r.length <= TAG_MAX) return r;
+    const words = r.split(/\s+/);
+    let out = "";
+    for (const w of words) {
+      if ((out ? out.length + 1 : 0) + w.length > TAG_MAX) break;
+      out = out ? `${out} ${w}` : w;
+    }
+    // Never ending on a word that was leading somewhere: "Principal of Primary &"
+    // reads as a sentence somebody stopped writing.
+    return out.replace(/\s+(?:&|and|of|for|at|in|to|the|a|an)$/i, "").replace(/[\s,;:-]+$/, "");
+  }
+
   function pasteAdd() {
+    // The slide shape first: if it is one, the register reader must not get it.
+    const all = asCards();
+    const cards = (all || []).filter((c) => !c.already);
+    if (all && all.length && !cards.length) {
+      // Every one of them already here — say so rather than doing nothing.
+      setStatus(`All ${all.length} of them are already on your list — nothing to add.`);
+      return;
+    }
+    if (cards.length) {
+      // A HEAD THAT TWO OF THEM SHARE SEPARATES NEITHER. "Principal of Shanghai
+      // High School" and "Principal of Primary & Middle School" both shorten to
+      // "Principal", and then two people sit there in identical brackets — which
+      // is worse than no brackets, because now the app looks like it has told
+      // them apart. Where the short form collides, more of the phrase is kept.
+      const heads = cards.map((c) => tagFromRole(c.roles[0]));
+      const clashes = new Set(heads.filter((h, i) => h && heads.indexOf(h) !== i));
+      const made = cards.map((c, i) => ({
+        id: uid(),
+        name: c.name,
+        group: "",
+        // The other name they go by, straight off the slide — "Mr. C. Instance
+        // (Principal Robin)" is one man, and this is the app being TOLD so
+        // rather than having to be asked later.
+        ...(c.aka.length ? { aka: c.aka.slice(0, 8) } : {}),
+        // Which one they are, in brackets after their name — see tagFromRole.
+        ...((clashes.has(heads[i]) ? longerTag(c.roles[0]) : heads[i])
+          ? { tag: clashes.has(heads[i]) ? longerTag(c.roles[0]) : heads[i] }
+          : {}),
+        // EVERY LINE THEY WROTE, kept whole. The first one goes in the role
+        // field because that is what it is; all of them go in the notes,
+        // because a person with five jobs has five jobs and picking one for
+        // them would be the app editing somebody's introduction.
+        details: {
+          "role / year group": c.roles[0] || "",
+          ...(c.roles.length > 1 ? { notes: c.roles.join("\n") } : {}),
+        },
+        createdAt: nowISO(),
+      }));
+      contacts = made.slice().reverse().concat(contacts);
+      persist();
+      $("#pplPaste").value = "";
+      pasteCols = null;
+      renderPaste();
+      render();
+      const skipped = all.length - made.length;
+      setStatus(
+        `${made.length} added, with what each of them does.` +
+        (skipped ? ` ${skipped} ${skipped === 1 ? "was" : "were"} already on your list.` : "") +
+        ` Open one to add a photo or change how they're told apart.`
+      );
+      return;
+    }
     const r = pasteRead();
     if (!r || !r.adding.length) return;
     const made = r.adding.map((x) => ({
@@ -376,6 +595,7 @@
     const wOut = workOut(person).length;
     card.innerHTML = `
       <div class="ppl-head">
+        ${person.photo ? `<img class="ppl-thumb" src="/files/${encodeURI(person.photo)}" alt="" />` : ""}
         <button class="ppl-name" type="button">${escapeHtml(person.name)}</button>
         ${OrganiserNames.tagOf(person) ? `<span class="ppl-tag-chip" title="How this person is told apart from anyone else with the same name">(${escapeHtml(OrganiserNames.tagOf(person))})</span>` : ""}
         ${(person.aka || []).length ? `<span class="ppl-aka-chip" title="Other ways this name gets written">${(person.aka || []).map(escapeHtml).join(" · ")}</span>` : ""}
@@ -418,6 +638,7 @@
       });
       gl.appendChild(gsel);
       grid.appendChild(gl);
+      grid.appendChild(photoLine(person));
       grid.appendChild(tagLine(person));
       grid.appendChild(meLine(person));
       grid.appendChild(akaLine(person));

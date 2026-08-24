@@ -3788,6 +3788,14 @@ a.btn {
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
 
+/* A FACE. The thumbnail sits with the name because that is where you look for
+   it; the big one sits on the open card where you set it. */
+.ppl-thumb { width: 32px; height: 32px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--line); flex: 0 0 auto; }
+.ppl-face { display: block; width: 120px; height: 120px; border-radius: 10px;
+  object-fit: cover; border: 1px solid var(--line); margin: 4px 0 6px; }
+.ppl-photo { display: flex; flex-direction: column; align-items: flex-start; }
+
 /* WHAT YOU WROTE ABOUT SOMEBODY. The sentence is the thing being read, so it
    gets the size and the weight; the date, the kind and the level are the small
    print under it. Same card as a record row, because it is one. */

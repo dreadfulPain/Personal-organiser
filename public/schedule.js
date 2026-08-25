@@ -178,6 +178,21 @@
   }
 
   // ---- blocks ---------------------------------------------------------------
+  // SOMEWHERE YOU HAVE TO BE, OR ANYWHERE YOU CAN SIT DOWN.
+  //
+  // A lesson and a meeting need your body in a particular room at a particular
+  // time. Marking needs a chair. Those are different kinds of commitment and the
+  // difference decides most of what you can do with a gap in the day — and until
+  // now the app said it in two words on a badge, "BE THERE" against "ON", which
+  // has to be READ. A colour and a mark down the edge are seen instead.
+  //
+  // AND A THING WITH AN ADDRESS ON IT IS SOMEWHERE YOU HAVE TO BE. An
+  // orientation schedule says a room number beside every single session, and
+  // asking somebody to tick sixteen boxes to tell the app what it has just read
+  // is asking them to do the app's job. The tick still wins where it is set;
+  // this is only what a place implies when nobody has said otherwise.
+  const mustBeThere = (b) => !!(b && (b.beThere || String(b.where || "").trim()));
+
   function normaliseBlock(b) {
     if (!b || typeof b !== "object") return null;
     const start = toMin(b.start);
@@ -198,6 +213,19 @@
       from: /^\d{4}-\d{2}-\d{2}$/.test(b.from || "") ? b.from : "",
       to: /^\d{4}-\d{2}-\d{2}$/.test(b.to || "") ? b.to : "",
       soft: !!b.soft,
+      // WHERE IT IS.
+      //
+      // A schedule handed out at a school is a table: time, what it is, who it
+      // is for, who is running it, and WHERE. Everything but the place already
+      // survived — `note` at the bottom of this object has kept the rest since
+      // the beginning, which is how "bring your passport and four ID photos"
+      // reaches the day it belongs to.
+      //
+      // The place is separated out because it is the half the app can DO
+      // something with: a thing with an address on it is somewhere you have to
+      // be, which decides the colour it is drawn in and whether the day leaves
+      // you time to get there. See mustBeThere above.
+      where: (b.where || "").toString().trim().slice(0, 120),
       // Ids this block concerns — how a meeting knows who it's about. Generic:
       // the code never learns what an id means.
       about: Array.isArray(b.about) ? b.about.map((x) => String(x).trim()).filter(Boolean) : [],
@@ -275,7 +303,9 @@
         ? { on: true, leadDays: Math.max(0, Math.min(14, Math.round(Number(b.prep.leadDays)) || 1)) }
         : { on: false, leadDays: 1 },
       source: ["hand", "paste", "ics", "learned", "interruption"].includes(b.source) ? b.source : "hand",
-      note: (b.note || "").toString().trim(),
+      // A cap, because a hand-typed note has no natural end and this is written
+      // into the save file on every change.
+      note: (b.note || "").toString().trim().slice(0, 600),
     };
   }
   function normalise(list) {
@@ -745,7 +775,9 @@
     return Math.max(0, Math.round(((now instanceof Date ? now : new Date()) - started) / 60000));
   }
 
+  // Asked of one place, so a lesson looks the same on every page it appears on.
   window.OrganiserSchedule = {
+    mustBeThere,
     awayMinutes,
     occurrencesOf,
     prepKey,

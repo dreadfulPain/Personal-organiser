@@ -112,15 +112,20 @@
 
   function blockRow(b) {
     const el = document.createElement("div");
-    el.className = "item wk-item wk-block";
+    // SEEN, NOT READ. See OrganiserSchedule.mustBeThere — a thing that needs you
+    // in a particular room is marked down its edge, so a week is scannable
+    // without reading a badge on every row.
+    const there = window.OrganiserSchedule && OrganiserSchedule.mustBeThere(b.block);
+    el.className = "item wk-item wk-block" + (there ? " needs-you-there" : "");
     const t = fmtTime(b.block.start);
     el.innerHTML = `
       ${t ? `<div class="tl-time">${escapeHtml(t)}</div>` : ""}
       <div class="item-main">
         <div class="item-title">${escapeHtml(b.block.label || "Block")}</div>
         <div class="item-meta">
-          <span class="badge block">${b.block.beThere ? "BE THERE" : "ON"}</span>
+          <span class="badge block">${there ? "BE THERE" : "ON"}</span>
           ${b.block.end ? `<span class="when">till ${escapeHtml(fmtTime(b.block.end))}</span>` : ""}
+          ${b.block.where ? `<span class="where">${escapeHtml(b.block.where)}</span>` : ""}
         </div>
       </div>`;
     return el;

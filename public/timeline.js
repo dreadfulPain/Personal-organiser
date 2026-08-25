@@ -843,14 +843,24 @@
     // The solid/dashed difference is the most important thing on this page: a
     // fixed block is a fact, a soft one is the app guessing. If they looked the
     // same the whole plan would stop being trustworthy.
-    el.className = "dp-row dp-block" + (b.soft ? " soft" : "");
+    // AND WHETHER IT NEEDS YOU SOMEWHERE — see OrganiserSchedule.mustBeThere.
+    // A gap between two things you have to be at is not the same gap as one
+    // between two things you can do at your desk, and this is the difference
+    // being visible rather than worked out.
+    const there = S().mustBeThere(b);
+    el.className = "dp-row dp-block" + (b.soft ? " soft" : "") + (there ? " needs-you-there" : "");
     el.innerHTML = `
       <div class="dp-time">${escapeHtml(S().fmtSpan(b.start, b.end))}</div>
       <div class="dp-main">
         <div class="dp-title">${escapeHtml(b.label)}</div>
         ${b.soft ? `<div class="dp-guess">the app's guess — not a fixed thing</div>` : ""}
+        ${b.where ? `<div class="dp-where">${escapeHtml(b.where)}</div>` : ""}
         ${b.about && b.about.length ? `<div class="dp-about">${escapeHtml(aboutWords(b.about))}</div>` : ""}
         ${leaveWords(b)}
+        <!-- WHAT THE SCHEDULE SAID BESIDE IT. "Bring your passport and four ID
+             photos" is the single most useful line on an orientation timetable
+             and it was being thrown away on save. -->
+        ${b.note ? `<div class="dp-note">${escapeHtml(b.note)}</div>` : ""}
       </div>`;
     return el;
   }
@@ -2080,9 +2090,16 @@
         `Saved ${kept.length} block${kept.length === 1 ? "" : "s"}. ✓` +
         (linked ? ` ${linked} of them say who's running it.` : "") +
         (jobs ? ` ${jobs} job${jobs === 1 ? "" : "s"} added.` : "") +
-        (termFrom || termTo
-          ? ` Running ${termFrom ? `from ${calDay(termFrom)}` : "until now"}${termTo ? ` to ${calDay(termTo)}` : " onwards"}.`
-          : " They repeat every week — say when the term ends and they'll stop there.") +
+        // A DATED BLOCK DOES NOT REPEAT, AND SAYING IT DOES IS ALARMING. An
+        // orientation schedule read out of a PDF is sixteen things on two named
+        // days, and this told you they would come round every week for ever —
+        // which is true of a timetable and false of these. Which kind was just
+        // saved is a fact about what was saved, so it is read off that.
+        (kept.every((b) => b.date)
+          ? ` They're on the days they say, and don't come round again.`
+          : termFrom || termTo
+            ? ` Running ${termFrom ? `from ${calDay(termFrom)}` : "until now"}${termTo ? ` to ${calDay(termTo)}` : " onwards"}.`
+            : " They repeat every week — say when the term ends and they'll stop there.") +
         (lost ? ` ${lost} couldn't be saved — ${lost === 1 ? "it had" : "they had"} no day or date on ${lost === 1 ? "it" : "them"}.` : "")
       );
     });
@@ -2143,6 +2160,10 @@
       </div>
       <label class="bf-soft"><input type="checkbox" class="bf-softbox" ${b.soft ? "checked" : ""} /> this one's a guess, not a fixed thing</label>
       <label class="bf-soft"><input type="checkbox" class="bf-swapbox" ${b.swappable ? "checked" : ""} /> this one could be swapped with someone if it came to it</label>
+      <label>Where <input type="text" class="bf-where" maxlength="120" value="${escapeHtml(b.where || "")}" placeholder="the room, the gate, the hall" /></label>
+      <!-- A THING WITH AN ADDRESS ON IT IS SOMEWHERE YOU HAVE TO BE, so filling
+           this in is enough on its own — see OrganiserSchedule.mustBeThere. The
+           tick is still there for the ones with no room number. -->
       <label class="bf-soft"><input type="checkbox" class="bf-therebox" ${b.beThere ? "checked" : ""} /> I have to be here on time — count it as a job</label>
       <label class="bf-lead">and it takes <input type="number" class="bf-getthere" min="0" max="240" value="${Number(b.getThere) || 0}" /> minutes to get there
         <span class="bf-hint">Nothing gets planned into that time, and the day tells you when to leave.</span></label>
@@ -2179,6 +2200,7 @@
         swappable: form.querySelector(".bf-swapbox").checked,
         // Turning up on time is work. Saying so blocks the journey out and puts
         // it in your list as a job like any other.
+        where: form.querySelector(".bf-where").value.trim(),
         beThere: form.querySelector(".bf-therebox").checked,
         getThere: Number(form.querySelector(".bf-getthere").value) || 0,
         // Kept, or a swap already recorded would be thrown away by an edit.
@@ -2228,7 +2250,7 @@
       row.className = "su-brow" + (b.soft ? " soft" : "");
       row.innerHTML = `
         <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
-        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${b.beThere ? ` <span class="su-theretag">be there${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
+        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${S().mustBeThere(b) ? ` <span class="su-theretag">be there${b.where ? ` · ${escapeHtml(b.where)}` : ""}${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "link";

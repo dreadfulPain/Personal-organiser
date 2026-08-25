@@ -3788,6 +3788,30 @@ a.btn {
 .p-state { font-size: 0.78rem; color: var(--ink-soft); }
 .p-said { margin: 4px 0 0; }
 
+/* SOMEWHERE YOU HAVE TO BE.
+   A lesson or a meeting needs your body in a particular room; marking needs a
+   chair. The app said which in two words on a badge — "BE THERE" against "ON" —
+   which has to be read. This is seen instead.
+   A COLOUR IS NOT ENOUGH ON ITS OWN: about one man in twelve cannot separate
+   these two hues, so the mark is a solid bar down the leading edge and the
+   badge keeps its words. The colour is the fast path, not the only one. */
+:root {
+  --there: #7a5cc4;
+  --there-soft: rgba(122, 92, 196, 0.09);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --there: #b4a0e8; --there-soft: rgba(180, 160, 232, 0.14); }
+}
+.needs-you-there {
+  border-left: 4px solid var(--there);
+  background: var(--there-soft);
+}
+.needs-you-there .badge.block { background: var(--there); color: #fff; border-color: var(--there); }
+/* Where it is, and whatever else the schedule said beside it. */
+.where { color: var(--there); font-size: 0.78rem; }
+.dp-where { color: var(--there); font-size: 0.82rem; margin-top: 2px; }
+.dp-note { font-size: 0.8rem; color: var(--ink-soft); margin-top: 4px; white-space: pre-line; line-height: 1.4; }
+
 /* Things to ask, kept by who can answer them. The question is what you read;
    everything else is small print under it. */
 .ak-group { margin: 12px 0 18px; }

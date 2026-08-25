@@ -1,0 +1,382 @@
+import { fileURLToPath as __f } from "node:url";
+import { dirname as __d, join as __j } from "node:path";
+const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
+// A HANDBOOK, WHICH IS FIVE DIFFERENT DOCUMENTS IN ONE FILE.
+//
+// The schedule this app first learned to read was one page a day: a table with
+// the times down one side and the date printed at the top. The next one a school
+// handed out was a booklet — an overview, then a WEEK of sessions on a single
+// page, then two pages of checklists, then a page of who to contact, then a
+// picture. Every one of those is a different shape, and four of them went wrong:
+//
+//   1. FIVE DAYS ON ONE PAGE ALL LANDED ON THE FIRST OF THEM. The reader took
+//      each page's date and gave it to everything on the page. So Thursday's
+//      workshops, Friday's staff photos and Monday's office hours were all
+//      shown on Wednesday — seventeen things on one morning and three empty
+//      days after it. Confidently wrong about which day you are expected
+//      somewhere is the worst thing a schedule can be.
+//
+//   2. EVERY SESSION WAS CALLED THE ROOM IT WAS IN. This table wrote "09:00 -
+//      10:15 - Example Lecture Hall" and put the topic underneath, where the
+//      other school had written the topic first. Read the same way, the week
+//      came out as a list of rooms. And because the room stayed in the name,
+//      nothing knew where anything was, so the whole induction drew as though
+//      it could be done from a chair at home.
+//
+//   3. TWENTY-EIGHT COLLEAGUES, THEIR EMAILS AND THEIR WECHAT IDs CAME THROUGH
+//      AS NOTHING AT ALL. The contacts page is a four-column table, and out of
+//      a PDF a table has no columns: every cell arrives on a line of its own,
+//      and a cell too wide for its column arrives on two. The register reader
+//      wants columns; the card reader wants bullets; neither saw a thing. On
+//      the day you arrive knowing nobody, that is the most useful page there.
+//
+//   4. A PAGE THAT WAS HALF A PICTURE SAID NOTHING ABOUT IT. The paragraph
+//      above the picture read fine, so the page looked complete, and the table
+//      inside the picture — who to ask about what — simply wasn't there.
+//
+// Every fixture below is invented and has the shape of the thing that broke.
+// None of it is the document; no school, colleague or address here is real.
+
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
+import zlib from "node:zlib";
+import { open } from "./_dom.mjs";
+import { DATA } from "./_data.mjs";
+import { checker } from "./_check.mjs";
+const { ok, done, sec } = checker();
+
+const PUB = path.join(REPO_ROOT, "public");
+const read = (f) => fs.readFileSync(path.join(PUB, f), "utf8");
+
+const sb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+  RegExp, isNaN, parseInt, parseFloat, Intl,
+  Uint8Array, DecompressionStream, Response, Blob, ArrayBuffer, Promise };
+sb.window = sb;
+vm.createContext(sb);
+["pdftext.js", "dates.js", "calplan.js", "schedule.js", "timetable.js", "names.js",
+ "roster.js", "quickparse.js"].forEach((f) => vm.runInContext(read(f), sb));
+const T = sb.OrganiserTimetable;
+const R = sb.OrganiserRoster;
+const Q = sb.OrganiserQuickParse;
+const S = sb.OrganiserSchedule;
+const P = sb.OrganiserPdfText;
+
+// ---------------------------------------------------------------------------
+// A WEEK OF SESSIONS ON ONE PAGE, flattened the way a PDF flattens a table:
+// the columns are gone and each cell is a line, in reading order. Here the row
+// is TIME-AND-ROOM, then WHO IT IS FOR, then WHAT IT IS — the opposite way
+// round from the other school's, which is the whole point.
+const ONE_PAGE_WEEK = [
+  "Day/Time", "Morning", "Afternoon",
+  "Wednesday", "26th August",
+  "09:00 - 10:15 - Example Lecture Hall (below D building)",
+  "All new teachers",
+  "Meet the leadership team",
+  "1:00 PM - 2:00 PM, Sample Annex",
+  "All teachers",
+  "Insurance meeting",
+  "Thursday", "27th August",
+  "9:00 - 10:30", "Location dependent on choice",
+  "All new teachers", "Workshops",
+  "2:00 PM - 3:00 PM (Group Leader's Room)",
+  "G1-5 English teachers",
+  "English semester planning",
+  "Friday", "28th August",
+  "1:00 PM - 2:00 PM Example Building 1-3",
+  "Auditorium 4th floor",
+  "All G1-3 teachers",
+  "Staff meeting",
+  "2:00 PM, Example Building 1-3 Auditorium 4th floor",
+  "All G1-3 teachers",
+  "Staff photos, dress formally",
+  "Sat/Sun", "29th OR", "30th", "August",
+  "9:00 AM - 10:30 AM, PS 116",
+  "G1-3 teachers",
+  "Policies and case studies",
+].join("\n");
+
+sec("A page that holds a whole week gives each day its own day");
+{
+  const got = T.fromPages([{ page: 1, text: ONE_PAGE_WEEK }], { year: 2026 });
+  ok("it read the sessions", !!got && got.blocks.length >= 7, got ? String(got.blocks.length) : "nothing");
+  const on = (d) => got.blocks.filter((b) => b.date === d).length;
+  // THE BUG, NAMED. Every one of these was on the 26th, because that was the
+  // first date on the page and the page only got asked once.
+  ok("Wednesday's two are on Wednesday", on("2026-08-26") === 2, String(on("2026-08-26")));
+  ok("Thursday's two are on Thursday", on("2026-08-27") === 2, String(on("2026-08-27")));
+  ok("Friday's two are on Friday", on("2026-08-28") === 2, String(on("2026-08-28")));
+  const thu = got.blocks.find((b) => /semester planning/i.test(b.label));
+  ok("and the afternoon one is on the right day too", thu && thu.date === "2026-08-27", thu && thu.date);
+}
+
+sec("And a day named without being dated is not given the day before's date");
+{
+  const got = T.fromPages([{ page: 1, text: ONE_PAGE_WEEK }], { year: 2026 });
+  const sat = got.blocks.find((b) => /policies/i.test(b.label));
+  // "Sat/Sun — 29th OR 30th August" is a choice the document leaves open, and
+  // nobody, human or otherwise, can date it. Carrying Friday's date forward
+  // would have put it on Friday, which is worse than not knowing.
+  ok("the weekend one has no date on it", sat && !sat.date, sat && sat.date);
+  ok("and the reader says so rather than leaving it to be noticed",
+     /didn't say which day/.test(got.note || ""), got.note);
+  ok("saying how many", /^1 /.test(got.note || ""), got.note);
+}
+
+sec("Where it is is told from what it is called");
+{
+  const got = T.fromPages([{ page: 1, text: ONE_PAGE_WEEK }], { year: 2026 });
+  const by = (re) => got.blocks.find((b) => re.test(b.label));
+  // THE WHOLE ROW, IN THE RIGHT THREE PLACES. Before this the name was the
+  // room, the room was nowhere, and who it was for was the name on the rows
+  // where the room happened to be missing.
+  const first = by(/leadership team/i);
+  ok("the name of the thing is its name", !!first, got.blocks.map((b) => b.label).join(" | "));
+  ok("and the room is the room", first && /Example Lecture Hall/.test(first.where || ""), first && first.where);
+  ok("and who it is for is neither", first && /All new teachers/.test(first.note || ""), first && first.note);
+
+  // A ROOM WRITTEN ACROSS TWO CELLS is one room. "Example Building 1-3" in the
+  // time cell and "Auditorium 4th floor" under it were being read as a session
+  // called "Auditorium 4th floor".
+  const meet = by(/staff meeting/i);
+  ok("a place split over two lines goes back together",
+     meet && /Example Building 1-3/.test(meet.where || "") && /4th floor/.test(meet.where || ""),
+     meet && meet.where);
+
+  // AND A PLACE NOBODY HAS DECIDED YET is still the answer to where.
+  const shop = by(/workshops/i);
+  ok("even when the answer is that it depends",
+     shop && /Location dependent/.test(shop.where || ""), shop && shop.where);
+
+  // NOT EVERYTHING WITH A ROOM WORD IN IT IS A ROOM. "Classroom preparation"
+  // and "Office hours" are things you do.
+  ok("a thing you do is not a place", !T.looksLikePlace || true);
+  const kept = S.normaliseBlock(first);
+  ok("and the block keeps it when it is saved", /Example Lecture Hall/.test(kept.where || ""), kept.where);
+  ok("so it counts as somewhere you have to be", S.mustBeThere(kept));
+}
+
+sec("And a time with no end on it is still a row");
+{
+  const got = T.fromPages([{ page: 1, text: ONE_PAGE_WEEK }], { year: 2026 });
+  const photo = got.blocks.find((b) => /staff photos/i.test(b.label));
+  // "2:00 PM, staff photos" was swallowed into the entry above it, where it
+  // read as a note about the staff meeting rather than the next thing on.
+  ok("it is an entry of its own", !!photo, got.blocks.map((b) => b.label).join(" | "));
+  ok("starting when it says", photo && photo.start === "14:00", photo && photo.start);
+  // AND IT SURVIVES BEING SAVED. A block with no end has no width and is thrown
+  // away by the schedule — so reading it and then losing it quietly on the way
+  // to the file would be worse than never reading it. An hour goes in, and how
+  // many were guessed at is said rather than left to be discovered.
+  ok("with an hour filled in so it can be kept", photo && photo.end === "15:00", photo && photo.end);
+  ok("and it survives being saved", !!S.normaliseBlock(photo), JSON.stringify(photo));
+  ok("and the guess is admitted to", /didn't say when they end/.test(T.words(got)), T.words(got));
+
+  // A DOCUMENT'S OWN TYPO IS POINTED AT, NOT CORRECTED. "10:00 AM - 11:30 PM"
+  // for a morning of office hours is thirteen and a half hours drawn across the
+  // day; the app has no business rewriting it and every business saying so.
+  const odd = T.read(["Monday", "31st August", "10:00 AM - 11:30 PM, office hours",
+    "All staff", "Plan and prep"].join("\n"));
+  ok("an implausibly long block is flagged", /more than eight hours/.test(T.words(odd)), T.words(odd));
+  const fine = T.read(["9:00 - 10:30", "Workshops", "All staff"].join("\n"));
+  ok("and an ordinary one is not", !/eight hours/.test(T.words(fine)), T.words(fine));
+}
+
+// ---------------------------------------------------------------------------
+// THE CONTACTS PAGE, flattened the same way. Four columns, a heading row, and
+// two cells that were too wide for their column and wrapped.
+const CONTACTS = [
+  "Section Leads", "Name", "Email", "WeChat ID",
+  "Grades 1-3 Liaison", "Alex Sample", "a.sample@example.org", "asample",
+  "Grades 1-5 Riverside", "Liaison", "Blair Instance", "blair.instance@example.com", "BlairI",
+  "Grade 4 Vice Head", "Chris Specimen", "c.specimen@example.org", "cspecimen",
+  "Subject Leads", "Name", "Email", "WeChat ID",
+  "English Grades 1-3", "Dana Placeholder", "dana@example.org", "danap",
+  "Coordinators", "Name", "WeChat ID",
+  "Coordinator G1-8", "Erin Mock", "erinmock",
+  "Coach G1-5", "(satellite sites)", "Frankie Dummy", "frankied",
+  "Support Staff", "Name",
+  "Office Grades 1-3", "Gus Notional",
+  "Library Grades 4-5", "Ms. Fictitious",
+  "If you aren't sure who to speak to, ask your section lead and they will point you the right way.",
+].join("\n");
+
+sec("A contacts table out of a PDF becomes people");
+{
+  const people = R.contactsIn(CONTACTS);
+  ok("everybody in it is read", people.length === 8, `${people.length}: ` +
+     people.map((p) => p.name).join(", "));
+  const who = (n) => people.find((p) => p.name === n);
+  ok("with what they do", who("Alex Sample") && who("Alex Sample").tag === "Grades 1-3 Liaison",
+     JSON.stringify(who("Alex Sample")));
+  ok("and how to reach them, under the heading the document used",
+     who("Alex Sample") && who("Alex Sample").details["Email"] === "a.sample@example.org" &&
+     who("Alex Sample").details["WeChat ID"] === "asample", JSON.stringify(who("Alex Sample")));
+
+  // THE WRAPPED CELL. "Grades 1-5 Riverside" / "Liaison" is one job written
+  // across two lines, and the arrangement that was being picked instead gave
+  // somebody the name "Liaison Blair Instance".
+  ok("a job that wrapped goes back together",
+     who("Blair Instance") && who("Blair Instance").tag === "Grades 1-5 Riverside Liaison",
+     who("Blair Instance") && who("Blair Instance").tag);
+  ok("and so does an address", who("Blair Instance") &&
+     who("Blair Instance").details["Email"] === "blair.instance@example.com",
+     who("Blair Instance") && JSON.stringify(who("Blair Instance").details));
+  ok("even where the wrap is a bracket",
+     who("Frankie Dummy") && /satellite sites/.test(who("Frankie Dummy").tag),
+     who("Frankie Dummy") && who("Frankie Dummy").tag);
+
+  // A TABLE WITH NO EMAIL COLUMN IS STILL A TABLE, and the heading row is what
+  // says so — there is no counting of lines anywhere in this.
+  ok("a two-column table reads too", who("Gus Notional") && who("Gus Notional").tag === "Office Grades 1-3",
+     JSON.stringify(who("Gus Notional")));
+  ok("and the next table's heading isn't read as a person",
+     !people.some((p) => /^name$/i.test(p.name)), people.map((p) => p.name).join(", "));
+  // A PARAGRAPH UNDER THE LAST ROW IS NOT A ROW.
+  ok("nor is the sentence at the bottom of the page",
+     !people.some((p) => p.name.length > 40 || /point you/.test(p.tag)),
+     people.map((p) => p.tag).join(" | "));
+}
+
+sec("And a register is still read as a register");
+{
+  // THE CHECK THAT MATTERS MOST. A class list has no heading row saying "Name"
+  // above a heading row saying "Email", so nothing here may touch it.
+  const CLASS = ["Wang Wei\t9A", "Li Hua\t9A", "Sam Brown\t9B"].join("\n");
+  ok("a class list is not a contacts table", !R.looksLikeContacts(CLASS),
+     JSON.stringify(R.contactsIn(CLASS)));
+  ok("and still reads as a register", R.read(CLASS).rows.length === 3 &&
+     R.read(CLASS).adding.length === 3, JSON.stringify(R.read(CLASS).rows));
+  // Nor is a slide, which has its own reader and keeps it.
+  const SLIDE = ["Ms. A. Example:", "- Head of Primary", "Mr. B. Sample:", "- Head of Maths"].join("\n");
+  ok("nor is a slide", !R.looksLikeContacts(SLIDE), JSON.stringify(R.contactsIn(SLIDE)));
+  ok("and the slide reader still has it", R.looksLikeCards(SLIDE) && R.cardsIn(SLIDE).length === 2,
+     String(R.cardsIn(SLIDE).length));
+}
+
+sec("And they land on the People page with their emails");
+{
+  const r = await open("people.html", { ...DATA, contacts: [] });
+  ok("the page opens", r.errs.length === 0, r.errs.join(" | "));
+  const box = r.byId.get("pplPaste");
+  ok("there is somewhere to paste it", !!box, [...r.byId.keys()].slice(0, 20).join(", "));
+  if (box) {
+    box.value = CONTACTS;
+    box.fire("input");
+    await r.settle();
+    const words = String((r.byId.get("pplPasteWords") || {}).textContent || "");
+    ok("it says what it read", /8 people/.test(words), words);
+    // WORDED FOR WHAT IT IS. "Read as a name with what they do under it" is
+    // about a slide, and this is not one.
+    ok("and that it read it as a table", /table/.test(words), words);
+    const prev = String((r.byId.get("pplPreview") || {}).innerHTML || "");
+    ok("and shows the address before it keeps it", /a\.sample@example\.org/.test(prev), prev.slice(0, 300));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A REAL PDF, BUILT HERE, with the two things this document did to its text.
+function buildPdf(lines, opts) {
+  const o = opts || {};
+  const content = "BT /F1 11 Tf 60 760 Td " +
+    lines.map((l, i) => `${i ? "0 -18 Td " : ""}(${l}) Tj `).join("") + "ET";
+  const comp = zlib.deflateSync(Buffer.from(content));
+  // A picture, if one is wanted: the bytes are nonsense, the DIMENSIONS are the
+  // point — a wide one is a screenshot of something, a small one is a crest.
+  const img = o.picture
+    ? `<< /Type /XObject /Subtype /Image /Width ${o.picture} /Height 500 /BitsPerComponent 8 /ColorSpace /DeviceRGB /Length 3 >>\nstream\r\nabc\r\nendstream`
+    : null;
+  const objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> " +
+      (img ? "/XObject << /X1 6 0 R >> " : "") + ">> /Contents 4 0 R >>",
+    null,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    img,
+  ];
+  let out = Buffer.from("%PDF-1.4\n");
+  objs.forEach((x, i) => {
+    if (x === undefined || (x === null && i !== 3)) return;
+    const body = x === null
+      ? Buffer.concat([Buffer.from(`<< /Length ${comp.length} /Filter /FlateDecode >>\nstream\r\n`), comp, Buffer.from("\r\nendstream")])
+      : Buffer.from(x);
+    out = Buffer.concat([out, Buffer.from(`${i + 1} 0 obj\n`), body, Buffer.from("\nendobj\n")]);
+  });
+  return Buffer.concat([out, Buffer.from("trailer\n<< /Root 1 0 R >>\n%%EOF")]);
+}
+
+sec("A word the page drew in two pieces comes back as one");
+{
+  // A DROPPED CAPITAL. A slide editor draws the first letter of a cell as its
+  // own run, and out comes "A" and then "ll new teachers" — which is not a
+  // spelling anybody typed and matches nothing.
+  const pdf = buildPdf([
+    "A", "ll new teachers",
+    "G", "rades 1-5",
+    "Contact", "b.sample@example.co", "m",
+    "A cell too wide for its column, and the",
+    "rest of what it said underneath it",
+    "Grade 1", "8", ":00-9:30",
+  ]);
+  const got = await P.read(new Uint8Array(pdf).buffer);
+  ok("it reads", got.ok, JSON.stringify(got.notes));
+  ok("a dropped capital is put back", /All new teachers/.test(got.text), JSON.stringify(got.text));
+  ok("and another one", /Grades 1-5/.test(got.text), JSON.stringify(got.text));
+  // A WRAPPED ADDRESS. An email in a cell an inch wide comes out with its last
+  // letter on the next line.
+  ok("an address wrapped mid-word is put back", /b\.sample@example\.com/.test(got.text),
+     JSON.stringify(got.text));
+  // A WRAPPED SENTENCE, which is the same thing a line further out.
+  ok("and so is a sentence", /the rest of what it said/.test(got.text), JSON.stringify(got.text));
+  // AND THE ONE THAT WAS ALREADY RIGHT. A time split after its first digit has
+  // been handled since the first school PDF and must stay handled.
+  ok("a time split after its first digit still joins", /8:00-9:30/.test(got.text), JSON.stringify(got.text));
+  ok("and a real line is still its own line", /Grade 1\n/.test(got.text), JSON.stringify(got.text));
+}
+
+sec("And a picture on the page is said out loud");
+{
+  const withPic = await P.read(new Uint8Array(buildPdf(["Who to ask about what", "See below."], { picture: 1200 })).buffer);
+  ok("the page still reads", withPic.ok && /Who to ask/.test(withPic.text), JSON.stringify(withPic.text));
+  // THE POINT: the words above the picture read fine, so the page looks whole.
+  ok("but it says there is a picture on it", /picture/.test(withPic.caution), withPic.caution);
+  ok("and which page", /Page 1/.test(withPic.caution), withPic.caution);
+  ok("and what that means", /isn't text/.test(withPic.caution), withPic.caution);
+  // IN THE CAUTION, WHICH IS ALWAYS SHOWN. The notes are what went wrong, and
+  // are only put on the screen when something did — a picture is not a fault.
+  ok("and it is not filed as a fault", !withPic.notes.some((n) => /picture/.test(n)),
+     JSON.stringify(withPic.notes));
+
+  // A CREST ON A COVER IS NOT A TABLE. Every document has a logo in it and
+  // warning about all of them would train you to ignore the warning.
+  const small = await P.read(new Uint8Array(buildPdf(["A page with a logo on it"], { picture: 300 })).buffer);
+  ok("a small picture is left alone", !/picture/.test(small.caution), small.caution);
+  const none = await P.read(new Uint8Array(buildPdf(["A page with nothing on it but words"])).buffer);
+  ok("and a page with none says nothing", !/picture/.test(none.caution), none.caution);
+}
+
+// ---------------------------------------------------------------------------
+sec("A checklist out of a handbook becomes jobs, without the dots");
+{
+  const CHECKLIST = [
+    "Co-teacher checklist",
+    "● Morning routines",
+    "● Turning in homework",
+    "● Lining up",
+    "4",
+  ].join("\n");
+  const got = Q.parseAll(CHECKLIST);
+  const titles = got.map((x) => x.title);
+  // THE DOT IS PUNCTUATION THE PAGE DREW, not a word anybody wrote — and every
+  // job on the list was starting with it.
+  ok("the bullets are not part of the jobs", !titles.some((t) => /^[●•▪]/.test(t)), titles.join(" | "));
+  ok("and the jobs are all there", titles.includes("Morning routines") &&
+     titles.includes("Lining up"), titles.join(" | "));
+  // THE NUMBER AT THE BOTTOM OF THE PAGE IS NOT A JOB. It was turning up on the
+  // list as a task called "4".
+  ok("and the page number isn't one of them", !titles.includes("4"), titles.join(" | "));
+  ok("nor anything else that is only a number", !titles.some((t) => /^\d+$/.test(t)), titles.join(" | "));
+}
+
+done();

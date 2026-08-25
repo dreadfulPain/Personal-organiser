@@ -391,7 +391,10 @@
       if (btn) btn.hidden = !fresh;
       if (words)
         words.textContent =
-          `${fresh} ${fresh === 1 ? "person" : "people"}, read as a name with what they do under it.` +
+          `${fresh} ${fresh === 1 ? "person" : "people"}, read as ` +
+          (cards[0].table
+            ? "a table of names, jobs and ways of reaching them."
+            : "a name with what they do under it.") +
           (known ? ` ${known} already on your list.` : "");
       if (prev) {
         prev.hidden = false;
@@ -401,7 +404,15 @@
               `<div class="ppl-prev-row${c.already ? " known" : ""}"><strong>${escapeHtml(c.name)}</strong>` +
               (c.aka.length ? ` <span class="muted">also ${escapeHtml(c.aka.join(", "))}</span>` : "") +
               (c.already ? ` <span class="muted">— already on your list</span>` : "") +
-              `<div class="muted">${c.roles.map(escapeHtml).join(" · ")}</div></div>`
+              `<div class="muted">${c.roles.map(escapeHtml).join(" · ")}</div>` +
+              // AN EMAIL READ OUT OF A PDF IS THE THING MOST WORTH LOOKING AT
+              // BEFORE IT IS KEPT. One on this page had lost its @ before the
+              // file was made, and it is shown exactly as the document has it.
+              (c.details && Object.keys(c.details).length
+                ? `<div class="muted">${Object.keys(c.details)
+                    .map((k) => `${escapeHtml(k)}: ${escapeHtml(c.details[k])}`).join(" · ")}</div>`
+                : "") +
+              `</div>`
           )
           .join("");
       }
@@ -449,16 +460,32 @@
   // add." with every confidence.
   //
   // Which shape a paste is gets decided by the paste, not by a setting.
+  //
+  // AND THE THIRD SHAPE IS A TABLE — the "who to contact" page of a handbook,
+  // with a job, a name, an email and a WeChat ID in four columns. Out of a PDF
+  // it has no columns left and neither reader saw anything at all in it: the
+  // most useful page in the booklet, on the day you know nobody, came through
+  // as nothing. Read here into the same card shape, so everything below —
+  // telling two people apart, not adding somebody twice — works unchanged.
   const asCards = () => {
     const R = window.OrganiserRoster;
     const text = ($("#pplPaste") || {}).value || "";
-    if (!R || !R.looksLikeCards(text)) return null;
+    if (!R) return null;
+    const raw = R.looksLikeCards(text)
+      ? R.cardsIn(text)
+      : R.looksLikeContacts && R.looksLikeContacts(text)
+        ? R.contactsIn(text).map((c) => ({
+            name: c.name, aka: c.aka || [], roles: c.tag ? [c.tag] : [],
+            details: c.details, table: true,
+          }))
+        : null;
+    if (!raw || !raw.length) return null;
     // SOMEBODY YOU ALREADY HAVE IS NOT SOMEBODY NEW. The register reader has
     // always checked this; the card reader didn't, so re-pasting a slide deck to
     // fix one typo gave you every one of them twice. Asked of names.js, which is
     // where "does this name mean this person" lives — so a second name you have
     // already taught it counts as knowing them.
-    return R.cardsIn(text).map((c) => {
+    return raw.map((c) => {
       const hit = OrganiserNames.look(c.name, contacts);
       return { ...c, already: hit.state === "matched" ? hit.contact : null };
     });
@@ -579,6 +606,10 @@
         details: {
           "role / year group": c.roles[0] || "",
           ...(c.roles.length > 1 ? { notes: c.roles.join("\n") } : {}),
+          // WHATEVER ELSE THE TABLE HAD, UNDER THE HEADING IT HAD IT UNDER. The
+          // document said "WeChat ID", so the field says "WeChat ID" — the app
+          // has no list of ways to reach somebody and does not need one.
+          ...(c.details || {}),
         },
         createdAt: nowISO(),
       }));
@@ -589,8 +620,10 @@
       renderPaste();
       render();
       const skipped = all.length - made.length;
+      const reachable = cards.filter((c) => c.details && Object.keys(c.details).length).length;
       setStatus(
-        `${made.length} added, with what each of them does.` +
+        `${made.length} added, with what each of them does` +
+        (reachable ? ` and how to reach ${reachable === made.length ? "them" : `${reachable} of them`}.` : ".") +
         (skipped ? ` ${skipped} ${skipped === 1 ? "was" : "were"} already on your list.` : "") +
         ` Open one to add a photo or change how they're told apart.`
       );

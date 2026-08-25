@@ -792,8 +792,18 @@
     // whole text, which is right for "call the dentist and book the flights on
     // tuesday" and wrong across a line break. Line two implies nothing about
     // line one, so each line is parsed as if it were all you typed.
-    const lines = raw.split(/\r?\n+/).map((l) => l.trim()).filter(Boolean);
+    // AND A BULLET IS NOT PART OF WHAT YOU WROTE. A checklist copied out of a
+    // handbook arrives with the document's own dots still on it, and every job
+    // on the list then starts "● ". Punctuation the page drew, not words.
+    //
+    // A NUMBER ON A LINE OF ITS OWN IS NOT A JOB EITHER — it is the number at
+    // the bottom of the page, and it turned up on the list as a task called "4".
+    const lines = raw.split(/\r?\n+/)
+      .map((l) => l.trim().replace(/^[•●▪◦‣·*]+\s*/, "").trim())
+      .filter((l) => l && !/^\d{1,3}$/.test(l));
     if (lines.length > 1) return lines.flatMap((l) => parseAll(l, ctx));
+    if (lines.length === 1 && lines[0] !== raw) return parseAll(lines[0], ctx);
+    if (!lines.length) return [];
     const parts = pieces(raw);
     if (parts.length <= 1) return [parse(raw, ctx)];
     const whole = parse(raw, ctx);

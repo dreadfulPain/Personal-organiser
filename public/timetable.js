@@ -82,6 +82,88 @@
     return { start, end };
   }
 
+  // A TIME WITH NO END ON IT. "2:00 PM, staff photos" is a row of a schedule
+  // like any other; a reader that only takes ranges swallows it into the entry
+  // above as though it were a note about that one.
+  //
+  // AT THE FRONT OF THE LINE ONLY. "back by 3:30" inside a sentence is somebody
+  // mentioning a time, and treating it as a new entry cuts the sentence in half.
+  function startsAt(raw) {
+    const s = String(raw || "").replace(/ /g, " ").trim();
+    const m = /^(\d{1,2}\s*[:.h]\s*\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))\b/i.exec(s);
+    return m ? timeOf(m[1].replace(/\s+/g, "")) || "" : "";
+  }
+
+  // An hour on from a time, stopping at the end of the day rather than wrapping
+  // round into the next one.
+  function anHourAfter(hm) {
+    const m = /^(\d{2}):(\d{2})$/.exec(String(hm || ""));
+    if (!m) return "";
+    const at = Number(m[1]) * 60 + Number(m[2]) + 60;
+    return at >= 24 * 60 ? "23:59" : `${String(Math.floor(at / 60)).padStart(2, "0")}:${String(at % 60).padStart(2, "0")}`;
+  }
+
+  // ---- is that a place, or is it the thing itself? ---------------------------
+  //
+  // Not vocabulary this school uses — English words for kinds of place, in the
+  // same bucket as the month names and "am". §0.2 is about not knowing what a
+  // school calls its subjects and its classes; it is not a rule against knowing
+  // what "corridor" means.
+  //
+  // AT THE END, NOT ANYWHERE. "Lunch & Campus Tour" has a place word in the
+  // middle of it and is plainly a thing you do; "Riverside Auditorium" ends in
+  // one and is plainly a room. Ending in one is the difference, and it is also
+  // why "Classroom preparation" and "Office hours" stay as names, which is what
+  // they are.
+  const PLACE_WORD =
+    /\b(rooms?|classrooms?|halls?|auditoriums?|annexe?s?|buildings?|blocks?|floors?|gates?|campus(?:es)?|labs?|laborator(?:y|ies)|librar(?:y|ies)|canteens?|cafeterias?|gyms?|gymnasiums?|theat(?:re|er)s?|studios?|cent(?:re|er)s?|wings?|playgrounds?|pitches?|courts?|offices?|entrances?|lobb(?:y|ies)|foyers?|stairs|corridors?|schools?|sites?|venues?|roads?|streets?|lanes?|avenues?)\s*$/i;
+  // "LG1-02", "PS 116", "D406" — a short run of letters and digits and nothing
+  // else. A shape, not a word: no list can hold every room number ever painted
+  // on a door.
+  //
+  // THREE CHARACTERS WHEN IT IS ALL DIGITS, because the number at the bottom of
+  // a page is also a short run of digits, and a page number read as a room puts
+  // "3" in the where and marks the row as somewhere you have to be.
+  const ROOM_CODE = /^[A-Za-z]{0,4}[ \-]?[A-Za-z]?\d{1,4}(?:\s*[-–]\s*\d{1,3})?$/;
+  const roomCode = (s) => ROOM_CODE.test(s) && /\d/.test(s) && (/[A-Za-z]/.test(s) ? s.length >= 2 : s.length >= 3);
+  // And two words that announce a place outright, wherever the rest of the line
+  // goes. "Location dependent on PD choice" is not a room and is still the
+  // answer to where, including the part where nobody knows yet.
+  const SAYS_PLACE = /^(location|venue|where)\b\s*:?/i;
+  function looksLikePlace(text) {
+    // Brackets round the whole of it are punctuation, not part of the address.
+    const s = String(text || "").trim().replace(/^[（(]\s*|\s*[)）]$/g, "").trim();
+    if (!s || s.length > 70) return false;
+    if (SAYS_PLACE.test(s)) return true;
+    if (s.length <= 12 && roomCode(s)) return true;
+    // Tried with two things taken off the end, because both of them sit AFTER
+    // the word that says it is a place: the direction to it — "(Below D
+    // building)" — and the room number, since "Example Building 102" is a
+    // building with a room in it and "Primary School 1-3" is a school with a
+    // wing in it.
+    const noBracket = s.replace(/[（(][^)）]*[)）]\s*$/, "").trim();
+    const noNumber = (t) =>
+      t.replace(/[\s,\-–]*(?:no\.?\s*)?\d+(?:st|nd|rd|th)?(?:\s*[-–]\s*\d+)?\s*$/i, "").trim();
+    return [s, noBracket, noNumber(s), noNumber(noBracket)].some((t) => PLACE_WORD.test(t));
+  }
+
+  // ---- who it is for is not what it is called --------------------------------
+  //
+  // A schedule's rows say WHO before they say WHAT as often as the other way
+  // round, and read in order that gives you a week of meetings all called "All
+  // Teachers". This is not the school's vocabulary: "all" and "every" are
+  // English, and "grade"/"year" followed by a number is the shape every school
+  // system writes a cohort in — the same kind of knowledge as the month names,
+  // which this app has always had to have.
+  //
+  // AND NOTHING IS LOST BY BEING WRONG. A line skipped here still goes in the
+  // note, and if the entry never finds another name it gets this one back.
+  const FOR_WHOM = /^(?:all|every)\b|^(?:grades?|years?|yrs?|g)\s*\.?\s*\d/i;
+  const looksLikeAudience = (line) => {
+    const s = String(line || "").trim();
+    return !!s && s.length <= 60 && FOR_WHOM.test(s);
+  };
+
   // ---- splitting a pasted line into cells -----------------------------------
   //
   // Tabs if there are any — that is what a spreadsheet and a Word table both
@@ -274,42 +356,127 @@
     // A date is what the reader uses to know a new day has started; if none is
     // given it just doesn't check.
     const C = window.OrganiserCalPlan;
-    const hasDate = (l) => !!(C && C.dateIn(l, o.year || 2000));
+    const dateOn = (l) => (C && C.dateIn(l, o.year || 2000)) || "";
+    // AND A HEADING THAT NAMES A DAY WITHOUT DATING IT. "Sat/Sun", "Thursday" —
+    // a new day has started and there is no way to know which one. Everything
+    // under it belongs to a day nobody has said yet, and saying it belongs to
+    // the day above is how an induction ends up half on the wrong morning.
+    const dayHeading = (l) =>
+      /^[A-Za-z]/.test(l) && !/\d/.test(l) && l.length <= 40 && daysIn(l).length > 0 &&
+      l.replace(/[A-Za-z]+/g, (w) => (dayOf(w) >= 0 ? "" : w)).replace(/[\s\/&,\-–—+.]+/g, "") === "";
+    // THE DAY BEING READ, WHICH IS NOT ALWAYS THE PAGE'S. One page a day is the
+    // shape the first such document arrived in; the next one put five days on a
+    // single page, and everything after the first heading landed on Wednesday.
+    // A schedule that is confidently wrong about which morning you are expected
+    // somewhere is worse than one that admits it doesn't know.
+    let date = o.date || "";
     let open = null;
     let extra = 0;
     lines.forEach((line) => {
       // A line that is ONLY a time is a heading for what comes next. A line
       // with a time and words in it is an entry all by itself.
       const span = spanIn(line);
-      if (span) {
+      // AND ONE THAT SAYS WHEN IT STARTS AND NOT WHEN IT ENDS. "2:00 PM, staff
+      // photos" is an entry; a schedule that only takes ranges drops it, and it
+      // is dropped INTO the entry above, where it reads as a detail of that one.
+      // Only at the front of a line — a time in the middle of a sentence is
+      // somebody mentioning a time, not a row of a table.
+      const lone = span ? null : startsAt(line);
+      if (span || lone) {
         const rest = line
-          .replace(new RegExp(`\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?\\s*(?:${DASH})\\s*\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?`, "i"), " ")
-          .replace(/\s{2,}/g, " ").replace(/^[\s\-–—:|\t]+|[\s\-–—:|\t]+$/g, "").trim();
-        open = { label: rest, start: span.start, end: span.end, days: [], date: o.date || "",
-          soft: false, source: "paste" };
+          .replace(span
+            ? new RegExp(`\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?\\s*(?:${DASH})\\s*\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?`, "i")
+            : /^\s*\d{1,2}\s*[:.h]?\s*\d{0,2}\s*(?:am|pm)?/i, " ")
+          // COMMAS TOO. "9:00 AM - 10:30 AM," left behind a lesson called ",".
+          .replace(/\s{2,}/g, " ").replace(/^[\s\-–—:,.|\t]+|[\s\-–—:,|\t]+$/g, "").trim();
+        // WHAT IS LEFT ON THE LINE IS SOMETIMES WHERE, NOT WHAT. One school
+        // writes "TIME | TOPIC | … | LOCATION" and another writes "09:00 -
+        // 10:15 - Example Lecture Hall", and read the same way the second gives you
+        // a week of lessons called "Lecture Hall". A place moved out of the way
+        // lets the name fall through to the line below it — and puts the room
+        // where the app can use it, which is what makes the thing show as
+        // somewhere you have to be rather than something you can do anywhere.
+        const place = looksLikePlace(rest);
+        open = { label: place ? "" : rest, where: place ? rest : "",
+          // AN HOUR, WHEN THE DOCUMENT DIDN'T SAY. A block with no end has no
+          // width and is thrown away when it is saved — so reading these and
+          // then losing them on the way to the file is worse than not reading
+          // them. An hour is filled in, the row is editable before it is kept,
+          // and how many were guessed is said out loud.
+          start: span ? span.start : lone, end: span ? span.end : anHourAfter(lone),
+          ...(span ? {} : { endGuessed: true }),
+          days: [], date, soft: false, source: "paste" };
         extra = 0;
         out.blocks.push(open);
         return;
       }
+      // A NEW DAY STARTING, rather than more about the entry above. Checked
+      // before anything else is done with the line, and whether or not an entry
+      // is open: on a page holding a week, the heading for Thursday arrives in
+      // the middle of Wednesday's last row.
+      const said = dateOn(line);
+      if (said) { date = said; open = null; return; }
+      if (dayHeading(line)) { date = ""; open = null; return; }
       // Everything under a time belongs to it, until the next time. The FIRST
       // such line is what it's called; the rest is detail, and detail is not
       // dropped — "(bring passport and ID photos)" is the single most
       // important line on the page and belongs with the thing it is about.
       if (!open) return;
-      if (!open.label) { open.label = line.slice(0, 80); return; }
+      // A LINE UNDER A BULLET IS STILL THE LINE. The dash a document draws in
+      // front of a cell is not part of what the cell says.
+      const said2 = line.replace(/^[-–—•*·▪]\s+/, "").trim();
+      // THE ROOM IS USUALLY ON A LINE OF ITS OWN, and which line depends on how
+      // the school laid the table out: right after the time in one document,
+      // last in the row after who is running it in another. Any of them, while
+      // nothing has claimed the place yet — a second place-shaped line is
+      // detail rather than an overwrite.
+      //
+      // This is what makes the thing show as somewhere you have to be. Until it
+      // did, a whole induction drew as though every session could be done from a
+      // chair at home.
+      //
+      // AND AN ADDRESS CAN BE TWO CELLS. "Primary School 1-3" in the time cell
+      // and "Auditorium 4th floor" under it are one place written across a line
+      // break, so while nothing has been named yet a second place-shaped line
+      // joins the first rather than becoming what the thing is called. After
+      // there is a name, it is detail.
+      if (looksLikePlace(said2) && (!open.where || !open.label)) {
+        open.where = ((open.where ? open.where + " " : "") + said2).slice(0, 120);
+        extra++;
+        return;
+      }
+      if (!open.label) {
+        if (looksLikeAudience(said2)) {
+          // Kept, in both senses: it goes in the note like any other detail, and
+          // it is remembered in case this entry never says what it is.
+          if (!open.forWhom) open.forWhom = said2.slice(0, 80);
+        } else {
+          open.label = said2.slice(0, 80);
+          return;
+        }
+      }
       // BUT THE LAST ENTRY ON A PAGE IS FOLLOWED BY THE PAGE. A footer, a
       // welcome paragraph, the date printed at the bottom — all of it sits
       // under the last time on the page and none of it is about that entry.
       // A row of a table is a few lines; a page of prose is not, so the detail
-      // stops after a few, and stops dead at a date, which is a new day
-      // starting rather than more about this one.
-      if (hasDate(line) || extra >= 6) { open = null; return; }
+      // stops after a few.
+      if (extra >= 6) { open = null; return; }
       extra++;
       // KEPT AS SEPARATE LINES. In the document these are separate cells — who
       // is running it, then where it is — and running them together makes
       // "Dave" and "TBA" into a person called Dave Tba. The line break is the
       // only thing left saying they are two different facts.
-      open.note = ((open.note ? open.note + "\n" : "") + line).slice(0, 300);
+      open.note = ((open.note ? open.note + "\n" : "") + said2).slice(0, 300);
+    });
+    // AND IF NOTHING ELSE NAMED IT, WHAT WAS SKIPPED COMES BACK. Who it is for,
+    // then where it is: a row that is a time and a room and nothing else is a
+    // real row — "9:00 Library" — and reading the room as only a room would
+    // throw the entry away for having no name. The place is kept in both, so it
+    // still counts as somewhere you have to be.
+    out.blocks.forEach((b) => {
+      if (!b.label && b.forWhom) b.label = b.forWhom;
+      if (!b.label && b.where) b.label = b.where;
+      delete b.forWhom;
     });
     out.blocks = out.blocks.filter((b) => b.label);
     return out.blocks.length ? out : null;
@@ -341,7 +508,7 @@
     if (!out.blocks.length) return null;
     const undated = out.blocks.filter((b) => !b.date).length;
     if (undated)
-      out.note = `${undated} of them had no date on their page — say which day they're on before keeping them.`;
+      out.note = `${undated} of them didn't say which day they're on — the heading above them named a day without dating it, or there was no date at all. Say which day before keeping them.`;
     return out;
   }
 
@@ -443,9 +610,25 @@
     // knows what a lesson is — and then told you it had read twenty-one of
     // them, when five were form time, two were duties and two were meetings.
     // Blocks is what the code calls them and what the save button says.
+    const guessed = r.blocks.filter((b) => b.endGuessed).length;
+    // A DOCUMENT'S OWN TYPO, WHICH THE APP HAS NO BUSINESS CORRECTING AND EVERY
+    // BUSINESS POINTING AT. One of these said "10:00 AM - 11:30 PM" for what was
+    // plainly a morning, and drawn straight it swallowed the whole day.
+    const long = r.blocks.filter((b) => {
+      const a = timeOf(b.start), z = timeOf(b.end);
+      if (!a || !z) return false;
+      const mins = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
+      return mins(z) - mins(a) > 8 * 60;
+    }).length;
     return `${r.blocks.length} block${r.blocks.length === 1 ? "" : "s"} read` +
       (days ? `, across ${days} day${days === 1 ? "" : "s"}` : "") + ". " +
       (r.note ? r.note + " " : "") +
+      (guessed
+        ? `${guessed} of them didn't say when they end — an hour is filled in, change any that are wrong. `
+        : "") +
+      (long
+        ? `${long} of them ${long === 1 ? "runs" : "run"} for more than eight hours, which is usually a typo in the document. `
+        : "") +
       "Check them and take out anything that shouldn't be there.";
   }
 

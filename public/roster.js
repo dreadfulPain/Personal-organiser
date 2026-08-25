@@ -180,6 +180,20 @@
       : { name: latin.join(" "), also: [cjk.join(" ")] };
   }
 
+  // ONE PERSON'S NAME, HOWEVER IT WAS WRITTEN. Used wherever a name arrives on
+  // a line of its own — off a slide, or out of the "Name" column of a table.
+  // Both meet the same person written the same three ways, so both ask here.
+  function personFrom(head) {
+    const m = ALIAS.exec(String(head || "").trim());
+    const plain = (m ? m[1] : String(head || "")).trim();
+    const bracketed = m ? m[2].split(ALSO_SEP).map((x) => x.trim()).filter(Boolean) : [];
+    const scripts = splitScripts(plain);
+    return {
+      name: scripts ? scripts.name : plain,
+      aka: [...(scripts ? scripts.also : []), ...bracketed].filter(Boolean).slice(0, 8),
+    };
+  }
+
   function cardsIn(text) {
     const lines = String(text || "").split(LINE_BREAKS).filter((l) => l.trim());
     const out = [];
@@ -194,15 +208,7 @@
       // hung off it.
       const head = asHeading(raw);
       if (!head) return;
-      const m = ALIAS.exec(head);
-      const plain = (m ? m[1] : head).trim();
-      const bracketed = m ? m[2].split(ALSO_SEP).map((x) => x.trim()).filter(Boolean) : [];
-      const scripts = splitScripts(plain);
-      cur = {
-        name: scripts ? scripts.name : plain,
-        aka: [...(scripts ? scripts.also : []), ...bracketed].filter(Boolean).slice(0, 8),
-        roles: [],
-      };
+      cur = { ...personFrom(head), roles: [] };
       out.push(cur);
     });
     // ONLY THE ONES THAT ACTUALLY HAD SOMETHING UNDER THEM. A plain list of
@@ -210,6 +216,192 @@
     // it — this must not quietly take that job over.
     return out.filter((c) => c.name && c.roles.length);
   }
+
+  // ---- A CONTACTS TABLE THAT HAS BEEN THROUGH A PDF -------------------------
+  //
+  // The third shape, and the one that matters most on the day you arrive: the
+  // "who to contact" page of a staff handbook. Twenty people, their job, their
+  // email and their WeChat, in a four-column table — and out of a PDF a table
+  // has no columns. Every cell comes back on a line of its own, in reading
+  // order, and a cell too wide for its column comes back on TWO:
+  //
+  //     Section Leads               ← the table's own title
+  //     Name                        ← and its column headings
+  //     Email
+  //     WeChat ID
+  //     Grades 1-3 Liaison          ← then four lines per person
+  //     Alex Sample
+  //     a.sample@example.org
+  //     asample
+  //     Grades 1-5 Riverside        ← except when a cell wrapped, and then five
+  //     Liaison
+  //     Blair Instance
+  //     blair.instance@example.com
+  //     BlairI
+  //
+  // Neither reader above sees anything here. The register reader wants columns
+  // and finds one; the card reader wants a bullet and finds none. So this page
+  // — the single most useful page in the booklet for somebody who has just
+  // arrived and knows nobody — came through as nothing at all.
+  //
+  // THE HEADING ROW IS WHAT MAKES IT READABLE. It says how many columns there
+  // are and what each of them holds, which is exactly what the PDF threw away.
+  // Everything else here follows from that: the lines are dealt out N at a time,
+  // and where a row doesn't fit, the column that wrapped is found by asking
+  // which arrangement makes every cell make sense.
+  //
+  // §0.2: the column NAMES are read off the document, not known in advance. The
+  // handful of words below is only how a heading announces what kind of thing a
+  // column holds — an address, a handle, a number — the same order of knowledge
+  // as knowing that a comma separates cells.
+  const COLUMN_KIND = [
+    [/^(name|full name|names?)$/i, "name"],
+    [/^(e-?mail(\s*address)?|address)$/i, "email"],
+    [/^(we-?chat( id)?|wei-?xin|qq|line|whats-?app|telegram|handle|username|user|id)$/i, "handle"],
+    [/^(phone|mobile|tel(ephone)?|number|extension|ext\.?|contact number)$/i, "phone"],
+    [/^(role|title|job|position|post|department|dept\.?|team|subject|grade|notes?)$/i, "other"],
+  ];
+  const kindOf = (head) => {
+    const h = String(head || "").trim().replace(/[:：]\s*$/, "");
+    for (const [re, kind] of COLUMN_KIND) if (re.test(h)) return kind;
+    return "";
+  };
+
+  const EMAIL = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+  // What a cell of each kind has to look like for a row to be believed. The
+  // first column has no heading of its own — it is whatever the table is a
+  // table OF — so anything short will do for it. Short, because a paragraph of
+  // prose after the last row is not a row.
+  function fitsKind(kind, text, loose) {
+    const s = String(text || "").trim();
+    if (!s || s.length > 70) return false;
+    // AN ADDRESS THE DOCUMENT ITSELF GOT WRONG is still the only address there
+    // is. One of these had lost its "@" before the file was ever made; refusing
+    // it lost the person, and the two people listed after them as well. Taken
+    // as written, on the last pass only, so a real address always wins first.
+    if (kind === "email") return loose ? !/\s/.test(s) : EMAIL.test(s);
+    if (kind === "handle") return !/\s/.test(s) && s.length >= 2 && s.length <= 40 && !EMAIL.test(s);
+    if (kind === "phone") return /\d/.test(s) && !/[A-Za-z]{4,}/.test(s);
+    // A NAME IS SHORT AND IS NOT AN ADDRESS. Deliberately loose otherwise: this
+    // is a list of people the reader has never heard of, written in whatever
+    // script and order the school writes them in.
+    if (kind === "name") return !/@/.test(s) && s.length <= 40 && s.split(/\s+/).length <= 5;
+    return true;
+  }
+  // Which columns are allowed to have wrapped. On the first pass, only the ones
+  // that can be long: a person's name and their WeChat handle are sized to fit
+  // and a job description is not, so when a row is a line too long it is the job
+  // that ran over. Getting this the other way round produced somebody called
+  // "Liaison Blair Instance".
+  const CAN_WRAP = { "": true, other: true, email: true };
+  // An address never has a space in it, so its pieces go back together with
+  // nothing between them; everything else is words, which take a space.
+  const glue = (kind, parts) => parts.join(kind === "email" ? "" : " ").trim();
+
+  // Deal `lines` out into one row of `kinds`, allowing any one cell to have
+  // wrapped onto following lines. Returns the cells and how many lines it used,
+  // or null if no arrangement works.
+  //
+  // SMALLEST FIRST. A row that fits exactly is the row; only when it cannot be
+  // made to fit is a wrap looked for, so an ordinary table is never re-read as a
+  // wrapped one.
+  function dealRow(lines, kinds) {
+    const most = Math.min(lines.length, kinds.length + 3);
+    // Three passes, each giving up something: which columns may have wrapped,
+    // and then whether an address has to look like one.
+    for (const how of [{}, { anyWrap: true }, { loose: true }, { anyWrap: true, loose: true }])
+      for (let take = kinds.length; take <= most; take++) {
+        const found = arrange(lines.slice(0, take), kinds, how);
+        if (found) return { cells: found, used: take };
+      }
+    return null;
+  }
+  function arrange(part, kinds, how) {
+    if (!kinds.length) return part.length ? null : [];
+    const spare = how.anyWrap || CAN_WRAP[kinds[0]] ? part.length - kinds.length : 0;
+    for (let n = 1; n <= 1 + Math.max(0, spare); n++) {
+      const head = glue(kinds[0], part.slice(0, n));
+      if (!fitsKind(kinds[0], head, how.loose)) continue;
+      const rest = arrange(part.slice(n), kinds.slice(1), how);
+      if (rest) return [head, ...rest];
+    }
+    return null;
+  }
+
+  // Every table on the page, each with its own heading row. A handbook page
+  // holds four or five of them one after another.
+  function tableIn(text) {
+    const lines = String(text || "").split(LINE_BREAKS).map((l) => l.trim()).filter(Boolean);
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      if (kindOf(lines[i]) !== "name") { i++; continue; }
+      // The headings run from "Name" for as long as the lines keep announcing a
+      // kind of column. What came before it is the table's own title.
+      const kinds = ["", "name"];
+      const heads = [lines[i - 1] || "", lines[i]];
+      let j = i + 1;
+      while (j < lines.length && kindOf(lines[j])) {
+        kinds.push(kindOf(lines[j]));
+        heads.push(lines[j]);
+        j++;
+      }
+      // A table of nothing but names is a register, and the register reader is
+      // better at it.
+      if (kinds.length < 2) { i = j; continue; }
+      const rows = [];
+      while (j < lines.length && kindOf(lines[j]) !== "name") {
+        // THE NEXT TABLE'S HEADING ROW IS NOT THIS TABLE'S LAST ROW. A page
+        // holds five of these one under another, and the words above the next
+        // "Name" are that table's title — read on as data they become a person
+        // called Name.
+        if (lines.slice(j, j + kinds.length).some((l) => kindOf(l) === "name")) break;
+        const got = dealRow(lines.slice(j), kinds);
+        // A LINE THAT WON'T FIT IS NOT SILENTLY DROPPED — it ends the table.
+        // Whatever follows is prose, or a table of a shape this doesn't read,
+        // and either way pretending otherwise would invent people.
+        if (!got) break;
+        rows.push(got.cells);
+        j += got.used;
+      }
+      if (rows.length) out.push({ title: heads[0], heads, kinds, rows });
+      i = j > i ? j : i + 1;
+    }
+    return out;
+  }
+
+  // The same tables as people: what they are called, what they do, and the ways
+  // of reaching them kept under the headings the document used for them.
+  function contactsIn(text) {
+    const out = [];
+    tableIn(text).forEach((t) => {
+      const at = (k) => t.kinds.indexOf(k);
+      const nameAt = at("name");
+      t.rows.forEach((r) => {
+        // Through the same door as a name off a slide: an international school
+        // writes a person as "Wang Wei 王伟" in a table exactly as often as it
+        // does on a slide, and one of them being a table changes nothing.
+        const who = personFrom(r[nameAt] || "");
+        const name = who.name;
+        if (!name) return;
+        const details = {};
+        t.kinds.forEach((k, n) => {
+          if (n === nameAt || !r[n]) return;
+          // The first column is what the table is a table of, which is the
+          // person's job — "Grades 1–3 Liaison" under "Foreign Leadership".
+          if (n === 0) return;
+          details[t.heads[n]] = r[n];
+        });
+        out.push({ name, aka: who.aka, tag: (r[0] || "").trim(), details, from: t.title });
+      });
+    });
+    return out;
+  }
+
+  // Is this a contacts table? Only if a heading row was actually found and it
+  // produced people — which a register never does, because a register has no
+  // line in it saying "Name" followed by a line saying "Email".
+  const looksLikeContacts = (text) => contactsIn(text).length >= 2;
 
   // Is this text written as name-then-roles rather than as a register? Most of
   // it has to be, so one stray dash in a class list doesn't change how the whole
@@ -311,5 +503,6 @@
     );
   }
 
-  window.OrganiserRoster = { grid, cells, suggest, read, words, looksLikeRegister, cardsIn, looksLikeCards };
+  window.OrganiserRoster = { grid, cells, suggest, read, words, looksLikeRegister, cardsIn,
+    looksLikeCards, tableIn, contactsIn, looksLikeContacts };
 })();

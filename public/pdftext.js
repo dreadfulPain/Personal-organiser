@@ -288,10 +288,72 @@
       .filter(Boolean)
       .forEach((l) => {
         const prev = out[out.length - 1];
-        if (prev !== undefined && prev.length <= 2 && /^[:.,;)\]\-–]/.test(l)) out[out.length - 1] = prev + l;
-        else out.push(l);
+        if (prev === undefined) { out.push(l); return; }
+        if (prev.length <= 2 && /^[:.,;)\]\-–]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        // A DROPPED CAPITAL. Documents built in a slide editor draw the first
+        // letter of a cell as its own run, a hair away from the rest, and out
+        // comes "A" and then "ll primary and middle school teachers". A single
+        // letter followed by a line that starts in lower case is one word that
+        // was cut after its first character — nothing else in English looks
+        // like that.
+        if (prev.length === 1 && /^[a-zà-ÿ]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        // AND A WORD WRAPPED IN A NARROW COLUMN. An address in a table cell an
+        // inch wide comes out as "a.sample123@example.co" and then "m". The tell
+        // is that the line above has no spaces in it at all — it is one token,
+        // and a token does not have a two-letter sentence after it.
+        if (!/\s/.test(prev) && prev.length >= 6 && /^[a-zà-ÿ]{1,3}$/.test(l)) {
+          out[out.length - 1] = prev + l;
+          return;
+        }
+        // A SENTENCE WRAPPED IN A NARROW COLUMN. Same thing a line further out:
+        // "Staff meeting with the director, grade" / "level meetings with
+        // Chinese staff" is one cell that hit the edge of its column, and split
+        // there it reads as a meeting whose name stops mid-phrase.
+        //
+        // A COMMA CAN NEVER START A CELL, so a line beginning with one is always
+        // the rest of the line above. Anything else has to earn it: the line
+        // above must be long enough to have actually run out of room, and the
+        // line itself must be prose — lower case AND more than one word. Without
+        // that last part a table of names and email addresses joins every
+        // address onto the person above it.
+        if (/^[,;]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        if (prev.length >= 25 && /^[a-zà-ÿ]/.test(l) && /\s/.test(l)) {
+          out[out.length - 1] = prev + " " + l;
+          return;
+        }
+        out.push(l);
       });
     return { text: out.join("\n"), rows };
+  }
+
+  // ---- what is on the page that isn't words --------------------------------
+  //
+  // A TABLE PASTED IN AS A SCREENSHOT IS A PICTURE, and a picture of writing
+  // holds no text at all. A booklet whose contacts page was half a picture came
+  // back looking complete: the paragraph above it read fine, and the twelve
+  // names inside it were simply not there, with nothing said. Silence is the
+  // wrong answer — a page that is partly a photograph should say so.
+  //
+  // WIDE, because the point is to warn about pictures that could be holding
+  // writing, not about the crest on the front cover. Anything narrower than
+  // this is decoration; anything wider is a screenshot of something.
+  const PICTURE_WIDTH = 700;
+  function picturesOn(pageObj, objs) {
+    let res = pageObj.body;
+    const ref = pageObj.body.match(/\/Resources\s+(\d+)\s+0\s+R/);
+    if (ref && objs.get(+ref[1])) res = objs.get(+ref[1]).body;
+    // The XObject dictionary is a flat map of name to object, so the first
+    // ">>" after it is its own end.
+    const xo = res.match(/\/XObject\s*<<([\s\S]*?)>>/);
+    if (!xo) return 0;
+    let n = 0;
+    for (const m of xo[1].matchAll(/(\d+)\s+0\s+R/g)) {
+      const o = objs.get(+m[1]);
+      if (!o || !/\/Subtype\s*\/Image/.test(o.body)) continue;
+      const w = o.body.match(/\/Width\s+(\d+)/);
+      if (w && Number(w[1]) >= PICTURE_WIDTH) n++;
+    }
+    return n;
   }
 
   // ---- the whole document -------------------------------------------------
@@ -336,8 +398,18 @@
         if (d) content += bytesToLatin1(d) + "\n";
       }
       const got = content ? textOf(content, fonts, tally) : { text: "", rows: [] };
-      pages.push({ page: i + 1, text: got.text, rows: got.rows });
+      pages.push({ page: i + 1, text: got.text, rows: got.rows, pictures: picturesOn(p.o, objs) });
     }
+    // SAID IN THE CAUTION, NOT IN THE NOTES. The notes are what went wrong, and
+    // are only put on the screen when something did; a picture on a page that
+    // read perfectly well is not a fault, it is a thing to know. The caution is
+    // shown every time, which is the point of it.
+    const shown = pages.filter((p) => p.pictures && p.text);
+    const aboutPictures = shown.length
+      ? ` ${shown.length === 1 ? "Page" : "Pages"} ${shown.map((p) => p.page).join(", ")} ` +
+        `${shown.length === 1 ? "has a picture" : "have pictures"} on ${shown.length === 1 ? "it" : "them"} — ` +
+        "anything written inside a picture isn't text, so it isn't here."
+      : "";
 
     const empty = pages.filter((p) => !p.text).length;
     // An empty page in a PDF with images on it is a scan, and a scan is a
@@ -366,7 +438,8 @@
       notes,
       // Always. Not a warning about this file — a fact about the format.
       caution:
-        "Read out of a PDF, so treat it as a rough draft. Tables lose their columns and anything in two columns can come out interleaved. Check it before keeping it.",
+        "Read out of a PDF, so treat it as a rough draft. Tables lose their columns and anything in two columns can come out interleaved. Check it before keeping it." +
+        aboutPictures,
     };
   }
 

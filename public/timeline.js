@@ -74,16 +74,46 @@
   // can be quietly wrong and take every other date down with it.
   let calMeta = { rows: [], year: 0, borrowed: 0 };
 
-  function calRead(text, year) {
+  function calRead(text, year, month) {
     const C = window.OrganiserCalPlan;
     if (!C) return;
-    const r = C.read(text || "", year ? { year } : undefined);
+    const opts = {};
+    if (year) opts.year = year;
+    if (month) opts.month = month;
+    const r = C.read(text || "", opts);
     calRows = r.rows;
     calMeta = r;
     const box = $("#calYear");
     // Filled in from the document, and yours to correct.
     if (box && !box.value) box.value = String(r.year || "");
+    renderCalMonth(r);
     renderCal();
+  }
+
+  // WHICH MONTH A GRID IS SHOWING. A wall calendar says nowhere what month it
+  // is, so this is worked out — from which weekday its first column names and
+  // how long the month runs — and then put in a box you can change, the same
+  // way the year already is. Hidden entirely when there is no grid, because on
+  // a term-dates sheet the question is meaningless.
+  function renderCalMonth(r) {
+    const row = $("#calMonthRow");
+    const sel = $("#calMonth");
+    if (!row || !sel) return;
+    const g = r && r.grid;
+    row.hidden = !g;
+    if (!g) return;
+    const names = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"];
+    // The ones that fit first, then the rest — all twelve stay pickable,
+    // because the first square is only ASSUMED to be in the first column and
+    // nothing in a PDF can confirm it.
+    const fits = Array.isArray(g.months) ? g.months : [];
+    const order = fits.concat(names.map((_, i) => i + 1).filter((m) => fits.indexOf(m) < 0));
+    sel.innerHTML = order
+      .map((m) => `<option value="${m}"${m === g.month ? " selected" : ""}>` +
+        `${escapeHtml(names[m - 1])}${fits.indexOf(m) < 0 ? " (doesn't fit)" : ""}</option>`)
+      .join("");
+    sel.value = String(g.month || order[0]);
   }
 
   function renderCal() {
@@ -2384,11 +2414,16 @@
     syncPrep();
     const calBox = $("#calPaste");
     const calYear = $("#calYear");
-    const reRead = () => calRead(calBox ? calBox.value : "", calYear ? Number(calYear.value) : 0);
-    if (calBox) calBox.addEventListener("input", reRead);
+    const calMonth = $("#calMonth");
+    const reRead = (keepMonth) =>
+      calRead(calBox ? calBox.value : "", calYear ? Number(calYear.value) : 0,
+        keepMonth && calMonth ? Number(calMonth.value) : 0);
+    if (calBox) calBox.addEventListener("input", () => reRead(false));
     // Changing the year re-reads what's already there rather than making you
     // paste it again.
-    if (calYear) calYear.addEventListener("input", reRead);
+    if (calYear) calYear.addEventListener("input", () => reRead(false));
+    // And so does changing the month the grid is on.
+    if (calMonth) calMonth.addEventListener("change", () => reRead(true));
     const calAdd = $("#calAdd");
     if (calAdd) calAdd.addEventListener("click", calApply);
     const calFile = $("#calFile");

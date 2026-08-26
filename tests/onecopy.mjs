@@ -47,6 +47,11 @@ const WATCHED = {
   // half could not.
   personWords: { owner: null, via: "OrganiserNames.saidAs", what: "a person, written so you know which one" },
   tagOf: { owner: "names.js", via: "OrganiserNames.tagOf", what: "which one a person is" },
+  // Which weekday a word is. timetable.js has had this since the beginning and
+  // calplan.js now needs it too — a wall calendar's header is seven day names —
+  // so it asks rather than keeping a second list. Two lists is how one of them
+  // learns "Tues" and the other doesn't.
+  dayOf: { owner: "timetable.js", via: "OrganiserTimetable.dayOf", what: "which weekday a word is" },
   timeWords: { owner: "dates.js", via: "OrganiserDates.timeWords", what: "a clock time in words" },
   fmtTime: { owner: null, via: "OrganiserDates.timeWords", what: "a clock time in words" },
   dayWords: { owner: "dates.js", via: "OrganiserDates.dayWords", what: "a date in words" },

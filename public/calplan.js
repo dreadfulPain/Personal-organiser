@@ -220,6 +220,159 @@
 
   const hasYearOnIt = (line) => /\b(?:19|20|21)\d{2}\b/.test(String(line || ""));
 
+  // ---- A MONTH DRAWN AS A WALL CALENDAR --------------------------------------
+  //
+  // Everything above reads a LIST: one date to a line, with words next to it.
+  // That is how a term-dates sheet is written, and it is not how a school writes
+  // the shape of a week. For that it draws the month — seven columns, a square
+  // per day, the day's number in the corner:
+  //
+  //     Sunday  Monday  Tuesday …
+  //     16      17      18            ← the numbers
+  //     OFF     OFF     OFF           ← and what is in each square
+  //
+  // Out of a PDF that grid has no columns and no squares left. What arrives is
+  // the seven day names, then the numbers and their words alternating in reading
+  // order, and nothing whatever with a date on it — so the reader above found
+  // NOTHING on the overview page of a whole booklet. The first day of school,
+  // the two airport-pickup days, every day marked OFF: none of it landed.
+  //
+  // THE HARD PART IS THAT THE MONTH IS NOT WRITTEN ANYWHERE. A wall calendar
+  // does not need to say it: you can see it. What the grid does say is which
+  // weekday the first column is, and that the numbers run without a break — and
+  // between them those pin the month down, usually to exactly one. Where they
+  // do not, the choice is offered rather than guessed.
+  const dayNumber = (line) => {
+    const m = /^(\d{1,2})$/.exec(String(line || "").trim());
+    const n = m ? Number(m[1]) : 0;
+    return n >= 1 && n <= 31 ? n : 0;
+  };
+  const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+  // A cell holds a label, not a paragraph. Both of these are about where the
+  // GRID ends: below it sits the rest of the page, and the last square has
+  // nothing after it to stop it swallowing the lot.
+  const CELL_LINE = 40;
+  const CELL_LINES = 6;
+
+  function gridIn(text) {
+    // Which weekday a word is has one owner, in timetable.js, and this asks it
+    // rather than keeping a second list that could learn "Tues" without this one
+    // hearing about it.
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (!T || typeof T.dayOf !== "function") return null;
+    const lines = String(text || "").split(LINE_BREAKS)
+      .map((l) => l.replace(/ /g, " ").trim()).filter(Boolean);
+
+    // THE HEADER IS THE ONLY THING THAT SAYS THIS IS A CALENDAR. Five or more
+    // day names in a row: five, not seven, because a grid of the working week
+    // is a grid too.
+    let at = -1;
+    let dows = [];
+    for (let i = 0; i < lines.length; i++) {
+      const run = [];
+      let j = i;
+      while (j < lines.length && /^[A-Za-z]{2,9}$/.test(lines[j]) && T.dayOf(lines[j]) >= 0) {
+        run.push(T.dayOf(lines[j]));
+        j++;
+      }
+      if (run.length >= 5) { at = j; dows = run; break; }
+      if (j > i) i = j - 1;
+    }
+    if (at < 0) return null;
+
+    const cells = [];
+    let cur = null;
+    for (let i = at; i < lines.length; i++) {
+      const n = dayNumber(lines[i]);
+      if (n) { cur = { day: n, lines: [] }; cells.push(cur); continue; }
+      if (!cur) continue;
+      // A LINE TOO LONG TO BE IN A SQUARE IS THE PAGE UNDERNEATH.
+      if (lines[i].length > CELL_LINE) break;
+      if (cur.lines.length < CELL_LINES) cur.lines.push(lines[i]);
+    }
+    if (cells.length < 5) return null;
+
+    // DO THE NUMBERS RUN LIKE DAYS? Ascending by one, with at most one drop back
+    // to the start of the next month. Anything else is a table of numbers that
+    // happens to sit under some day names.
+    let rolls = 0;
+    let monthLen = 0;
+    let missing = 0;
+    for (let i = 1; i < cells.length; i++) {
+      const a = cells[i - 1].day, b = cells[i].day;
+      if (b === a + 1) continue;
+      // A NUMBER THE PDF DIDN'T GIVE BACK. One square's "30" simply wasn't in
+      // the text of a real booklet; the day is gone, and saying so is better
+      // than refusing the other twenty-one.
+      if (b > a && b - a <= 3) { missing += b - a - 1; continue; }
+      if (b < a && a >= 28 && b <= 2 && !rolls) { rolls++; monthLen = a; continue; }
+      return null;
+    }
+    // The first number is taken to sit in the first column. Nothing in the text
+    // can confirm it — an empty square draws nothing at all — which is exactly
+    // why the month it implies is offered rather than applied silently.
+    return {
+      startDow: dows[0],
+      cells: cells.map((c) => ({ day: c.day, lines: c.lines })),
+      monthLen,
+      missing,
+    };
+  }
+
+  // Trim the last square to the size of the others. It is the only one with no
+  // number after it, so the page's own title, its welcome paragraph and its
+  // footer all pile into it. Held to the MIDDLE size rather than the largest,
+  // because one roomy square shouldn't licence a paragraph.
+  function gridCells(grid) {
+    const cells = grid.cells.map((c) => ({ day: c.day, label: c.lines.join(" ").trim() }));
+    if (grid.cells.length > 1) {
+      const others = grid.cells.slice(0, -1).map((c) => c.lines.length).sort((a, b) => a - b);
+      const typical = Math.max(1, others[Math.floor(others.length / 2)]);
+      const last = grid.cells[grid.cells.length - 1];
+      if (last.lines.length > typical)
+        cells[cells.length - 1].label = last.lines.slice(0, typical).join(" ").trim();
+    }
+    return cells;
+  }
+
+  // WHICH MONTHS COULD THIS BE? The first number falls on the weekday its column
+  // names, and if the grid runs over into the next month it also says how long
+  // this one is. For a real booklet the two together left exactly one answer.
+  function gridMonths(grid, year) {
+    const y = Number(year) || new Date().getFullYear();
+    const out = [];
+    for (let m = 1; m <= 12; m++) {
+      const first = grid.cells[0].day;
+      if (first > daysInMonth(y, m)) continue;
+      if (new Date(Date.UTC(y, m - 1, first)).getUTCDay() !== grid.startDow) continue;
+      if (grid.monthLen && daysInMonth(y, m) !== grid.monthLen) continue;
+      out.push(m);
+    }
+    return out;
+  }
+
+  // The squares as rows, in the shape everything downstream already reads.
+  function gridRows(grid, year, month) {
+    let y = Number(year) || new Date().getFullYear();
+    let m = Number(month) || 1;
+    const cells = gridCells(grid);
+    return cells.map((c, i) => {
+      if (i && c.day < cells[i - 1].day) { m++; if (m > 12) { m = 1; y++; } }
+      return {
+        date: iso(y, m, c.day),
+        endsOn: "",
+        label: c.label || "(no name)",
+        line: `${c.day} ${c.label}`.trim(),
+        // The year was never on the square, and neither was the month — both are
+        // worked out, and both are on screen and changeable.
+        yearAssumed: true,
+        fromGrid: true,
+        kind: "",
+      };
+    });
+  }
+
   // EVERY LINE WITH A DATE IN IT. Lines without one are headings, page numbers
   // or notes, and are left alone rather than guessed at.
   function read(text, opts) {
@@ -254,17 +407,53 @@
           kind: "",
         });
       });
+    // AND THE SAME DOCUMENT MAY ALSO HOLD A MONTH DRAWN AS A GRID, which has no
+    // dates on it anywhere and so contributed nothing at all above.
+    const grid = gridIn(all);
+    let month = 0;
+    let months = [];
+    if (grid) {
+      months = gridMonths(grid, useYear);
+      // WHAT THE DOCUMENT ITSELF SAYS BEATS WHAT THE GRID IMPLIES. A booklet
+      // whose next page writes "26th August" has answered the question, and the
+      // shape of the grid was only ever going to narrow it.
+      //
+      // In order: what you picked; a month the document names that the grid also
+      // allows; what the grid allows; and last a month the document names that
+      // the grid does NOT allow — which happens when the first square turns out
+      // not to be in the first column, the one thing here that is assumed and
+      // cannot be checked.
+      const inDoc = rows.map((r) => Number(r.date.slice(5, 7)));
+      month = Number(o.month) || inDoc.find((m) => months.indexOf(m) >= 0) ||
+        months[0] || inDoc[0] || 0;
+      if (month) rows.push(...gridRows(grid, useYear, month));
+    }
     // Two entries for the same day is a calendar listing it twice, not two
     // events; the later line wins because it is usually the more specific one.
     const byDate = new Map();
     rows.forEach((r) => byDate.set(r.date + "|" + r.label.toLowerCase(), r));
+    let out = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+    // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A
+    // booklet that draws August as a grid and then writes "26th August" over its
+    // detailed page gives that day twice: once as "All-Staff Orientation" and
+    // once as a bare heading with nothing to call it. Both kept, you label the
+    // same day twice.
+    const named = new Set(out.filter((r) => r.label !== "(no name)").map((r) => r.date));
+    out = out.filter((r) => r.label !== "(no name)" || !named.has(r.date));
     return {
-      rows: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      rows: out,
       read: rows.length,
       year: useYear,
       yearFromDoc: fromDoc || 0,
-      // How many rows are leaning on a year that wasn't on their own line.
-      borrowed: rows.filter((r) => r.yearAssumed).length,
+      // How many rows are leaning on a year that wasn't on their own line. Not
+      // the grid's — those have a sentence of their own, about the month.
+      borrowed: out.filter((r) => r.yearAssumed && !r.fromGrid).length,
+      // The grid, if there was one: how many squares it had, which months it
+      // could be, which one was taken, and how many squares lost their number
+      // on the way out of the PDF.
+      grid: grid
+        ? { squares: grid.cells.length, months, month, missing: grid.missing }
+        : null,
     };
   }
 
@@ -394,17 +583,35 @@
   // `day` writes a date the way the page writes dates elsewhere. Passed in
   // rather than done here, because how a date reads is the page's business and
   // a module that picked one would fight it.
+  const MONTH_WORDS = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+
   function words(r, chosen, day) {
     const d = typeof day === "function" ? day : (x) => x;
+    // A GRID WITH NO MONTH ON IT IS A QUESTION, NOT A FAILURE. Said even when
+    // nothing else was read, because "no dates found" would be the wrong answer
+    // to a page that is nothing but dates.
+    const g = r.grid;
+    if (g && !g.month)
+      return "There's a month drawn as a grid in there, and nothing in the document says which month it is. " +
+        "Pick one and its days will go in.";
     if (!r.rows.length) return "No dates found in that. Anything without a date on the line is left alone.";
     const list = chosen || r.rows;
     const decided = list.filter((x) => x.kind).length;
     // SAID FIRST, because a year that is quietly wrong makes every other number
     // here wrong too, and nothing else on the row would show it.
-    const y = r.borrowed
+    let y = r.borrowed
       ? `${r.borrowed} of them had no year on the line — read as ${r.year}. ` +
         "Change the year if that's not right. "
       : "";
+    if (g)
+      y = `${g.squares} of them came off a month drawn as a grid, which says no month anywhere — ` +
+        `read as ${MONTH_WORDS[g.month - 1]} ${r.year}. Change it if that's wrong. ` +
+        (g.missing
+          ? `${g.missing} square${g.missing === 1 ? "'s" : "s'"} number didn't survive the PDF, so ` +
+            `what was in ${g.missing === 1 ? "it has" : "them has"} ended up on the day before. `
+          : "") +
+        y;
     if (!decided)
       return y + `${r.rows.length} date${r.rows.length === 1 ? "" : "s"} read. Say what each one is and they'll go in.`;
     const p = plan(list);
@@ -417,5 +624,6 @@
 
   window.OrganiserCalPlan = {
     dateIn, labelOf, docYear, read, plan, span, term, toBlocks, words, addDays,
+    gridIn, gridCells, gridMonths, gridRows, MONTHS,
   };
 })();

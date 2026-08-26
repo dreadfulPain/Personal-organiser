@@ -379,4 +379,174 @@ sec("A checklist out of a handbook becomes jobs, without the dots");
   ok("nor anything else that is only a number", !titles.some((t) => /^\d+$/.test(t)), titles.join(" | "));
 }
 
+// ---------------------------------------------------------------------------
+// THE OVERVIEW PAGE, which is a month drawn as a wall calendar. Seven day names
+// across the top and a square per day — and out of a PDF, no columns, no
+// squares, and not one line anywhere with a date on it. The calendar reader
+// found NOTHING on it: not the first day of school, not the airport pickups,
+// not a single day marked off.
+const C = sb.OrganiserCalPlan;
+
+// One week of February 2027, which is a Thursday-first grid. Nothing in the
+// text says February — a wall calendar never does, because you can see it.
+const ONE_WEEK = [
+  "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday",
+  "4", "Inset day",
+  "5", "Inset day",
+  "6", "OFF",
+  "7", "OFF",
+  "8", "Staff", "back",
+  "9", "Staff back",
+  "10", "Students back",
+].join("\n");
+
+sec("A month drawn as a grid is read, and dated");
+{
+  const g = C.gridIn(ONE_WEEK);
+  ok("it is recognised as a grid", !!g, "nothing found");
+  ok("with a square per day", g && g.cells.length === 7, g && String(g.cells.length));
+  ok("and the first column's weekday", g && g.startDow === 4, g && String(g.startDow));
+
+  const r = C.read(ONE_WEEK, { year: 2027 });
+  ok("the squares come back as dates", r.rows.length === 7, String(r.rows.length));
+  ok("in order, starting where the grid starts", r.rows[0] && r.rows[0].date === "2027-02-04",
+     r.rows[0] && r.rows[0].date);
+  ok("with what was written in the square", r.rows[0] && r.rows[0].label === "Inset day",
+     r.rows[0] && r.rows[0].label);
+  // A SQUARE HOLDING TWO LINES IS ONE LABEL. The words wrap inside the box.
+  const eighth = r.rows.find((x) => x.date === "2027-02-08");
+  ok("and two lines in a square are one thing", eighth && eighth.label === "Staff back",
+     eighth && eighth.label);
+  ok("and the last day is the last day", r.rows[6] && r.rows[6].date === "2027-02-10",
+     r.rows[6] && r.rows[6].date);
+}
+
+sec("And which month it is comes from its own shape");
+{
+  const r = C.read(ONE_WEEK, { year: 2027 });
+  // THE FOURTH FALLING ON A THURSDAY happens in three months of 2027. All three
+  // are offered; the first is used; none of it is silent.
+  ok("the months it could be are worked out",
+     r.grid && r.grid.months.join(",") === "2,3,11", r.grid && JSON.stringify(r.grid.months));
+  ok("and one of them is used", r.grid && r.grid.month === 2, r.grid && String(r.grid.month));
+  ok("and the reader says which, and that it worked it out",
+     /read as February 2027/.test(C.words(r)), C.words(r));
+  ok("and that the document never said so", /says no month anywhere/.test(C.words(r)), C.words(r));
+
+  // YOURS TO CHANGE, and everything moves with it.
+  const march = C.read(ONE_WEEK, { year: 2027, month: 3 });
+  ok("picking another moves the days", march.rows[0].date === "2027-03-04", march.rows[0].date);
+  ok("and it is the one shown", march.grid.month === 3, String(march.grid.month));
+}
+
+sec("And running into the next month says how long this one is");
+{
+  // 24th to the 28th and then the 1st: this month has 28 days, and in 2027 only
+  // one does. Two facts the grid gives away for nothing, and together they
+  // leave no choice to make.
+  const OVER = [
+    "Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday",
+    "24", "OFF", "25", "OFF", "26", "OFF", "27", "OFF", "28", "Last day",
+    "1", "Students back", "2", "Lessons",
+  ].join("\n");
+  const r = C.read(OVER, { year: 2027 });
+  ok("only one month fits", r.grid && r.grid.months.length === 1, r.grid && JSON.stringify(r.grid.months));
+  ok("and it is that one", r.grid && r.grid.month === 2, r.grid && String(r.grid.month));
+  // AND THE ROLLOVER IS A ROLLOVER, not a day in the same month.
+  const back = r.rows.find((x) => x.label === "Students back");
+  ok("the day after the last is in the next month", back && back.date === "2027-03-01", back && back.date);
+}
+
+sec("And a square whose number didn't survive is counted, not hidden");
+{
+  // A REAL BOOKLET LOST ONE. The "30" simply wasn't in the text, so the "OFF"
+  // that was in that square arrived with nowhere to go and joined the day above
+  // — which is what happened, and is worth saying rather than leaving to be
+  // spotted.
+  const HOLED = [
+    "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday",
+    "4", "Inset day", "5", "Inset day", "6", "OFF", "7", "OFF",
+    "OFF", "9", "Staff back", "10", "Students back",
+  ].join("\n");
+  const r = C.read(HOLED, { year: 2027 });
+  ok("it still reads the rest", r.rows.length === 6, String(r.rows.length));
+  ok("and says one went missing", r.grid && r.grid.missing === 1, r.grid && String(r.grid.missing));
+  ok("out loud", /didn't survive the PDF/.test(C.words(r)), C.words(r));
+  ok("and where its words ended up", /day before/.test(C.words(r)), C.words(r));
+}
+
+sec("And the page underneath the grid is not the last square");
+{
+  // THE LAST SQUARE IS THE ONLY ONE WITH NO NUMBER AFTER IT, so the page's own
+  // title, its welcome paragraph and its footer all pile into it.
+  const WITH_PAGE = ONE_WEEK + "\n" + [
+    "Schedule Overview",
+    "Welcome to Orientation!",
+    "Over the course of the week you'll be introduced to the people and systems that make this school what it is.",
+    "2",
+  ].join("\n");
+  const r = C.read(WITH_PAGE, { year: 2027 });
+  const last = r.rows[r.rows.length - 1];
+  ok("the last square keeps its own words", last && last.label === "Students back", last && last.label);
+  ok("and no more than that", r.rows.length === 7, String(r.rows.length));
+}
+
+sec("And nothing else is read as a grid");
+{
+  // A TERM-DATES SHEET has no day names above it, and reading it as a grid
+  // would date every line by counting.
+  const LIST = ["Academic Calendar 2027-28", "Term starts  1 September 2027",
+    "INSET day  25 September 2027", "Term ends  17 December 2027"].join("\n");
+  ok("a list of dates is not a grid", !C.gridIn(LIST), JSON.stringify(C.gridIn(LIST)));
+  ok("and still reads as a list", C.read(LIST).rows.length === 3,
+     String(C.read(LIST).rows.length));
+  // NOR IS A TABLE OF NUMBERS that happens to sit under some day names — the
+  // numbers have to run like days, one after another. Six of them here, so it
+  // is the RUN that has to refuse this and not the count.
+  const NOT = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+    "3", "Maths", "9", "English", "15", "Science", "22", "Art", "28", "Music",
+    "30", "Games"].join("\n");
+  ok("numbers that don't run like days are not a month", !C.gridIn(NOT), JSON.stringify(C.gridIn(NOT)));
+  ok("even when there are plenty of them", (C.gridIn(NOT) || { cells: [] }).cells.length === 0,
+     JSON.stringify(C.gridIn(NOT)));
+}
+
+sec("And a grid nothing fits is a question, not a wrong answer");
+{
+  // TWENTY-NINE DAYS in a year that has no such month. Rather than pick the
+  // nearest and be silently a month out, it asks.
+  const IMPOSSIBLE = [
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    "27", "OFF", "28", "OFF", "29", "Last day", "1", "Back", "2", "Lessons",
+  ].join("\n");
+  const r = C.read(IMPOSSIBLE, { year: 2027 });
+  ok("no month is claimed", r.grid && !r.grid.month, r.grid && String(r.grid.month));
+  ok("and no days are invented", r.rows.length === 0, JSON.stringify(r.rows));
+  ok("and it asks", /Pick one/.test(C.words(r)), C.words(r));
+  // AND ANSWERING IT WORKS.
+  const picked = C.read(IMPOSSIBLE, { year: 2027, month: 2 });
+  ok("once told, the days go in", picked.rows.length === 5, String(picked.rows.length));
+  ok("on the month you said", picked.rows[0].date === "2027-02-27", picked.rows[0].date);
+}
+
+sec("And a document holding both is not two calendars");
+{
+  // A BOOKLET DRAWS THE MONTH AND THEN WRITES ITS DAYS OUT AGAIN over the
+  // detailed pages. The written date is the harder evidence about which month —
+  // and the day it names is already in the grid with a name on it, so listing
+  // it twice, once with no name, is two rows to label for one day.
+  //
+  // MARCH, NOT FEBRUARY. The grid's own shape allows February, March and
+  // November and would have taken the first of them; the document says March,
+  // and the document is the one that knows.
+  const BOTH = ONE_WEEK + "\n" + ["Thursday", "4th March", "9:00 - 10:00", "Induction"].join("\n");
+  const r = C.read(BOTH, { year: 2027 });
+  ok("the month the document names beats the one the grid guessed",
+     r.grid && r.grid.month === 3, r.grid && String(r.grid.month));
+  const fourth = r.rows.filter((x) => x.date === "2027-03-04");
+  ok("and the day is listed once", fourth.length === 1, JSON.stringify(fourth));
+  ok("under the name the grid gave it", fourth[0] && fourth[0].label === "Inset day",
+     fourth[0] && fourth[0].label);
+}
+
 done();

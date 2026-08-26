@@ -21,6 +21,15 @@ if ! command -v git >/dev/null 2>&1; then
   finish 1
 fi
 
+# NO AUTOMATIC HOUSEKEEPING IN A FOLDER THAT SYNCS — see Update.bat for the
+# whole story. Git tidies its own storage every so often after a pull, and the
+# last step of that is deleting files it has just finished copying elsewhere. In
+# a folder inside OneDrive or Dropbox the sync program is holding those files
+# open, so the deletion fails and git stops to ask whether to try again — in the
+# middle of an update, on somebody who only wanted the new version. Nothing is
+# lost either way, so the question is simply turned off.
+git config gc.auto 0 >/dev/null 2>&1 || true
+
 if [ ! -d .git ]; then
   echo "  --------------------------------------------------------------"
   echo "  This folder was downloaded as a ZIP, so there's nothing to pull"

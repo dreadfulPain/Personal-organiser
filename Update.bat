@@ -19,6 +19,19 @@ if errorlevel 1 goto nogitprogram
 
 if not exist ".git" goto setup
 
+rem NO AUTOMATIC HOUSEKEEPING IN A FOLDER THAT SYNCS.
+rem
+rem Git tidies its own storage every so often after a pull, and the last step of
+rem that is deleting files it has just finished copying elsewhere. In a folder
+rem inside OneDrive or Dropbox those files are held open by the sync program, so
+rem the deletion fails and git stops to ask "Deletion of directory failed. Should
+rem I try again? (y/n)" - which is alarming, is about nothing, and lands in the
+rem middle of an update on somebody who only wanted the new version.
+rem
+rem Nothing is lost either way: the tidying is optional and the folder is a copy
+rem of what is on the server. Turned off here so the question never comes up.
+git config gc.auto 0 >nul 2>nul
+
 git pull
 if errorlevel 1 goto failed
 goto done

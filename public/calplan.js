@@ -99,11 +99,19 @@
     // 2026-08-24 / 2026/8/24
     let m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
     if (m) return at(m, iso(+m[1], +m[2], +m[3]));
+    // AND A CLOCK TIME IS NOT A YEAR. "Nov. 2 16:00" is a deadline at four in
+    // the afternoon; the year slot took the 16 and filed it under November 2016.
+    // Four of the most important dates a teacher has — when papers are in, when
+    // marks are in — landed ten years in the past, looking perfectly ordinary.
+    // So the year refuses to be the front of a time.
+    const NOT_A_TIME = "(?![:.]\\d)";
     // 24 August 2026 / 24 Aug 26 / 24th August
-    let hit = firstMonthMatch(s, /\b(\d{1,2})(?:st|nd|rd|th)?(?!\d)\s+([A-Za-z]{3,9})\.?\s*(\d{2,4})?\b/g, 2);
+    let hit = firstMonthMatch(s, new RegExp(
+      `\\b(\\d{1,2})(?:st|nd|rd|th)?(?!\\d)\\s+([A-Za-z]{3,9})\\.?\\s*(\\d{2,4}${NOT_A_TIME})?\\b`, "g"), 2);
     if (hit) return at(hit.m, iso(year(hit.m[3], defaultYear), hit.mo + 1, +hit.m[1]));
     // August 24, 2026 / Aug 24
-    hit = firstMonthMatch(s, /\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?!\d)\s*,?\s*(\d{2,4})?\b/g, 1);
+    hit = firstMonthMatch(s, new RegExp(
+      `\\b([A-Za-z]{3,9})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?!\\d)\\s*,?\\s*(\\d{2,4}${NOT_A_TIME})?\\b`, "g"), 1);
     if (hit) return at(hit.m, iso(year(hit.m[3], defaultYear), hit.mo + 1, +hit.m[2]));
     // 24/08/2026 — day first, because a calendar that writes it this way is
     // almost never American, and the ISO form above catches the other order.
@@ -156,6 +164,21 @@
       return {
         from: iso(yStart, month(m[2]) + 1, +m[1]),
         to: iso(m[6] ? yEnd : month(m[5]) < month(m[2]) ? yStart + 1 : yStart, month(m[5]) + 1, +m[4]),
+        text: m[0],
+      };
+    }
+    // Oct. 1 - Oct. 7, and "Dec. 20, 2026 - Jan. 5, 2027" which crosses New
+    // Year. The same shape as the one above with the month written first, which
+    // is how every holiday on a Chinese school calendar is written — and until
+    // now each of them came out as its first day only, so National Day week was
+    // one day off and six days of teaching.
+    m = new RegExp(`\\b(${MO})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*,?\\s*(\\d{4})?\\s*(?:${DASH})\\s*(${MO})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*,?\\s*(\\d{2,4})?\\b`).exec(s);
+    if (m && month(m[1]) >= 0 && month(m[4]) >= 0) {
+      const yEnd = year(m[6], defaultYear);
+      const yStart = m[3] ? Number(m[3]) : month(m[4]) < month(m[1]) ? yEnd - 1 : yEnd;
+      return {
+        from: iso(yStart, month(m[1]) + 1, +m[2]),
+        to: iso(m[6] ? yEnd : month(m[4]) < month(m[1]) ? yStart + 1 : yStart, month(m[4]) + 1, +m[5]),
         text: m[0],
       };
     }
@@ -216,6 +239,40 @@
     });
     if (!counts.size) return 0;
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+  }
+
+  // EVERY YEAR THE DOCUMENT MENTIONS, not just the one it mentions most.
+  //
+  // A school calendar for a first semester runs September to January and so has
+  // TWO years in it, and one of them has to be borrowed by every line that
+  // didn't write its own. Whichever is picked, half the document comes out
+  // twelve months wrong — and nothing about a date on the screen says which
+  // half. So the years are counted, said, and each borrowed row can be moved
+  // between them one at a time.
+  function docYears(text) {
+    const seen = new Set();
+    (String(text || "").match(/\b(?:19|20|21)\d{2}\b/g) || []).forEach((y) => seen.add(+y));
+    return [...seen].sort((a, b) => a - b);
+  }
+
+  // Half a year is the line. A school's dates for one term sit well inside it;
+  // dates that have been spread across a whole year by one borrowed year sit
+  // well outside. Nothing here is a rule about when a school year starts.
+  const HALF_A_YEAR = 180;
+  function straddles(rows) {
+    const days = (Array.isArray(rows) ? rows : []).map((r) => Date.parse(r.date + "T12:00:00Z"))
+      .filter((n) => !isNaN(n));
+    if (days.length < 2) return false;
+    return (Math.max(...days) - Math.min(...days)) / 86400000 > HALF_A_YEAR;
+  }
+
+  // The same date in another year. Returns "" when there is no such day — the
+  // 29th of February in a year that hasn't got one.
+  function atYear(isoDate, y) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || ""));
+    if (!m || !y) return "";
+    const d = new Date(Date.UTC(y, +m[2] - 1, +m[3]));
+    return d.getUTCMonth() === +m[2] - 1 ? iso(y, +m[2], +m[3]) : "";
   }
 
   const hasYearOnIt = (line) => /\b(?:19|20|21)\d{2}\b/.test(String(line || ""));
@@ -430,8 +487,17 @@
     }
     // Two entries for the same day is a calendar listing it twice, not two
     // events; the later line wins because it is usually the more specific one.
+    //
+    // EXCEPT WHEN NEITHER OF THEM HAS A NAME. Two lines the reader couldn't put
+    // a name to are not evidence of anything, and on a document where a year had
+    // to be borrowed they land on the same day for that reason alone — "Aug. 31"
+    // at the top of a calendar and "Aug. 31, 2027" at the bottom of it are the
+    // first day of this school year and the last day of the next, and one of
+    // them was quietly disappearing. Where there is nothing to compare, the line
+    // they came off is kept apart.
     const byDate = new Map();
-    rows.forEach((r) => byDate.set(r.date + "|" + r.label.toLowerCase(), r));
+    rows.forEach((r) => byDate.set(
+      r.date + "|" + r.label.toLowerCase() + (r.label === "(no name)" ? "|" + r.line : ""), r));
     let out = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A
     // booklet that draws August as a grid and then writes "26th August" over its
@@ -445,6 +511,16 @@
       read: rows.length,
       year: useYear,
       yearFromDoc: fromDoc || 0,
+      // Every year the document names.
+      years: docYears(all),
+      // AND WHETHER IT LOOKS LIKE IT STRADDLES ONE. Naming two years is not
+      // enough on its own — a booklet for the 2026-27 school year says so on its
+      // cover and then talks only about August. The symptom of a document that
+      // really crosses a New Year is that, once one year is filled in for the
+      // lines that didn't say one, those lines spread out to fill it: December
+      // and January, sixteen days apart in life, land eleven months apart here.
+      // So the tell is the SPREAD of what was read, not what the cover says.
+      twoYears: docYears(all).length > 1 && straddles(out.filter((r) => r.yearAssumed)),
       // How many rows are leaning on a year that wasn't on their own line. Not
       // the grid's — those have a sentence of their own, about the month.
       borrowed: out.filter((r) => r.yearAssumed && !r.fromGrid).length,
@@ -600,9 +676,19 @@
     const decided = list.filter((x) => x.kind).length;
     // SAID FIRST, because a year that is quietly wrong makes every other number
     // here wrong too, and nothing else on the row would show it.
+    // A DOCUMENT WITH TWO YEARS IN IT HAS NO RIGHT ANSWER, and the important
+    // thing is that this is said rather than settled. A first-semester calendar
+    // runs from one September to the next January; whichever year is filled in
+    // for the lines that don't say one, the other end of it comes out twelve
+    // months out, looking exactly as reasonable as the rest.
+    const two = r.twoYears && r.borrowed
+      ? `This mentions ${r.years.slice(0, 3).join(" and ")}` +
+        `${r.years.length > 3 ? " among others" : ""}, so no single year is right for all of it — ` +
+        `move any row that's on the wrong side of New Year. `
+      : "";
     let y = r.borrowed
       ? `${r.borrowed} of them had no year on the line — read as ${r.year}. ` +
-        "Change the year if that's not right. "
+        (two || "Change the year if that's not right. ")
       : "";
     if (g)
       y = `${g.squares} of them came off a month drawn as a grid, which says no month anywhere — ` +
@@ -623,7 +709,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, labelOf, docYear, read, plan, span, term, toBlocks, words, addDays,
+    dateIn, labelOf, docYear, docYears, atYear, read, plan, span, term, toBlocks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
   };
 })();

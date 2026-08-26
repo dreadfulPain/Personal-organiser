@@ -160,6 +160,33 @@
         });
         row.appendChild(b);
       });
+      // THE OTHER YEAR. A first-semester calendar runs September to January and
+      // therefore holds two of them, and every line that didn't write its own
+      // gets the same one — so half the document comes out twelve months wrong,
+      // looking exactly as reasonable as the other half. Changing the year in
+      // the box above only swaps which half.
+      //
+      // Offered on the rows that borrowed a year, and only when the document
+      // names another one to move them to.
+      const years = (calMeta && calMeta.years) || [];
+      const other = r.yearAssumed && calMeta && calMeta.twoYears && years.length === 2
+        ? years.find((y) => y !== Number(r.date.slice(0, 4)))
+        : 0;
+      if (other && C.atYear(r.date, other)) {
+        const sw = document.createElement("button");
+        sw.type = "button";
+        sw.className = "p-opt cal-year";
+        sw.textContent = `move to ${other}`;
+        sw.addEventListener("click", () => {
+          calRows[i] = {
+            ...r,
+            date: C.atYear(r.date, other),
+            endsOn: r.endsOn ? C.atYear(r.endsOn, other) || r.endsOn : "",
+          };
+          renderCal();
+        });
+        row.appendChild(sw);
+      }
       // A LINE THAT SAID BOTH ENDS ITSELF. "National Day holiday 1-7 October"
       // is seven days, and the app now reads it as seven — but reading it and
       // SAYING it are different, and a row that quietly covers a week while

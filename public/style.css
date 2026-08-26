@@ -4063,6 +4063,9 @@ a.btn {
 .cal-span { font-size: 0.78rem; margin-left: 6px; border-style: dashed; }
 .cal-span.on { border-style: solid; }
 .cal-end { font-size: 0.78rem; margin-left: 6px; }
+/* Moving a row to the document's other year — see timeline.js. Dashed like the
+   run-on tick, because both are "this needs a look", not "this is set". */
+.cal-year { font-size: 0.78rem; margin-left: 6px; border-style: dashed; }
 /* Which of your timetable entries only run in term. The app can't know, so it
    shows them and you take the ticks off what carries on regardless. */
 #calTerm { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;

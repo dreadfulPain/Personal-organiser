@@ -40,8 +40,8 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import zlib from "node:zlib";
 import { open } from "./_dom.mjs";
+import { buildPdf } from "./_pdf.mjs";
 import { DATA } from "./_data.mjs";
 import { checker } from "./_check.mjs";
 const { ok, done, sec } = checker();
@@ -275,37 +275,6 @@ sec("And they land on the People page with their emails");
 }
 
 // ---------------------------------------------------------------------------
-// A REAL PDF, BUILT HERE, with the two things this document did to its text.
-function buildPdf(lines, opts) {
-  const o = opts || {};
-  const content = "BT /F1 11 Tf 60 760 Td " +
-    lines.map((l, i) => `${i ? "0 -18 Td " : ""}(${l}) Tj `).join("") + "ET";
-  const comp = zlib.deflateSync(Buffer.from(content));
-  // A picture, if one is wanted: the bytes are nonsense, the DIMENSIONS are the
-  // point — a wide one is a screenshot of something, a small one is a crest.
-  const img = o.picture
-    ? `<< /Type /XObject /Subtype /Image /Width ${o.picture} /Height 500 /BitsPerComponent 8 /ColorSpace /DeviceRGB /Length 3 >>\nstream\r\nabc\r\nendstream`
-    : null;
-  const objs = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> " +
-      (img ? "/XObject << /X1 6 0 R >> " : "") + ">> /Contents 4 0 R >>",
-    null,
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    img,
-  ];
-  let out = Buffer.from("%PDF-1.4\n");
-  objs.forEach((x, i) => {
-    if (x === undefined || (x === null && i !== 3)) return;
-    const body = x === null
-      ? Buffer.concat([Buffer.from(`<< /Length ${comp.length} /Filter /FlateDecode >>\nstream\r\n`), comp, Buffer.from("\r\nendstream")])
-      : Buffer.from(x);
-    out = Buffer.concat([out, Buffer.from(`${i + 1} 0 obj\n`), body, Buffer.from("\nendobj\n")]);
-  });
-  return Buffer.concat([out, Buffer.from("trailer\n<< /Root 1 0 R >>\n%%EOF")]);
-}
-
 sec("A word the page drew in two pieces comes back as one");
 {
   // A DROPPED CAPITAL. A slide editor draws the first letter of a cell as its

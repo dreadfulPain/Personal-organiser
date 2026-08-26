@@ -283,11 +283,13 @@
     // followed immediately by one starting with punctuation nothing ever starts
     // with, was a single word cut in half. "8" and ":00-9:30" are one cell.
     const out = [];
-    lines
-      .map((l) => l.replace(/[ \t]+/g, " ").trim())
-      .filter(Boolean)
-      .forEach((l) => {
+    const clean = lines.map((l) => l.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
+    clean
+      .forEach((l, at) => {
         const prev = out[out.length - 1];
+        // What comes NEXT is sometimes the only thing that says what this line
+        // is: see the split number below.
+        const next = clean[at + 1] || "";
         if (prev === undefined) { out.push(l); return; }
         if (prev.length <= 2 && /^[:.,;)\]\-–]/.test(l)) { out[out.length - 1] = prev + l; return; }
         // A DROPPED CAPITAL. Documents built in a slide editor draw the first
@@ -317,6 +319,36 @@
         // that last part a table of names and email addresses joins every
         // address onto the person above it.
         if (/^[,;]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        // A NUMBER THAT LOST ITS OTHER HALF. "Dec. 2" / "2-" / "Dec. 25" is the
+        // twenty-second of December cut in two where the column ran out, and
+        // read as written it is the second — three weeks of holiday in the
+        // wrong place, and nothing on the screen to say so. Digits and a dash
+        // and nothing else is never a line of its own.
+        if (/^\d{1,2}[-–—]$/.test(l)) { out[out.length - 1] = prev + l; return; }
+        // AND THE SAME BREAK ONE CHARACTER EARLIER, where the dash came out on
+        // a line of its own too: "Dec. 2" / "2" / "-" / "Dec. 25".
+        //
+        // A BARE NUMBER IS USUALLY A CELL — a square of a calendar, a week
+        // number, a page — so this needs all three parts before it will touch
+        // it: the line above ends mid-number, this one is only digits, and the
+        // one below is the dash that says the number was reaching for something.
+        if (/\d$/.test(prev) && /^\d{1,2}$/.test(l) && /^[-–—]$/.test(next)) {
+          out[out.length - 1] = prev + l;
+          return;
+        }
+        // A HYPHEN ON A LINE OF ITS OWN IS THE MIDDLE OF A WORD, or of a range.
+        // A school calendar is made of these — "Mid-Autumn Festival", "Oct. 1 -
+        // Oct. 7", "Grade 11-12" — and every one of them came out in three
+        // pieces, so the holiday was called "Autumn Festival" and the range was
+        // two unrelated days. A bullet is "- " with something after it; this is
+        // a dash and nothing else, which is never a bullet.
+        if (/^[-–—]$/.test(l)) { out[out.length - 1] = prev + "-"; return; }
+        // AND THE OTHER HALF OF THE SAME BREAK. Once a line ends in a hyphen it
+        // is unfinished, whether the document wrote it that way ("Feb. 18-") or
+        // the line above just handed it one. "Dec. 2" / "2-" / "Dec. 25" is the
+        // twenty-second of December in three pieces, and read as written it is
+        // the second — three weeks of holiday in the wrong place.
+        if (/[-–—]$/.test(prev)) { out[out.length - 1] = prev + l; return; }
         if (prev.length >= 25 && /^[a-zà-ÿ]/.test(l) && /\s/.test(l)) {
           out[out.length - 1] = prev + " " + l;
           return;

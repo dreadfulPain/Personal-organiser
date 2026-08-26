@@ -258,7 +258,7 @@
     state.goals = state.goals || [];
     state.records = state.records || [];
     state.contacts = state.contacts || [];
-    const n = { tasks: 0, records: 0, goals: 0, handovers: 0 };
+    const n = { tasks: 0, records: 0, goals: 0, handovers: 0, people: 0 };
     entries.forEach((e) => {
       if (e.kind === "task" && e.item) {
         state.items.push(finishItem({ ...e.item, sourceText: e.sourceText || "", sourceEnglish: e.sourceEnglish || "", ungrounded: e.ungrounded || [] }));
@@ -308,9 +308,63 @@
           date: todayISO(),
         });
         n.handovers++;
+      } else if (e.kind === "person" && e.person) {
+        // SOMEBODY ALREADY ON THE LIST IS NOT SOMEBODY NEW — asked of names.js,
+        // which is where "does this name mean this person" lives, so a second
+        // paste to fix one typo doesn't give you everybody twice.
+        const N = window.OrganiserNames;
+        const hit = N && N.look ? N.look(e.person.name, state.contacts) : { state: "none" };
+        if (hit.state === "matched") return;
+        state.contacts.unshift({
+          id: uid(),
+          name: e.person.name,
+          group: "",
+          ...(e.person.aka && e.person.aka.length ? { aka: e.person.aka.slice(0, 8) } : {}),
+          ...(e.person.tag ? { tag: e.person.tag } : {}),
+          details: { ...(e.person.details || {}) },
+          createdAt: nowISO(),
+        });
+        n.people++;
       }
     });
     return n;
+  }
+
+  // ---- IS THIS A LIST OF PEOPLE? ---------------------------------------------
+  //
+  // Asked BEFORE the sorter, and answered without it. A list of colleagues has
+  // no task in it, no record, no goal and no handover — which are the only four
+  // things the sorter can return — so it came back with nothing and the front
+  // door said "I couldn't find anything to add there — try a few more words?"
+  // to somebody who had just pasted five people with their email addresses.
+  //
+  // Wrong, and unkind about it: there was plenty there, and more words would
+  // not have helped.
+  //
+  // NO MODEL NEEDED. A list of people is a shape, not a sentence, and the
+  // readers for it are already written and exact. That also means this works
+  // with the sorting turned off, which is the state the app has to be usable in.
+  function peopleIn(text) {
+    const R = window.OrganiserRoster;
+    const none = { entries: [], rest: String(text || "") };
+    if (!R) return none;
+    const made = (list, rest) => ({
+      entries: list.map((p) => ({ kind: "person", person: p })),
+      rest: rest === undefined ? "" : rest,
+    });
+    // A table with a heading row, then a slide, then a flat list — most exact
+    // first, because each is a narrower claim than the one after it.
+    if (R.looksLikeContacts && R.looksLikeContacts(text)) return made(R.contactsIn(text));
+    if (R.looksLikeCards && R.looksLikeCards(text))
+      return made(R.cardsIn(text).map((c) => ({
+        name: c.name, aka: c.aka, tag: c.roles[0] || "",
+        details: c.roles.length > 1 ? { notes: c.roles.join("\n") } : {},
+      })));
+    if (R.looksLikeLoose && R.looksLikeLoose(text)) {
+      const got = R.looseIn(text);
+      return made(got.people, got.rest);
+    }
+    return none;
   }
 
   function summaryText(n) {
@@ -318,6 +372,7 @@
     if (n.tasks) parts.push(`${n.tasks} to your tasks`);
     if (n.records) parts.push(`${n.records} to Students`);
     if (n.goals) parts.push(`${n.goals} to Goals`);
+    if (n.people) parts.push(`${n.people} to People`);
     if (n.handovers) parts.push(`${n.handovers} logged to People`);
     return parts.join(" · ");
   }
@@ -414,9 +469,38 @@
 
   async function onSubmit() {
     const input = document.getElementById("capInput");
-    const text = input.value.trim();
+    let text = input.value.trim();
     if (!text) return;
     const btn = document.getElementById("capBtn");
+
+    // A LIST OF PEOPLE IS NOT A SENTENCE — the same door, on every other page.
+    // The bar had its own copy of "I couldn't find anything to add there", so
+    // fixing only the home box would have left the Day, the Week, the Month and
+    // three more pages saying it to somebody pasting a list of colleagues.
+    let peopleWords = "";
+    const found = peopleIn(text);
+    if (found.entries.length) {
+      const state = {
+        items: barState.items || [],
+        goals: barState.goals || [],
+        records: barState.records || [],
+        contacts: barState.contacts || [],
+      };
+      const n = applyEntries(found.entries, state);
+      barState.contacts = state.contacts;
+      const same = found.entries.length - n.people;
+      peopleWords =
+        (n.people ? `${n.people} added to People → — their names were read off the end of each line, worth a look.` : "") +
+        (same ? ` ${same} ${same === 1 ? "was" : "were"} already there.` : "");
+      text = (found.rest || "").trim();
+      input.value = text;
+      // Nothing else in it: save and say so. Anything else carries on to the
+      // usual path, which will add its own news to this.
+      if (!text) {
+        await saveAndReload(peopleWords.trim());
+        return;
+      }
+    }
     if (!barState.aiAvailable) {
       // No AI: capture is sacred, and patterns still read the everyday parts —
       // the date, the time, anyone already in People. Offline and instant.
@@ -450,6 +534,7 @@
       input.value = "";
       const read = QP && QP.foundAnything(guess);
       await saveAndReload(
+        (peopleWords ? peopleWords + " " : "") +
         (read ? "Saved, with the date and details I could read. ✓" : "Saved it as a task. ✓") +
           (barState.engineNote ? " " + barState.engineNote : "")
       );
@@ -486,7 +571,11 @@
         lastRun = null;
       }
       if (!entries.length && !(lastRun && lastRun.parked && lastRun.parked.length)) {
-        setCapStatus("I couldn't find anything to add there — a few more words?");
+        // The people, if there were any, already went in.
+        // The people, if there were any, already went in — so the news about
+        // them must not be replaced by "I couldn't find anything".
+        if (peopleWords) await saveAndReload(peopleWords + " Nothing else in there looked like a job.");
+        else setCapStatus("I couldn't find anything to add there — a few more words?");
         return;
       }
       pending = entries;
@@ -580,7 +669,7 @@
     } catch {}
   }
 
-  window.OrganiserCapture = { mountBar, route, applyEntries, summaryText, finishItem, spawnFollowUp };
+  window.OrganiserCapture = { mountBar, route, applyEntries, summaryText, finishItem, spawnFollowUp, peopleIn };
 
   // Auto-mount on any page that provides a #capture slot (view-only pages). The
   // home/records/goals pages keep their own richer boxes and just reuse the

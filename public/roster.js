@@ -398,6 +398,114 @@
     return out;
   }
 
+  // ---- A LIST OF PEOPLE TYPED OUT FLAT ---------------------------------------
+  //
+  // The fourth shape, and the one somebody actually reaches the app with. Not a
+  // register, not a slide, not a table with a heading row — a list where each
+  // person is one line and everything about them is on it:
+  //
+  //     add these people
+  //     Grades 1-3 Liaison Alex Sample a.sample@example.org asample
+  //     Grade 4 Vice Head Chris Specimen c.specimen@example.org cspecimen
+  //
+  // This is what a contacts table becomes the moment it is copied out of a PDF
+  // and pasted somewhere that doesn't keep columns, and it is what a person
+  // types when they are getting names in quickly. Every reader above said no to
+  // it, so five colleagues pasted into the front door came back as "I couldn't
+  // find anything to add there — try a few more words?", which is both wrong
+  // and, since they had written plenty, unhelpful about what to do next.
+  //
+  // THE ADDRESS IS WHAT MAKES IT READABLE. An email is unmistakable, it sits
+  // between the name and the handle, and a line with one on it and words in
+  // front is a person however the rest is arranged.
+  const AN_EMAIL = /[^\s@,;:()<>]+@[^\s@,;:()<>]+\.[A-Za-z]{2,}/;
+  // An address the paste cut in half. Two ways it can look:
+  //
+  //   "…@outlo"     — plainly unfinished, nothing a domain ends with.
+  //   "…@example.co" — LOOKS finished, and isn't: the "m" wrapped onto the next
+  //                    line. A two-letter ending is a real one, so this can only
+  //                    be told apart by what follows.
+  const ENDS_IN_ADDRESS = /\S*@\S*$/;
+  const UNFINISHED = /@[^\s@,;:()<>]*$/;
+  const MAYBE_CUT = /@\S+\.[a-z]{2}$/i;
+  const CONTINUES_IT = /^[a-z]{1,3}(?:\s|$)/;
+  // A name is TWO WORDS unless the address says otherwise. Every other rule
+  // tried needed to know which words are jobs and which are people, which is
+  // exactly the vocabulary this app doesn't have — and two words is right for
+  // "Grade 4 Vice Head | Michael Example" and for every other line on a real
+  // list. Where the address carries the surname it is used to check the guess.
+  const NAME_WORDS = 2;
+
+  function looseIn(text) {
+    const raw = String(text || "").split(LINE_BREAKS).map((l) => l.trim()).filter(Boolean);
+    // AN ADDRESS BROKEN ACROSS TWO LINES is one address. Pasted out of a PDF it
+    // arrives as "…@outlo" and then "ok.com", and read as written the person
+    // has no way to be reached.
+    const lines = [];
+    raw.forEach((l) => {
+      const prev = lines[lines.length - 1];
+      // A LINE WITH ITS OWN ADDRESS ON IT IS THE NEXT PERSON, never the tail of
+      // the one above. That one test is what keeps this from gluing two people
+      // together whenever a name happens to start with a short word.
+      const joins = prev !== undefined && ENDS_IN_ADDRESS.test(prev) && !AN_EMAIL.test(l) &&
+        (!AN_EMAIL.test(prev) ? UNFINISHED.test(prev) && /^[\w.\-]/.test(l)
+          : MAYBE_CUT.test(prev) && CONTINUES_IT.test(l));
+      if (joins) {
+        lines[lines.length - 1] = prev + l;
+        return;
+      }
+      lines.push(l);
+    });
+
+    const out = [];
+    const used = new Set();
+    let started = false;
+    let carry = "";
+    let carried = [];
+    lines.forEach((l, at) => {
+      const m = AN_EMAIL.exec(l);
+      if (!m) {
+        // BEFORE THE FIRST PERSON THIS IS A LEAD-IN — "add these people" — and
+        // after it, it is the front of the next row, wrapped. Which of the two
+        // it is takes no vocabulary: a preamble comes before the list.
+        if (started) { carry = (carry ? carry + " " + l : l); carried.push(at); }
+        return;
+      }
+      started = true;
+      const before = ((carry ? carry + " " + l.slice(0, m.index) : l.slice(0, m.index)))
+        .replace(/[,;:|]+/g, " ").replace(/\s+/g, " ").trim();
+      const after = l.slice(m.index + m[0].length).replace(/^[\s,;:|]+/, "").trim();
+      const words = before.split(" ").filter(Boolean);
+      // How much of the front is the name. Two words, unless the address's own
+      // letters say a third belongs with them.
+      const local = fold(m[0].split("@")[0].replace(/[^A-Za-z]/g, ""));
+      let take = Math.min(NAME_WORDS, words.length);
+      const inAddress = (w) => w && local.indexOf(fold(w.replace(/[^A-Za-z]/g, ""))) >= 0;
+      while (take < words.length && take < 4 && inAddress(words[words.length - take - 1])) take++;
+      const name = words.slice(words.length - take).join(" ");
+      const tag = words.slice(0, words.length - take).join(" ");
+      if (!name) return;
+      used.add(at);
+      carried.forEach((i) => used.add(i));
+      carry = "";
+      carried = [];
+      const who = personFrom(name);
+      const details = { Email: m[0] };
+      // A single token after the address is a handle — a WeChat ID, a username.
+      // Anything longer is words about them, which are worth keeping as words.
+      if (after) details[/^\S+$/.test(after) ? "handle" : "notes"] = after;
+      out.push({ name: who.name, aka: who.aka, tag, details, from: "" });
+    });
+    // WHATEVER WASN'T A PERSON IS STILL SOMETHING. The lead-in, and anything
+    // typed alongside, goes back to the caller rather than being swallowed.
+    const rest = lines.filter((_, i) => !used.has(i)).join("\n").trim();
+    return { people: out, rest };
+  }
+
+  // Two or more, because one line with an address on it is far more often a job
+  // about somebody — "send the form to a.sample@example.org" — than a list.
+  const looksLikeLoose = (text) => looseIn(text).people.length >= 2;
+
   // Is this a contacts table? Only if a heading row was actually found and it
   // produced people — which a register never does, because a register has no
   // line in it saying "Name" followed by a line saying "Email".
@@ -504,5 +612,5 @@
   }
 
   window.OrganiserRoster = { grid, cells, suggest, read, words, looksLikeRegister, cardsIn,
-    looksLikeCards, tableIn, contactsIn, looksLikeContacts };
+    looksLikeCards, tableIn, contactsIn, looksLikeContacts, looseIn, looksLikeLoose };
 })();

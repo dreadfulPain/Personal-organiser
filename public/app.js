@@ -369,14 +369,53 @@
   }
 
   async function onSort() {
-    const text = $("#dump").value.trim();
+    let text = $("#dump").value.trim();
     if (!text) return;
+
+    // A LIST OF PEOPLE IS NOT A SENTENCE, so it doesn't go to the sorter.
+    //
+    // The sorter can return four things — a task, a record, a goal, a handover —
+    // and a list of colleagues is none of them, so it came back with nothing and
+    // this box said "I couldn't find anything to add there — try a few more
+    // words?" to somebody who had just pasted five people with their email
+    // addresses. There was plenty there. More words would not have helped.
+    //
+    // Read here instead, exactly, by the readers that already exist — which is
+    // faster than a model call, and works with the sorting switched off.
+    let peopleWords = "";
+    const found = OrganiserCapture.peopleIn(text);
+    if (found.entries.length) {
+      const state = { items, goals, records, contacts };
+      const n = OrganiserCapture.applyEntries(found.entries, state);
+      contacts = state.contacts;
+      OrganiserStore.save({ contacts });
+      const same = found.entries.length - n.people;
+      // WHAT TO GO AND LOOK AT. The name is taken from the end of each line and
+      // the job from the rest, which is right on a real list and is still a
+      // reading of it — so it says so, once, rather than leaving it to be found.
+      peopleWords =
+        (n.people ? `${n.people} added to People → — their names were read off the end of each line, worth a look.` : "") +
+        (same ? ` ${same} ${same === 1 ? "was" : "were"} already there.` : "");
+      renderZones();
+      // ANYTHING TYPED ALONGSIDE THEM IS STILL SOMETHING. A lead-in like "add
+      // these people" goes on to the sorter like any other words and lands in
+      // the check-back, where dropping it is one tap; nothing is thrown away
+      // here on a guess about which words were meant as an instruction.
+      text = (found.rest || "").trim();
+      if (!text) {
+        $("#dump").value = "";
+        $("#dump").style.height = "auto";
+        setStatus(peopleWords.trim());
+        return;
+      }
+    }
 
     // No AI yet (the storage phase): hand-entry. Take the line as one item and
     // let the user set the kind/date in the check-back. Still no fields to fill
     // before typing — you just type the thing.
     if (!aiAvailable) {
       await addWithoutAI(text);
+      if (peopleWords) setStatus(peopleWords.trim());
       return;
     }
 
@@ -389,7 +428,11 @@
       const stds = portfolio && Array.isArray(portfolio.points) ? portfolio.points.map((p) => ({ id: p.id, code: p.code })) : [];
       const entries = await OrganiserCapture.route(text, { goals, config: recordConfig || {}, standards: stds });
       if (!entries.length) {
-        setStatus("I couldn't find anything to add there — try a few more words?");
+        // The people, if there were any, still went in — so the news about them
+        // must not be wiped out by "I couldn't find anything".
+        setStatus(peopleWords
+          ? peopleWords + " Nothing else in there looked like a job."
+          : "I couldn't find anything to add there — try a few more words?");
         return;
       }
       const taskEntries = entries.filter((e) => e.kind === "task");
@@ -407,6 +450,7 @@
         if (n.handovers) bits.push(`${n.handovers} logged to People →`);
         filed = "Filed " + bits.join(" · ");
       }
+      if (peopleWords) filed = (peopleWords + " " + filed).trim();
       if (taskEntries.length) {
         pending = taskEntries.map((e) => fromRouteItem(e.item));
       // Kept so that, at the moment you accept, the app can see WHICH fields

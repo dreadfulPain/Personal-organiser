@@ -189,7 +189,16 @@ export async function open(pg, data, opts) {
     matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
     alert() {}, confirm: () => (o.confirm === undefined ? true : o.confirm),
     prompt: () => o.prompt ?? null, print() {}, open: () => null,
-    fetch: async () => ({ ok: false, json: async () => ({}), text: async () => "" }),
+    // NOTHING ANSWERS, WHICH IS THE STATE THE APP HAS TO BE USABLE IN — see
+    // §0.1. A page that only works with a server behind it is a page half the
+    // suite would never reach.
+    //
+    // opts.fetch lets one test say otherwise, for the paths that only exist
+    // when the sorter IS answering. Given the url, so a test can be specific
+    // about which endpoint it is standing in for.
+    fetch: o.fetch
+      ? async (url, init) => o.fetch(String(url), init)
+      : async () => ({ ok: false, json: async () => ({}), text: async () => "" }),
     URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
     Blob: class {}, FileReader: class { readAsText() {} readAsDataURL() {} },
     Response: typeof Response !== "undefined" ? Response : class {},

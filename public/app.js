@@ -7,6 +7,16 @@
 
   const TYPE_LABEL = { task: "To do", appointment: "Event", reminder: "Reminder", note: "Note" };
   const TYPES = ["task", "appointment", "reminder", "note"];
+  // WHAT KIND OF THING IT IS, IN ONE PLACE.
+  //
+  // Three places asked this and only one of them had the fallback, so an item
+  // whose type wasn't one of the four — off a restore from an older file, or a
+  // hand-edited one — came up on the front page with a badge reading
+  // "UNDEFINED". The check-back was fine, because the check-back was the one
+  // that remembered. The same question answered three times, and two of the
+  // answers were wrong.
+  const typeLabel = (t) => TYPE_LABEL[TYPES.includes(t) ? t : "task"];
+  const typeClass = (t) => (TYPES.includes(t) ? t : "task");
   const IMPORTANCE = ["high", "normal", "low"];
   const EFFORT = ["quick", "medium", "draining"]; // §s21: how draining, not how important
   const SHORTLIST_CAP = 5; // "what matters today": keep it short — change here
@@ -574,7 +584,7 @@
   // the confirm step must never feel like a form).
   function checkbackSummary(it) {
     const parts = [];
-    parts.push(TYPE_LABEL[TYPES.includes(it.type) ? it.type : "task"]);
+    parts.push(typeLabel(it.type));
     let when = it.date ? friendlyDate(it.date) : "";
     const tl = fmtTime(it.time);
     if (tl) when = when ? `${when} · ${tl}` : tl;
@@ -1140,7 +1150,7 @@
       <div class="item-main">
         <div class="item-title">${escapeHtml(it.title)}</div>
         <div class="item-meta">
-          <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
+          <span class="badge ${typeClass(it.type)}">${typeLabel(it.type)}</span>
           ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
           ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo, it))}</span>` : ""}
           ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}
@@ -1262,7 +1272,7 @@
     main.innerHTML = `
       <div class="item-title">${escapeHtml(it.title)}</div>
       <div class="item-meta">
-        <span class="badge ${it.type}">${TYPE_LABEL[it.type]}</span>
+        <span class="badge ${typeClass(it.type)}">${typeLabel(it.type)}</span>
         ${it.openLoop ? `<span class="loop-chip">needs finishing</span>` : ""}
         ${it.promisedTo ? `<span class="promise-chip">promised to ${escapeHtml(personWords(it.promisedTo, it))}</span>` : ""}
         ${impWord ? `<span class="imp-word imp-${imp}">${impWord}</span>` : ""}

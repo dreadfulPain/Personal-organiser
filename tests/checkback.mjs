@@ -268,4 +268,28 @@ sec("And a word it has learned is read that way from then on");
      read("meeting on friday", undefined).type === "appointment", read("meeting on friday", undefined).type);
 }
 
+// ---------------------------------------------------------------------------
+sec("And a kind the app doesn't know is not shown as UNDEFINED");
+{
+  // WHAT KIND OF THING IT IS was asked in three places and only one of them —
+  // the check-back — had the fallback. So an item whose type isn't one of the
+  // four, off a restore from an older file or a hand-edited one, came up on the
+  // FRONT PAGE with a badge reading "UNDEFINED", which is the app saying
+  // something has gone wrong in a place where nothing has.
+  const odd = { ...DATA.items[0], id: "odd", title: "midterm exams start", type: "event" };
+  const r = await open("index.html", { ...DATA, items: [odd], schedule: [], contacts: [] });
+  ok("the page opens", r.errs.length === 0, r.errs.join(" | "));
+  const seen = r.created.concat([...r.byId.values()])
+    .map((e) => String(e.innerHTML || "") + " " + String(e.textContent || "")).join(" ");
+  ok("the item is on the page", /midterm exams start/.test(seen), seen.slice(0, 300));
+  ok("and nothing on it says undefined", !/undefined/i.test(seen),
+     (seen.match(/.{0,60}undefined.{0,60}/i) || [""])[0]);
+  // AND THE FOUR IT DOES KNOW STILL READ AS THEMSELVES.
+  const known = { ...DATA.items[0], id: "kn", title: "parents evening", type: "appointment" };
+  const r2 = await open("index.html", { ...DATA, items: [known], schedule: [], contacts: [] });
+  const seen2 = r2.created.concat([...r2.byId.values()])
+    .map((e) => String(e.innerHTML || "")).join(" ");
+  ok("an appointment still says Event", /Event/.test(seen2), seen2.slice(0, 300));
+}
+
 done();

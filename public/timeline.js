@@ -87,6 +87,7 @@
     // Filled in from the document, and yours to correct.
     if (box && !box.value) box.value = String(r.year || "");
     renderCalMonth(r);
+    renderCalMarks();
     renderCal();
   }
 
@@ -95,6 +96,87 @@
   // how long the month runs — and then put in a box you can change, the same
   // way the year already is. Hidden entirely when there is no grid, because on
   // a term-dates sheet the question is meaningless.
+  // THE DAYS A TERM GRID HAS A SYMBOL AGAINST.
+  //
+  // Thirteen Fridays with a staff meeting on them, and two kinds of director
+  // meeting — drawn on the calendar as a mark in the corner of a square, said
+  // nowhere else in the document, and until the grid could be read, gone.
+  //
+  // NOT ROWS. The four choices a dated row gets are about whether a day is off,
+  // and none of them is "there's a meeting". These are things to put in your
+  // week, and the one thing the document doesn't say is when — so that is asked
+  // for, once, per kind, rather than guessed at fourteen times.
+  function renderCalMarks() {
+    const box = $("#calMarks");
+    if (!box) return;
+    const marks = (calMeta && calMeta.term && calMeta.term.marks) || [];
+    box.hidden = !marks.length;
+    if (!marks.length) { box.innerHTML = ""; return; }
+    const DAYNAME = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+    box.innerHTML =
+      `<p class="muted">Marked on the calendar itself, and nowhere else in it. ` +
+      `Say when one happens and it goes into your week.</p>` +
+      marks.map((m, i) => {
+        const when = m.weekday >= 0
+          ? `${DAYNAME[m.weekday]}${m.odd ? ` (${m.odd} of them ${m.odd === 1 ? "isn't" : "aren't"})` : ""}`
+          : "no day in particular";
+        return `<div class="cal-mark">` +
+          `<span class="cal-mark-name">${escapeHtml(m.name || `the “${m.symbol}” days`)}</span>` +
+          `<span class="muted"> — ${m.dates.length} days, ${escapeHtml(when)}, ` +
+          `${escapeHtml(calDay(m.from))} to ${escapeHtml(calDay(m.to))}</span>` +
+          `<label class="cal-mark-at">at <input type="time" class="cal-mark-time" data-i="${i}" /></label>` +
+          `<label class="cal-mark-there"><input type="checkbox" class="cal-mark-be" data-i="${i}" checked /> ` +
+          `somewhere you have to be</label>` +
+          `<button type="button" class="p-opt cal-mark-add" data-i="${i}">put ${m.dates.length} days in my week</button>` +
+          `</div>`;
+      }).join("") +
+      `<p id="calMarkWords" class="muted"></p>`;
+    box.querySelectorAll(".cal-mark-add").forEach((b) =>
+      b.addEventListener("click", () => addMarked(marks[Number(b.getAttribute("data-i"))], Number(b.getAttribute("data-i")))));
+  }
+
+  function addMarked(mark, i) {
+    const said = $("#calMarkWords");
+    const box = $("#calMarks");
+    if (!mark || !box) return;
+    const at = box.querySelector(`.cal-mark-time[data-i="${i}"]`);
+    const be = box.querySelector(`.cal-mark-be[data-i="${i}"]`);
+    const T = window.OrganiserTimetable;
+    const start = at && at.value ? String(at.value).slice(0, 5) : "";
+    // THE ONE THING THE DOCUMENT DOESN'T SAY. A block with no width is thrown
+    // away when it is saved, so asking is the only honest thing — and it is one
+    // box for all fourteen of them.
+    if (!start) {
+      if (said) said.textContent = "Say what time it starts and it'll go in — the calendar doesn't give one.";
+      if (at) at.focus();
+      return;
+    }
+    const end = T && T.anHourAfter ? T.anHourAfter(start) : "";
+    const label = mark.name || `the “${mark.symbol}” days`;
+    const have = new Set(schedule.filter((b) => b && b.date).map((b) => b.date + "|" + (b.label || "")));
+    const made = mark.dates
+      .filter((d) => !have.has(d + "|" + label))
+      .map((d) => ({
+        id: uid(), label, date: d, start, end, days: [],
+        // Ticked by default and one tap to turn off: a meeting somebody drew on
+        // a school calendar is nearly always somewhere you have to be, and this
+        // is a control you can see rather than a guess about the words.
+        beThere: !be || be.checked,
+        soft: false, source: "paste",
+      }));
+    if (!made.length) {
+      if (said) said.textContent = `Those ${mark.dates.length} days are already in your week.`;
+      return;
+    }
+    schedule = schedule.concat(made);
+    persist();
+    render();
+    if (said)
+      said.textContent =
+        `${made.length} added${made.length < mark.dates.length ? ` — the other ${mark.dates.length - made.length} were already there` : ""}. ` +
+        `An hour each; open one to change how long it runs.`;
+  }
+
   function renderCalMonth(r) {
     const row = $("#calMonthRow");
     const sel = $("#calMonth");

@@ -296,4 +296,251 @@ sec("And a row that wrote its own year is not offered the choice");
      [...said.children].map((c) => c.textContent).join(" / "));
 }
 
+// ---------------------------------------------------------------------------
+// THE GRID ITSELF: a whole term in one table, a week to a row, the week's
+// number down the left and the day numbers running straight through the month
+// ends. Flattened out of a PDF it is a stream of bare numbers with the odd
+// symbol in it and not one date anywhere.
+//
+// Ten weeks of an invented autumn term. Sunday-first, starting on a Tuesday so
+// the first row is short — which is what a term that begins mid-week looks like
+// and what stops the first number saying anything about the columns.
+const TERM = [
+  "Example School Autumn Term",
+  "Week", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+  "1", "9/1", "2", "3", "4", "Ý", "5",
+  "2", "6", "7u", "8", "9", "10", "11", "Ý", "12",
+  "3", "13", "14", "15", "16", "17", "18", "Ý", "19",
+  "4", "20", "21", "22", "23", "24", "25", "26",
+  "5", "27", "28", "!", "29", "30", "10/1", "2", "3",
+  "6", "4", "5u", "6", "7", "8", "9", "Ý", "10",
+  "7", "11", "12", "13", "14", "15", "16", "Ý", "17",
+  "8", "18", "19", "20", "21", "22", "23", "Ý", "24",
+  "9", "25", "26", "!", "27", "28", "29", "30", "Ý", "31",
+  "10", "11/1", "2", "3", "4", "5", "6", "Ý", "7",
+  "!", "\"", "Head of Year Meeting",
+  "u", "\"", "Mentor Meeting",
+  "Ý", "Staff Meeting",
+  "Notes",
+  "1. Sep. 1 Term begins",
+  "2. Paper deadline: Oct. 12 16:00",
+].join("\n");
+
+sec("A whole term drawn as one grid is read");
+{
+  const g = C.weekGridIn(TERM);
+  ok("it is recognised", !!g, "nothing found");
+  ok("with a row per week", g && g.weeks.length === 10, g && String(g.weeks.length));
+  ok("and the first column's weekday", g && g.startDow === 0, g && String(g.startDow));
+  // A TERM THAT STARTS MID-WEEK has a short first row, and the numbers in it
+  // could be sitting anywhere across the seven columns.
+  ok("a short first week is still a week", g && g.weeks[0].days.length === 5,
+     g && String(g.weeks[0].days.length));
+  ok("and a full one has seven", g && g.weeks[1].days.length === 7,
+     g && String(g.weeks[1].days.length));
+  // THE WEEK NUMBERS ARE NOT DAYS. They break the run, which is the only thing
+  // that says so — and a row holds at most seven days, which settles the rest.
+  ok("no week number was read as a day",
+     g && g.weeks.every((w) => w.days.length <= 7), g && JSON.stringify(g.weeks.map((w) => w.days.length)));
+  ok("and the weeks are numbered as the grid numbers them",
+     g && g.weeks.map((w) => w.n).join(",") === "1,2,3,4,5,6,7,8,9,10",
+     g && g.weeks.map((w) => w.n).join(","));
+  // THE MONTH ENDS ARE WALKED THROUGH, said by the squares that write one.
+  const oct = g && g.weeks[4].days.find((d) => d.month === 10);
+  ok("a month written into a square is taken", oct && oct.day === 1, JSON.stringify(oct));
+  ok("and the days carry on from it",
+     g && g.weeks[5].days[0].month === 10 && g.weeks[5].days[0].day === 4,
+     g && JSON.stringify(g.weeks[5].days[0]));
+}
+
+sec("And a two-digit day is a day, not a day with a mark on it");
+{
+  // WRITTEN LOOSELY, "10" SPLITS into a day called 1 with a mark called 0, and
+  // the grid falls over on the tenth of every month.
+  const g = C.weekGridIn(TERM);
+  const tenth = g && g.weeks[1].days.find((d) => d.day === 10);
+  ok("the tenth is the tenth", !!tenth, JSON.stringify(g && g.weeks[1].days));
+  ok("and carries no mark", tenth && !tenth.marks.length, tenth && JSON.stringify(tenth.marks));
+  ok("while a real one glued to its number does",
+     g && g.weeks[1].days[1].marks.join("") === "u", g && JSON.stringify(g.weeks[1].days[1]));
+}
+
+sec("And a week number that looks exactly like the next day is still a week number");
+{
+  // THE ONE PLACE THE RUN OF NUMBERS ISN'T ENOUGH. Week 6 arrives right where
+  // the sixth of the month would, and both readings fit — but a row holds seven
+  // days and this one already has seven, so it cannot be a day. Without that,
+  // week 6 becomes the 6th, its row grows to eight days, and every week after
+  // it is numbered one out.
+  const CLASH = [
+    "Week", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "3/2", "3", "4", "5", "6", "7", "8",
+    "2", "9", "10", "11", "12", "13", "14", "15",
+    "3", "16", "17", "18", "19", "20", "21", "22",
+    "4", "23", "24", "25", "26", "27", "28", "29",
+    "5", "30", "31", "4/1", "2", "3", "4", "5",
+    "6", "6", "7", "8", "9", "10", "11", "12",
+  ].join("\n");
+  const g = C.weekGridIn(CLASH);
+  ok("it reads", !!g, "not read");
+  ok("with six weeks, not five", g && g.weeks.length === 6, g && String(g.weeks.length));
+  ok("and none of them eight days long",
+     g && g.weeks.every((w) => w.days.length === 7),
+     g && JSON.stringify(g.weeks.map((w) => w.days.length)));
+  ok("and the last week starts on the sixth",
+     g && g.weeks[5].days[0].month === 4 && g.weeks[5].days[0].day === 6,
+     g && JSON.stringify(g.weeks[5].days[0]));
+}
+
+sec("And which year it is comes out of the grid's own shape");
+{
+  const g = C.weekGridIn(TERM);
+  // The second week is the first full one, so its first number is in the first
+  // column — the only thing in the document that pins a weekday to a date.
+  ok("the anchor is the first full week's first day",
+     g && g.anchor && g.anchor.month === 9 && g.anchor.day === 6, JSON.stringify(g && g.anchor));
+  // 6 September falls on a Sunday in 2026 and in no other year nearby.
+  ok("one year fits", C.weekGridYears(g, 2026).join(",") === "2026",
+     JSON.stringify(C.weekGridYears(g, 2026)));
+  // AND IT IS FOUND FROM THE WRONG END TOO. The document's own most-mentioned
+  // year is no use here, so the grid has to be able to correct it.
+  ok("and is found even when the guess was a year out",
+     C.weekGridYears(g, 2028).join(",") === "2026", JSON.stringify(C.weekGridYears(g, 2028)));
+}
+
+sec("And the symbols mean what the legend says");
+{
+  const g = C.weekGridIn(TERM);
+  ok("every symbol used has a name", g && Object.keys(g.legend).length === 3,
+     JSON.stringify(g && g.legend));
+  ok("and they are the right way round",
+     g && g.legend["Ý"] === "Staff Meeting" && g.legend["u"] === "Mentor Meeting" &&
+     g.legend["!"] === "Head of Year Meeting", JSON.stringify(g && g.legend));
+
+  const marks = C.weekGridMarks(g, 2026);
+  const staff = marks.find((m) => m.name === "Staff Meeting");
+  ok("the marked days are gathered under it", staff && staff.dates.length === 8,
+     staff && String(staff.dates.length));
+  ok("dated properly, across the month end",
+     staff && staff.dates[0] === "2026-09-04" && staff.dates[staff.dates.length - 1] === "2026-11-06",
+     staff && JSON.stringify([staff.dates[0], staff.dates[staff.dates.length - 1]]));
+  // EVERY WEEK ON THE SAME DAY, which is what a staff meeting is — and worth
+  // saying, because it is the difference between a pattern and a pile of dates.
+  ok("and it knows they are all Fridays", staff && staff.weekday === 5 && staff.odd === 0,
+     staff && `${staff.weekday}/${staff.odd}`);
+}
+
+sec("And the grid says which year each month is in");
+{
+  // THE THING NO AMOUNT OF STARING AT A LIST OF DATES CAN SETTLE. A term
+  // calendar walks from one year into the next in front of you, so it knows —
+  // and nothing here assumes anything about when a school year starts.
+  const OVER = TERM
+    .replace('"10", "11/1", "2", "3", "4", "5", "6", "Ý", "7",', "")
+    .replace("Notes", "Notes");
+  const g = C.weekGridIn(TERM);
+  const map = C.weekGridMonths(g, 2026);
+  ok("September is the year it started in", map.get(9) === 2026, String(map.get(9)));
+  ok("and so is November", map.get(11) === 2026, String(map.get(11)));
+
+  // A GRID THAT RUNS ON INTO JANUARY, which is where it earns its keep: the
+  // months go 12 then 1, and the only way that happens is a new year.
+  const CROSS = [
+    "Week", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "12/6", "7", "8", "9", "10", "11", "12",
+    "2", "13", "14", "15", "16", "17", "18", "19",
+    "3", "20", "21", "22", "23", "24", "25", "26",
+    "4", "27", "28", "29", "30", "31", "1/1", "2",
+    "5", "3", "4", "5", "6", "7", "Ý", "8", "9",
+    "Ý", "Staff Meeting",
+  ].join("\n");
+  const g2 = C.weekGridIn(CROSS);
+  ok("a grid that crosses New Year is still one grid", !!g2, "not read");
+  const m2 = g2 ? C.weekGridMonths(g2, 2026) : new Map();
+  ok("December is the old year", m2.get(12) === 2026, String(m2.get(12)));
+  ok("and January is the new one", m2.get(1) === 2027, String(m2.get(1)));
+  // AND THE MARK IN JANUARY IS DATED IN JANUARY'S YEAR.
+  const late = g2 ? C.weekGridMarks(g2, 2026)[0] : null;
+  ok("a day marked after the turn is in the new year",
+     late && late.dates[0] === "2027-01-07", late && JSON.stringify(late.dates));
+}
+
+sec("And the whole document is dated by it");
+{
+  const r = C.read(TERM);
+  // THE PROSE UNDER THE GRID gets its year from the grid rather than from a
+  // count of which year the document mentions most.
+  ok("the term is reported", r.term && r.term.weeks === 10, JSON.stringify(r.term && r.term.weeks));
+  ok("with where it starts and stops", r.term && r.term.from === "2026-09-01" &&
+     r.term.to === "2026-11-07", JSON.stringify(r.term && [r.term.from, r.term.to]));
+  ok("and the year it settled on", r.year === 2026, String(r.year));
+  const oct = r.rows.find((x) => /Oct/.test(x.line));
+  ok("a line underneath is dated in the grid's year", oct && oct.date === "2026-10-12",
+     oct && oct.date);
+  ok("and the words say where the years came from",
+     /which is where the years came from/.test(C.words(r)), C.words(r));
+  ok("and how many things are marked on it", /3 things are marked/.test(C.words(r)), C.words(r));
+}
+
+sec("And a grid that crosses New Year settles the whole document");
+{
+  // THE CASE THAT HAS NO OTHER ANSWER. December and January in one term, a
+  // handbook that mentions a different year twice in its own title and footer,
+  // and two lines underneath with no year on them at all. Counting which year
+  // the document says most often gets both of them wrong; the grid walked from
+  // one year into the next in front of us and is simply right.
+  const CROSS_DOC = [
+    "Example School 2028 Handbook",
+    "Week", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "12/6", "7", "8", "9", "10", "11", "12",
+    "2", "13", "14", "15", "16", "17", "18", "19",
+    "3", "20", "21", "22", "23", "24", "25", "26",
+    "4", "27", "28", "29", "30", "31", "1/1", "2",
+    "5", "3", "4", "5", "6", "7", "Ý", "8", "9",
+    "Ý", "Staff Meeting",
+    "Notes",
+    "Reports out: Dec. 18",
+    "Term ends: Jan. 8",
+    "Reviewed 2028",
+  ].join("\n");
+  const r = C.read(CROSS_DOC);
+  ok("the year the document says most often is not the one used",
+     C.docYear(CROSS_DOC) === 2028 && r.year === 2026, `${C.docYear(CROSS_DOC)} / ${r.year}`);
+  const dec = r.rows.find((x) => /Reports out/.test(x.line));
+  const jan = r.rows.find((x) => /Term ends/.test(x.line));
+  ok("a December line is in the year the term started",
+     dec && dec.date === "2026-12-18", dec && dec.date);
+  // THE POINT OF ALL OF IT. Nothing here assumes a school year starts in the
+  // autumn; the grid crossed the New Year and said so.
+  ok("and a January line is in the year after it",
+     jan && jan.date === "2027-01-08", jan && jan.date);
+  ok("and neither is left looking like a choice",
+     !/no single year is right/.test(C.words(r)), C.words(r));
+}
+
+sec("And nothing else is read as a term grid");
+{
+  // A MONTH GRID HAS NO WEEK COLUMN, and reading one as a term would turn the
+  // words in its squares into marks on its days.
+  const MONTH = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    "4", "Inset day", "5", "Inset day", "6", "OFF", "7", "OFF", "8", "9", "10"].join("\n");
+  ok("a month grid is not a term grid", !C.weekGridIn(MONTH), JSON.stringify(C.weekGridIn(MONTH)));
+  ok("and still reads as a month", !!C.gridIn(MONTH), "the month reader lost it");
+  // THE HEADING IS WHAT SAYS THERE IS A COLUMN THAT ISN'T A DAY, and without
+  // one the numbers down the left-hand side have nothing to be. The same grid
+  // with its "Week" heading taken off is not a term grid.
+  const NO_COLUMN = TERM.split("\n").filter((l) => l !== "Week").join("\n");
+  ok("and a grid whose leading column has no heading is not one either",
+     !C.weekGridIn(NO_COLUMN), JSON.stringify(C.weekGridIn(NO_COLUMN)));
+  // A term-dates list has no day names above it at all.
+  ok("a list of dates is not one either",
+     !C.weekGridIn("Term starts 1 September 2026\nTerm ends 17 December 2026"), "read as a grid");
+  // AND A TABLE OF NUMBERS UNDER SEVEN DAY NAMES has to run like days.
+  const NOT = ["Group", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "4", "9", "17", "22", "31", "40", "55",
+    "2", "3", "8", "12", "19", "27", "33", "48"].join("\n");
+  ok("numbers that don't run like days are not a term", !C.weekGridIn(NOT),
+     JSON.stringify(C.weekGridIn(NOT)));
+}
+
 done();

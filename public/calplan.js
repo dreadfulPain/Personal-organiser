@@ -266,6 +266,222 @@
     return (Math.max(...days) - Math.min(...days)) / 86400000 > HALF_A_YEAR;
   }
 
+  // ---- A WHOLE TERM DRAWN AS ONE GRID ----------------------------------------
+  //
+  // The third grid, and the one a school hands its teachers: not a month but a
+  // SEMESTER, twenty-one weeks in one table, a week to a row, with the week's
+  // number down the left-hand side and the numbers running straight through the
+  // month ends:
+  //
+  //     Week  Sun  Mon  Tue  Wed  Thu  Fri  Sat
+  //     1                9/1   2    3   4Ý   5
+  //     2      6    7u   8     9    10  11Ý  12
+  //     ...
+  //     ! Grade 11-12 Director Meeting   u Grade 9-10 Director Meeting
+  //     Ý Staff Meeting
+  //
+  // Flattened out of a PDF that is a stream of bare numbers with the odd symbol
+  // in it, and NOT ONE DATE ANYWHERE. The month reader refuses it, rightly: the
+  // week numbers break the run of days, so read as a month it is nonsense.
+  //
+  // FOUR THINGS ARE IN HERE AND NOTHING ELSE HAS THEM. Which days are marked,
+  // and with what — those are the staff meetings, thirteen of them, and the
+  // director meetings. The week numbers, which the page underneath refers to
+  // ("Week 12 return papers", "Art Festival: weeks 16-17") and which mean
+  // nothing without this. When the term starts and stops. And — the one that
+  // fixes the rest of the document — WHICH YEAR EACH MONTH IS IN, because the
+  // grid runs from September to January and says so by running.
+  //
+  // TELLING A WEEK NUMBER FROM A DAY takes no vocabulary: the days ascend by
+  // one, so a number that doesn't is not one. A row holds at most seven days,
+  // which settles the rest.
+  const AS_MONTH_DAY = /^(\d{1,2})\/(\d{1,2})$/;
+  const A_NUMBER = /^\d{1,2}$/;
+  // "7u" — a day with its mark drawn tight against it, which happens whenever
+  // the two runs of text end up close enough to read as one.
+  // NOT DIGITS AFTER THE NUMBER. Written loosely this splits "10" into a day
+  // called 1 with a mark called 0, and the whole grid falls over on the tenth
+  // of the month.
+  const NUMBER_THEN_MARK = /^(\d{1,2})([^\d\s]{1,2})$/;
+  // What the symbols mean is written underneath, and the description is the
+  // first thing long enough to be one.
+  const A_DESCRIPTION = 5;
+  const A_SYMBOL = 2;
+
+  function weekGridIn(text) {
+    // Which weekday a word is has one owner, in timetable.js.
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (!T || typeof T.dayOf !== "function") return null;
+    const lines = String(text || "").split(LINE_BREAKS)
+      .map((l) => l.replace(/ /g, " ").trim()).filter(Boolean);
+
+    let at = -1;
+    let dows = [];
+    let hasWeekColumn = false;
+    for (let i = 0; i < lines.length; i++) {
+      const run = [];
+      let j = i;
+      while (j < lines.length && /^[A-Za-z]{2,9}$/.test(lines[j]) && T.dayOf(lines[j]) >= 0) {
+        run.push(T.dayOf(lines[j]));
+        j++;
+      }
+      if (run.length >= 5) {
+        at = j;
+        dows = run;
+        // A COLUMN THAT ISN'T A DAY, sitting in front of the ones that are. Its
+        // heading is what makes the numbers underneath readable as week
+        // numbers rather than as a month gone wrong.
+        hasWeekColumn = i > 0 && /^[A-Za-z]{2,9}$/.test(lines[i - 1]) && T.dayOf(lines[i - 1]) < 0;
+        break;
+      }
+      if (j > i) i = j - 1;
+    }
+    if (at < 0 || !hasWeekColumn) return null;
+
+    // THE LEGEND FIRST, so the grid knows where to stop. It begins at the first
+    // symbol that is followed, within a line or two, by something long enough to
+    // be a description — which in the grid itself never happens, because the
+    // grid is numbers.
+    let legendAt = lines.length;
+    for (let i = at; i < lines.length; i++) {
+      if (lines[i].length > A_SYMBOL || A_NUMBER.test(lines[i])) continue;
+      for (let k = i + 1; k <= i + 2 && k < lines.length; k++)
+        if (lines[k].length >= A_DESCRIPTION && !A_NUMBER.test(lines[k])) { legendAt = i; break; }
+      if (legendAt < lines.length) break;
+    }
+
+    const weeks = [];
+    let week = null;
+    let month = 0, day = 0, rolls = 0, weekNo = 0;
+    let last = null;
+    const put = (m, d) => {
+      if (!week) { week = { n: weekNo, days: [] }; weeks.push(week); }
+      last = { month: m, day: d, rolls, marks: [] };
+      week.days.push(last);
+      month = m;
+      day = d;
+    };
+    for (let i = at; i < legendAt; i++) {
+      const line = lines[i];
+      const md = AS_MONTH_DAY.exec(line);
+      if (md) {
+        // A MONTH WRITTEN INTO THE SQUARE, which is how the grid says it has
+        // crossed one. Going backwards is a new year, and that is the whole
+        // reason this document knows something the rest of the page doesn't.
+        if (month && +md[1] < month) rolls++;
+        put(+md[1], +md[2]);
+        continue;
+      }
+      const glued = A_NUMBER.test(line) ? null : NUMBER_THEN_MARK.exec(line);
+      const n = glued ? +glued[1] : A_NUMBER.test(line) ? +line : NaN;
+      if (!isNaN(n)) {
+        const full = week && week.days.length >= dows.length;
+        if (!month && !weekNo) { weekNo = n; week = null; continue; }
+        if (!full && month && n === day + 1) put(month, n);
+        // The month ended and the next square carries on without saying so.
+        else if (!full && day >= 28 && n === 1) { if (month === 12) rolls++; put(month === 12 ? 1 : month + 1, 1); }
+        else if (n === weekNo + 1 || full) { weekNo = n; week = null; }
+        // NOT A CALENDAR. Numbers that don't run like days and don't count like
+        // weeks are a table of something else that happens to sit under seven
+        // day names.
+        else return null;
+        if (glued && last && week) last.marks.push(glued[2]);
+        continue;
+      }
+      if (line.length <= A_SYMBOL) { if (last) last.marks.push(line); continue; }
+      break;
+    }
+    const all = weeks.flatMap((w) => w.days);
+    if (all.length < 20 || weeks.length < 3) return null;
+
+    // WHAT THE SYMBOLS MEAN. Only for symbols the grid actually used — the
+    // straight quote a document draws between a symbol and its description is
+    // the same shape and means nothing.
+    const used = new Set(all.flatMap((d) => d.marks));
+    const legend = {};
+    for (let i = legendAt; i < lines.length; i++) {
+      if (!used.has(lines[i])) continue;
+      for (let k = i + 1; k <= i + 3 && k < lines.length; k++)
+        if (lines[k].length >= A_DESCRIPTION && !A_NUMBER.test(lines[k])) { legend[lines[i]] = lines[k]; break; }
+    }
+
+    // A FULL WEEK IS WHAT PINS THE COLUMNS DOWN. A short one — the first week of
+    // a term that starts on a Tuesday — could be sitting anywhere in its row,
+    // and an empty square draws nothing at all to say which.
+    const whole = weeks.find((w) => w.days.length === dows.length);
+    return {
+      startDow: dows[0],
+      weeks,
+      legend,
+      anchor: whole ? { month: whole.days[0].month, day: whole.days[0].day, rolls: whole.days[0].rolls } : null,
+      from: all[0],
+      to: all[all.length - 1],
+      marked: all.filter((d) => d.marks.length).length,
+    };
+  }
+
+  // WHICH YEAR IT STARTS IN. The anchor is a day the grid says is the first
+  // column of its row, so it has to fall on that weekday — which in a window of
+  // a few years is true of one, sometimes two.
+  function weekGridYears(grid, around) {
+    if (!grid || !grid.anchor) return [];
+    const mid = Number(around) || new Date().getFullYear();
+    const out = [];
+    for (let y = mid - 3; y <= mid + 3; y++) {
+      const a = grid.anchor;
+      const on = new Date(Date.UTC(y + a.rolls, a.month - 1, a.day));
+      if (on.getUTCMonth() !== a.month - 1) continue;
+      if (on.getUTCDay() === grid.startDow) out.push(y);
+    }
+    return out;
+  }
+
+  // WHICH YEAR EACH MONTH IS IN, read off the grid rather than assumed. This is
+  // the answer to the thing no amount of staring at a list of dates can settle:
+  // a first-semester calendar's September is one year and its January is the
+  // next, and the grid knows because it walked from one to the other.
+  function weekGridMonths(grid, year) {
+    const out = new Map();
+    if (!grid) return out;
+    grid.weeks.forEach((w) => w.days.forEach((d) => {
+      if (!out.has(d.month)) out.set(d.month, year + d.rolls);
+    }));
+    return out;
+  }
+
+  // The days that carry a symbol, gathered under what the legend calls it.
+  function weekGridMarks(grid, year) {
+    if (!grid) return [];
+    const by = new Map();
+    grid.weeks.forEach((w) => w.days.forEach((d) => d.marks.forEach((s) => {
+      if (!by.has(s)) by.set(s, []);
+      by.get(s).push(iso(year + d.rolls, d.month, d.day));
+    })));
+    return [...by.entries()].map(([symbol, dates]) => {
+      // WHICH DAY OF THE WEEK, MOSTLY. A weekly staff meeting is thirteen
+      // Fridays and then one Thursday, because the last week of term ends on the
+      // Friday — so "all on a Friday" would be false and "no pattern" would be
+      // useless. The common day and the count of the ones that aren't on it is
+      // both true and worth reading.
+      const dows = dates.map((x) => new Date(x + "T12:00:00Z").getUTCDay());
+      const tally = new Map();
+      dows.forEach((d) => tally.set(d, (tally.get(d) || 0) + 1));
+      const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+      return {
+        symbol,
+        // NAMED BY THE DOCUMENT OR NOT AT ALL. A symbol whose legend didn't come
+        // through is still a day something happens on, and saying which symbol
+        // is more use than inventing a name for it.
+        name: grid.legend[symbol] || "",
+        dates,
+        weekday: top && top[1] > 1 && top[1] >= dates.length - 2 ? top[0] : -1,
+        odd: top ? dates.length - top[1] : 0,
+        from: dates[0],
+        to: dates[dates.length - 1],
+      };
+    });
+  }
+
   // The same date in another year. Returns "" when there is no such day — the
   // 29th of February in a year that hasn't got one.
   function atYear(isoDate, y) {
@@ -435,9 +651,19 @@
   function read(text, opts) {
     const o = opts || {};
     const all = String(text || "");
-    // Yours if you said one, otherwise the document's own, otherwise this year.
+    // A TERM DRAWN AS A GRID KNOWS THINGS THE PROSE DOESN'T, and the first of
+    // them is the year: it walks from September to January, so it can say which
+    // side of New Year each month is on, and its own first column pins the year
+    // itself. Read before anything else, because everything below leans on it.
+    const wg = weekGridIn(all);
+    // Yours if you said one, then what the grid works out, then the year the
+    // document says most often, then this one.
     const fromDoc = docYear(all);
-    const useYear = Number(o.year) || fromDoc || new Date().getFullYear();
+    const fromGrid = wg ? weekGridYears(wg, Number(o.year) || fromDoc || new Date().getFullYear())[0] || 0 : 0;
+    const useYear = Number(o.year) || fromGrid || fromDoc || new Date().getFullYear();
+    // Which year each month belongs to, according to the grid. Empty when there
+    // isn't one, and then nothing below changes.
+    const gridMonthYear = wg ? weekGridMonths(wg, useYear) : new Map();
     const rows = [];
     all
       .split(LINE_BREAKS)
@@ -463,6 +689,25 @@
           // week of INSET. Starts as nothing and you choose.
           kind: "",
         });
+      });
+    // AND THE GRID SETTLES THE YEARS. A line that didn't write its own year, in a
+    // month the grid walked through, gets the year the grid was in when it got
+    // there — so the September deadlines are this year and the January ones are
+    // next, with nothing assumed about when a school year starts. It is read off
+    // the page, by a table that crossed the New Year in front of us.
+    if (gridMonthYear.size)
+      rows.forEach((r) => {
+        if (!r.yearAssumed) return;
+        const want = gridMonthYear.get(Number(r.date.slice(5, 7)));
+        if (!want) return;
+        const moved = atYear(r.date, want);
+        if (!moved) return;
+        r.date = moved;
+        if (r.endsOn) {
+          const endWant = gridMonthYear.get(Number(r.endsOn.slice(5, 7))) || want;
+          r.endsOn = atYear(r.endsOn, endWant) || r.endsOn;
+        }
+        r.yearFromGrid = true;
       });
     // AND THE SAME DOCUMENT MAY ALSO HOLD A MONTH DRAWN AS A GRID, which has no
     // dates on it anywhere and so contributed nothing at all above.
@@ -520,7 +765,9 @@
       // lines that didn't say one, those lines spread out to fill it: December
       // and January, sixteen days apart in life, land eleven months apart here.
       // So the tell is the SPREAD of what was read, not what the cover says.
-      twoYears: docYears(all).length > 1 && straddles(out.filter((r) => r.yearAssumed)),
+      // A row the grid dated is not one of the ones with no answer.
+      twoYears: docYears(all).length > 1 &&
+        straddles(out.filter((r) => r.yearAssumed && !r.yearFromGrid)),
       // How many rows are leaning on a year that wasn't on their own line. Not
       // the grid's — those have a sentence of their own, about the month.
       borrowed: out.filter((r) => r.yearAssumed && !r.fromGrid).length,
@@ -529,6 +776,18 @@
       // on the way out of the PDF.
       grid: grid
         ? { squares: grid.cells.length, months, month, missing: grid.missing }
+        : null,
+      // AND THE TERM GRID, WHICH IS A DIFFERENT ANIMAL: what weeks it covers,
+      // where it starts and stops, and the days it has marked — which are the
+      // meetings, and the only place in the document they appear.
+      term: wg
+        ? {
+            weeks: wg.weeks.length,
+            from: iso(useYear + wg.from.rolls, wg.from.month, wg.from.day),
+            to: iso(useYear + wg.to.rolls, wg.to.month, wg.to.day),
+            years: weekGridYears(wg, useYear),
+            marks: weekGridMarks(wg, useYear).filter((m) => m.dates.length > 1),
+          }
         : null,
     };
   }
@@ -690,6 +949,15 @@
       ? `${r.borrowed} of them had no year on the line — read as ${r.year}. ` +
         (two || "Change the year if that's not right. ")
       : "";
+    // A TERM DRAWN AS A GRID answers the year question by walking through it, so
+    // it is said instead of the guessing above rather than as well as.
+    if (r.term)
+      y = `The term is drawn out as a grid too — ${r.term.weeks} weeks, ` +
+        `${d(r.term.from)} to ${d(r.term.to)}, which is where the years came from. ` +
+        (r.term.marks.length
+          ? `${r.term.marks.length} thing${r.term.marks.length === 1 ? " is" : "s are"} marked on it; ` +
+            "they're under the dates below. "
+          : "") + y;
     if (g)
       y = `${g.squares} of them came off a month drawn as a grid, which says no month anywhere — ` +
         `read as ${MONTH_WORDS[g.month - 1]} ${r.year}. Change it if that's wrong. ` +
@@ -711,5 +979,6 @@
   window.OrganiserCalPlan = {
     dateIn, labelOf, docYear, docYears, atYear, read, plan, span, term, toBlocks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
+    weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };
 })();

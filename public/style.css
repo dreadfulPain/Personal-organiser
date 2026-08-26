@@ -4301,3 +4301,11 @@ a.btn {
 .zone-shape[hidden] {
   display: none;
 }
+
+/* THE DAYS A TERM GRID HAS A SYMBOL AGAINST — see timeline.js. One line each,
+   wrapping on a narrow screen rather than pushing the button off the edge. */
+.cal-mark { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.cal-mark-name { font-weight: 600; }
+.cal-mark-at, .cal-mark-there { font-size: 0.8rem; }
+.cal-mark-at input { margin-left: 4px; }
+.cal-mark-add { font-size: 0.78rem; border-style: dashed; }

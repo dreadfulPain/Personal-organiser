@@ -634,6 +634,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, readAgenda, fromPages, fromRows, words,
+    read, readAgenda, fromPages, fromRows, words, anHourAfter, looksLikePlace,
   };
 })();

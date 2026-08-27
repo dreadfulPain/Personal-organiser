@@ -87,6 +87,17 @@
       if (mi > 59) return "";
       if (/pm/.test(ap || "") && hr < 12) hr += 12;
       if (/am/.test(ap || "") && hr === 12) hr = 0;
+      // "PARENTS EVENING AT 6.30" IS NOT HALF PAST SIX IN THE MORNING.
+      //
+      // Read as written it was, and stored, and shown, with nothing anywhere to
+      // say it had been read the unlikely way. Nobody in a school writes a bare
+      // "6.30" meaning before dawn — a one to six with no am or pm on it is the
+      // afternoon or the evening, every time.
+      //
+      // A LEADING ZERO IS SOMEBODY BEING EXPLICIT. "06:30" is the morning and
+      // says so, so it is left alone. That is the whole rule: it reads what was
+      // written, and only fills in the half nobody wrote.
+      if (!ap && hr >= 1 && hr <= 6 && String(h).length === 1) hr += 12;
       return hr <= 23 ? `${pad2(hr)}:${pad2(mi)}` : "";
     };
     const tries = [
@@ -98,6 +109,34 @@
       // An hour on its own needs am/pm to be a time at all.
       [/\b(?:at\s+)(\d{1,2})\s*(am|pm)\b/, (m) => say(m[1], 0, m[2])],
       [/\b(\d{1,2})\s*(am|pm)\b/, (m) => say(m[1], 0, m[2])],
+      // "TRIP TO THE MUSEUM NEXT TUESDAY 9-3" — the hours, written the way a
+      // day out is always written. It came back with no time at all, and the
+      // "9-3" stayed in the name, which then stopped the date being cut out of
+      // the name either, so the whole line came back as its own title.
+      //
+      // NARROW ON PURPOSE, because "exercise 4-6" and "periods 1-3" are the same
+      // shape and are far more common in a teacher's writing. Three things have
+      // to be true: it is the last thing on the line, it starts in the morning
+      // (seven to twelve — nothing at school starts at four), and it either runs
+      // past noon or ends in the morning too. A page reference almost never
+      // looks like that, and a day out almost always does.
+      // AND NOT WHEN A MONTH IS SITTING IN FRONT OF IT. "exams november 10-12"
+      // is three days of exams, and read here first it became a ten o'clock
+      // start — taking the range away from the date reader entirely, so the
+      // exams lost their days as well as gaining a time nobody wrote.
+      [/\b(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*$/, (m) => {
+        const from = +m[1], to = +m[2];
+        if (from < 7 || from > 12) return "";
+        if (!(to < from || (to >= 7 && to <= 12))) return "";
+        const before = m.input.slice(0, m.index);
+        if (new RegExp(`\\b(?:${MONTHS.join("|")})[a-z]*\\.?\\s*$`).test(before)) return "";
+        // NOR WHEN IT IS THE TAIL OF A LONGER NUMBER. "2026-09-10" ends in
+        // "09-10", which is a perfectly good pair of morning hours and is in
+        // fact the tenth of September — read here it took the date away
+        // entirely and left the year behind.
+        if (/[\d\-–—/.]\s*$/.test(before)) return "";
+        return say(m[1], 0, "am");
+      }],
     ];
     for (const [re, fn] of tries) {
       const m = re.exec(t);
@@ -201,6 +240,26 @@
     // something you are still waiting on.
     const MO = MONTHS.join("|");
     const yearOf = (y) => (y ? Number(y) : new Date().getFullYear());
+    // "BOOK FAIR 10-12 NOVEMBER" IS THREE DAYS AND IT STARTS ON THE TENTH.
+    //
+    // Read by the pattern below it, "12 november" matched and the tenth was
+    // left behind in the name — so the fair began two days late and was called
+    // "book fair 10". An item holds one date, so the one it holds is the day it
+    // starts; the whole range comes out of the name either way.
+    //
+    // Before the single-date patterns, because "12 november" is sitting inside
+    // this and take() keeps the first thing that hits.
+    take(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*[-–—]\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MO})[a-z]*\\.?(?:,?\\s+(\\d{4}))?\\b`), (m) => {
+      const mo = MONTHS.indexOf(m[3]) + 1;
+      const day = +m[1];
+      return day >= 1 && day <= 31 ? `${yearOf(m[4])}-${pad2(mo)}-${pad2(day)}` : "";
+    });
+    // And the same range written month-first — "november 10-12".
+    take(new RegExp(`\\b(${MO})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*[-–—]\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`), (m) => {
+      const mo = MONTHS.indexOf(m[1]) + 1;
+      const day = +m[2];
+      return day >= 1 && day <= 31 ? `${yearOf(m[4])}-${pad2(mo)}-${pad2(day)}` : "";
+    });
     take(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MO})[a-z]*\\.?(?:,?\\s+(\\d{4}))?\\b`), (m) => {
       const mo = MONTHS.indexOf(m[2]) + 1;
       return `${yearOf(m[3])}-${pad2(mo)}-${pad2(+m[1])}`;
@@ -211,6 +270,30 @@
       const mo = MONTHS.indexOf(m[1]) + 1;
       return `${yearOf(m[3])}-${pad2(mo)}-${pad2(+m[2])}`;
     });
+    // "PARENTS EVENING ON THE 20TH" — a day of the month with no month on it,
+    // which is how anybody writes a date inside the month they are in. It came
+    // back as no date at all, so the one evening in the term you cannot miss
+    // went in with nothing against it and never reached a calendar.
+    //
+    // THE COMING ONE. Past the 20th already, it means next month's — nobody
+    // says "on the 20th" about a day that has been and gone.
+    //
+    // Two shapes only, both of which are plainly a date: after a word that
+    // introduces one, or at the very end of what is left once the time has been
+    // taken out. "The 3rd time this week" is neither, and stays a sentence.
+    const onThe = (m, at) => {
+      const day = +m[at];
+      if (day < 1 || day > 31) return "";
+      const n = new Date();
+      const here = new Date(n.getFullYear(), n.getMonth(), day);
+      const when = day >= n.getDate() ? here : new Date(n.getFullYear(), n.getMonth() + 1, day);
+      // A day that doesn't exist in the month it landed in — the 31st of a
+      // thirty-day month — rolls into the next, which is not what was meant.
+      return when.getDate() === day ? isoOf(when) : "";
+    };
+    take(/\b(?:on|by|due|before|after|from|for)\s+the\s+(\d{1,2})(?:st|nd|rd|th)\b/, (m) => onThe(m, 1));
+    take(/\bthe\s+(\d{1,2})(?:st|nd|rd|th)\s*$/, (m) => onThe(m, 1));
+
     // Bare numbers: day-first, which is how it's written outside the US. Only
     // when it can't be anything else, so a wrong reading is rare and visible.
     // A DASH IS USUALLY A RANGE. "exercise 4-6" and "periods 1-3" are far more
@@ -651,7 +734,18 @@
     // — which reads fine and means the opposite of what was written.
     // "deadline" and "due" only introduce a date — take the date and leave them
     // behind and you get "fill in the risk assessment for the trip, deadline".
+    // "SWIMMING EVERY WEDNESDAY 1PM" CAME BACK AS "SWIMMING EVERY". The date
+    // reader takes the Wednesday and the "every" is left hanging off the end of
+    // the name, pointing at nothing. Cut the whole phrase, or none of it.
+    const rep = readRepeat(raw);
+    if (rep) title = cutIfClean(title, rep, "on|every|each");
     if (when.matched) title = cutIfClean(title, when.matched, "on|by|before|for|due|deadline|deadline is|due date");
+    // AND THE TIME AGAIN, NOW THE DATE HAS GONE. "meeting at 15:30 on monday"
+    // came back called "meeting at 15:30": the time sat in the middle of the
+    // line, so cutting it would have left a hole, and by the time the Monday had
+    // gone and it was at the end nobody looked again. One more pass, and the
+    // same rule each time — it only ever cuts what leaves a sentence behind.
+    if (when.timeText) title = cutIfClean(title, when.timeText, "at|from|by|around|about");
     // "urgent: send the form" — the "urgent" has already been READ, into
     // importance. Leaving it in the title says it twice, and the title is what
     // follows the task into every reminder, every export, every printed list.

@@ -204,8 +204,13 @@ sec("And the same time written with a dot, which is how most people write it");
   const on = (phrase) => Q.parse(`meeting ${phrase}`, {}).date || "";
   const cases = [
     ["at 9.10", "09:10"], ["at 11.05", "11:05"], ["at 8.02", "08:02"],
-    ["at 4.10", "04:10"], ["at 08.15", "08:15"], ["at 15.30", "15:30"],
-    ["from 7.40", "07:40"], ["by 12.05", "12:05"], ["until 3.45", "03:45"],
+    // AND THE HALF NOBODY WROTE. A one to six with no am or pm on it is the
+    // afternoon: nothing in a school happens at ten past four in the morning,
+    // and read as written a parents evening at 6.30 was going in before dawn.
+    // A LEADING ZERO IS SOMEBODY BEING EXPLICIT and is left exactly alone,
+    // which is why "08.15" is still the morning here and "4.10" is not.
+    ["at 4.10", "16:10"], ["at 08.15", "08:15"], ["at 15.30", "15:30"],
+    ["from 7.40", "07:40"], ["by 12.05", "12:05"], ["until 3.45", "15:45"],
     ["starts 9.30", "09:30"],
     // With am/pm no lead-in word is needed — the pm IS the lead-in.
     ["6.30pm", "18:30"], ["7.45am", "07:45"],

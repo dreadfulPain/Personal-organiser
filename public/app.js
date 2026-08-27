@@ -368,6 +368,87 @@
     return out;
   }
 
+  // ---- A DOCUMENT, OPENED AT THE FRONT DOOR ---------------------------------
+  //
+  // Read it, count what each reader can see in it, and offer the choice. A
+  // school booklet holds a week of sessions AND a month drawn as a grid AND a
+  // page of contacts, so picking one and doing it silently would be wrong three
+  // ways at once.
+  //
+  // ENOUGH OF SOMETHING TO BE WORTH OFFERING. Two stray blocks found in a page
+  // of prose is not a timetable, and putting it on the list next to "18 things
+  // for your week" would make the offer useless.
+  const ENOUGH = 3;
+
+  async function openDocument(file) {
+    const found = $("#dumpFound");
+    if (found) { found.hidden = false; found.textContent = "Reading it…"; }
+    let got;
+    try {
+      got = await OrganiserCapture.textOf(file);
+    } catch {
+      got = { text: "", note: "That file couldn't be opened." };
+    }
+    if (!got.text.trim()) {
+      if (found) found.innerHTML = `<p class="muted">${escapeHtml(got.note || "Nothing readable came out of that file.")}</p>`;
+      return;
+    }
+    const what = OrganiserCapture.whatIsIt(got.text);
+    const bits = [];
+    if (what.people) bits.push(`${what.people} ${what.people === 1 ? "person" : "people"}`);
+    if (what.blocks >= ENOUGH) bits.push(`${what.blocks} things for your week`);
+    if (what.dates >= ENOUGH) bits.push(`${what.dates} dates`);
+    if (what.marks) bits.push(`${what.marks} marked on the calendar`);
+    const btn = (act, words) => `<button type="button" class="p-opt doc-go" data-act="${act}">${words}</button>`;
+    if (found)
+      found.innerHTML =
+        `<p><strong>${escapeHtml(file.name)}</strong>` +
+        (got.pages ? ` <span class="muted">— ${got.pages} page${got.pages === 1 ? "" : "s"}</span>` : "") +
+        `</p>` +
+        `<p class="muted">${bits.length ? "What I can see in it: " + escapeHtml(bits.join(" · ")) + "." : "I couldn't see anything I know how to read in it."}</p>` +
+        (what.people ? btn("people", `put the ${what.people} ${what.people === 1 ? "person" : "people"} in`) : "") +
+        (what.blocks >= ENOUGH ? btn("week", "take it to your week →") : "") +
+        (what.dates >= ENOUGH || what.marks ? btn("calendar", "take it to your calendar →") : "") +
+        btn("words", "just put the words in the box") +
+        (got.note ? `<p class="muted">${escapeHtml(got.note)}</p>` : "");
+    if (!found) return;
+    found.querySelectorAll(".doc-go").forEach((b) =>
+      b.addEventListener("click", () => documentGoes(b.getAttribute("data-act"), got.text)));
+  }
+
+  // WHERE IT GOES. The people can be done here and now. The timetable and the
+  // calendar are checked before they are kept — that is the whole design of
+  // those two boxes — so the text is carried to them and they open with it
+  // already read, rather than this page growing a second copy of each.
+  function documentGoes(act, text) {
+    if (act === "words") {
+      $("#dump").value = text;
+      $("#dump").style.height = "auto";
+      $("#dumpFound").hidden = true;
+      $("#dump").focus();
+      return;
+    }
+    if (act === "people") {
+      const found = OrganiserCapture.peopleIn(text);
+      const state = { items, goals, records, contacts };
+      const n = OrganiserCapture.applyEntries(found.entries, state);
+      contacts = state.contacts;
+      OrganiserStore.save({ contacts });
+      const same = found.entries.length - n.people;
+      $("#dumpFound").hidden = true;
+      renderZones();
+      setStatus(
+        `${n.people} added to People → — their names were read off the end of each line, worth a look.` +
+        (same ? ` ${same} ${same === 1 ? "was" : "were"} already there.` : "")
+      );
+      return;
+    }
+    try {
+      sessionStorage.setItem("organiser.handover", JSON.stringify({ to: act, text }));
+    } catch { /* a browser with no session storage still gets the page */ }
+    location.href = "timeline.html";
+  }
+
   async function onSort() {
     let text = $("#dump").value.trim();
     if (!text) return;
@@ -2540,6 +2621,24 @@
     };
     dumpBox.addEventListener("input", growDump);
     dumpBox.addEventListener("paste", () => setTimeout(growDump, 0));
+    const filePick = $("#dumpFile");
+    if (filePick) {
+      filePick.accept = OrganiserCapture.READS;
+      filePick.addEventListener("change", () => {
+        const f = filePick.files && filePick.files[0];
+        if (f) openDocument(f);
+        filePick.value = "";
+      });
+    }
+    // AND DROPPING IT ON THE BOX, because that is what somebody with a file in
+    // a folder does first.
+    ["dragover", "drop"].forEach((n) =>
+      dumpBox.addEventListener(n, (e) => {
+        e.preventDefault();
+        if (n !== "drop") return;
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) openDocument(f);
+      }));
     // Speak it instead of typing (the mic only appears if this machine can).
     if (window.OrganiserVoice) OrganiserVoice.attach(dumpBox, $(".dumprow"), setStatus);
     $("#addBtn").addEventListener("click", confirmCheckback);

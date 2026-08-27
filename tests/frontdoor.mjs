@@ -209,4 +209,87 @@ sec("And nothing that isn't people is caught up in it");
   ok("and nothing was filed to People", !/added to People/.test(said), said);
 }
 
+// ---------------------------------------------------------------------------
+sec("And the front door will take a document, not just typing");
+{
+  const r = await open("index.html", { ...DATA, items: [], schedule: [], contacts: [] });
+  ok("the page opens", r.errs.length === 0, r.errs.join("; "));
+  const html = read("index.html");
+  // THE THING THAT WAS MISSING. Every reader in this app sat behind a file
+  // input on some other page — the timetable's three levels down, inside a
+  // section you have to know to open — so somebody holding a school PDF found
+  // no way to give it to the app at all, and reasonably concluded it couldn't
+  // read one.
+  ok("there is somewhere to open one", /id="dumpFile"[^>]*type="file"|type="file"[^>]*id="dumpFile"/.test(html),
+     "no file input on the front page");
+  ok("and it says so where the button is", /or open a file/.test(html), "nothing offers it");
+  // AND THE READERS IT NOW ASKS FOR ARE ON THE PAGE. Without these it says
+  // "this page can't open a PDF", which is true and useless.
+  ["pdftext.js", "calplan.js", "timetable.js", "roster.js"].forEach((f) =>
+    ok(`${f} is loaded`, new RegExp(`src="${f.replace(".", "\\.")}"`).test(html), `${f} is missing`));
+}
+
+sec("And a file it can't read says so rather than doing nothing");
+{
+  const sbx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl, setTimeout,
+    document: { getElementById: () => null, querySelector: () => null } };
+  sbx.window = sbx;
+  vm.createContext(sbx);
+  ["dates.js", "names.js", "roster.js", "quickparse.js", "capture.js"]
+    .forEach((f) => vm.runInContext(read(f), sbx));
+  const C = sbx.OrganiserCapture;
+  const file = (name, type) => ({ name, type: type || "", text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) });
+
+  // A WORD FILE IS A ZIP and unpacking one is a job of its own. Saying so is
+  // the whole point: "nothing happened" is the worst possible answer to a file
+  // somebody chose on purpose.
+  const doc = await C.textOf(file("timetable.docx"));
+  ok("a Word file is refused in words", /can't open docx/.test(doc.note), JSON.stringify(doc));
+  ok("and it says what does work", /copying the text across/.test(doc.note), doc.note);
+  const xls = await C.textOf(file("classes.xlsx"));
+  ok("and so is a spreadsheet", /can't open xlsx/.test(xls.note), xls.note);
+  // A PHOTOGRAPH OF A TIMETABLE has no text in it at all, and nothing here can
+  // get it out. Said plainly, because it is the first thing anybody tries.
+  const pic = await C.textOf(file("timetable.jpg", "image/jpeg"));
+  ok("a picture is refused in words", /reading words off a picture/.test(pic.note), pic.note);
+  ok("and points at what would work", /PDF or the text itself/.test(pic.note), pic.note);
+  // AND PLAIN TEXT JUST WORKS.
+  const txt = await C.textOf({ name: "notes.txt", type: "text/plain", text: async () => "hello" });
+  ok("a text file comes straight through", txt.text === "hello", JSON.stringify(txt));
+}
+
+sec("And it says what is in a document rather than picking for you");
+{
+  const sbx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl, setTimeout,
+    document: { getElementById: () => null, querySelector: () => null } };
+  sbx.window = sbx;
+  vm.createContext(sbx);
+  ["dates.js", "calplan.js", "schedule.js", "timetable.js", "names.js", "roster.js",
+   "quickparse.js", "capture.js"].forEach((f) => vm.runInContext(read(f), sbx));
+  const C = sbx.OrganiserCapture;
+
+  // ONE DOCUMENT IS SEVERAL THINGS AT ONCE. A school booklet holds a week of
+  // sessions AND a page of contacts, and picking one silently would be wrong
+  // twice over.
+  const BOTH = [
+    "Wednesday", "26th August",
+    "09:00 - 10:15 Meet the leadership team",
+    "11:00 - 12:00 Insurance meeting",
+    "1:00 PM - 2:00 PM Semester planning",
+    "Grades 1-3 Liaison Alex Sample a.sample@example.org asample",
+    "Grade 4 Vice Head Chris Specimen c.specimen@example.org cspecimen",
+  ].join("\n");
+  const what = C.whatIsIt(BOTH);
+  ok("it sees the people", what.people === 2, JSON.stringify(what));
+  ok("and the things for the week too", what.blocks >= 3, JSON.stringify(what));
+
+  // AND A DOCUMENT WITH NEITHER IN IT claims neither.
+  const PROSE = "Welcome to the school. There will be a lot to learn this week, so make the most of it.";
+  const none = C.whatIsIt(PROSE);
+  ok("prose is not a timetable", none.blocks === 0, JSON.stringify(none));
+  ok("nor a list of people", none.people === 0, JSON.stringify(none));
+}
+
 done();

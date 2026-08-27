@@ -1536,7 +1536,52 @@
 
   // ---------- the week's shape (a once-a-term job) ----------
   // Sent here for the school calendar? Open that fold and go to it.
+  // A DOCUMENT HANDED OVER FROM THE FRONT DOOR.
+  //
+  // The home box can open a PDF and say what is in it, but the timetable and the
+  // calendar are both CHECKED before they are kept — that is the whole design of
+  // these two boxes — so the text is carried here rather than the home page
+  // growing a second copy of each. It arrives already read, with the section
+  // open and the page scrolled to it: one tap on the home page, and the next
+  // thing you see is what it made of your document.
+  function takeHandover() {
+    let handed = null;
+    try {
+      const raw = sessionStorage.getItem("organiser.handover");
+      sessionStorage.removeItem("organiser.handover");
+      handed = raw ? JSON.parse(raw) : null;
+    } catch { /* no session storage: the page still works, it just isn't handed anything */ }
+    if (!handed || !handed.text) return false;
+    if (handed.to === "calendar") {
+      const box = document.getElementById("calBox");
+      const paste = $("#calPaste");
+      if (box) box.open = true;
+      if (paste) {
+        paste.value = handed.text;
+        const y = $("#calYear");
+        if (y) y.value = "";
+        calRead(handed.text);
+      }
+      if (box) box.scrollIntoView({ block: "start" });
+      return true;
+    }
+    if (handed.to === "week") {
+      setupOpen = true;
+      renderSetup();
+      const paste = $("#ttText");
+      if (paste) {
+        paste.value = handed.text;
+        readTimetable();
+      }
+      const t = document.getElementById("setup");
+      if (t) t.scrollIntoView({ block: "start" });
+      return true;
+    }
+    return false;
+  }
+
   function openFromLink() {
+    if (takeHandover()) return;
     const h = location.hash || "";
     if (/#calendar\b/.test(h)) {
       const box = document.getElementById("calBox");

@@ -330,6 +330,67 @@
     return n;
   }
 
+  // ---- A DOCUMENT AT THE FRONT DOOR ------------------------------------------
+  //
+  // The box says "type it however it comes out" and takes only typing. Every
+  // reader this app has — the timetable, the calendar, the term grid, the
+  // contacts table — sits behind a file input on some other page, one of them
+  // three levels down inside a section you have to know to open. So somebody
+  // with a school PDF in their hand finds no way to give it to the app at all,
+  // and reasonably concludes it can't read one.
+  //
+  // It can read one. It just never offered.
+  const READS = ".pdf,.txt,.csv,.md,text/plain,text/csv,application/pdf";
+
+  async function textOf(file) {
+    if (!file) return { text: "", note: "" };
+    const name = String(file.name || "");
+    if (/\.pdf$/i.test(name) || file.type === "application/pdf") {
+      const P = window.OrganiserPdfText;
+      if (!P) return { text: "", note: "This page can't open a PDF." };
+      const r = await P.read(await file.arrayBuffer());
+      if (!r.ok || !r.text.trim())
+        return { text: "", note: (r.notes || []).join(" ") || "Nothing readable came out of that file." };
+      return { text: r.text, note: r.caution || "", pages: (r.pages || []).length };
+    }
+    // A WORD OR EXCEL FILE IS A ZIP, and unpacking one is a job of its own —
+    // said plainly rather than failing at it, because "nothing happened" is the
+    // worst possible answer to a file somebody chose on purpose.
+    if (/\.(docx?|xlsx?|pptx?|pages|numbers|key)$/i.test(name))
+      return { text: "", note: `I can't open ${name.split(".").pop().toLowerCase()} files yet. Opening it and copying the text across works.` };
+    if (/\.(png|jpe?g|gif|heic|webp|bmp|tiff?)$/i.test(name))
+      return { text: "", note: "That's a picture, and reading words off a picture needs something this app hasn't got. A PDF or the text itself will work." };
+    return { text: await file.text(), note: "" };
+  }
+
+  // WHAT IS IN IT — asked of every reader, and answered with all of them.
+  //
+  // One school document is usually several things at once: the booklet that
+  // holds a week of sessions also holds a month drawn as a grid and a page of
+  // contacts. Picking one and silently doing it would be wrong three ways, so
+  // this counts what each reader can see and the caller offers the choice.
+  function whatIsIt(text) {
+    const out = { people: 0, blocks: 0, dates: 0, marks: 0 };
+    const R = window.OrganiserRoster;
+    const T = window.OrganiserTimetable;
+    const C = window.OrganiserCalPlan;
+    if (R) out.people = peopleIn(text).entries.length;
+    if (T) {
+      try {
+        const got = T.read(text);
+        out.blocks = got && got.blocks ? got.blocks.length : 0;
+      } catch { /* a reader that can't read it has found nothing, which is the answer */ }
+    }
+    if (C) {
+      try {
+        const got = C.read(text);
+        out.dates = got.rows.length;
+        out.marks = got.term && got.term.marks ? got.term.marks.length : 0;
+      } catch { /* same */ }
+    }
+    return out;
+  }
+
   // ---- IS THIS A LIST OF PEOPLE? ---------------------------------------------
   //
   // Asked BEFORE the sorter, and answered without it. A list of colleagues has
@@ -466,6 +527,71 @@
     s.textContent = msg || "";
     s.hidden = !msg;
   }
+
+  // A DOCUMENT OPENED FROM THE BAR. Same three answers as the home page: the
+  // people can be done here and now; the timetable and the calendar are checked
+  // before they are kept, so they are carried to the page that does the
+  // checking; and anything else goes into the box for you to look at.
+  async function openHere(file) {
+    const found = document.getElementById("capFound");
+    const input = document.getElementById("capInput");
+    if (found) { found.hidden = false; found.textContent = "Reading it…"; }
+    let got;
+    try {
+      got = await textOf(file);
+    } catch {
+      got = { text: "", note: "That file couldn't be opened." };
+    }
+    if (!got.text.trim()) {
+      if (found) found.innerHTML = `<p class="muted">${escapeHtml(got.note || "Nothing readable came out of that file.")}</p>`;
+      return;
+    }
+    const what = whatIsIt(got.text);
+    const bits = [];
+    if (what.people) bits.push(`${what.people} ${what.people === 1 ? "person" : "people"}`);
+    if (what.blocks >= ENOUGH_OF_IT) bits.push(`${what.blocks} things for your week`);
+    if (what.dates >= ENOUGH_OF_IT) bits.push(`${what.dates} dates`);
+    if (what.marks) bits.push(`${what.marks} marked on the calendar`);
+    const btn = (act, words) => `<button type="button" class="p-opt doc-go" data-act="${act}">${words}</button>`;
+    if (!found) return;
+    found.innerHTML =
+      `<p><strong>${escapeHtml(file.name || "that file")}</strong>` +
+      (got.pages ? ` <span class="muted">— ${got.pages} page${got.pages === 1 ? "" : "s"}</span>` : "") + `</p>` +
+      `<p class="muted">${bits.length ? "What I can see in it: " + escapeHtml(bits.join(" · ")) + "." : "I couldn't see anything I know how to read in it."}</p>` +
+      (what.people ? btn("people", `put the ${what.people} ${what.people === 1 ? "person" : "people"} in`) : "") +
+      (what.blocks >= ENOUGH_OF_IT ? btn("week", "take it to your week →") : "") +
+      (what.dates >= ENOUGH_OF_IT || what.marks ? btn("calendar", "take it to your calendar →") : "") +
+      btn("words", "just put the words in the box") +
+      (got.note ? `<p class="muted">${escapeHtml(got.note)}</p>` : "");
+    found.querySelectorAll(".doc-go").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const act = b.getAttribute("data-act");
+        if (act === "words") {
+          if (input) { input.value = got.text; input.focus(); }
+          found.hidden = true;
+          return;
+        }
+        if (act === "people") {
+          const list = peopleIn(got.text);
+          const state = {
+            items: barState.items || [], goals: barState.goals || [],
+            records: barState.records || [], contacts: barState.contacts || [],
+          };
+          const n = applyEntries(list.entries, state);
+          barState.contacts = state.contacts;
+          await saveAndReload(`${n.people} added to People → — their names were read off the end of each line, worth a look.`);
+          return;
+        }
+        try {
+          sessionStorage.setItem("organiser.handover", JSON.stringify({ to: act, text: got.text }));
+        } catch { /* no session storage: the page still opens, just empty-handed */ }
+        location.href = "timeline.html";
+      }));
+  }
+
+  // Two stray blocks found in a page of prose is not a timetable, and offering
+  // it next to "18 things for your week" would make the offer useless.
+  const ENOUGH_OF_IT = 3;
 
   async function onSubmit() {
     const input = document.getElementById("capInput");
@@ -605,7 +731,13 @@
         <textarea id="capInput" rows="1" placeholder="Add anything — or paste a whole conversation; I'll send it to the right place" aria-label="Add anything"></textarea>
         <button id="capBtn" class="btn" type="button">Add</button>
       </div>
+      <!-- AND A DOCUMENT, on every page the bar is on. "Open a file" working on
+           the home page and nowhere else would be the same inconsistency the
+           list of people had. -->
+      <p class="cap-open"><label class="dump-file" for="capFile">…or open a file</label>
+        <input id="capFile" type="file" accept="${READS}" hidden /></p>
       <p id="capStatus" class="status" hidden></p>
+      <div id="capFound" class="dump-found" hidden></div>
       <div id="capBack" class="cap-back" hidden></div>`;
 
     const data = await OrganiserStore.load();
@@ -653,6 +785,20 @@
     };
     capInput.addEventListener("input", grow);
     capInput.addEventListener("paste", () => setTimeout(grow, 0));
+    const capFile = document.getElementById("capFile");
+    if (capFile)
+      capFile.addEventListener("change", async () => {
+        const f = capFile.files && capFile.files[0];
+        capFile.value = "";
+        if (f) await openHere(f);
+      });
+    ["dragover", "drop"].forEach((n) =>
+      capInput.addEventListener(n, async (e) => {
+        e.preventDefault();
+        if (n !== "drop") return;
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) await openHere(f);
+      }));
     // Speak it instead of typing, if this machine can (mic appears only if so).
     if (window.OrganiserVoice) {
       OrganiserVoice.attach(capInput, document.querySelector(".cap-bar"), setCapStatus);
@@ -669,7 +815,7 @@
     } catch {}
   }
 
-  window.OrganiserCapture = { mountBar, route, applyEntries, summaryText, finishItem, spawnFollowUp, peopleIn };
+  window.OrganiserCapture = { mountBar, route, applyEntries, summaryText, finishItem, spawnFollowUp, peopleIn, textOf, whatIsIt, READS };
 
   // Auto-mount on any page that provides a #capture slot (view-only pages). The
   // home/records/goals pages keep their own richer boxes and just reuse the

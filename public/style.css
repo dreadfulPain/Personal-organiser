@@ -4309,3 +4309,11 @@ a.btn {
 .cal-mark-at, .cal-mark-there { font-size: 0.8rem; }
 .cal-mark-at input { margin-left: 4px; }
 .cal-mark-add { font-size: 0.78rem; border-style: dashed; }
+
+/* A DOCUMENT OPENED AT THE FRONT DOOR — see app.js. What was in it, and where
+   it could go: quiet, one line of counts, and the choices as dashed options
+   because none of them has happened yet. */
+.dump-file { font-size: 0.82rem; text-decoration: underline; cursor: pointer; color: var(--ink-soft); }
+.dump-found { margin: 8px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.dump-found p { margin: 0 0 6px; }
+.doc-go { font-size: 0.8rem; margin: 2px 6px 2px 0; border-style: dashed; }

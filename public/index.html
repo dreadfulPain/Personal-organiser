@@ -40,8 +40,18 @@
         <textarea id="dump" rows="3" placeholder="e.g. call the dentist on tuesday — or paste a whole conversation"></textarea>
         <div class="dumprow">
           <button id="sortBtn" class="btn">Add</button>
+          <!-- OR GIVE IT THE DOCUMENT. Every reader in this app — the
+               timetable, the calendar, the term grid, the contacts page — used
+               to sit behind a file input on some other page, one of them three
+               levels down. So a school PDF had no way in at all. -->
+          <label class="dump-file" for="dumpFile">…or open a file</label>
+          <input id="dumpFile" type="file" hidden />
           <span id="dumpHint" class="hint">Type one thing and add it.</span>
         </div>
+        <!-- WHAT WAS IN IT, and where it could go. One school document is
+             usually several things at once, so this counts what each reader can
+             see and you choose — rather than one of them quietly winning. -->
+        <div id="dumpFound" class="dump-found" hidden></div>
       </section>
 
       <p id="status" class="status" hidden></p>
@@ -190,6 +200,13 @@
     <script src="meeting.js" defer></script>
     <script src="names.js" defer></script>
     <script src="roster.js" defer></script>
+    <!-- THE READERS THE FRONT DOOR NOW ASKS FOR. It can be handed a document,
+         so it has to be able to tell what is in one: the words out of a PDF,
+         and then the timetable and the calendar readers to count what they can
+         see. Nothing here draws anything on this page. -->
+    <script src="pdftext.js" defer></script>
+    <script src="calplan.js" defer></script>
+    <script src="timetable.js" defer></script>
     <script src="quickparse.js" defer></script>
     <script src="areas.js" defer></script>
     <script src="capture.js" defer></script>

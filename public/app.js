@@ -385,7 +385,7 @@
     if (found) { found.hidden = false; found.textContent = "Reading it…"; }
     let got;
     try {
-      got = await OrganiserCapture.textOf(file);
+      got = await OrganiserCapture.textOf(file, (w) => { if (found) found.textContent = w; });
     } catch {
       got = { text: "", note: "That file couldn't be opened." };
     }

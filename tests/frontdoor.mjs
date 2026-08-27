@@ -231,8 +231,17 @@ sec("And the front door will take a document, not just typing");
 
 sec("And a file it can't read says so rather than doing nothing");
 {
+  // A PHOTOGRAPH NOW GOES TO THE LOCAL MODEL, so this needs a stand-in for that
+  // — and the one thing worth pinning about it is what happens when there ISN'T
+  // one, which is the state most machines are in.
+  const asked = [];
   const sbx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
-    RegExp, isNaN, parseInt, parseFloat, Intl, setTimeout,
+    RegExp, isNaN, parseInt, parseFloat, Intl, setTimeout, btoa: (s) => Buffer.from(s, "binary").toString("base64"),
+    Uint8Array,
+    fetch: async (url) => {
+      asked.push(String(url));
+      return { ok: true, json: async () => ({ ok: false, why: "no_vision_model", message: "No model that can see is installed. In a terminal, run:  ollama pull llava" }) };
+    },
     document: { getElementById: () => null, querySelector: () => null } };
   sbx.window = sbx;
   vm.createContext(sbx);
@@ -249,11 +258,14 @@ sec("And a file it can't read says so rather than doing nothing");
   ok("and it says what does work", /copying the text across/.test(doc.note), doc.note);
   const xls = await C.textOf(file("classes.xlsx"));
   ok("and so is a spreadsheet", /can't open xlsx/.test(xls.note), xls.note);
-  // A PHOTOGRAPH OF A TIMETABLE has no text in it at all, and nothing here can
-  // get it out. Said plainly, because it is the first thing anybody tries.
+  // A PHOTOGRAPH GOES TO THE MODEL ON THIS MACHINE, and when there isn't one
+  // that can see, what comes back is the sentence that says how to get one —
+  // not silence, and not a shrug.
   const pic = await C.textOf(file("timetable.jpg", "image/jpeg"));
-  ok("a picture is refused in words", /reading words off a picture/.test(pic.note), pic.note);
-  ok("and points at what would work", /PDF or the text itself/.test(pic.note), pic.note);
+  ok("a picture is offered to the local model", asked.some((u) => /\/api\/look/.test(u)),
+     JSON.stringify(asked));
+  ok("and with none that can see, it says what to run", /ollama pull llava/.test(pic.note), pic.note);
+  ok("and hands back no words it didn't get", pic.text === "", JSON.stringify(pic.text));
   // AND PLAIN TEXT JUST WORKS.
   const txt = await C.textOf({ name: "notes.txt", type: "text/plain", text: async () => "hello" });
   ok("a text file comes straight through", txt.text === "hello", JSON.stringify(txt));

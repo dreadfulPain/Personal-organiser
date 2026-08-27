@@ -340,9 +340,12 @@
   // and reasonably concludes it can't read one.
   //
   // It can read one. It just never offered.
-  const READS = ".pdf,.txt,.csv,.md,text/plain,text/csv,application/pdf";
+  // Photographs included: a timetable on a staffroom wall is a picture before
+  // it is anything else, and "open a file" that refuses the obvious file is the
+  // same door being shut twice. What happens to one is in textOf below.
+  const READS = ".pdf,.txt,.csv,.md,text/plain,text/csv,application/pdf,image/*";
 
-  async function textOf(file) {
+  async function textOf(file, onStep) {
     if (!file) return { text: "", note: "" };
     const name = String(file.name || "");
     if (/\.pdf$/i.test(name) || file.type === "application/pdf") {
@@ -358,9 +361,41 @@
     // worst possible answer to a file somebody chose on purpose.
     if (/\.(docx?|xlsx?|pptx?|pages|numbers|key)$/i.test(name))
       return { text: "", note: `I can't open ${name.split(".").pop().toLowerCase()} files yet. Opening it and copying the text across works.` };
-    if (/\.(png|jpe?g|gif|heic|webp|bmp|tiff?)$/i.test(name))
-      return { text: "", note: "That's a picture, and reading words off a picture needs something this app hasn't got. A PDF or the text itself will work." };
+    // A PHOTOGRAPH OF THE STAFFROOM WALL is the first thing anybody tries, and
+    // for a long time the honest answer was no. A vision model running on this
+    // machine can read one — and only one running on this machine, because a
+    // photo taken in a school can have children in it. The server refuses to
+    // send it anywhere else; see handleLook.
+    if (/\.(png|jpe?g|gif|heic|heif|webp|bmp|tiff?)$/i.test(name) || /^image\//.test(file.type || "")) {
+      if (typeof onStep === "function") onStep("Looking at the picture… this one takes a while.");
+      const r = await fetch("/api/look", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: await asBase64(file) }),
+      }).catch(() => null);
+      const d = r ? await r.json().catch(() => ({})) : {};
+      if (!d.ok)
+        return { text: "", note: d.message || "That picture couldn't be read on this machine." };
+      return {
+        text: d.text,
+        // THE LEAST TRUSTWORTHY READER IN THE APP, and it says so every time.
+        // A model reading handwriting on a wall in bad light will get things
+        // wrong, and it will get them wrong confidently.
+        note: `Read out of a photograph by ${d.model} on this machine — nothing left it. ` +
+          "A model reading a picture guesses, and it guesses in a way that reads perfectly well. Check every line of it.",
+        photo: true,
+      };
+    }
     return { text: await file.text(), note: "" };
+  }
+
+  // Bytes to base64, in chunks: a phone photo is several megabytes and
+  // String.fromCharCode(...bytes) on one of those blows the argument limit.
+  async function asBase64(file) {
+    const b = new Uint8Array(await file.arrayBuffer());
+    let s = "";
+    for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+    return btoa(s);
   }
 
   // WHAT IS IN IT — asked of every reader, and answered with all of them.
@@ -538,7 +573,7 @@
     if (found) { found.hidden = false; found.textContent = "Reading it…"; }
     let got;
     try {
-      got = await textOf(file);
+      got = await textOf(file, (w) => { found.textContent = w; });
     } catch {
       got = { text: "", note: "That file couldn't be opened." };
     }

@@ -231,8 +231,12 @@
     // which for a real timetable never happens. Shift and look again.
     for (let shift = 0; shift <= 2; shift++) {
       const first = Math.min(...cols.map((c) => c.col)) + shift;
+      // A START ON ITS OWN COUNTS AS A TIME HERE TOO. Looking only for a full
+      // span, a timetable whose left-hand column says "08:15" had no time
+      // anywhere to the left of the days — so the shift was never found, and
+      // the time column was read as Monday.
       const found = rows.some((cells, i) =>
-        i !== headRow && cells.slice(0, first).some((c) => spanIn(c)));
+        i !== headRow && cells.slice(0, first).some((c) => spanIn(c) || startsAt(c)));
       if (found) {
         if (shift) cols = cols.map((c) => ({ ...c, col: c.col + shift }));
         break;
@@ -241,17 +245,45 @@
     out.days = cols.map((c) => c.day);
     const firstDayCol = Math.min(...cols.map((c) => c.col));
 
-    rows.forEach((cells, i) => {
-      if (i === headRow) return;
-      // The time for this row lives to the LEFT of the first day column — in a
-      // column of its own, or next to a period number. Anything further left is
-      // a period name and is not needed.
-      let span = null;
+    // THE TIME FOR EACH ROW, WORKED OUT FOR ALL OF THEM BEFORE ANY BLOCK IS
+    // MADE — because a row that only says when it starts is finished by the row
+    // underneath it.
+    //
+    // HALF THE TIMETABLES IN THE WORLD ARE WRITTEN THAT WAY. The left-hand
+    // column says 08:15, 09:00, 09:55 and the end of each period is the start of
+    // the next; nobody writes both. Read here as needing a range, every one of
+    // those came out as NOTHING AT ALL — no header row wrong, no cell missed,
+    // simply no timetable — and a photograph of a staffroom wall is the most
+    // likely thing of all to be written that way.
+    const spans = rows.map((cells, i) => {
+      if (i === headRow) return null;
+      // The time lives to the LEFT of the first day column — in a column of its
+      // own, or next to a period number. Anything further left is a period name
+      // and is not needed.
       for (let j = 0; j < firstDayCol && j < cells.length; j++) {
         const s = spanIn(cells[j]);
-        if (s) { span = s; break; }
+        if (s) return s;
       }
-      if (!span) return;   // a row with no time in it is a heading or a note
+      for (let j = 0; j < firstDayCol && j < cells.length; j++) {
+        const at = startsAt(cells[j]);
+        if (at) return { start: at, end: "", lone: true };
+      }
+      return null;   // a row with no time in it is a heading or a note
+    });
+    spans.forEach((s, i) => {
+      if (!s || !s.lone) return;
+      // The next row that has a time, and is later in the day than this one. A
+      // row that goes backwards is a new column of the same table, not the end
+      // of this period.
+      const next = spans.slice(i + 1).find((x) => x && x.start > s.start);
+      s.end = next ? next.start : anHourAfter(s.start);
+      s.endGuessed = !next;
+    });
+
+    rows.forEach((cells, i) => {
+      if (i === headRow) return;
+      const span = spans[i];
+      if (!span || !span.end) return;
       cols.forEach(({ col, day }) => {
         const label = (cells[col] || "").trim();
         if (!label) return;              // an empty cell is a free period
@@ -260,6 +292,9 @@
           start: span.start,
           end: span.end,
           days: [day],
+          // The last period of the day has no row under it to finish it, so an
+          // hour is filled in and said out loud — see words().
+          ...(span.endGuessed ? { endGuessed: true } : {}),
           soft: false,
           source: "paste",
         });

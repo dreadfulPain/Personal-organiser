@@ -1933,6 +1933,134 @@ async function handleTranscribe(req, res, query) {
 // loads a model when /api/generate is called with an empty prompt; keep_alive
 // then holds it resident. Best-effort and silent — if it can't warm, the real
 // sort still works, just slower the first time. Only meaningful for Ollama.
+// ---- READING A PHOTOGRAPH -------------------------------------------------
+//
+// A teacher's timetable is on the staffroom wall and their calendar is on a
+// noticeboard, so the first thing anybody tries is a photo of it. Until now the
+// app said no — and it was right to, because reading words off a picture needs
+// a model that can see, and this app will not send a photograph anywhere.
+//
+// A LOCAL ONE CAN. Ollama runs vision models on the same machine as the text
+// one, so the picture never leaves the room it was taken in. That is the whole
+// reason this is possible at all.
+//
+// AND IT IS ONLY EVER LOCAL. A photograph taken in a school can have children
+// in it, a register on a desk, a screen with somebody's marks on it. So this
+// refuses to run against a cloud engine — not "warns", refuses. There is no
+// setting that turns that off.
+const VISION_MODELS = [
+  "llava", "bakllava", "llama3.2-vision", "llama3.2vision", "llama4",
+  "minicpm-v", "moondream", "qwen2-vl", "qwen2.5vl", "qwen2.5-vl",
+  "granite3.2-vision", "gemma3", "mistral-small3", "internvl",
+];
+const looksLikeVision = (name) => {
+  const n = String(name || "").toLowerCase();
+  return VISION_MODELS.some((v) => n.includes(v));
+};
+
+// Word for word, and the LAYOUT with it. A timetable read into one long
+// paragraph is unreadable by anything here; the same timetable with a tab
+// between its cells goes straight into the grid reader that already exists.
+const LOOK_PROMPT =
+  "Write out every word in this picture as plain text.\n" +
+  "Keep the layout: one line of the picture on one line of your answer.\n" +
+  "If it is a table or a timetable, put a TAB between the cells of a row and keep each row on its own line.\n" +
+  "Copy what is written. Do not describe the picture, do not explain it, do not summarise it, " +
+  "and do not add a single word that is not written in it.\n" +
+  "Where you cannot make something out, write [?] in its place rather than guessing.";
+
+async function handleLook(req, res) {
+  const cfg = aiConfig();
+  if (!cfg)
+    return sendJson(res, 200, {
+      ok: false,
+      why: "no_ai",
+      message: "Reading a picture needs a local model that can see, and no AI is set up on this machine yet.",
+    });
+  // THE LINE THAT IS NOT NEGOTIABLE.
+  if (cfg.engine !== "ollama")
+    return sendJson(res, 200, {
+      ok: false,
+      why: "not_local",
+      message:
+        "A photograph is only ever read on this machine, and the AI this app is set to talk to isn't on it. " +
+        "Install Ollama and pull a model that can see, and photos will work.",
+    });
+
+  let body = {};
+  try {
+    body = JSON.parse((await readBody(req, 24 * 1024 * 1024)) || "{}");
+  } catch {
+    return sendJson(res, 400, { ok: false, why: "unreadable", message: "That picture didn't arrive in one piece." });
+  }
+  const image = String(body.image || "").replace(/^data:[^,]*,/, "");
+  if (!image) return sendJson(res, 400, { ok: false, why: "empty", message: "There was no picture in that." });
+
+  const base = cfg.baseUrl.replace(/\/+$/, "");
+  // WHICH MODEL CAN SEE. Said in .env if you have said it; otherwise whichever
+  // pulled model looks like one, because asking a text model to read a picture
+  // gets you a confident description of a picture it never saw.
+  let model = (process.env.AI_VISION_MODEL || "").trim();
+  if (!model) {
+    try {
+      const tags = await fetch(base + "/api/tags", { signal: AbortSignal.timeout(4000) });
+      const list = tags.ok ? ((await tags.json()).models || []).map((m) => m.name || m.model || "") : [];
+      model = list.find(looksLikeVision) || "";
+    } catch {
+      /* nothing pulled, or Ollama not answering — said below */
+    }
+  }
+  if (!model)
+    return sendJson(res, 200, {
+      ok: false,
+      why: "no_vision_model",
+      message:
+        "No model that can see is installed. In a terminal, run:  ollama pull llava  " +
+        "— it's a big download, so leave it running. After that, photos will work.",
+    });
+
+  try {
+    const r = await fetch(base + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // No JSON shape asked for: what is wanted back is the words, as words.
+      body: JSON.stringify({
+        model,
+        stream: false,
+        keep_alive: cfg.keepAlive,
+        options: { temperature: 0 },
+        messages: [{ role: "user", content: LOOK_PROMPT, images: [image] }],
+      }),
+      // A vision model on a laptop is slow. Slow is fine; silent is not, which
+      // is why the page says what it is doing while this runs.
+      signal: AbortSignal.timeout(240000),
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      return sendJson(res, 200, {
+        ok: false,
+        why: "engine",
+        message: `The model that reads pictures answered ${r.status}. ${detail.slice(0, 150)}`,
+      });
+    }
+    const data = await r.json();
+    // TRIMMED AT THE ENDS, BUT NOT ACROSS THE FRONT OF THE FIRST LINE. A
+    // timetable's header row starts with an EMPTY CELL — the blank square above
+    // the time column — and out of a model that is a leading tab. Trimmed away,
+    // every day shifts one column left and the time column becomes Monday.
+    const text = String(data?.message?.content ?? "").replace(/^[\r\n]+/, "").replace(/\s+$/, "");
+    if (!text)
+      return sendJson(res, 200, { ok: false, why: "nothing", message: "It couldn't make anything out in that picture." });
+    return sendJson(res, 200, { ok: true, text, model });
+  } catch (e) {
+    return sendJson(res, 200, {
+      ok: false,
+      why: "unreachable",
+      message: `Couldn't reach the model that reads pictures. ${String(e && e.message ? e.message : e).slice(0, 120)}`,
+    });
+  }
+}
+
 async function handleWarm(res) {
   const cfg = aiConfig();
   if (!cfg || cfg.engine !== "ollama") return sendJson(res, 200, { ok: true, warmed: false });
@@ -2494,6 +2622,11 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === "/api/warm" && req.method === "POST") {
       return handleWarm(res);
+    }
+
+    // A photograph, read on this machine and nowhere else — see handleLook.
+    if (pathname === "/api/look" && req.method === "POST") {
+      return handleLook(req, res);
     }
 
     if (pathname === "/api/transcribe" && req.method === "POST") {

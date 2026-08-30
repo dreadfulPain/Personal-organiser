@@ -343,7 +343,7 @@
   // Photographs included: a timetable on a staffroom wall is a picture before
   // it is anything else, and "open a file" that refuses the obvious file is the
   // same door being shut twice. What happens to one is in textOf below.
-  const READS = ".pdf,.txt,.csv,.md,text/plain,text/csv,application/pdf,image/*";
+  const READS = ".pdf,.docx,.txt,.csv,.md,text/plain,text/csv,application/pdf,image/*";
 
   async function textOf(file, onStep) {
     if (!file) return { text: "", note: "" };
@@ -356,10 +356,19 @@
         return { text: "", note: (r.notes || []).join(" ") || "Nothing readable came out of that file." };
       return { text: r.text, note: r.caution || "", pages: (r.pages || []).length };
     }
-    // A WORD OR EXCEL FILE IS A ZIP, and unpacking one is a job of its own —
-    // said plainly rather than failing at it, because "nothing happened" is the
-    // worst possible answer to a file somebody chose on purpose.
-    if (/\.(docx?|xlsx?|pptx?|pages|numbers|key)$/i.test(name))
+    // A WORD DOCUMENT. Schools send these constantly — it is what is on the
+    // staffroom computer — and the app said "I can't open docx files yet" three
+    // separate times to somebody doing nothing unusual. It is a zip with one XML
+    // file in it; see office.js.
+    if (/\.docx$/i.test(name) || /wordprocessingml/.test(file.type || "")) {
+      const O = window.OrganiserOffice;
+      if (!O) return { text: "", note: "This page can't open a Word file." };
+      return await O.readDocx(await file.arrayBuffer());
+    }
+    // The rest of the family is still a job of its own, said plainly rather than
+    // failed at, because "nothing happened" is the worst possible answer to a
+    // file somebody chose on purpose.
+    if (/\.(docm?|doc|xlsx?|xlsm|pptx?|pages|numbers|key)$/i.test(name))
       return { text: "", note: `I can't open ${name.split(".").pop().toLowerCase()} files yet. Opening it and copying the text across works.` };
     // A PHOTOGRAPH OF THE STAFFROOM WALL is the first thing anybody tries, and
     // for a long time the honest answer was no. A vision model running on this

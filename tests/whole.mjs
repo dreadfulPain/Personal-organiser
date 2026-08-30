@@ -23,6 +23,7 @@ import { spawn } from "node:child_process";
 // that pattern matched nothing: 157 checks became 47 and it still said
 // "0 failed". A list that can empty itself is worse than one that is wrong.
 import { STORES as TABLE } from "./_store.mjs";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 const PUB = path.join(REPO, "public");
@@ -37,7 +38,7 @@ const src = Object.fromEntries(
   fs.readdirSync(PUB).filter((f) => /\.(js|html)$/.test(f)).map((f) => [f, fs.readFileSync(path.join(PUB, f), "utf8")])
 );
 const server = fs.readFileSync(path.join(REPO, "server.js"), "utf8");
-const code = (s) => String(s || "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const code = codeOf;
 const pages = Object.keys(src).filter((f) => f.endsWith(".html")).sort();
 
 const STORES = TABLE.map((s) => s.key);

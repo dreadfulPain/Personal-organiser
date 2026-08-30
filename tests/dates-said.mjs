@@ -21,7 +21,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { checker } from "./_check.mjs";
+import { checker, codeOf } from "./_check.mjs";
 const { ok, done, sec } = checker();
 
 const PUB = join(REPO_ROOT, "public");
@@ -367,8 +367,7 @@ sec("And only one file decides how a date looks");
   };
   const offenders = own.filter((f) => {
     if (ALLOWED[f]) return false;
-    const src = fs.readFileSync(path.join(PUB, f), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const src = codeOf(fs.readFileSync(path.join(PUB, f), "utf8"));
     return /toLocaleDateString/.test(src);
   });
   ok("nothing else writes a date its own way", offenders.length === 0, offenders.join(", "));

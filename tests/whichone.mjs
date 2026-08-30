@@ -22,7 +22,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import vm from "node:vm";
 import path from "node:path";
-import { checker } from "./_check.mjs";
+import { checker, codeOf } from "./_check.mjs";
 const { ok, done, sec } = checker();
 
 const PUB = path.join(REPO_ROOT, "public");
@@ -162,8 +162,7 @@ sec("And nothing writes a person on screen its own way");
     .readdirSync(PUB)
     .filter((f) => f.endsWith(".js") && f !== "names.js")
     .filter((f) => {
-      const src = fs.readFileSync(path.join(PUB, f), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const src = codeOf(fs.readFileSync(path.join(PUB, f), "utf8"));
       // A person's name going onto the page without going through the one place
       // that knows which one they are.
       return /escapeHtml\(it\.(promisedTo|waitingOn)\)/.test(src) ||
@@ -371,8 +370,7 @@ sec("And nobody works out for themselves whether a name means a person");
   //
   // Worse, it never admitted a doubt: the card said "1 promised to them"
   // against BOTH people called Nick, definitively, twice, for one promise.
-  const ppl = fs.readFileSync(path.join(PUB, "people.js"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const ppl = codeOf(fs.readFileSync(path.join(PUB, "people.js"), "utf8"));
   ok("people.js asks names.js instead of guessing",
      !/includes\(b\)\s*\|\|\s*b\.includes\(a\)/.test(ppl), "its own loose matcher is back");
   ok("and it goes through look()", /OrganiserNames\.look\(/.test(ppl), "nothing asks look()");

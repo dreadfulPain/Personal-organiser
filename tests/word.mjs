@@ -1,125 +1,149 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
-// WHAT ACTUALLY ARRIVES WHEN YOU PASTE OUT OF WORD.
+// A WORD DOCUMENT, DRAGGED ONTO THE BOX.
 //
-// A textarea only ever receives text/plain, so the paste itself works and no
-// file handling is needed. But "plain text out of Word" is not the same plain
-// text a person types, and the differences are invisible on screen:
+// Somebody dragged their school's calendar — a .docx, because that is what is
+// on the staffroom computer — onto the paste box, and the browser did what
+// browsers do with a file dropped on a textarea: it put the file's NAME in as
+// text. The reader then said "No dates found in that", which was true of the
+// sentence it had been handed and useless about the file it hadn't.
 //
-//   CRLF line endings, and a VERTICAL TAB (U+000B) wherever a soft return was
-//   used — shift+enter, which is how most people end a line inside a bullet.
-//   NON-BREAKING SPACES and tabs for indentation.
-//   MIDDOT bullets, because Word's list formatting has no plain-text form.
-//   TABS between cells when the plan is laid out as a table, which a great many
-//   school templates are.
-//   DOUBLE SPACES and smart punctuation after a heading.
+// Two separate faults in one gesture: a box that swallows a file as its name,
+// and an app that couldn't have read the file anyway. The second had been said
+// out loud three times — "I can't open docx files yet, copy the text across" —
+// which is a chore nobody should do to use their own calendar.
 //
-// If any of those breaks the parse, the plan is kept but nothing is read out of
-// it, and the only symptom is a count that stays low.
+// A .docx IS A ZIP with one XML file in it and needs no library at all.
+//
+// Every fixture here is built in the test. No school document is committed.
 
 import fs from "node:fs";
+import path from "node:path";
 import vm from "node:vm";
+import { checker } from "./_check.mjs";
+import { docx, asFile, p, cell, row, table, doc } from "./_docx.mjs";
+const { ok, done, sec } = checker();
 
-const REPO = REPO_ROOT;
-let pass = 0, fail = 0;
-const ok = (n, c, e) => {
-  if (c) { pass++; console.log("  ok  " + n); }
-  else { fail++; console.log("FAIL  " + n + (e ? "\n      " + String(e).slice(0, 400) : "")); }
-};
-const sec = (s) => console.log("\n" + s);
+const PUB = path.join(REPO_ROOT, "public");
+const read = (f) => fs.readFileSync(path.join(PUB, f), "utf8");
 
-const sb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp };
-sb.window = sb; vm.createContext(sb);
-["names.js", "lessonplan.js"].forEach((f) =>
-  vm.runInContext(fs.readFileSync(`${REPO}/public/${f}`, "utf8"), sb));
-const LP = sb.OrganiserLessonPlan;
+const sb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+  RegExp, isNaN, parseInt, parseFloat, Intl,
+  Uint8Array, DataView, TextDecoder, DecompressionStream, Response, Blob, ArrayBuffer, Promise };
+sb.window = sb;
+vm.createContext(sb);
+["office.js", "dates.js", "calplan.js", "schedule.js", "timetable.js"]
+  .forEach((f) => vm.runInContext(read(f), sb));
+const O = sb.OrganiserOffice;
+const C = sb.OrganiserCalPlan;
 
-const CR = "\r\n";
-const VT = "";      // soft return — shift+enter inside a bullet
-const NB = " ";      // non-breaking space
-const MIDDOT = "·";  // Word's plain-text bullet
-const LSEP = " ";    // line separator, turns up in some exports
-
-sec("A plan copied out of Word");
+// ---------------------------------------------------------------------------
+sec("A Word document is opened, not refused");
 {
-  const text =
-    "Year 9 — settings" + CR + CR +
-    "Learning Objective:" + NB + " To describe a setting using the five senses." + CR + CR +
-    "Activities" + CR +
-    MIDDOT + "\tModel a paragraph on the board" + CR +
-    MIDDOT + "\tThey write their own" + VT + "then swap and read" + CR +
-    MIDDOT + "\tShare two out loud" + CR + CR +
-    "Assessment" + CR +
-    MIDDOT + "\tExit ticket";
-  const p = LP.parse(text, null);
-  ok("the objective survives a non-breaking space after the colon",
-     /five senses/.test(p.objective), JSON.stringify(p.objective));
-  ok("and isn't left as a stray letter", p.objective.length > 10, JSON.stringify(p.objective));
-  ok("Word's bullets are read as bullets", p.ways.length === 3, JSON.stringify(p.ways));
-  ok("and stripped of the middot", !p.ways.some((w) => w.includes(MIDDOT)), JSON.stringify(p.ways));
-  // A soft return inside a bullet is one activity written over two lines, not
-  // two activities. Split, it turns up in the mirror as a method of its own.
-  ok("a wrapped bullet comes back as one activity, rejoined",
-     p.ways[1] === "They write their own then swap and read", JSON.stringify(p.ways));
-  ok("with no stray control character left in it",
-     !p.ways.some((w) => /[\u000b\u000c\u2028\u2029]/.test(w)), JSON.stringify(p.ways));
-  ok("the checks are still separate", p.checks.length === 1, JSON.stringify(p.checks));
+  const bytes = docx(doc(p("Example School") + p("Autumn term dates") +
+    table(row(cell("Term starts"), cell("1 September 2026")),
+          row(cell("Term ends"), cell("17 December 2026")))));
+  const got = await O.readDocx(asFile(bytes));
+  ok("it reads", !got.note && !!got.text, JSON.stringify(got.note));
+  ok("the words come out", /Term starts/.test(got.text), JSON.stringify(got.text));
+  ok("and the dates with them", /1 September 2026/.test(got.text), JSON.stringify(got.text));
+  // AND THE READERS THAT ALREADY EXIST TAKE IT FROM THERE.
+  const r = C.read(got.text);
+  ok("the calendar reader gets its dates", r.rows.length === 2, JSON.stringify(r.rows.map((x) => x.date)));
 }
 
-sec("A heading with the spacing Word leaves behind");
+sec("And a table comes out as a table");
 {
-  // Two spaces, a non-breaking space, and a tab all appear after headings in
-  // real templates. The text after the heading must come back whole.
-  [
-    "Learning Objective:  To describe a setting.",
-    "Learning Objective:" + NB + NB + "To describe a setting.",
-    "Learning  Objective: To describe a setting.",
-    "Learning Objective\tTo describe a setting.",
-    "LEARNING OBJECTIVE – To describe a setting.",
-  ].forEach((line, i) => {
-    const p = LP.parse(line, null);
-    ok(`heading form ${i + 1} keeps the whole objective`,
-       p.objective === "To describe a setting.", JSON.stringify(p.objective));
-  });
+  // A CALENDAR IN WORD IS A TABLE, and a table read as a paragraph is a wall of
+  // numbers no reader here can do anything with. Each CELL on its own line is
+  // what a table looks like after a PDF has flattened it — which every reader
+  // in this app was already written for.
+  const bytes = docx(doc(table(row(cell("Mon"), cell("Tue")), row(cell("P1"), cell("P2")))));
+  const got = await O.readDocx(asFile(bytes));
+  ok("one cell to a line", got.text === "Mon\nTue\nP1\nP2", JSON.stringify(got.text));
 }
 
-sec("A plan laid out as a table, which most school templates are");
+sec("And a paragraph means one thing in a table and another outside one");
 {
-  // Word tables paste as tab-separated cells, one row per line.
-  const text =
-    "Class\t9A\tDate\tTuesday" + CR +
-    "Learning Objective\tTo use connectives to join two ideas" + CR +
-    "Activities\tRecap yesterday" + CR +
-    "\tSort the connective cards" + CR +
-    "Assessment\tThumbs up on three examples";
-  const p = LP.parse(text, null);
-  ok("the objective comes out of its cell",
-     /connectives/.test(p.objective), JSON.stringify(p.objective));
-  ok("and doesn't drag the heading with it",
-     !/objective/i.test(p.objective), JSON.stringify(p.objective));
-  ok("activities come out too", p.ways.length >= 1, JSON.stringify(p.ways));
-  ok("and the check is separate", /Thumbs up/.test(p.checks.join(" ")), JSON.stringify(p.checks));
+  // THE FAULT THIS FOUND. Treating them the same joined a document's whole
+  // title onto the first cell of its calendar — which then had no heading row
+  // above it, and the grid read as nothing at all.
+  const bytes = docx(doc(
+    p("Example School") + p("2026 Calendar") + p("Wk") +
+    table(row(cell("Sun"), cell("Mon")), row(cell("1"), cell("2 Staff Mtg")))));
+  const got = await O.readDocx(asFile(bytes));
+  const lines = got.text.split("\n");
+  ok("a title outside a table is its own line", lines[0] === "Example School", JSON.stringify(lines));
+  ok("and so is the line under it", lines[1] === "2026 Calendar", JSON.stringify(lines));
+  ok("and the heading above the table is not glued to it", lines[2] === "Wk", JSON.stringify(lines));
+  // AND INSIDE A CELL, a line break is a line break in somebody's typing — the
+  // cell is the unit. "4" and "Staff Mtg" are one square, not two rows.
+  const two = docx(doc(table(row(cell("4", "Staff Mtg"), cell("5")))));
+  const g2 = await O.readDocx(asFile(two));
+  ok("two paragraphs in one cell are one square", g2.text === "4 Staff Mtg\n5", JSON.stringify(g2.text));
 }
 
-sec("Odd line breaks don't swallow the rest of the plan");
+sec("And a square with words in it is read as a day with something on it");
 {
-  const text = "Learning Objective" + VT + "to add fractions" + VT + VT +
-               "Activities" + VT + "- watch me do one" + LSEP + "- then you do one";
-  const p = LP.parse(text, null);
-  ok("a plan written entirely with soft returns still parses",
-     /fractions/.test(p.objective), JSON.stringify(p));
-  ok("and its activities are separate lines", p.ways.length === 2, JSON.stringify(p.ways));
+  // WHAT THE WORD ORIGINAL HAS THAT THE PDF DIDN'T. Out of a PDF a marked day
+  // is a number and a symbol, and a legend at the bottom says what the symbol
+  // means. In Word the square says it outright — "4 Ý Staff Mtg" — which is
+  // better evidence and needs no legend. The reader used to stop dead at the
+  // first one, so a term calendar came back as five weeks of twenty-one.
+  const week = (n, ...days) => row(cell(String(n)), ...days.map((d) => cell(d)));
+  const bytes = docx(doc(p("Example School term calendar") + p("Wk") + table(
+    row(cell("Sun"), cell("Mon"), cell("Tue"), cell("Wed"), cell("Thu"), cell("Fri"), cell("Sat")),
+    week(1, "9/6", "7", "8", "9", "10", "11 Staff Mtg", "12"),
+    week(2, "13", "14", "15", "16", "17", "18 Staff Mtg", "19"),
+    week(3, "20", "21", "22", "23", "24", "25 Staff Mtg", "26"),
+    week(4, "27", "28", "29", "30", "10/1 Holiday", "2", "3"))));
+  const got = await O.readDocx(asFile(bytes));
+  const g = C.weekGridIn(got.text);
+  ok("the term grid reads", !!g, "not read");
+  ok("all of it, not the first month", g && g.weeks.length === 4, g && String(g.weeks.length));
+  // A MONTH MARKER WITH WORDS BESIDE IT is where it used to stop: "10/1" alone
+  // was a month, "10/1 Holiday" was nothing, so the grid ended at the month end.
+  const oct = g && g.weeks[3].days.find((d) => d.month === 10);
+  ok("and crosses the month end", !!oct, JSON.stringify(g && g.weeks[3].days));
+  ok("keeping what was in that square", oct && oct.marks.join("") === "Holiday", oct && JSON.stringify(oct.marks));
+
+  const marks = C.weekGridMarks(g, 2026);
+  const staff = marks.find((m) => m.name === "Staff Mtg");
+  ok("the marked days are gathered by what they say", staff && staff.dates.length === 3,
+     JSON.stringify(marks.map((m) => `${m.name} x${m.dates.length}`)));
+  ok("and named by the square, with no legend anywhere", staff && staff.name === "Staff Mtg",
+     staff && staff.name);
+  ok("all on the same weekday", staff && staff.weekday === 5, staff && String(staff.weekday));
 }
 
-sec("Nothing about this needs a file");
+sec("And a file it still cannot open says so, and what does work");
 {
-  // The point worth being sure of: a textarea receives text/plain and nothing
-  // else, so there is no .docx to open, no library, and no upload. If that ever
-  // stops being true this test is the thing that should be revisited.
-  const src = fs.readFileSync(`${REPO}/public/lessons.js`, "utf8");
-  ok("the page reads a textarea, not a file", !/type="file"|FileReader|\.docx/i.test(src));
+  // AN OLD .doc IS NOT A ZIP and never will be readable this way. Saying that,
+  // with the way round it, is the whole of the job here.
+  const old = await O.readDocx(asFile(Buffer.from("\xd0\xcf\x11\xe0 old word file", "binary")));
+  ok("an old .doc is refused in words", /older Word file/.test(old.note), old.note);
+  ok("with the way round it", /saving it as \.docx/.test(old.note), old.note);
+  // AND A DOCUMENT THAT IS ALL PICTURE has no words to give.
+  const empty = docx(doc(""));
+  const none = await O.readDocx(asFile(empty));
+  ok("a document with no words says that", /no words in that document/.test(none.note), none.note);
+  ok("and points at what would work", /photo of it/.test(none.note), none.note);
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+sec("And the box you drop it on reads it rather than naming it");
+{
+  const tl = read("timeline.js");
+  // THE GESTURE THAT STARTED THIS. A file dropped on a textarea becomes its
+  // NAME, and the reader then honestly reports that a filename has no dates in
+  // it — which is true, useless, and looks exactly like the app not working.
+  ok("the calendar box takes a drop", /dropOnto\(calBox/.test(tl), "a dropped file is still its name");
+  ok("and so does the timetable box", /dropOnto\(\$\("#ttText"\)/.test(tl), "only one box was fixed");
+  ok("and a drop is read as a file", /dataTransfer[\s\S]{0,200}textOf/.test(tl),
+     "the file is not being read");
+  const cap = read("capture.js");
+  ok("a Word file is offered in the picker", /\.docx/.test(cap), "docx isn't offered");
+  ok("and handed to the reader", /readDocx/.test(cap), "docx isn't read");
+}
+
+done();

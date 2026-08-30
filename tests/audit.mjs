@@ -5,6 +5,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // units can't: is each thing actually REACHABLE, does it SAVE, is it wired to a
 // page, and is there anything built that nobody can get to?
 import fs from "node:fs"; import path from "node:path";
+import { codeOf } from "./_check.mjs";
 const REPO = REPO_ROOT;
 const P = (f) => path.join(REPO, "public", f);
 const read = (f) => fs.readFileSync(P(f), "utf8");
@@ -72,7 +73,7 @@ if (blank) blank[1].split(",").forEach((k) => { const n = k.split(":")[0].trim()
 const reads = new Set();
 scripts.forEach((f) => {
   // Comments are not code: a filename in a sentence is not a field being read.
-  const body = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const body = codeOf(read(f));
   // `data` the loaded document, never `e.data.size` off a recorder event — the
   // lookbehind is what tells those two apart.
   [...body.matchAll(/(?<![.\w])data\.(\w+)/g)].forEach((m) => reads.add(m[1]));

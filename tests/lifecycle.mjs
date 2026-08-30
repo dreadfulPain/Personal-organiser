@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 // One shared reading of store.js for the whole suite — see _store.mjs.
 import { STORES as TABLE } from "./_store.mjs";
+import { codeOf } from "./_check.mjs";
 
 const dir = join(REPO_ROOT, "public");
 const src = Object.fromEntries(
@@ -39,7 +40,7 @@ const ok = (n, c, e) => {
 
 // Strip comments — a word in a comment is not a working code path, and reading
 // one as if it were is how a gap hides behind its own explanation.
-const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const code = codeOf;
 const pages = Object.keys(src).filter((f) => f.endsWith(".html"));
 
 // Every .js a page actually loads — a renderer in a file no page includes is

@@ -23,6 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 // One shared reading of store.js for the whole suite — see _store.mjs.
 import { STORES as TABLE } from "./_store.mjs";
+import { codeOf } from "./_check.mjs";
 
 const dir = join(REPO_ROOT, "public");
 const src = Object.fromEntries(
@@ -37,7 +38,7 @@ const ok = (n, c, e) => {
   else { fail++; console.log("FAIL  " + n + (e ? "\n      " + String(e).slice(0, 400) : "")); }
 };
 const sec = (s) => console.log("\n" + s);
-const code = (s) => String(s || "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const code = codeOf;
 
 const pages = Object.keys(src).filter((f) => f.endsWith(".html"));
 const scripts = Object.keys(src).filter((f) => f.endsWith(".js"));

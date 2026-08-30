@@ -11,6 +11,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -208,8 +209,7 @@ sec("The mirror describes, and does not advise");
 
 sec("It has never heard of a school");
 {
-  const src = fs.readFileSync(`${REPO}/public/lessonplan.js`, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = codeOf(fs.readFileSync(`${REPO}/public/lessonplan.js`, "utf8"));
   // The starting headings are seeded vocabulary, exactly like the level names
   // in levels.js — allowed, and named as such. Nothing else may assume a
   // subject, a key stage, a syllabus or a country.

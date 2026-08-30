@@ -29,7 +29,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import vm from "node:vm";
 import path from "node:path";
-import { checker } from "./_check.mjs";
+import { checker, codeOf } from "./_check.mjs";
 const { ok, done, sec } = checker();
 
 const PUB = join(REPO_ROOT, "public");
@@ -111,10 +111,7 @@ const shape = (body, params) => {
 
 const found = new Map(); // name -> [{ file, shape, delegates }]
 for (const f of fs.readdirSync(PUB).filter((x) => x.endsWith(".js"))) {
-  const src = fs
-    .readFileSync(path.join(PUB, f), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  const src = codeOf(fs.readFileSync(path.join(PUB, f), "utf8"));
   for (const name of Object.keys(WATCHED)) {
     const re = new RegExp(
       `(?:function\\s+${name}\\s*\\(([^)]*)\\)|const\\s+${name}\\s*=\\s*(?:\\(([^)]*)\\)|(\\w+))\\s*=>)`,
@@ -271,6 +268,28 @@ sec("And where one thing ends and the next begins is one answer");
     splitFragments(line).some((f) => /\d\.$/.test(f.text)) ||
     Q.parseAll(line, {}).some((r) => /\d\.$/.test(r.title)));
   ok("and nothing comes back ending mid-number", broken.length === 0, broken.join(" | "));
+}
+
+// ---------------------------------------------------------------------------
+sec("And the suites themselves only answer this once");
+{
+  // THE SAME BUG, IN THE CHECKS. Nineteen suites here each wrote out their own
+  // "take the comments out" line, and every one of them had the same hole:
+  // `image/*` in the list of file types the picker offers opens what looks like
+  // a block comment, so everything up to the next `*/` was deleted before the
+  // check read it — 94 lines of capture.js, 17 of people.js, 10 of class.js.
+  //
+  // It surfaced as a wiring check saying nothing used office.js, while the line
+  // that used it sat in the deleted stretch. The checks reading through that
+  // hole include the one that says the pastoral notes never reach the network,
+  // which is not a check anybody should be reading a partial file for.
+  const HERE = path.join(REPO_ROOT, "tests");
+  const own = fs
+    .readdirSync(HERE)
+    .filter((f) => f.endsWith(".mjs") && f !== "_check.mjs")
+    .filter((f) => /\/\\\*\[\\s\\S\]\*\?\\\*\\\//.test(fs.readFileSync(path.join(HERE, f), "utf8")));
+  ok("no suite writes its own comment-stripper", own.length === 0,
+     `${own.join(", ")} — use codeOf from _check.mjs`);
 }
 
 done();

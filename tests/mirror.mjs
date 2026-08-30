@@ -32,7 +32,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { open } from "./_dom.mjs";
 import { DATA } from "./_data.mjs";
-import { checker } from "./_check.mjs";
+import { checker, codeOf } from "./_check.mjs";
 const { ok, done, sec } = checker();
 
 const PUB = path.join(REPO_ROOT, "public");
@@ -153,8 +153,7 @@ sec("And it asks one place which areas a thing is in");
 {
   // The same question answered two ways in one file: this half read `tags` and
   // the weekly half read `areas`. areas.js is where that question lives.
-  const src = fs.readFileSync(path.join(PUB, "lookback.js"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = codeOf(fs.readFileSync(path.join(PUB, "lookback.js"), "utf8"));
   // The PROPERTY, not the exact call text: the file aliases the module, and a
   // test that pins the spelling breaks on a correct change.
   ok("it goes through areas.js",

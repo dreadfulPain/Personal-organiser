@@ -34,6 +34,7 @@ import vm from "node:vm";
 import { open } from "./_dom.mjs";
 import { DATA } from "./_data.mjs";
 import { checker } from "./_check.mjs";
+import { docx, asFile, p, cell, row, table, doc } from "./_docx.mjs";
 const { ok, done, sec } = checker();
 
 const PUB = path.join(REPO_ROOT, "public");
@@ -237,7 +238,7 @@ sec("And a file it can't read says so rather than doing nothing");
   const asked = [];
   const sbx = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
     RegExp, isNaN, parseInt, parseFloat, Intl, setTimeout, btoa: (s) => Buffer.from(s, "binary").toString("base64"),
-    Uint8Array,
+    Uint8Array, DataView, TextDecoder, DecompressionStream, Response, Blob, ArrayBuffer, Promise,
     fetch: async (url) => {
       asked.push(String(url));
       return { ok: true, json: async () => ({ ok: false, why: "no_vision_model", message: "No model that can see is installed. In a terminal, run:  ollama pull llava" }) };
@@ -245,17 +246,20 @@ sec("And a file it can't read says so rather than doing nothing");
     document: { getElementById: () => null, querySelector: () => null } };
   sbx.window = sbx;
   vm.createContext(sbx);
-  ["dates.js", "names.js", "roster.js", "quickparse.js", "capture.js"]
+  ["dates.js", "names.js", "roster.js", "quickparse.js", "office.js", "capture.js"]
     .forEach((f) => vm.runInContext(read(f), sbx));
   const C = sbx.OrganiserCapture;
   const file = (name, type) => ({ name, type: type || "", text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) });
 
-  // A WORD FILE IS A ZIP and unpacking one is a job of its own. Saying so is
-  // the whole point: "nothing happened" is the worst possible answer to a file
-  // somebody chose on purpose.
-  const doc = await C.textOf(file("timetable.docx"));
-  ok("a Word file is refused in words", /can't open docx/.test(doc.note), JSON.stringify(doc));
-  ok("and it says what does work", /copying the text across/.test(doc.note), doc.note);
+  // A WORD FILE IS A ZIP — which is why it can be opened at all, with nothing
+  // installed to do it. It used to be refused here, politely and three times
+  // over, with "copy the text across" as the way round; somebody dragged their
+  // school's calendar onto the box and got the filename read back at them.
+  const bytes = docx(doc(p("Autumn term") + table(row(cell("Term starts"), cell("1 September 2026")))));
+  const word = await C.textOf({ name: "calendar.docx", type: "", text: async () => "",
+    arrayBuffer: async () => asFile(bytes) });
+  ok("a Word file is read", /Term starts/.test(word.text), JSON.stringify(word));
+  ok("and nothing is said about it needing to be", !word.note, word.note);
   const xls = await C.textOf(file("classes.xlsx"));
   ok("and so is a spreadsheet", /can't open xlsx/.test(xls.note), xls.note);
   // A PHOTOGRAPH GOES TO THE MODEL ON THIS MACHINE, and when there isn't one

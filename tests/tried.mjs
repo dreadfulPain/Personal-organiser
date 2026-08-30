@@ -10,6 +10,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -170,8 +171,7 @@ sec("Your words, learned rather than built in");
      JSON.stringify(v));
   ok("most-used first", v[0].used === 2);
   // §0.2: no domain vocabulary in the code at all.
-  const src = fs.readFileSync(`${REPO}/public/tried.js`, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = codeOf(fs.readFileSync(`${REPO}/public/tried.js`, "utf8"));
   ok("the module has never heard of a video or a worksheet",
      !/\b(video|worksheet|reading|kinaesthetic|auditory|visual)\b/i.test(src),
      (src.match(/\b(video|worksheet|reading|kinaesthetic|auditory|visual)\b/i) || [])[0]);

@@ -16,6 +16,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import vm from "node:vm";
 import { everyModule } from "./_dom.mjs";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -229,8 +230,7 @@ sec("The page: four seconds to take it");
 
 sec("It still knows nothing about schools");
 {
-  const clean = fs.readFileSync(`${REPO}/public/attend.js`, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const clean = codeOf(fs.readFileSync(`${REPO}/public/attend.js`, "utf8"));
   ok("no subject, key stage or framework in the code",
      !/\b(ib|gcse|key stage|ks[1-5]|maths|english|science|form tutor|safeguarding)\b/i.test(clean));
   // Attendance is the most loaded data in here. Nothing may score a child.

@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { spawn } from "node:child_process";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0, gaps = [];
@@ -33,7 +34,7 @@ const src = Object.fromEntries(
   fs.readdirSync(dir).filter((f) => /\.(js|html)$/.test(f))
     .map((f) => [f, fs.readFileSync(path.join(dir, f), "utf8")])
 );
-const code = (s) => String(s || "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const code = codeOf;
 
 // A real syllabus fragment, in the shape they actually come in.
 const SYLLABUS = [

@@ -15,6 +15,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import vm from "node:vm";
 import { everyModule } from "./_dom.mjs";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -258,8 +259,7 @@ sec("Coming back to it: a day, a week, a month");
 
 sec("It still knows nothing about schools");
 {
-  const clean = (f) => fs.readFileSync(`${REPO}/public/${f}`, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const clean = (f) => codeOf(fs.readFileSync(`${REPO}/public/${f}`, "utf8"));
   const banned = /\b(ib|gcse|common core|ccss|key stage|ks[1-5]|maths|english|science)\b/i;
   ["review.js", "attain.js"].forEach((f) =>
     ok(`${f} names no syllabus, subject or key stage`, !banned.test(clean(f)),

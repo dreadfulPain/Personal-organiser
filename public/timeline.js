@@ -1580,6 +1580,31 @@
     return false;
   }
 
+  // A file dropped on a paste box, read rather than named. Shared by the two
+  // boxes on this page because they want exactly the same thing.
+  function dropOnto(box, then) {
+    if (!box) return;
+    ["dragover", "drop"].forEach((n) =>
+      box.addEventListener(n, async (e) => {
+        e.preventDefault();
+        if (n !== "drop") return;
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        const K = window.OrganiserCapture;
+        if (!K) return;
+        box.value = "Reading " + f.name + "…";
+        const got = await K.textOf(f, (w) => { box.value = w; });
+        if (!got.text) {
+          // The box is where the answer goes, because that is where they are
+          // looking — and it says what to do rather than sitting there.
+          box.value = "";
+          setSuStatus(got.note || "That file couldn't be read.");
+          return;
+        }
+        then(got.text, got);
+      }));
+  }
+
   function openFromLink() {
     if (takeHandover()) return;
     const h = location.hash || "";
@@ -1631,6 +1656,11 @@
       <div id="blockList" class="su-list"></div>`;
 
     $("#ttRead").addEventListener("click", readTimetable);
+    // And the same on the timetable box — a dropped file, read.
+    dropOnto($("#ttText"), (text) => {
+      $("#ttText").value = text;
+      readTimetable();
+    });
     $("#ttPdf").addEventListener("change", readTimetablePdf);
     $("#icsFile").addEventListener("change", readIcs);
     renderMakeUp();
@@ -2573,6 +2603,18 @@
       calRead(calBox ? calBox.value : "", calYear ? Number(calYear.value) : 0,
         keepMonth && calMonth ? Number(calMonth.value) : 0);
     if (calBox) calBox.addEventListener("input", () => reRead(false));
+    // A FILE DROPPED ON A TEXT BOX IS NOT ITS NAME.
+    //
+    // Somebody dragged their Word calendar onto this box and the browser did
+    // what browsers do: put "2026 First Semester Calendar.docx" in as text. The
+    // reader then said "no dates found in that", which was true of the sentence
+    // it had been given and useless about the file it hadn't. Read the file.
+    dropOnto(calBox, (text) => {
+      calBox.value = text;
+      const y = $("#calYear");
+      if (y) y.value = "";
+      calRead(text);
+    });
     // Changing the year re-reads what's already there rather than making you
     // paste it again.
     if (calYear) calYear.addEventListener("input", () => reRead(false));

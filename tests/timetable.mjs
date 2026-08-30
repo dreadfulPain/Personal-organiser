@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import zlib from "node:zlib";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 const PUB = path.join(REPO, "public");
@@ -465,7 +466,7 @@ sec("Booking leave over a teaching day says what it costs");
 // not holding.
 {
   const src = fs.readFileSync(path.join(REPO_ROOT, "public", "timetable.js"), "utf8");
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const code = codeOf(src);
   const said = [...code.matchAll(/[`"']([^`"']*\blessons?\b[^`"']*)[`"']/gi)].map((m) => m[1]);
   ok("no sentence it shows you calls a block a lesson", said.length === 0, JSON.stringify(said));
   const T = sb.OrganiserTimetable;

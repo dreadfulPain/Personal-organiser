@@ -10,6 +10,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import vm from "node:vm";
 import { everyModule } from "./_dom.mjs";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -223,7 +224,7 @@ sec("The syllabus — read it, offer it, refuse to decide");
   // The refusal that matters most.
   const src = fs.readFileSync(`${REPO}/public/syllabus.js`, "utf8");
   ok("nothing here asks a model to recall a standard",
-     !/fetch|ollama|prompt|model/i.test(src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "")));
+     !/fetch|ollama|prompt|model/i.test(codeOf(src)));
   const page = fs.readFileSync(`${REPO}/public/lessons.js`, "utf8");
   ok("and the page ticks nothing for you",
      /nothing is ticked for you/.test(page) && !/checked = true/.test(page));

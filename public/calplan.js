@@ -295,7 +295,10 @@
   // TELLING A WEEK NUMBER FROM A DAY takes no vocabulary: the days ascend by
   // one, so a number that doesn't is not one. A row holds at most seven days,
   // which settles the rest.
-  const AS_MONTH_DAY = /^(\d{1,2})\/(\d{1,2})$/;
+  // "10/1" on its own, and "10/1 Holiday" — the same square with what is in it
+  // written beside the date. A calendar in Word puts the words in the square;
+  // read strictly, the grid stopped dead at the first month it crossed.
+  const AS_MONTH_DAY = /^(\d{1,2})\/(\d{1,2})(?:\s+(\S.{0,38}))?$/;
   const A_NUMBER = /^\d{1,2}$/;
   // "7u" — a day with its mark drawn tight against it, which happens whenever
   // the two runs of text end up close enough to read as one.
@@ -303,6 +306,9 @@
   // called 1 with a mark called 0, and the whole grid falls over on the tenth
   // of the month.
   const NUMBER_THEN_MARK = /^(\d{1,2})([^\d\s]{1,2})$/;
+  // And the same square written out: the day, a space, and what is in it. Short,
+  // because a square holds a note and the page underneath holds paragraphs.
+  const DAY_THEN_WORDS = /^(\d{1,2})\s+(\S.{0,38})$/;
   // What the symbols mean is written underneath, and the description is the
   // first thing long enough to be one.
   const A_DESCRIPTION = 5;
@@ -370,10 +376,24 @@
         // reason this document knows something the rest of the page doesn't.
         if (month && +md[1] < month) rolls++;
         put(+md[1], +md[2]);
+        if (md[3] && last) last.marks.push(md[3]);
         continue;
       }
-      const glued = A_NUMBER.test(line) ? null : NUMBER_THEN_MARK.exec(line);
-      const n = glued ? +glued[1] : A_NUMBER.test(line) ? +line : NaN;
+      // A SQUARE WITH WORDS IN IT. Out of a PDF a marked day is a number and a
+      // symbol; out of the Word document the same calendar came from, it is
+      // "4 Ý Staff Mtg" — the day, the symbol AND what it is, in one cell. That
+      // is better evidence than the symbol, because it needs no legend at all,
+      // and the reader used to stop dead at the first one.
+      let n = NaN;
+      let extra = "";
+      if (A_NUMBER.test(line)) {
+        n = +line;
+      } else {
+        const glued = NUMBER_THEN_MARK.exec(line);
+        const rich = glued ? null : DAY_THEN_WORDS.exec(line);
+        if (glued) { n = +glued[1]; extra = glued[2]; }
+        else if (rich) { n = +rich[1]; extra = rich[2]; }
+      }
       if (!isNaN(n)) {
         const full = week && week.days.length >= dows.length;
         if (!month && !weekNo) { weekNo = n; week = null; continue; }
@@ -385,7 +405,7 @@
         // weeks are a table of something else that happens to sit under seven
         // day names.
         else return null;
-        if (glued && last && week) last.marks.push(glued[2]);
+        if (extra && last && week) last.marks.push(extra);
         continue;
       }
       if (line.length <= A_SYMBOL) { if (last) last.marks.push(line); continue; }
@@ -469,10 +489,13 @@
       const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
       return {
         symbol,
-        // NAMED BY THE DOCUMENT OR NOT AT ALL. A symbol whose legend didn't come
-        // through is still a day something happens on, and saying which symbol
-        // is more use than inventing a name for it.
-        name: grid.legend[symbol] || "",
+        // NAMED BY THE DOCUMENT, one way or the other. A PDF gives a symbol and
+        // a legend at the bottom; the Word original of the same calendar puts
+        // the words in the square — "4 Ý Staff Mtg" — which needs no legend at
+        // all. The leading symbol is dropped from the name because it is not a
+        // word: a single character in front of the words is the mark, not part
+        // of what the thing is called.
+        name: grid.legend[symbol] || String(symbol).replace(/^\S\s+/, "").trim(),
         dates,
         weekday: top && top[1] > 1 && top[1] >= dates.length - 2 ? top[0] : -1,
         odd: top ? dates.length - top[1] : 0,

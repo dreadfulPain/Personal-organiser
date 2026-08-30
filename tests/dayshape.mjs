@@ -14,6 +14,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 
 import fs from "node:fs";
 import vm from "node:vm";
+import { codeOf } from "./_check.mjs";
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0;
@@ -182,8 +183,7 @@ sec("What it says, and what it refuses to say");
   ok("and says plainly that there are no lessons", /no lessons/.test(w), w);
   // The thing it must never do is decide the day is empty.
   ok("it never says nothing is planned", !/nothing planned|nothing at all|day off/i.test(w), w);
-  const src = fs.readFileSync(`${REPO}/public/dayshape.js`, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = codeOf(fs.readFileSync(`${REPO}/public/dayshape.js`, "utf8"));
   ok("and it never tells you to rest or to work",
      !/should|rest|relax|deserve|take a break|switch off/i.test(src),
      (src.match(/should|rest|relax|deserve/i) || [])[0]);

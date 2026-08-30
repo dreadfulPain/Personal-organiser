@@ -24,7 +24,7 @@ import vm from "node:vm";
 import path from "node:path";
 import { open } from "./_dom.mjs";
 import { DATA } from "./_data.mjs";
-import { checker } from "./_check.mjs";
+import { checker, codeOf } from "./_check.mjs";
 const { ok, done, sec } = checker();
 
 const PUB = join(REPO_ROOT, "public");
@@ -199,8 +199,7 @@ sec("The class you set up is the class every page knows about");
   // pinned WHERE the code lived rather than what had to be true of it.
   const decide = ["records.js", "class.js", "export.js"];
   decide.forEach((f) => {
-    const src = fs.readFileSync(path.join(PUB, f), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const src = codeOf(fs.readFileSync(path.join(PUB, f), "utf8"));
     ok(`${f} doesn't work out who the log is about on its own`,
        !/config\.whoIds/.test(src) || /whoList|who\b/.test(src),
        "it reads config.whoIds directly, which starts as five placeholders");
@@ -306,8 +305,7 @@ sec("What a person is called is worked out in one place");
   const own = fs.readdirSync(PUB)
     .filter((f) => f.endsWith(".js") && f !== "names.js")
     .filter((f) => {
-      const src = fs.readFileSync(path.join(PUB, f), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const src = codeOf(fs.readFileSync(path.join(PUB, f), "utf8"));
       // The copied shape exactly: a lookup in CONTACTS whose result is then read
       // for a name. An area's name, or a module's own map of what it was handed,
       // is a different question and stays where it is.

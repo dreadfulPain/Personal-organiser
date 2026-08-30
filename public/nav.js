@@ -72,4 +72,74 @@
       "</span>"
     );
   }).join("");
+
+  // ---- IS THE SORTING ACTUALLY ON? ------------------------------------------
+  //
+  // Somebody used this app for weeks believing their messy sentences were being
+  // read by a model, and they weren't: nothing was installed, so every sort fell
+  // through to the pattern reader. Nothing on any page said so. They only found
+  // out by trying to install Ollama and discovering it had never been there.
+  //
+  // So it is said, on every page, all the time — not a banner that appears when
+  // something breaks, because "no warning" and "nothing checked" look identical
+  // and this is the difference between the app understanding you and the app
+  // pattern-matching you.
+  //
+  // A DOT AND A WORD, never a colour on its own: about one man in twelve cannot
+  // separate red from green, and this is exactly the kind of small coloured
+  // thing that assumes they can.
+  var dot = document.createElement("a");
+  dot.className = "ai-dot ai-dot-asking";
+  dot.href = "help.html";
+  dot.innerHTML = '<span class="ai-dot-light" aria-hidden="true"></span><span class="ai-dot-word">checking…</span>';
+  el.appendChild(dot);
+
+  function show(state, word, why) {
+    dot.className = "ai-dot ai-dot-" + state;
+    dot.querySelector(".ai-dot-word").textContent = word;
+    // The whole reason, on hover and to a screen reader — the dot says WHETHER,
+    // the title says WHY, and the link goes to the page that says what to do.
+    dot.title = why;
+    dot.setAttribute("aria-label", "Sorting " + word + ". " + why);
+  }
+
+  function ask() {
+    show("asking", "checking…", "Asking whether the sorter is answering.");
+    fetch("api/health")
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.hasAI) {
+          show("on", "sorting on", "The sorter is answering, so what you type is read properly.");
+          return;
+        }
+        if (!j.configured) {
+          show("off", "sorting off",
+            "No AI is set up on this machine, so what you type is read by patterns instead. " +
+            "That works, and it reads less well. Click to see how to turn it on.");
+          return;
+        }
+        show("off", "sorting off",
+          (j.engineNote || "The sorter isn't answering.") + " Click for what to do about it.");
+      })
+      .catch(function () {
+        // No server at all: the page was opened by double-clicking it. Saying
+        // "off" is true — nothing is sorting — and the help page explains.
+        show("off", "sorting off",
+          "This page was opened without the app running, so nothing is being sorted or saved to your file.");
+      });
+  }
+  ask();
+  // Asked again when the tab comes back, because the usual way this changes is
+  // somebody going and starting Ollama and coming back to look.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) ask();
+  });
+  dot.addEventListener("click", function (e) {
+    // A click re-checks first: the commonest reason for looking at it is having
+    // just fixed the thing it is complaining about.
+    if (dot.className.indexOf("ai-dot-off") < 0) return;
+    e.preventDefault();
+    ask();
+    setTimeout(function () { location.href = "help.html"; }, 400);
+  });
 })();

@@ -170,7 +170,6 @@ sec("And with no AI at all it says what would make it work");
 }
 srvNone.kill();
 await new Promise((r) => setTimeout(r, 300));
-stub.close();
 
 // ---------------------------------------------------------------------------
 sec("And the app says out loud that a picture is the least trustworthy of all");
@@ -253,4 +252,63 @@ sec("And a timetable that only says when each period STARTS is still a timetable
   ok("a heading row makes no lessons", n.blocks.length === 2, String(n.blocks.length));
 }
 
+// ---------------------------------------------------------------------------
+sec("And OLLAMA RUNNING WITH NOTHING PULLED is not 'answering'");
+{
+  // THE ONE THAT COST SOMEBODY WEEKS. The check read "if there are names and
+  // none of them match, complain" — so an empty list, which is exactly what you
+  // get the day you install Ollama, fell through to ok. The app said the
+  // sorting was on, the diagnostic report said "answering", and every sort was
+  // quietly going through the fallback patterns. Every complaint about it
+  // reading things badly was really this, reported the wrong way round.
+  pulled = [];
+  const P = 3975;
+  const srv = start({ AI_ENGINE: "ollama", AI_BASE_URL: `http://localhost:${STUB_PORT}`, AI_MODEL: "qwen3:14b" }, P);
+  await new Promise((r) => setTimeout(r, 2200));
+  const h = await fetch(`http://localhost:${P}/api/health`).then((r) => r.json()).catch(() => ({}));
+  ok("an empty model list is not working", h.hasAI === false, JSON.stringify(h));
+  ok("but it IS configured, which is a different thing", h.configured === true, JSON.stringify(h));
+  ok("and it says what is actually missing",
+     /no models are installed yet/.test(h.engineNote || ""), h.engineNote);
+  ok("naming the one to pull", /ollama pull qwen3:14b/.test(h.engineNote || ""), h.engineNote);
+
+  // AND A MODEL THAT IS PULLED STILL COUNTS.
+  pulled = [{ name: "qwen3:14b" }];
+  await new Promise((r) => setTimeout(r, 10500));  // past the ten-second liveness cache
+  const h2 = await fetch(`http://localhost:${P}/api/health`).then((r) => r.json()).catch(() => ({}));
+  ok("with the model there, it is working", h2.hasAI === true, JSON.stringify(h2));
+  srv.kill();
+  await new Promise((r) => setTimeout(r, 300));
+  pulled = [{ name: "qwen3:14b" }, { name: "llava:7b" }];
+}
+
+sec("And every page says whether the sorting is on");
+{
+  const fs = await import("node:fs");
+  const nav = fs.readFileSync(`${REPO_ROOT}/public/nav.js`, "utf8");
+  // ON EVERY PAGE, ALL THE TIME. A banner that appears when something breaks is
+  // not the same thing: "no warning" and "nothing checked" look identical, and
+  // the difference is whether the app is reading you or pattern-matching you.
+  ok("the nav asks", /api\/health/.test(nav), "nothing checks");
+  ok("and says on", /sorting on/.test(nav), "no word for working");
+  ok("and says off", /sorting off/.test(nav), "no word for not working");
+  // A DOT AND A WORD, never a colour alone: about one man in twelve cannot
+  // separate red from green.
+  // THE DOT IS BUILT WITH A WORD IN IT. Checking that "ai-dot-word" appears
+  // somewhere in the file passes even when the word has been taken out of what
+  // is actually drawn — the name survives in the line that looks it up. So this
+  // pins the line that BUILDS it, which is the one that can remove the word.
+  ok("the state is in words, not only in colour",
+     /dot\.innerHTML[^\n]*ai-dot-word/.test(nav), "colour is doing all the work");
+  ok("and it says WHY, not just whether", /read by patterns instead/.test(nav),
+     "it doesn't say what off costs you");
+  // IT RE-CHECKS. The usual way this changes is somebody going away, starting
+  // Ollama, and coming back to look at it.
+  ok("it looks again when you come back to the tab", /visibilitychange/.test(nav), "asked once and never again");
+
+  const css = fs.readFileSync(`${REPO_ROOT}/public/style.css`, "utf8");
+  ok("and there is something to see", /\.ai-dot\b/.test(css), "the dot has no style");
+}
+
+stub.close();
 done();

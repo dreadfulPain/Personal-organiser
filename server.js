@@ -661,9 +661,46 @@ async function engineLive(cfg) {
       const d = await r.json().catch(() => ({}));
       const names = (d.models || []).map((m) => String(m.name || m.model || ""));
       const base = (n) => n.split(":")[0];
-      if (names.length && !names.some((n) => n === cfg.model || base(n) === base(cfg.model))) {
-        out = { ok: false, note: `Ollama is running, but "${cfg.model}" isn't pulled. Run: ollama pull ${cfg.model}` };
-      } else out = { ok: true, note: "" };
+      // STOP INFERRING FROM THE LIST — ASK ABOUT THE MODEL.
+      //
+      // This read "if there are names and none of them match, complain", which
+      // has a hole in the exact shape of somebody's first day: Ollama installed,
+      // NOTHING pulled, tags list empty, condition false, "answering". The app
+      // said the sorting was on, the diagnostic report said "answering", and
+      // every sort went quietly through the fallback patterns instead. Weeks of
+      // "why does it read things so badly" with the one fact that explains it
+      // being reported the wrong way round.
+      //
+      // Guarding the other way was no better: an engine that reports no tags but
+      // does have the model would have had its sorting switched off for it.
+      //
+      // Both of those are guesses about a LIST. There is no need for either —
+      // /api/show answers the actual question about the actual model, and costs
+      // one cheap request only when the fast path hasn't already said yes.
+      if (names.some((n) => n === cfg.model || base(n) === base(cfg.model))) {
+        out = { ok: true, note: "" };
+      } else {
+        let there = false;
+        try {
+          const s = await fetch(cfg.baseUrl.replace(/\/+$/, "") + "/api/show", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: cfg.model, model: cfg.model }),
+            signal: AbortSignal.timeout(2000),
+          });
+          there = s.ok;
+        } catch {
+          /* it didn't answer about the model, which is not a yes */
+        }
+        out = there
+          ? { ok: true, note: "" }
+          : {
+              ok: false,
+              note: names.length
+                ? `Ollama is running, but "${cfg.model}" isn't pulled. Run: ollama pull ${cfg.model}`
+                : `Ollama is running, but no models are installed yet. Run: ollama pull ${cfg.model}`,
+            };
+      }
     } else out = { ok: true, note: "" };
   } catch (e) {
     out = { ok: false, note: offlineReason(cfg, e) || "The local AI isn't answering just now." };

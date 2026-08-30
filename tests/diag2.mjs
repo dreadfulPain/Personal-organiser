@@ -39,8 +39,12 @@ ok("never both at once", !(/ollama\.com\/download/.test(s1.fix) && /Start menu, 
 ok("it never tells you to run a terminal command to find the fault", !/PowerShell|api\/health/.test(JSON.stringify(down)));
 
 // Listening, but the model isn't pulled — the sneaky one.
+// A REAL OLLAMA 404s /api/show FOR A MODEL IT HASN'T GOT, and the app asks it
+// rather than guessing from the tags list — so a fake that answers everything
+// makes "the model is missing" indistinguishable from "the model is there".
 const ol = http.createServer((req, res) => {
   if (/\/api\/tags/.test(req.url)) { res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ models: [{ name: "llama3.2:3b" }] })); }
+  if (/\/api\/show/.test(req.url)) { res.writeHead(404, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ error: "model not found" })); }
   res.writeHead(200, {"Content-Type":"application/json"}); res.end("{}");
 }).listen(11210);
 const nomodel = await diag({ AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b", AI_BASE_URL: "http://localhost:11210" });

@@ -23,7 +23,11 @@ for (const f of fs.readdirSync(REPO).filter((x) => x.endsWith(".bat"))) {
   ok("every goto has a label", missing.length === 0, missing.join(", "));
   // Only scripts that touch files NEXT TO THEM need this. "Remove Auto-Start"
   // only deletes an absolute %APPDATA% path, so it correctly has no cd.
-  const usesOwnFolder = /node server\.js|git |%~dp0[^"]/.test(raw);
+  // A script that writes .env is writing NEXT TO ITSELF, and without a cd that
+  // lands wherever the double-click happened to start from — which on Windows
+  // is often C:\Windows\System32. Added when a setup script that writes the
+  // settings file passed this check by not mentioning any of the other three.
+  const usesOwnFolder = /node server\.js|git |%~dp0[^"]|"\.env/.test(raw);
   if (usesOwnFolder) ok("it changes to its own folder first", /cd \/d "%~dp0"/.test(raw));
   else ok("no cd needed — it only uses absolute paths", /%APPDATA%|%USERPROFILE%/.test(raw));
   ok("it pauses so the window can be read", /\bpause\b/.test(raw));

@@ -51,5 +51,33 @@ ok("no Windows nul redirect", !/>nul/.test(m));
 ok("same repair path", /git checkout -f -B "\$BRANCH"/.test(m));
 ok("same branch", /BRANCH="claude\/friendly-hawking-0mVNx"/.test(m));
 
+
+// ---------------------------------------------------------------------------
+// WHAT THE UPDATER SAYS WHEN IT CAN'T UPDATE.
+//
+// It used to say "usually that is no internet, or a file you have edited" to
+// every failure there is. Somebody on a school network got a TLS handshake
+// refusal — the secure connection to GitHub interrupted partway through, which
+// is what a network that inspects traffic does — and was told to check their
+// internet, which was fine, and to look for a file they had edited, which they
+// hadn't. A wrong diagnosis sends somebody looking in the wrong place, which
+// costs more than no diagnosis at all.
+console.log("\nWhat the updaters say when they fail");
+for (const f of ["Update.bat", "update.command"]) {
+  const raw = fs.readFileSync(`${REPO}/${f}`, "utf8");
+  ok(`${f}: it asks the server why before answering`, /ls-remote/.test(raw),
+     "it guesses instead of asking");
+  ok(`${f}: a refused handshake is told apart`, /handshake/i.test(raw), "no such case");
+  ok(`${f}: and not blamed on the internet`,
+     /internet is working/i.test(raw), "still says check your internet");
+  ok(`${f}: a network that can't reach it at all is its own case`,
+     /didn't get that far|Could not resolve/i.test(raw), "the two are still one message");
+  // AND THE ONE IT USED TO ASSUME is still there, for when GitHub DID answer.
+  ok(`${f}: a file you edited is still said, when it fits`,
+     /you (have )?edited/i.test(raw), "the original cause was dropped");
+  ok(`${f}: and every path says the data is untouched`,
+     (raw.match(/untouched/gi) || []).length >= 3, "some way out doesn't reassure");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

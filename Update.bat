@@ -33,7 +33,7 @@ rem of what is on the server. Turned off here so the question never comes up.
 git config gc.auto 0 >nul 2>nul
 
 git pull
-if errorlevel 1 goto failed
+if errorlevel 1 goto whyfailed
 goto done
 
 :setup
@@ -94,11 +94,92 @@ echo.
 pause
 exit /b 1
 
+:whyfailed
+rem WORK OUT WHY BEFORE GUESSING AT IT.
+rem
+rem This used to say "usually that is no internet, or a file you have edited" to
+rem every failure there is. Somebody on a school network got a TLS handshake
+rem refusal - the secure connection to GitHub being interrupted, which is what a
+rem network that inspects traffic does, and what GitHub does in some countries -
+rem and was told to check their internet, which was fine, and to look for a file
+rem they had edited, which they hadn't.
+rem
+rem So: ask the server once more, keep what it says, and read it.
+echo.
+echo   Working out what went wrong...
+git ls-remote "%REPO%" HEAD >"%TEMP%\po-update-why.txt" 2>&1
+findstr /i /c:"schannel" /c:"SSL" /c:"TLS" /c:"handshake" /c:"certificate" "%TEMP%\po-update-why.txt" >nul && goto tlsfailed
+findstr /i /c:"Could not resolve" /c:"unable to access" /c:"timed out" /c:"Failed to connect" "%TEMP%\po-update-why.txt" >nul && goto netfailed
+goto failed
+
+:tlsfailed
+echo.
+echo   --------------------------------------------------------------
+echo   The secure connection to GitHub was interrupted.
+echo.
+echo   Your internet is working - this is the encrypted handshake being
+echo   refused partway through. Two things cause it almost every time:
+echo     - a school or office network that inspects traffic
+echo     - GitHub being unreliable from where you are
+echo.
+echo   Worth trying, in this order:
+echo     1. Run this again in a minute. It is often intermittent.
+echo     2. Use your phone's hotspot instead of the school wifi.
+echo     3. Let me try a different security layer - see below.
+echo   --------------------------------------------------------------
+echo.
+set "TRY="
+set /p "TRY=  Try the other security layer now? (type y then Enter): "
+if /i not "%TRY%"=="y" goto untouched
+
+echo.
+echo   Trying again with OpenSSL instead of Windows' own...
+git -c http.sslBackend=openssl pull
+if errorlevel 1 goto stillfailed
+
+rem It worked, so remember it FOR THIS FOLDER ONLY - not a global setting
+rem change on somebody's machine to fix one repository.
+git config http.sslBackend openssl >nul 2>nul
+echo.
+echo   That worked, and I have remembered it for this folder, so the next
+echo   update should just work.
+goto done
+
+:stillfailed
+echo.
+echo   That didn't work either. Nothing was changed.
+echo   The phone-hotspot one is the most likely to work - a school network
+echo   that inspects traffic will stop this however it is asked.
+echo.
+pause
+exit /b 1
+
+:netfailed
+echo.
+echo   Couldn't reach GitHub at all - the connection didn't get that far.
+echo   Usually no internet, or a network that blocks it. Nothing was
+echo   changed, and your "data" folder and settings are untouched.
+echo.
+pause
+exit /b 1
+
+:untouched
+echo.
+echo   Left it there. Nothing was changed, and your "data" folder and
+echo   your settings are untouched.
+echo.
+pause
+exit /b 1
+
 :failed
 echo.
-echo   Could not finish. Usually that is no internet, or a file you have
-echo   edited yourself that git will not overwrite.
+echo   Could not finish, and it is not the network - GitHub answered.
+echo   Usually that is a file in the app's own folder that you have
+echo   edited, which git will not overwrite.
 echo   Your "data" folder and your settings are untouched either way.
+echo.
+echo   What it actually said:
+type "%TEMP%\po-update-why.txt"
 echo.
 pause
 exit /b 1

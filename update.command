@@ -61,9 +61,45 @@ if [ ! -d .git ]; then
   echo
   echo "  Connected. From now on, updating is just running this file."
 elif ! git pull; then
+  # WORK OUT WHY BEFORE GUESSING AT IT — see Update.bat for the whole story.
+  # "Usually no internet" was said to somebody whose internet was fine and whose
+  # secure connection to GitHub was being interrupted by the network they were
+  # on. So: ask the server once more, keep what it says, and read it.
   echo
-  echo "  Couldn't get the update — usually no internet, or a file you edited."
+  echo "  Working out what went wrong..."
+  WHY="$(git ls-remote "$REPO" HEAD 2>&1)"
+  if echo "$WHY" | grep -qiE "ssl|tls|handshake|certificate"; then
+    echo
+    echo "  --------------------------------------------------------------"
+    echo "  The secure connection to GitHub was interrupted."
+    echo
+    echo "  Your internet is working — this is the encrypted handshake being"
+    echo "  refused partway through. Two things cause it almost every time:"
+    echo "    - a school or office network that inspects traffic"
+    echo "    - GitHub being unreliable from where you are"
+    echo
+    echo "  Worth trying, in this order:"
+    echo "    1. Run this again in a minute. It is often intermittent."
+    echo "    2. Use your phone's hotspot instead of the school wifi."
+    echo "  --------------------------------------------------------------"
+    echo "  Nothing was changed and your data is untouched."
+    finish 1
+  fi
+  if echo "$WHY" | grep -qiE "could not resolve|failed to connect|timed out|unable to access"; then
+    echo
+    echo "  Couldn't reach GitHub at all — the connection didn't get that far."
+    echo "  Usually no internet, or a network that blocks it."
+    echo "  Nothing was changed and your data is untouched."
+    finish 1
+  fi
+  echo
+  echo "  Could not finish, and it is not the network — GitHub answered."
+  echo "  Usually that is a file in the app's own folder that you edited,"
+  echo "  which git will not overwrite."
   echo "  Nothing was changed and your data is untouched."
+  echo
+  echo "  What it actually said:"
+  echo "$WHY"
   finish 1
 fi
 

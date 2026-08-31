@@ -35,11 +35,17 @@ export function runBat(text, world) {
   const trail = [];
   let steps = 0;
 
+  // %errorlevel% is not a variable anybody set — cmd answers it from the last
+  // command's result. Left out, `set "CODE=%errorlevel%"` quietly stores nothing
+  // and every check of it afterwards reads as success, which is the one wrong
+  // answer a stand-in for this must never give.
   const expand = (s, fr) =>
     String(s)
       .replace(/%\*/g, fr.args)
       .replace(/%~dp0/g, "")
-      .replace(/%(\w+)%/g, (_, n) => (env[n] === undefined ? "" : env[n]));
+      .replace(/%(\w+)%/g, (_, n) =>
+        (n.toLowerCase() === "errorlevel" ? String(errorlevel)
+          : env[n] === undefined ? "" : env[n]));
 
   // `goto` and `call` both name a label; a name that isn't there is the single
   // most likely way to break one of these files, so it is loud.
@@ -118,7 +124,12 @@ export function runBat(text, world) {
       continue;
     }
     if (/^exit\s+\/b/i.test(bare)) {
-      errorlevel = Number((bare.match(/exit\s+\/b\s+(\d+)/i) || [])[1] || 0);
+      // EXPANDED FIRST. `exit /b %CODE%` read literally has no digits in it, so
+      // it returned 0 — every subroutine succeeding whatever it did, which is
+      // the most flattering possible lie for a stand-in to tell.
+      const said = expand(bare, fr);
+      if (!/^exit\s+\/b\s*(\d+)?\s*$/i.test(said)) throw new Error(`exit it can't read: ${said}`);
+      errorlevel = Number((said.match(/exit\s+\/b\s+(\d+)/i) || [])[1] || 0);
       stack.pop();
       continue;
     }

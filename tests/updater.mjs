@@ -52,10 +52,12 @@ function world(how) {
       asked.push(cmd);
       if (/^where git/.test(cmd)) return { code: how.noGit ? 1 : 0 };
       if (/^type /.test(cmd)) return { code: 0, out: "(the probe's answer)" };
+      // What the last rung printed, which is how "the network refused it" is
+      // told apart from "this git was not built with that".
       // findstr reading the probe's saved answer
       if (/^findstr /.test(cmd)) {
         const want = [...cmd.matchAll(/\/c:"([^"]*)"/g)].map((x) => x[1]);
-        const said = String(how.probe || "");
+        const said = /po-update-try/.test(cmd) ? String(how.said || "") : String(how.probe || "");
         return { code: want.some((w) => said.toLowerCase().includes(w.toLowerCase())) ? 0 : 1 };
       }
       if (/^git config (\S+) (\S+)/.test(cmd)) {
@@ -168,6 +170,35 @@ sec("And when none of them works it says so without blaming the wrong thing");
      r.out);
   ok("and says the app still works", /still runs/.test(r.out), r.out.slice(-600));
   ok("and that nothing was changed", /untouched/.test(r.out), r.out.slice(-600));
+}
+
+sec("And a git that hasn't got the other security layer says so, calmly");
+{
+  // THE TRAP UNDER ALL OF THIS. `git config http.sslBackend openssl` is accepted
+  // without a murmur by a git that cannot do it, and then every request in that
+  // folder stops with:
+  //
+  //     fatal: Unsupported SSL backend 'openssl'. Supported SSL backends: gnutls
+  //
+  // So it is never set until it has actually worked, and a build without it is
+  // told apart from a network refusing the connection — they are not the same
+  // thing and only one of them is worth a hotspot.
+  const r = run({
+    probe: "schannel: failed to receive handshake",
+    said: "fatal: Unsupported SSL backend 'openssl'. Supported SSL backends: gnutls",
+    getsThrough: never,
+  });
+  ok("it stops", r.errorlevel === 1, String(r.errorlevel));
+  ok("and does not try the same unavailable thing again",
+     r.asked.filter((c) => /sslBackend/.test(c)).length === 1,
+     r.asked.filter((c) => /pull/.test(c)).join(" | "));
+  ok("it explains the word fatal rather than leaving it there",
+     /only the one security layer/.test(r.out), r.out.slice(-700));
+  ok("and says nothing is wrong with their git", /Nothing is wrong with it/.test(r.out),
+     r.out.slice(-700));
+  ok("and still gives the advice that does work", /hotspot/.test(r.out), r.out.slice(-700));
+  ok("and never wrote the setting that would have broken the folder",
+     !r.config["http.sslBackend"], JSON.stringify(r.config));
 }
 
 sec("And a fault that is not the network is not treated as one");
@@ -334,6 +365,23 @@ sec("The Mac twin does the same things, run for real");
   ok("all of them failing says what to do", /hotspot/.test(stuck.out), stuck.out.slice(-500));
   ok("and does not blame the internet", /internet is working/.test(stuck.out), stuck.out.slice(-500));
   ok("having tried all of them", (stuck.asked.match(/pull/g) || []).length === 4, stuck.asked);
+
+
+  // AND A GIT WITHOUT THAT SECURITY LAYER, which is most of them outside
+  // Windows. `git config http.sslBackend openssl` is accepted without a murmur
+  // by a git that cannot do it, and then every request in the folder stops with
+  // "fatal: Unsupported SSL backend". So it is never written until it worked.
+  const nobackend = runShell({
+    probe: "schannel: failed to receive handshake",
+    through: `case "$*" in *sslBackend*) echo "fatal: Unsupported SSL backend 'openssl'. Supported SSL backends:" >&2; exit 128 ;; *) exit 1 ;; esac`,
+  });
+  ok("a git without that layer says so plainly",
+     /only the one security layer/.test(nobackend.out), nobackend.out.slice(-600));
+  ok("and doesn't try it twice",
+     (nobackend.asked.match(/sslBackend/g) || []).length === 1, nobackend.asked);
+  ok("and never writes the setting that would break the folder",
+     !/sslBackend/.test(nobackend.config), nobackend.config);
+  ok("and still says what does work", /hotspot/.test(nobackend.out), nobackend.out.slice(-600));
 
   // A FIRST CONNECT HITS THE SAME WALL AND GETS THE SAME WAY ROUND IT.
   const first = runShell({

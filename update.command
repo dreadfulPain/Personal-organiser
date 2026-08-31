@@ -73,8 +73,22 @@ net() {
   echo
   echo "  Still no. With a different security layer..."
   GITOPT="-c http.sslBackend=openssl"
+  # NOT EVERY COPY OF GIT HAS THAT ONE BUILT IN, and one that hasn't stops with
+  # "Unsupported SSL backend" — a sentence about how git was assembled, not
+  # about anybody's network, and it would say it twice if the last try ran. So
+  # what it said is kept, the word "fatal" on screen is explained rather than
+  # left sitting there, and the setting is never written until it has actually
+  # worked: written blind it stops every request in the folder for good.
   # shellcheck disable=SC2086
-  git $GITOPT "$@" && return 0
+  if TRIED="$(git $GITOPT "$@" 2>&1)"; then echo "$TRIED"; return 0; fi
+  echo "$TRIED"
+  if printf '%s' "$TRIED" | grep -qi "unsupported ssl backend"; then
+    echo
+    echo "  This copy of git has only the one security layer built into it, so"
+    echo "  that way round is not available here. Nothing is wrong with it."
+    GITOPT=""
+    return 1
+  fi
   echo
   echo "  And both together..."
   GITOPT="-c http.sslBackend=openssl -c http.version=HTTP/1.1"

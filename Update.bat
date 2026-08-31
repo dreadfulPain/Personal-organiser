@@ -203,16 +203,70 @@ rem %* is the git command to make - "pull", or "fetch origin" on a first connect
 :net
 set "GITOPT="
 set "NETWHY="
-git %*
+set "NETCMD=%*"
+git %NETCMD%
 if not errorlevel 1 exit /b 0
 
+set "PROBEFAILED="
 echo.
 echo   Working out what went wrong...
-set "PROBEFAILED="
 git ls-remote "%REPO%" HEAD >"%TEMP%\po-update-why.txt" 2>&1
 if errorlevel 1 set "PROBEFAILED=1"
 findstr /i /c:"schannel" /c:"SSL" /c:"TLS" /c:"handshake" /c:"certificate" "%TEMP%\po-update-why.txt" >nul
 if errorlevel 1 goto :netother
+set "NETWHY=tls"
+
+echo.
+echo   The secure connection to GitHub was refused. There are ways round
+echo   that, and none of them changes anything on this computer, so I am
+echo   simply trying them.
+echo.
+echo   Without the newer connection protocol, which a network that
+echo   inspects traffic often mishandles...
+set "GITOPT=-c http.version=HTTP/1.1"
+call :rung
+if not errorlevel 1 exit /b 0
+echo.
+echo   Still no. With a different security layer - the one Windows uses is
+echo   the one being refused, and git ships another that isn't...
+set "GITOPT=-c http.sslBackend=openssl"
+call :rung
+if not errorlevel 1 exit /b 0
+rem NOT EVERY COPY OF GIT HAS THE SECOND ONE BUILT IN. Where it hasn't, git
+rem stops with "Unsupported SSL backend", which is a sentence about how git was
+rem assembled and not about anybody's network - and it would say it twice more
+rem if the last rung ran. So that rung is skipped and the word "fatal" on screen
+rem is explained rather than left sitting there.
+findstr /i /c:"Unsupported SSL backend" "%TEMP%\po-update-try.txt" >nul
+if not errorlevel 1 goto :nobackend
+echo.
+echo   And both together...
+set "GITOPT=-c http.sslBackend=openssl -c http.version=HTTP/1.1"
+call :rung
+if not errorlevel 1 exit /b 0
+goto :rungsdone
+
+:nobackend
+echo.
+echo   This copy of git has only the one security layer built into it, so
+echo   that way round is not available here. Nothing is wrong with it.
+
+:rungsdone
+set "GITOPT="
+exit /b 1
+
+rem ONE RUNG, WITH WHAT IT SAID KEPT. The first attempt above runs in the open
+rem so a slow fetch still shows its progress; these are the retries, and what
+rem they say has to be readable afterwards to tell "the network refused it" from
+rem "this git wasn't built with that". `type` sets its own errorlevel, so the
+rem rung's own result is put somewhere safe before it runs.
+:rung
+git %GITOPT% %NETCMD% >"%TEMP%\po-update-try.txt" 2>&1
+set "RUNGCODE=%errorlevel%"
+type "%TEMP%\po-update-try.txt"
+exit /b %RUNGCODE%
+
+:netother
 set "NETWHY=tls"
 
 echo.

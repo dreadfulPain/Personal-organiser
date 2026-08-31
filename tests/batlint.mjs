@@ -79,5 +79,32 @@ for (const f of ["Update.bat", "update.command"]) {
      (raw.match(/untouched/gi) || []).length >= 3, "some way out doesn't reassure");
 }
 
+// ---------------------------------------------------------------------------
+// AND THE TWO TWINS DO THE SAME THINGS.
+//
+// What each one DOES is run and checked in updater.mjs. What is checked here is
+// that they still agree: a fix that lands on Windows and not on the Mac is how
+// one of these quietly becomes the worse file, and nobody has both to compare.
+console.log("\nBoth updaters know the same ways round a refused handshake");
+for (const f of ["Update.bat", "update.command"]) {
+  const raw = fs.readFileSync(`${REPO}/${f}`, "utf8");
+  ok(`${f}: it can ask for the other security layer`,
+     /http\.sslBackend=openssl/.test(raw), "no way round schannel");
+  ok(`${f}: and for the older connection protocol`,
+     /http\.version=HTTP\/1\.1/.test(raw), "no way round a middlebox that mangles h2");
+  ok(`${f}: and remembers whichever worked`,
+     /git config http\.sslBackend/.test(raw) && /git config http\.version/.test(raw),
+     "the waiting happens every time");
+  // AND ASKS NOBODY'S PERMISSION TO TRY THEM. "Try the other security layer?
+  // (y/n)" is not a question somebody who wanted the new version can answer,
+  // and it is asked at the moment they are least able to answer it.
+  ok(`${f}: without asking permission to try them`,
+     !/security layer now\?|other security layer\? \(/.test(raw), "it still asks");
+  // AND ON A FIRST CONNECT TOO — the one person for whom none of the rest of
+  // the file has ever run is the one who cannot get started.
+  ok(`${f}: on a first connect as well as a later one`,
+     /(call :net|net) fetch origin/.test(raw), "a first connect still gets a bare fetch");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

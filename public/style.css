@@ -4063,6 +4063,13 @@ a.btn {
 .cal-span { font-size: 0.78rem; margin-left: 6px; border-style: dashed; }
 .cal-span.on { border-style: solid; }
 .cal-end { font-size: 0.78rem; margin-left: 6px; }
+/* HOW FAR IT REACHES, as a date you can change rather than a sentence you can't.
+   Sits on its own line under the choices so a row of twenty doesn't turn into a
+   wall of date boxes at a glance. */
+.cal-until { flex: 1 1 100%; display: flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; color: var(--muted); padding-left: 2px; }
+.cal-upto { font-size: 0.78rem; padding: 2px 4px; }
+.cal-howlong { font-size: 0.78rem; }
 /* Moving a row to the document's other year — see timeline.js. Dashed like the
    run-on tick, because both are "this needs a look", not "this is set". */
 .cal-year { font-size: 0.78rem; margin-left: 6px; border-style: dashed; }
@@ -4304,8 +4311,14 @@ a.btn {
 
 /* THE DAYS A TERM GRID HAS A SYMBOL AGAINST — see timeline.js. One line each,
    wrapping on a narrow screen rather than pushing the button off the edge. */
-.cal-mark { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.cal-mark { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.cal-mark-head { flex: 1 1 100%; font-size: 0.9rem; }
 .cal-mark-name { font-weight: 600; }
+.cal-mark-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cal-mark-kind { font-size: 0.78rem; }
+/* The time and "somewhere you have to be" only exist once a kind of marked day
+   has been said to be a block in your week — against a holiday they were noise. */
+.cal-mark-when { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .cal-mark-at, .cal-mark-there { font-size: 0.8rem; }
 .cal-mark-at input { margin-left: 4px; }
 .cal-mark-add { font-size: 0.78rem; border-style: dashed; }

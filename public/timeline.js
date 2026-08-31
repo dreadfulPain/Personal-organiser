@@ -74,6 +74,10 @@
   // can be quietly wrong and take every other date down with it.
   let calMeta = { rows: [], year: 0, borrowed: 0 };
 
+  // What each kind of marked day has been said to be. Nothing until you say —
+  // the app cannot know, and the whole of this is asking rather than guessing.
+  let calMarkKind = new Map();
+
   function calRead(text, year, month) {
     const C = window.OrganiserCalPlan;
     if (!C) return;
@@ -83,6 +87,10 @@
     const r = C.read(text || "", opts);
     calRows = r.rows;
     calMeta = r;
+    // A NEW DOCUMENT IS A NEW SET OF QUESTIONS. Kept choices would sit against
+    // whatever mark landed at the same position in the next calendar, which is
+    // an answer to a question nobody was asked.
+    calMarkKind = new Map();
     const box = $("#calYear");
     // Filled in from the document, and yours to correct.
     if (box && !box.value) box.value = String(r.year || "");
@@ -106,57 +114,132 @@
   // and none of them is "there's a meeting". These are things to put in your
   // week, and the one thing the document doesn't say is when — so that is asked
   // for, once, per kind, rather than guessed at fourteen times.
+  // WHICH DAYS, EXACTLY.
+  //
+  // "2 days, no day in particular, Sun 20 Sept 2026 to Sat 10 Oct 2026" reads as
+  // two days somewhere in those three weeks. The calendar names both of them.
+  // Days in a row are a stretch and days apart are separate things, so they are
+  // grouped that way and then simply said.
+  //
+  // A weekday still wins where there is one: fourteen dates listed out is not
+  // more informative than "Fridays", it is less.
+  const DAYNAME = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+  function markDays(m) {
+    if (m.weekday >= 0)
+      return `${DAYNAME[m.weekday]}${m.odd ? ` (${m.odd} of them ${m.odd === 1 ? "isn't" : "aren't"})` : ""}, ` +
+        `${calDay(m.from)} to ${calDay(m.to)}`;
+    const runs = (m.runs && m.runs.length ? m.runs : m.dates.map((d) => [d, d])).slice();
+    const said = runs.slice(0, 3).map(([a, z]) => (a === z ? calDay(a) : `${calDay(a)} to ${calDay(z)}`));
+    return said.join("; ") + (runs.length > said.length ? `; and ${runs.length - said.length} more` : "");
+  }
+
+  // BUILT AS ELEMENTS, like the rows above it and for the same reason: a
+  // control written as a string of HTML can be looked at but not pressed, so
+  // half of what this does could never be checked without a whole browser. The
+  // rows next to it have always been built this way.
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+
   function renderCalMarks() {
     const box = $("#calMarks");
     if (!box) return;
     const marks = (calMeta && calMeta.term && calMeta.term.marks) || [];
     box.hidden = !marks.length;
-    if (!marks.length) { box.innerHTML = ""; return; }
-    const DAYNAME = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
-    box.innerHTML =
-      `<p class="muted">Marked on the calendar itself, and nowhere else in it. ` +
-      `Say when one happens and it goes into your week.</p>` +
-      marks.map((m, i) => {
-        const when = m.weekday >= 0
-          ? `${DAYNAME[m.weekday]}${m.odd ? ` (${m.odd} of them ${m.odd === 1 ? "isn't" : "aren't"})` : ""}`
-          : "no day in particular";
-        return `<div class="cal-mark">` +
-          `<span class="cal-mark-name">${escapeHtml(m.name || `the “${m.symbol}” days`)}</span>` +
-          `<span class="muted"> — ${m.dates.length} days, ${escapeHtml(when)}, ` +
-          `${escapeHtml(calDay(m.from))} to ${escapeHtml(calDay(m.to))}</span>` +
-          `<label class="cal-mark-at">at <input type="time" class="cal-mark-time" data-i="${i}" /></label>` +
-          `<label class="cal-mark-there"><input type="checkbox" class="cal-mark-be" data-i="${i}" checked /> ` +
-          `somewhere you have to be</label>` +
-          `<button type="button" class="p-opt cal-mark-add" data-i="${i}">put ${m.dates.length} days in my week</button>` +
-          `</div>`;
-      }).join("") +
-      `<p id="calMarkWords" class="muted"></p>`;
-    box.querySelectorAll(".cal-mark-add").forEach((b) =>
-      b.addEventListener("click", () => addMarked(marks[Number(b.getAttribute("data-i"))], Number(b.getAttribute("data-i")))));
+    box.innerHTML = "";
+    if (!marks.length) return;
+    // THE SAME FOUR CHOICES A DATED ROW GETS, and for the same reason: the app
+    // has no vocabulary and never will, so it cannot know that "Holiday" is a
+    // day off and "Staff Mtg" is a meeting. It used to assume — every kind of
+    // marked day arrived as an hour in your week, ticked "somewhere you have to
+    // be", so a calendar with fifteen holidays on it offered to book you in for
+    // all fifteen. That is not a wrong guess so much as a question never asked.
+    const KINDS = [["off", "day off"], ["noLessons", "no lessons"],
+                   ["week", "in my week"], ["", "ignore"]];
+    box.appendChild(el("p", "muted",
+      "Marked on the calendar itself, and nowhere else in it. " +
+      "Say what each kind is and those days go in."));
+    marks.forEach((m, i) => {
+      const kind = calMarkKind.get(i) || "";
+      const n = m.dates.length;
+      const wrap = el("div", "cal-mark");
+      const head = el("div", "cal-mark-head");
+      head.appendChild(el("span", "cal-mark-name", m.name || `the “${m.symbol}” days`));
+      head.appendChild(el("span", "muted", ` — ${n} days: ${markDays(m)}`));
+      wrap.appendChild(head);
+
+      const opts = el("div", "cal-mark-opts");
+      KINDS.forEach(([k, lab]) => {
+        const b = el("button", "p-opt cal-mark-kind" + (kind === k ? " on" : ""), lab);
+        b.type = "button";
+        b.addEventListener("click", () => { calMarkKind.set(i, k); renderCalMarks(); });
+        opts.appendChild(b);
+      });
+      wrap.appendChild(opts);
+
+      // ONLY THE ONE THAT NEEDS IT ASKS. A time and "somewhere you have to be"
+      // are questions about a block in your week; against a holiday they were
+      // noise, and against fifteen holidays they were alarming.
+      let at = null;
+      let be = null;
+      if (kind === "week") {
+        const when = el("div", "cal-mark-when");
+        const atLab = el("label", "cal-mark-at", "at ");
+        at = document.createElement("input");
+        at.type = "time";
+        at.className = "cal-mark-time";
+        atLab.appendChild(at);
+        when.appendChild(atLab);
+        const beLab = el("label", "cal-mark-there");
+        be = document.createElement("input");
+        be.type = "checkbox";
+        be.className = "cal-mark-be";
+        be.checked = true;
+        beLab.appendChild(be);
+        beLab.appendChild(document.createTextNode(" somewhere you have to be"));
+        when.appendChild(beLab);
+        wrap.appendChild(when);
+      }
+      if (kind) {
+        const add = el("button", "p-opt cal-mark-add",
+          kind === "week" ? `put ${n} days in my week`
+            : kind === "off" ? `mark ${n} days off`
+            : `mark ${n} days with no lessons`);
+        add.type = "button";
+        add.addEventListener("click", () => addMarked(m, kind, at, be));
+        wrap.appendChild(add);
+      }
+      box.appendChild(wrap);
+    });
+    const said = el("p", "muted");
+    said.id = "calMarkWords";
+    box.appendChild(said);
   }
 
-  function addMarked(mark, i) {
+  function addMarked(mark, kind, at, be) {
     const said = $("#calMarkWords");
-    const box = $("#calMarks");
-    if (!mark || !box) return;
-    const at = box.querySelector(`.cal-mark-time[data-i="${i}"]`);
-    const be = box.querySelector(`.cal-mark-be[data-i="${i}"]`);
-    const T = window.OrganiserTimetable;
-    const start = at && at.value ? String(at.value).slice(0, 5) : "";
-    // THE ONE THING THE DOCUMENT DOESN'T SAY. A block with no width is thrown
-    // away when it is saved, so asking is the only honest thing — and it is one
-    // box for all fourteen of them.
-    if (!start) {
-      if (said) said.textContent = "Say what time it starts and it'll go in — the calendar doesn't give one.";
-      if (at) at.focus();
-      return;
-    }
-    const end = T && T.anHourAfter ? T.anHourAfter(start) : "";
+    if (!mark || !kind) return;
     const label = mark.name || `the “${mark.symbol}” days`;
     const have = new Set(schedule.filter((b) => b && b.date).map((b) => b.date + "|" + (b.label || "")));
-    const made = mark.dates
-      .filter((d) => !have.has(d + "|" + label))
-      .map((d) => ({
+    const fresh = mark.dates.filter((d) => !have.has(d + "|" + label));
+    let made = [];
+    if (kind === "week") {
+      const T = window.OrganiserTimetable;
+      const start = at && at.value ? String(at.value).slice(0, 5) : "";
+      // THE ONE THING THE DOCUMENT DOESN'T SAY. A block with no width is thrown
+      // away when it is saved, so asking is the only honest thing — and it is one
+      // box for all fourteen of them.
+      if (!start) {
+        if (said) said.textContent = "Say what time it starts and it'll go in — the calendar doesn't give one.";
+        if (at) at.focus();
+        return;
+      }
+      const end = T && T.anHourAfter ? T.anHourAfter(start) : "";
+      made = fresh.map((d) => ({
         id: uid(), label, date: d, start, end, days: [],
         // Ticked by default and one tap to turn off: a meeting somebody drew on
         // a school calendar is nearly always somewhere you have to be, and this
@@ -164,17 +247,34 @@
         beThere: !be || be.checked,
         soft: false, source: "paste",
       }));
+    } else {
+      // A DAY OFF AND A DAY WITHOUT LESSONS ARE THE SAME SHAPE the dated rows
+      // make, and are stored the same way — one all-day entry each — so every
+      // count in the app that already respects a day off respects these the
+      // moment they exist. No time is asked for, because there isn't one.
+      made = fresh.map((d) => ({
+        id: uid(), label, date: d, start: "00:00", end: "23:59", days: [],
+        blocksDay: kind === "off",
+        noLessons: kind === "noLessons",
+        soft: false, source: "paste",
+      }));
+    }
     if (!made.length) {
       if (said) said.textContent = `Those ${mark.dates.length} days are already in your week.`;
       return;
     }
     schedule = schedule.concat(made);
     persist();
+    renderTimeOff();
     render();
     if (said)
       said.textContent =
         `${made.length} added${made.length < mark.dates.length ? ` — the other ${mark.dates.length - made.length} were already there` : ""}. ` +
-        `An hour each; open one to change how long it runs.`;
+        (kind === "week"
+          ? "An hour each; open one to change how long it runs."
+          : kind === "off"
+            ? "Nothing will be planned into them."
+            : "Your timetable won't run on them.");
   }
 
   function renderCalMonth(r) {
@@ -269,16 +369,44 @@
         });
         row.appendChild(sw);
       }
-      // A LINE THAT SAID BOTH ENDS ITSELF. "National Day holiday 1-7 October"
-      // is seven days, and the app now reads it as seven — but reading it and
-      // SAYING it are different, and a row that quietly covers a week while
-      // showing one date is the app knowing something it hasn't told you. No
-      // tick here: there is nothing to decide, only something to see.
-      if (mark && !mark.canSpan && mark.ranged && mark.to > mark.from) {
-        const run = document.createElement("span");
-        run.className = "muted cal-end";
-        run.textContent = `to ${calDay(mark.to)} — ${mark.days} days, as written`;
-        row.appendChild(run);
+      // HOW LONG IT RUNS, IN A BOX YOU CAN CHANGE.
+      //
+      // This was a sentence — "7 days, as written" — on the rows the document
+      // had settled, and on the rest a yes/no tick offering the next row's date
+      // and nothing else. So a one-day holiday could be left as it was or
+      // stretched to seven days to meet the next line, and there was no third
+      // answer available, including the true one. Somebody with a one-day
+      // Mid-Autumn Festival was offered a week off and no way to say otherwise.
+      //
+      // The date it ends is the thing being decided, so it is a date box. What
+      // filled it in is said beside it, because a number the app put there and a
+      // number you put there should not look the same.
+      if (mark && !mark.endOf && mark.kind !== "lessons") {
+        const wrap = document.createElement("label");
+        wrap.className = "cal-until";
+        wrap.appendChild(document.createTextNode("ends "));
+        const upto = document.createElement("input");
+        upto.type = "date";
+        upto.className = "cal-upto";
+        upto.value = mark.to;
+        upto.min = r.date;
+        upto.addEventListener("change", () => {
+          const v = upto.value && upto.value >= r.date ? upto.value : r.date;
+          // Saying where it ends answers the question the tick was asking, so
+          // the tick's answer is dropped rather than left underneath.
+          calRows[i] = { ...r, endsOn: v, endFrom: "", spans: false };
+          renderCal();
+        });
+        wrap.appendChild(upto);
+        const how = document.createElement("span");
+        how.className = "muted cal-howlong";
+        how.textContent =
+          (mark.days === 1 ? "one day" : `${mark.days} days`) +
+          (r.endFrom === "grid" ? " — as the calendar draws it"
+            : r.endFrom === "line" ? " — as written"
+            : "");
+        wrap.appendChild(how);
+        row.appendChild(wrap);
       }
       // THE RUN-ON. A holiday arrives as two lines — begins, ends — and only
       // you know which pairs are a stretch and which are two separate days.

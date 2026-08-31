@@ -487,6 +487,17 @@
       const tally = new Map();
       dows.forEach((d) => tally.set(d, (tally.get(d) || 0) + 1));
       const top = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+      // THE DAYS IN A ROW, GROUPED. Four squares in a row is one thing four days
+      // long; four squares scattered over a term is four things. Said as "2
+      // days, no day in particular, 20 Sept to 10 Oct" they were indantical, and
+      // that sentence reads as "somewhere in those three weeks" about two days
+      // the calendar names outright.
+      const runs = [];
+      dates.forEach((d) => {
+        const last = runs[runs.length - 1];
+        if (last && addDays(last[1], 1) === d) last[1] = d;
+        else runs.push([d, d]);
+      });
       return {
         symbol,
         // NAMED BY THE DOCUMENT, one way or the other. A PDF gives a symbol and
@@ -497,6 +508,7 @@
         // of what the thing is called.
         name: grid.legend[symbol] || String(symbol).replace(/^\S\s+/, "").trim(),
         dates,
+        runs,
         weekday: top && top[1] > 1 && top[1] >= dates.length - 2 ? top[0] : -1,
         odd: top ? dates.length - top[1] : 0,
         from: dates[0],
@@ -701,6 +713,11 @@
           // Both ends, when the line itself gave both — see rangeIn. Nothing is
           // paired across lines here; that stays a decision you tick.
           endsOn: range && range.to > range.from ? range.to : "",
+          // WHERE THAT END CAME FROM. Shown on the page, because a date the app
+          // read off the document and a date you typed into the box should not
+          // look the same — and "as written" was the only one of the two the
+          // page could say until the grid started answering as well.
+          endFrom: range && range.to > range.from ? "line" : "",
           label: labelOf(line, d, useYear) || "(no name)",
           line,
           // Whether the year came off the line itself or was borrowed. Shown,
@@ -731,6 +748,31 @@
           r.endsOn = atYear(r.endsOn, endWant) || r.endsOn;
         }
         r.yearFromGrid = true;
+      });
+    // AND HOW LONG EACH OF THEM RUNS, WHERE THE CALENDAR DREW IT.
+    //
+    // A holiday arrives as two lines — begins, ends — and pairing them is a
+    // guess, so it is a tick you press. But when the same document also DRAWS
+    // the term, the guess is unnecessary and wrong: the grid gives every marked
+    // day its own square, so a stretch of them is drawn rather than implied.
+    //
+    // "Mid-Autumn Festival" is one square. "National Day" is seven. The tick
+    // offered to marry the two into a seven-day Mid-Autumn — a week off invented
+    // out of a one-day holiday, with no way to say otherwise except not pressing
+    // it, and no way at all to say the seven days the next line really is.
+    //
+    // So a row landing on a marked square covers that square's run. It is put in
+    // the box you can change, not asserted: the grid marks what it marks, and a
+    // line about something it doesn't mark can land on a square by coincidence.
+    const marked = new Map();
+    if (wg)
+      weekGridMarks(wg, useYear).forEach((m) =>
+        m.runs.forEach(([a, z]) => { if (!marked.has(a) || marked.get(a) < z) marked.set(a, z); }));
+    if (marked.size)
+      rows.forEach((r) => {
+        if (r.endsOn || !marked.has(r.date)) return;
+        r.endsOn = marked.get(r.date);
+        r.endFrom = "grid";
       });
     // AND THE SAME DOCUMENT MAY ALSO HOLD A MONTH DRAWN AS A GRID, which has no
     // dates on it anywhere and so contributed nothing at all above.
@@ -861,10 +903,15 @@
       // row with it — "1-7 October" is one line and one holiday. Only the
       // pairing of two separate lines is a decision, because only that one is a
       // guess.
-      const ownEnd = r.endsOn && r.endsOn > r.date ? r.endsOn : "";
+      // AN END EQUAL TO THE START IS AN ANSWER, not a missing one. A one-day
+      // holiday drawn as one square on the calendar has been settled by the
+      // document, and offering to run it on to the next line is offering to
+      // contradict it. `ranged` therefore asks whether it actually covers more
+      // than a day, rather than whether an end was given.
+      const ownEnd = r.endsOn && r.endsOn >= r.date ? r.endsOn : "";
       const canSpan = !ownEnd && !!next && next.date > r.date;
-      const ranged = !!ownEnd || (!!r.spans && canSpan);
-      const to = ownEnd || (ranged ? next.date : r.date);
+      const to = ownEnd || (r.spans && canSpan ? next.date : r.date);
+      const ranged = to > r.date;
       out.push({
         row: r,
         endRow: ownEnd ? null : ranged ? next : null,

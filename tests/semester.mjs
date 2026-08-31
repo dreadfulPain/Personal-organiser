@@ -518,6 +518,266 @@ sec("And a grid that crosses New Year settles the whole document");
      !/no single year is right/.test(C.words(r)), C.words(r));
 }
 
+// ---------------------------------------------------------------------------
+// HOW LONG A HOLIDAY RUNS, AND WHO GETS TO SAY.
+//
+// A calendar with both a term grid and a page of prose says some things twice,
+// and the app believed the weaker of the two.
+//
+// A one-day Mid-Autumn Festival is one square on the grid. The prose lists it,
+// and lists National Day after it, and the app offered — as the only edit
+// available — to marry the two lines into a seven-day Mid-Autumn Festival. Yes
+// or no, and no third answer, including the true one:
+//
+//     Fri, 25 Sept 2026 — Mid-Autumn Festival   [day off]
+//        runs on to Thu, 1 Oct 2026 — 7 days?
+//
+// The grid in the same document draws 25 Sept as one marked square with an
+// unmarked square after it, and 1-7 Oct as seven. Nothing needed guessing.
+const RUNS = [
+  "Example School Autumn Term",
+  "Week", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+  "1", "9/20 Makeup", "21", "22", "23", "24", "25 Holiday", "26",
+  "2", "27", "28", "29", "30", "10/1 Holiday", "2 Holiday", "3 Holiday",
+  "3", "4 Holiday", "5 Holiday", "6 Holiday", "7 Holiday", "8", "9 Staff Mtg", "10 Makeup",
+  // A SECOND STAFF MEETING, because one of anything is not a kind of day: a
+  // mark with a single date is dropped as a one-off, so a fixture with one
+  // would be testing the meeting case against nothing at all.
+  "4", "11", "12", "13", "14", "15", "16 Staff Mtg", "17",
+  "Notes",
+  "Sep. 25 Mid-Autumn Festival",
+  "Oct. 1 National Day",
+].join("\n");
+
+sec("A day the calendar draws as one square is one day");
+{
+  const r = C.read(RUNS, { year: 2026 });
+  const mid = r.rows.find((x) => /Mid-Autumn/.test(x.label));
+  const nat = r.rows.find((x) => /National Day/.test(x.label));
+  ok("both lines are read", !!mid && !!nat, JSON.stringify(r.rows.map((x) => x.label)));
+  ok("the one-day holiday ends the day it starts", mid && mid.endsOn === "2026-09-25",
+     mid && JSON.stringify({ date: mid.date, endsOn: mid.endsOn }));
+  ok("and says the calendar is where that came from", mid && mid.endFrom === "grid", mid && mid.endFrom);
+  // AND THE SEVEN-DAY ONE IS SEVEN, off the same evidence.
+  ok("the seven-day holiday runs seven days", nat && nat.endsOn === "2026-10-07",
+     nat && JSON.stringify({ date: nat.date, endsOn: nat.endsOn }));
+
+  // THE OFFER THAT WAS WRONG. A row the document has already answered must not
+  // be asked about — and `canSpan` is the one flag the page reads to decide
+  // whether to draw the tick at all.
+  const chosen = r.rows.map((x) => (/Mid-Autumn|National/.test(x.label) ? { ...x, kind: "off" } : x));
+  const plan = C.plan(chosen);
+  const one = plan.find((p) => /Mid-Autumn/.test(p.label));
+  ok("it covers one day", one && one.days === 1, one && String(one.days));
+  ok("and is not offered a run-on to the next line", one && !one.canSpan,
+     one && `offered ${one.wouldBe} days to ${one.wouldEnd}`);
+  const seven = plan.find((p) => /National/.test(p.label));
+  ok("and the week off is seven days", seven && seven.days === 7, seven && String(seven.days));
+  ok("and not offered one either", seven && !seven.canSpan, "still guessing");
+}
+
+sec("And you can say how long it runs when the app has it wrong");
+{
+  // THE WHOLE OF WHAT WAS MISSING. "so i either have the option to tell it to
+  // put 7 days for a one day holiday or not" — two answers, neither correct.
+  // An end date is a date, so it is a date box, and it wins over everything
+  // the document said.
+  const r = C.read(RUNS, { year: 2026 });
+  // EVERY row is a day off here, so the row being edited always has a next one
+  // to be offered. With only the edited row marked, `plan` sees a list of one,
+  // there is nothing to run on to, and no rule about run-ons can fail.
+  const say = (label, endsOn) =>
+    C.plan(r.rows.map((x) => ({ ...x, kind: "off", endsOn: x.label.includes(label) ? endsOn : x.endsOn })))
+      .find((p) => p.label.includes(label));
+
+  const longer = say("Mid-Autumn", "2026-09-27");
+  ok("a one-day holiday can be made three", longer && longer.days === 3, longer && String(longer.days));
+  ok("and covers the days in between", longer && longer.to === "2026-09-27", longer && longer.to);
+  // AND SHORTER, which no tick could ever have expressed.
+  const shorter = say("National Day", "2026-10-03");
+  ok("a week off can be cut to three days", shorter && shorter.days === 3, shorter && String(shorter.days));
+  // AND BACK TO ONE. An end equal to the start is an answer, not a blank — read
+  // as a blank it fell through to "no end given", and the offer to swallow the
+  // next line came straight back. Said on the row that HAS a next line, because
+  // on the last row of a document there is nothing to run on to and any rule
+  // whatsoever passes.
+  const back = say("Mid-Autumn", "2026-09-25");
+  ok("and back to the single day it starts on", back && back.days === 1, back && String(back.days));
+  ok("with no run-on offered on top of it", back && !back.canSpan,
+     back && `offered ${back.wouldBe} days to ${back.wouldEnd}`);
+
+  // AND THE DAYS THAT GET KEPT ARE THE DAYS THAT WERE SHOWN. The preview and
+  // the save read the same plan for exactly this reason.
+  const kept = C.toBlocks(r.rows.map((x) =>
+    /Mid-Autumn/.test(x.label) ? { ...x, kind: "off", endsOn: "2026-09-27" } : x));
+  ok("three days are kept, not one and not seven", kept.length === 3,
+     JSON.stringify(kept.map((b) => b.date)));
+  ok("and they are the three days named", kept.map((b) => b.date).join(",") ===
+     "2026-09-25,2026-09-26,2026-09-27", JSON.stringify(kept.map((b) => b.date)));
+}
+
+sec("And a marked day says which days, not roughly when");
+{
+  // "Makeup — 2 days, no day in particular, Sun, 20 Sept 2026 to Sat, 10 Oct
+  // 2026" is a sentence about two days the calendar names outright. It reads as
+  // "two days somewhere in those three weeks", which is the opposite of what
+  // the document says — and there was nothing else on offer.
+  const r = C.read(RUNS, { year: 2026 });
+  const marks = r.term.marks;
+  const by = (n) => marks.find((m) => m.name === n);
+
+  const makeup = by("Makeup");
+  ok("the two makeup days are two separate days", makeup && makeup.runs.length === 2,
+     makeup && JSON.stringify(makeup.runs));
+  ok("and each is one day long", makeup && makeup.runs.every(([a, z]) => a === z),
+     makeup && JSON.stringify(makeup.runs));
+  // AND DAYS IN A ROW ARE ONE STRETCH, which is the other half of the same
+  // question: eight holidays over two weeks are not eight things.
+  const hol = by("Holiday");
+  ok("the holidays are two stretches, not eight days", hol && hol.runs.length === 2,
+     hol && JSON.stringify(hol.runs));
+  ok("one of them a single day", hol && hol.runs.some(([a, z]) => a === z && a === "2026-09-25"),
+     hol && JSON.stringify(hol.runs));
+  ok("and one of them a week", hol && hol.runs.some(([a, z]) => a === "2026-10-01" && z === "2026-10-07"),
+     hol && JSON.stringify(hol.runs));
+}
+
+sec("And the page lets you say it, rather than only offering its guess");
+{
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  ok("the page opens", r.errs.length === 0, r.errs.join("; "));
+  const paste = r.get("#calPaste");
+  paste.value = RUNS;
+  paste.fire("input", { target: paste });
+  await r.settle();
+
+  const rowFor = (t) => [...r.get("#calRows").children]
+    .find((x) => new RegExp(t).test(String(x.children[0].textContent)));
+  const kid = (row, cls) => row && [...(row.children || [])].find((c) => String(c.className || "").includes(cls));
+  const press = (row, words) => {
+    const b = [...row.children].find((c) => String(c.textContent || "") === words);
+    if (b) b.fire("click", { target: b });
+  };
+
+  const mid = rowFor("Mid-Autumn");
+  ok("the one-day holiday is on the page", !!mid,
+     [...r.get("#calRows").children].map((x) => x.children[0].textContent).join(" | "));
+  press(mid, "day off");
+  await r.settle();
+
+  // NOTHING TO SEE UNTIL IT IS GOING IN, and then the length is a box.
+  const after = rowFor("Mid-Autumn");
+  const until = kid(after, "cal-until");
+  ok("how long it runs is shown", !!until,
+     [...after.children].map((c) => c.className).join(" / "));
+  // A missing box must FAIL a check, not throw and take the whole run down with
+  // it — a suite that dies tells you far less than one that says which line.
+  const box = until && [...until.children].find((c) => String(c.className || "").includes("cal-upto"));
+  ok("as a date you can change", box && box.type === "date", box && box.type);
+  ok("filled in with the day the calendar draws", box && box.value === "2026-09-25", box && box.value);
+  // The words are on the piece that holds them, not on the wrapper: the stub
+  // has no computed textContent, so reading the parent gets "" and any check
+  // that a phrase is ABSENT passes without looking at anything.
+  const howLong = (row) => String((kid(kid(row, "cal-until"), "cal-howlong") || {}).textContent || "");
+  ok("saying how long that is", /one day/.test(howLong(after)), howLong(after));
+  ok("and where it came from", /as the calendar draws it/.test(howLong(after)), howLong(after));
+  // AND NO OFFER TO SWALLOW THE NEXT LINE, which was the only edit there was.
+  const says = [...after.children].map((c) => String(c.textContent || "")).join(" ");
+  ok("with no seven-day offer against a one-day holiday", !/runs on to/.test(says), says);
+
+  // TYPING IN IT CHANGES WHAT IT COVERS.
+  if (box) { box.value = "2026-09-27"; box.fire("change", { target: box }); }
+  await r.settle();
+  const grown = rowFor("Mid-Autumn");
+  ok("and typing a later date makes it that long", /3 days/.test(howLong(grown)), howLong(grown));
+  ok("and stops crediting the calendar for a date you typed",
+     howLong(grown) !== "" && !/as the calendar draws it/.test(howLong(grown)), howLong(grown));
+}
+
+sec("And a marked day is asked what it is, not assumed to be a meeting");
+{
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  const paste = r.get("#calPaste");
+  paste.value = RUNS;
+  paste.fire("input", { target: paste });
+  await r.settle();
+
+  const marks = () => [...r.get("#calMarks").children]
+    .filter((x) => String(x.className || "") === "cal-mark");
+  const markFor = (t) => marks().find((x) => new RegExp(t).test(said(x)));
+  // The stub keeps no computed textContent, so what a block SAYS is what its
+  // pieces say — gathered here rather than in five places below.
+  const said = (node) => {
+    let out = String(node.textContent || "");
+    (node.children || []).forEach((c) => { out += " " + said(c); });
+    return out;
+  };
+  const kidsOf = (node, cls) =>
+    (node.children || []).reduce((acc, c) =>
+      acc.concat(String(c.className || "").includes(cls) ? [c] : kidsOf(c, cls)), []);
+
+  ok("the marked days come up", marks().length >= 3, String(marks().length));
+
+  // WHAT IT SAYS ABOUT THEM. Two makeup days three weeks apart were "2 days, no
+  // day in particular, Sun 20 Sept to Sat 10 Oct" — a sentence that means "we
+  // don't know" about two days the calendar names outright.
+  const makeup = markFor("Makeup");
+  ok("it names the days rather than the gap between them",
+     makeup && !/no day in particular/.test(said(makeup)), makeup && said(makeup));
+  ok("both of them", makeup && /Sep 20/.test(said(makeup)) && /Oct 10/.test(said(makeup)),
+     makeup && said(makeup));
+
+  // AND WHAT IT ASKS ABOUT THEM. Every kind of marked day used to arrive as an
+  // hour in your week with "somewhere you have to be" already ticked — so a
+  // calendar with fifteen holidays on it offered to book you in for all
+  // fifteen, and there was no other answer anywhere on the page.
+  const hol = markFor("Holiday");
+  const opts = (m) => kidsOf(m, "cal-mark-kind").map((b) => String(b.textContent));
+  ok("a holiday is offered as a day off", hol && opts(hol).includes("day off"), hol && opts(hol).join(" / "));
+  ok("and as a day without lessons", hol && opts(hol).includes("no lessons"), hol && opts(hol).join(" / "));
+  ok("and as something in your week", hol && opts(hol).includes("in my week"), hol && opts(hol).join(" / "));
+  ok("and can be left alone", hol && opts(hol).includes("ignore"), hol && opts(hol).join(" / "));
+  // NOT ASKED UNTIL IT IS THE QUESTION. A start time and "somewhere you have to
+  // be" are questions about a block in your week; against a holiday they were
+  // noise, and against fifteen of them they were alarming.
+  ok("and is not asked what time a holiday starts",
+     hol && kidsOf(hol, "cal-mark-time").length === 0, "still asking for a time");
+  ok("nor whether you have to be at one",
+     hol && kidsOf(hol, "cal-mark-be").length === 0, "still asking about attendance");
+  ok("and nothing is offered to keep until one is chosen",
+     hol && kidsOf(hol, "cal-mark-add").length === 0, "offering to keep an unanswered question");
+
+  const off = kidsOf(hol, "cal-mark-kind").find((b) => String(b.textContent) === "day off");
+  off.fire("click", { target: off });
+  await r.settle();
+  const hol2 = markFor("Holiday");
+  const add = kidsOf(hol2, "cal-mark-add")[0];
+  ok("once said, it offers to mark them off", add && /mark 8 days off/.test(String(add.textContent)),
+     add && String(add.textContent));
+  add.fire("click", { target: add });
+  await r.settle();
+
+  // AND THEY LAND AS DAYS OFF, not as eight one-hour meetings called Holiday.
+  const sched = r.state.schedule || [];
+  ok("the days go in", sched.length === 8, JSON.stringify(sched.map((b) => b.date)));
+  ok("as days off", sched.every((b) => b.blocksDay), JSON.stringify(sched.map((b) => b.blocksDay)));
+  ok("none of them as something to attend", !sched.some((b) => b.beThere),
+     JSON.stringify(sched.filter((b) => b.beThere)));
+  ok("and they are the days the calendar marked", sched[0] && sched[0].date === "2026-09-25",
+     JSON.stringify(sched.map((b) => b.date)));
+
+  // AND THE ONE THAT REALLY IS A MEETING still asks what it needs to.
+  const stf = markFor("Staff Mtg");
+  const wk = kidsOf(stf, "cal-mark-kind").find((b) => String(b.textContent) === "in my week");
+  wk.fire("click", { target: wk });
+  await r.settle();
+  const stf2 = markFor("Staff Mtg");
+  ok("a meeting is still asked what time it starts",
+     kidsOf(stf2, "cal-mark-time").length === 1, "the time question went with it");
+  ok("and whether you have to be there",
+     kidsOf(stf2, "cal-mark-be").length === 1, "the attendance question went with it");
+}
+
 sec("And nothing else is read as a term grid");
 {
   // A MONTH GRID HAS NO WEEK COLUMN, and reading one as a term would turn the

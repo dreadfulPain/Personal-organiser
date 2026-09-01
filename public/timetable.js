@@ -624,6 +624,33 @@
     return seen.size;
   }
 
+  // IS THIS A READING, OR THE SHAPE OF ONE?
+  //
+  // The plain reader goes first and the model is asked only when it comes back
+  // with nothing. That is right nearly always — a grid is arithmetic, and
+  // arithmetic is instant, works with no model installed, and gives the same
+  // answer twice. The hole in it is the test: "it produced blocks" is a very
+  // weak stand-in for "it read the document". Somebody was handed eight lessons
+  // all called the same thing, on no day, and because there were eight of them
+  // the model was never asked and nothing anywhere said the reading was thin.
+  //
+  // So the reading is measured against the document it came out of. NEITHER OF
+  // THESE MEANS IT IS WRONG — a one-day timetable exists, and so does a week of
+  // the same duty — they mean it is worth a second opinion. Which is offered,
+  // not taken: silently replacing a correct grid with a model's guess would be
+  // the same mistake pointing the other way.
+  function thin(got, text) {
+    const blocks = (got && got.blocks) || [];
+    if (blocks.length < 2) return "";
+    const names = new Set(blocks.map((b) => String(b.label || "").trim().toLowerCase()));
+    if (names.size === 1) return "every one of them came out with the same name";
+    const days = new Set(blocks.flatMap((b) => (Array.isArray(b.days) ? b.days : [])));
+    const week = namesAWeek(text);
+    if (week >= 3 && days.size === 1)
+      return `the document names ${week} days of the week and all of it landed on one`;
+    return "";
+  }
+
   // THREE WAYS INTO A PDF, STRONGEST FIRST.
   //
   // The PDF's own positions, if it drew a table with them. Then the text, if it
@@ -744,6 +771,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, readAgenda, fromPages, fromRows, bestOf, words, anHourAfter, looksLikePlace,
+    read, readAgenda, fromPages, fromRows, bestOf, thin, words, anHourAfter, looksLikePlace,
   };
 })();

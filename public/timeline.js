@@ -38,6 +38,13 @@
   // has to say, because the failure mode is not a gap you would notice but a
   // timetable that looks entirely right with Tuesday's lessons on Monday.
   let pastedFrom = "";
+  // AND WHAT LOOKED WRONG WITH IT, when the plain reader's own answer is thin
+  // by its own measure — see thin() in timetable.js. A sentence, or "".
+  let pastedThin = "";
+  // AND THE TEXT IT WAS READ FROM. The setup panel is rebuilt from scratch on
+  // every render, so the paste box is empty again by the time the reading is on
+  // screen — and the second opinion needs the same words the first one had.
+  let pastedText = "";
   let unreadableRows = []; // rows it couldn't make sense of — shown, never dropped
   let addingBlock = false;
   let movingId = null; // which planned task is having its slot changed
@@ -1857,11 +1864,12 @@
   }
 
   // WHAT THE READER FOUND, ON SCREEN, BEFORE ANY OF IT IS KEPT.
-  function showRead(got) {
+  function showRead(got, from, thin) {
     pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
-    // Read off the page, not worked out — so whatever the last reading was, the
-    // warning about guessed days does not carry over onto this one.
-    pastedFrom = "";
+    // How it was come by, and what is doubtful about it — both set here so
+    // neither can carry over from the last document onto this one.
+    pastedFrom = from || "";
+    pastedThin = thin || "";
     unreadableRows = [];
     renderSetup();
     setSuStatus(window.OrganiserTimetable ? window.OrganiserTimetable.words(got) : "");
@@ -1876,6 +1884,7 @@
     // lessons come out on Sunday and nothing looks wrong.
     const text = $("#ttText").value || "";
     if (!text.trim()) return;
+    pastedText = text;
     // READ HERE, IN PLAIN CODE, FIRST.
     //
     // A timetable is a grid, and a grid is arithmetic: count the columns, find
@@ -1886,7 +1895,14 @@
     // isn't a grid or a list, because that part it genuinely is better at.
     const T = window.OrganiserTimetable;
     const got = T ? T.bestOf(pdf && pdf.rows ? { ...pdf, text } : { text }) : null;
-    if (got && got.blocks.length) return showRead(got);
+    // AND WHETHER THAT READING IS WORTH TRUSTING, asked before it is shown.
+    // "It produced blocks" is a very weak test for "it read the document", and
+    // it was the whole test: eight lessons all called the same thing counted as
+    // a success, so the model was never asked and nothing said the reading was
+    // thin. It is measured now, and where it is thin the second opinion is
+    // OFFERED — taking it automatically would be the same mistake reversed.
+    if (got && got.blocks.length)
+      return showRead(got, "", T && T.thin ? T.thin(got, text) : "");
     // A WEEK WHOSE COLUMNS DIDN'T SURVIVE. The plain reader can do nothing with
     // it — one long list, no way to tell Monday's lessons from Tuesday's — so
     // this is exactly where the model earns its place: five subjects in a row
@@ -1898,8 +1914,20 @@
     // the way to the screen. The failure mode here is not a blank — it is a
     // timetable that looks entirely right and has Tuesday's lessons on Monday.
     const lostColumns = !!(got && got.note === "columns");
-    pastedFrom = lostColumns ? "flattened" : "";
-    setSuStatus(lostColumns
+    return askTheModel(text, lostColumns);
+  }
+
+  // THE MODEL'S GO AT IT. Reached two ways — because plain code came back with
+  // nothing, or because you looked at a thin reading and asked for a second
+  // opinion — and it must do the same thing either way, so it is written once.
+  //
+  // `flattened` says the document's columns are gone and the days will have to
+  // be worked out from the order things appear in. It changes the prompt and it
+  // changes what the check-back says about the answer, so it is never passed on
+  // a hunch: only where the reader established it.
+  async function askTheModel(text, flattened) {
+    pastedFrom = flattened ? "flattened" : "";
+    setSuStatus(flattened
       ? "The columns didn't survive whatever flattened this — it's one long list now. " +
         "Working out which lesson belongs to which day… that part is guesswork, so " +
         "check the days when it comes back."
@@ -1908,7 +1936,7 @@
       const r = await fetch("/api/timetable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, flattened: lostColumns }),
+        body: JSON.stringify({ text, flattened: !!flattened }),
       });
       const d = await r.json();
       if (!r.ok) {
@@ -1917,17 +1945,21 @@
       }
       if (!d.blocks || !d.blocks.length) {
         unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
-        pastedBlocks = null;
-        pastedFrom = "";
+        // WHAT WAS ON SCREEN STAYS ON SCREEN when there was something. A second
+        // opinion that comes back empty must not take the first reading away
+        // with it — you asked to compare two things, not to lose one.
+        if (!pastedBlocks) { pastedFrom = ""; pastedThin = ""; }
         renderSetup();
         setSuStatus(
-          (unreadableRows.length
-            ? `Nothing came out whole — but ${unreadableRows.length} row${unreadableRows.length === 1 ? " is" : "s are"} listed below so you can see what it stumbled on.`
-            : "Nothing in there looked like a timed block. Try adding one by hand to see the shape.") +
+          (pastedBlocks
+            ? "The model didn't get any further with it, so what was already read is still here."
+            : unreadableRows.length
+              ? `Nothing came out whole — but ${unreadableRows.length} row${unreadableRows.length === 1 ? " is" : "s are"} listed below so you can see what it stumbled on.`
+              : "Nothing in there looked like a timed block. Try adding one by hand to see the shape.") +
           // AND THE THING THAT WOULD HAVE WORKED. Only said once the guessing
           // has been tried and failed — offered before that it reads as a
           // refusal to try.
-          (lostColumns
+          (flattened
             ? " Opening the file itself works better than pasting out of it, and so does " +
               "copying the table from Word or Excel — both keep the columns, and with the " +
               "columns none of this is guesswork."
@@ -1936,8 +1968,12 @@
         return;
       }
       pastedBlocks = d.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+      // The model's own reading — so nothing is left saying the plain one looked
+      // thin, because the plain one is no longer what is on screen.
+      pastedThin = "";
       unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
-      setSuStatus("");
+      setSuStatus(`${d.blocks.length} block${d.blocks.length === 1 ? "" : "s"} read by the model. ` +
+        "Check them the same way — nothing is saved until you press save.");
       renderSetup();
     } catch {
       setSuStatus("Couldn't reach the reader just now — you can still add blocks by hand.");
@@ -2073,6 +2109,7 @@
       }
       pastedBlocks = out.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
       pastedFrom = "";
+      pastedThin = "";
       setSuStatus(
         `Read ${out.blocks.length} entr${out.blocks.length === 1 ? "y" : "ies"}.` +
           (out.skipped.length ? ` ${out.skipped.length} couldn't be read and ${out.skipped.length === 1 ? "was" : "were"} left out: ${out.skipped.slice(0, 3).join(", ")}${out.skipped.length > 3 ? "…" : ""}` : "")
@@ -2392,6 +2429,17 @@
            This document's columns were gone by the time it arrived, so which lesson falls on
            which day came from the order they were written in. The times and the names are off
            the page and should be right; the day against each one is the part to check.</p>`
+        : "") +
+      // AND WHERE THE READING LOOKS THIN, the offer to ask the model as well.
+      // Not taken automatically: a one-day timetable exists and so does a week
+      // of the same duty, so this may be a perfectly good reading of an unusual
+      // document. What was wrong before was not preferring one over the other —
+      // it was never noticing there was a question.
+      (pastedThin
+        ? `<p class="su-thin">This one came out looking thin — ${escapeHtml(pastedThin)}.
+           It may be right; some weeks really are like that. If it isn't,
+           <button type="button" id="ttSecond" class="link">let the model read it too</button>
+           and you can keep whichever is better.</p>`
         : "");
     const table = document.createElement("div");
     table.className = "su-table";
@@ -2429,6 +2477,8 @@
       table.appendChild(row);
     });
     box.appendChild(table);
+    const second = box.querySelector("#ttSecond");
+    if (second) second.addEventListener("click", () => askTheModel(pastedText, false));
     box.appendChild(termOffer());
     box.appendChild(thereOffer());
     box.appendChild(peopleOffer());

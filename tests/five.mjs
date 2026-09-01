@@ -341,6 +341,126 @@ sec("And a week that read properly is not labelled a guess");
      !/worked out, not read/.test(said()), said().slice(0, 300));
 }
 
+sec("A reading is measured before it is believed");
+{
+  // THE HOLE THIS CLOSES. The plain reader goes first and the model is asked
+  // only when it comes back with nothing — which is right nearly always, since
+  // a grid is arithmetic. But the test for "it worked" was "it produced
+  // blocks", and that is a very weak stand-in for "it read the document":
+  // eight lessons all called the same thing, on no day, counted as a success,
+  // so the model was never asked and nothing said the reading was thin.
+  const same = { blocks: [{ label: "G1( )", days: [] }, { label: "G1( )", days: [] },
+                          { label: "G1( )", days: [] }] };
+  ok("a week where everything has one name is thin", /same name/.test(T.thin(same, "x")),
+     JSON.stringify(T.thin(same, "x")));
+  const WEEK = "Monday Tuesday Wednesday Thursday Friday";
+  const oneDay = { blocks: [{ label: "English", days: [1] }, { label: "Writing", days: [1] }] };
+  ok("and so is a whole week that landed on one day",
+     /landed on one/.test(T.thin(oneDay, WEEK)), JSON.stringify(T.thin(oneDay, WEEK)));
+
+  // AND NEITHER IS A GOOD READING, which is the half that matters: a measure
+  // that fires on everything is a measure nobody reads.
+  const real = { blocks: [{ label: "English", days: [1] }, { label: "Writing", days: [2] }] };
+  ok("a real week is not called thin", T.thin(real, WEEK) === "", T.thin(real, WEEK));
+  ok("nor is a document that only ever names one day",
+     T.thin(oneDay, "Monday only") === "", T.thin(oneDay, "Monday only"));
+  ok("nor is a single block, which cannot be compared to anything",
+     T.thin({ blocks: [{ label: "English", days: [1] }] }, WEEK) === "",
+     T.thin({ blocks: [{ label: "English", days: [1] }] }, WEEK));
+}
+
+sec("And a thin one is offered a second opinion rather than quietly kept");
+{
+  // OFFERED, NOT TAKEN. A one-day timetable exists and so does a week of the
+  // same duty, so this may be a perfectly good reading of an unusual document.
+  // What was wrong before was not preferring one reading over the other — it
+  // was never noticing there was a question.
+  const asked = [];
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+    fetch: async (url, init) => {
+      if (/api\/timetable/.test(String(url))) asked.push(JSON.parse((init && init.body) || "{}"));
+      return { ok: true, json: async () => ({
+        blocks: [{ label: "English", start: "08:40", end: "09:25", days: [1] },
+                 { label: "Writing", start: "08:40", end: "09:25", days: [2] }],
+        unreadable: [] }) };
+    },
+  });
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  // The table on screen now, and the button the PAGE wired — which the
+  // stand-in hands back per element, so it has to be asked of the same box the
+  // page asked, not of the document.
+  const table = () => {
+    const kids = [...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review"));
+    return kids[kids.length - 1] || null;
+  };
+  // Everything the table says, heading and rows: the notices are set as
+  // innerHTML on the box, the rows are appended as elements with their own.
+  const all = (n) => !n ? "" : String(n.innerHTML || "") +
+    [...(n.children || [])].map(all).join(" ");
+  const said = () => all(table());
+  const box = r.get("#ttText");
+  const read = r.get("#ttRead");
+  box.value = ["Monday Tuesday Wednesday Thursday Friday",
+    "Mon 08:40-09:25 English", "Mon 09:35-10:15 Writing"].join("\n");
+  read.fire("click", { target: read });
+  await r.settle();
+
+  ok("the reading is still shown", /Check these before/.test(said()), said().slice(0, 200));
+  ok("and the model has not been asked behind your back", asked.length === 0,
+     JSON.stringify(asked));
+  ok("but it says the reading looked thin", /looking thin/.test(said()), said().slice(0, 400));
+  ok("and says what looked thin about it", /landed on one/.test(said()), said().slice(0, 400));
+  ok("and allows that it might be right anyway", /may be right/.test(said()), said().slice(0, 400));
+
+  // TAKING THE OFFER asks the model with the same words the first reading had —
+  // which the box no longer holds, because the panel is rebuilt every render.
+  const btn = table().querySelector("#ttSecond");
+  btn.fire("click", { target: btn });
+  await r.settle();
+  ok("taking the offer asks the model", asked.length === 1, JSON.stringify(asked));
+  ok("with the text the first reading had", /Mon 08:40-09:25 English/.test(asked[0].text || ""),
+     JSON.stringify(asked[0]).slice(0, 160));
+  ok("and not claiming the columns were lost, which nothing established",
+     asked[0].flattened === false, JSON.stringify(asked[0]).slice(0, 160));
+  ok("what comes back replaces it", /Writing/.test(said()), said().slice(0, 400));
+  ok("and the offer is gone with the reading it was about",
+     !/looking thin/.test(said()), said().slice(0, 400));
+}
+
+sec("And a second opinion that comes back empty takes nothing away");
+{
+  // YOU ASKED TO COMPARE TWO THINGS, NOT TO LOSE ONE. A model that finds
+  // nothing must leave what was already read exactly where it was.
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+    fetch: async () => ({ ok: true, json: async () => ({ blocks: [], unreadable: [] }) }),
+  });
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  const box = r.get("#ttText");
+  const read = r.get("#ttRead");
+  box.value = ["Monday Tuesday Wednesday Thursday Friday",
+    "Mon 08:40-09:25 English", "Mon 09:35-10:15 Writing"].join("\n");
+  read.fire("click", { target: read });
+  await r.settle();
+  const before = [...(r.get("#ttReview").children || [])].length;
+  const kid = [...(r.get("#ttReview").children || [])]
+    .filter((c) => String(c.className || "").includes("su-review")).pop();
+  const btn = kid.querySelector("#ttSecond");
+  btn.fire("click", { target: btn });
+  await r.settle();
+  const kids = [...(r.get("#ttReview").children || [])]
+    .filter((c) => String(c.className || "").includes("su-review"));
+  ok("the first reading is still there", kids.length > 0 && before > 0,
+     `${before} before, ${kids.length} after`);
+  ok("and it says so rather than looking like it worked",
+     /didn't get any further/.test(String(r.get("#ttStatus").textContent || "")),
+     String(r.get("#ttStatus").textContent));
+}
+
 sec("And a class beside the period is who it's for, not what it is");
 {
   // THE SAME QUESTION, ASKED IN ONE PLACE AND NOT THE OTHER. Every line UNDER a

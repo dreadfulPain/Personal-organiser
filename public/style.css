@@ -4117,6 +4117,13 @@ a.btn {
    the sentence says it too. */
 .su-guessed { margin: 0 0 10px; padding: 10px 14px; border-radius: var(--radius);
   background: var(--reminder); font-size: 0.86rem; line-height: 1.5; }
+/* THE READING LOOKED THIN. Quieter than the one above it, on purpose: that one
+   says something IS guessed, this one says something MIGHT be wrong, and a
+   sentence that may well be a false alarm must not shout like one that isn't. */
+.su-thin { margin: 0 0 10px; padding: 8px 14px; border-radius: var(--radius);
+  border: 1px dashed var(--line); font-size: 0.84rem; line-height: 1.5;
+  color: var(--ink-soft); }
+.su-thin .link { font-size: inherit; }
 
 /* A lesson that could be traded, and one that isn't running this week. Both
    are facts about a block, shown the same way its other facts are. */

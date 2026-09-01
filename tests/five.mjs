@@ -246,6 +246,33 @@ sec("A PDF that positions every letter separately");
   ok("and says why", r.note === "glyphs", r.note);
 }
 
+sec("And a class beside the period is who it's for, not what it is");
+{
+  // THE SAME QUESTION, ASKED IN ONE PLACE AND NOT THE OTHER. Every line UNDER a
+  // time has always been checked for a cohort — "Grade 5" is who a session is
+  // for, not what it is called — and the line the time is ON never was.
+  //
+  // So a timetable that put the class beside the period gave every entry that
+  // class as its name: eight rows, all called the same thing, the actual
+  // subject sitting in the note underneath where nothing would ever read it.
+  const r = T.readAgenda(["08:40-09:25 G1( )", "English, Primary Section",
+                          "09:35-10:15 G1( )", "Story Telling"].join("\n"));
+  ok("the entry is named after the subject", r.blocks[0] && r.blocks[0].label === "English, Primary Section",
+     r.blocks[0] && r.blocks[0].label);
+  ok("and not after the class", r.blocks.every((b) => b.label !== "G1( )"),
+     JSON.stringify(r.blocks.map((b) => b.label)));
+  ok("nor are they all called the same thing",
+     new Set(r.blocks.map((b) => b.label)).size === r.blocks.length,
+     JSON.stringify(r.blocks.map((b) => b.label)));
+
+  // AND NOTHING IS LOST BY BEING WRONG. A row that is a time and a class and
+  // nothing else is a real row, and it gets the class back as its name rather
+  // than being thrown away for having none.
+  const bare = T.readAgenda("09:00-10:00 Grade 5");
+  ok("a row with only a class still has a name", bare && bare.blocks[0] &&
+     bare.blocks[0].label === "Grade 5", bare && JSON.stringify(bare.blocks));
+}
+
 // ---------------------------------------------------------------------------
 sec("A class timetable whose columns didn't survive is not eight nameless lessons");
 {

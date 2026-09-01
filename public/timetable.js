@@ -432,7 +432,16 @@
         // where the app can use it, which is what makes the thing show as
         // somewhere you have to be rather than something you can do anywhere.
         const place = looksLikePlace(rest);
-        open = { label: place ? "" : rest, where: place ? rest : "",
+        // AND SOMETIMES WHO, NOT WHAT — asked here the same way it is asked of
+        // every line underneath. The lines UNDER a time have always been checked
+        // for a cohort; the line the time is ON never was. So a document that
+        // put the class beside the period — "08:40-09:25  G1( )" — named every
+        // entry after the class, and a whole day read as eight identical
+        // lessons. Nothing is lost by being wrong: it comes back as the name
+        // below if the entry never finds a better one.
+        const cohort = !place && looksLikeAudience(rest);
+        open = { label: place || cohort ? "" : rest, where: place ? rest : "",
+          ...(cohort ? { forWhom: rest.slice(0, 80) } : {}),
           // AN HOUR, WHEN THE DOCUMENT DIDN'T SAY. A block with no end has no
           // width and is thrown away when it is saved — so reading these and
           // then losing them on the way to the file is worse than not reading

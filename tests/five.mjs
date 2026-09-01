@@ -246,6 +246,101 @@ sec("A PDF that positions every letter separately");
   ok("and says why", r.note === "glyphs", r.note);
 }
 
+sec("And when the columns are gone the model is asked, and told what it's looking at");
+{
+  // THE PLAIN READER CAN DO NOTHING WITH A FLATTENED WEEK — one long list, no
+  // way to tell Monday's lessons from Tuesday's — so it stops. Which leaves
+  // exactly the job a model is good at and arithmetic isn't: five subjects
+  // after five day names line up with them.
+  //
+  // It has to be TOLD that, though. Handed the same list with no warning it
+  // reads it top to bottom and puts the whole week on Monday.
+  const FLAT = ["Grade 1 Timetable", "Period", "Time",
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+    "08:40-09:25", "English", "Story Telling", "Writing", "Reading", "Activity"].join("\n");
+  const asked = [];
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+    fetch: async (url, init) => {
+      const body = JSON.parse((init && init.body) || "{}");
+      asked.push({ url, body });
+      return { ok: true, json: async () => ({
+        blocks: ["English", "Story Telling", "Writing", "Reading", "Activity"].map((label, i) =>
+          ({ label, start: "08:40", end: "09:25", days: [i + 1] })),
+        unreadable: [] }) };
+    },
+  });
+  ok("the page opens", r.errs.length === 0, r.errs.join("; "));
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  const box = r.get("#ttText");
+  box.value = FLAT;
+  const read = r.get("#ttRead");
+  read.fire("click", { target: read });
+  await r.settle();
+
+  const tt = asked.find((a) => /api\/timetable/.test(a.url));
+  ok("the model is asked rather than the whole thing stopping", !!tt,
+     JSON.stringify(asked.map((a) => a.url)));
+  ok("and told the columns are gone", tt && tt.body.flattened === true,
+     tt && JSON.stringify(tt.body).slice(0, 120));
+
+  // AND WHAT COMES BACK SAYS HOW IT WAS COME BY. The failure here is not a gap
+  // anybody would notice — it is a timetable that looks entirely right with
+  // Tuesday's lessons on Monday — so the check-back names the guessed part.
+  const review = r.get("#ttReview");
+  const said = String(review.innerHTML || "") +
+    [...(review.children || [])].map((c) => String(c.innerHTML || "")).join(" ");
+  ok("the check-back says the days were worked out", /worked out, not read/.test(said),
+     said.slice(0, 300));
+  ok("and names the day as the part to check", /day against each one is the part to check/.test(said),
+     said.slice(0, 300));
+  ok("and does not claim the times were guessed too", /times and the names are off/.test(said),
+     said.slice(0, 300));
+}
+
+sec("And a week that read properly is not labelled a guess");
+{
+  // THE WARNING MUST NOT OUTLIVE THE READING IT IS ABOUT. Two readings in one
+  // sitting — the flattened one first, then a real grid — because a flag that
+  // is set and never cleared only shows itself on the SECOND one, and a caution
+  // that appears over a reading it isn't about teaches somebody to ignore it.
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+    fetch: async () => ({ ok: true, json: async () => ({
+      blocks: [{ label: "English", start: "08:40", end: "09:25", days: [1] }], unreadable: [] }) }),
+  });
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  const box = r.get("#ttText");
+  const read = r.get("#ttRead");
+  // THE ONE ON SCREEN NOW, not every one ever drawn. The page rebuilds its
+  // whole setup panel each render, so the old table is gone; the stand-in keeps
+  // elements by id, so it isn't. Reading the last one drawn is what a person
+  // is actually looking at either way.
+  const said = () => {
+    const kids = [...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review"));
+    const last = kids[kids.length - 1];
+    return last ? String(last.innerHTML || "") : "";
+  };
+
+  // One with the columns gone, which is a guess and says so.
+  box.value = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+    "08:40-09:25", "English", "Writing", "Reading", "Activity", "Story Telling"].join("\n");
+  read.fire("click", { target: read });
+  await r.settle();
+  ok("the flattened one is called a guess", /worked out, not read/.test(said()), said().slice(0, 200));
+
+  // Then a real grid, read straight off the page, which is not.
+  box.value = ["\tMonday\tTuesday", "08:40-09:25\tEnglish\tWriting"].join("\n");
+  read.fire("click", { target: read });
+  await r.settle();
+  ok("a grid read straight off the page still reads", /Check these before/.test(said()), said().slice(0, 200));
+  ok("and is not still carrying the last one's warning",
+     !/worked out, not read/.test(said()), said().slice(0, 300));
+}
+
 sec("And a class beside the period is who it's for, not what it is");
 {
   // THE SAME QUESTION, ASKED IN ONE PLACE AND NOT THE OTHER. Every line UNDER a

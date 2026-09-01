@@ -33,6 +33,11 @@
   // place.
   let setupOpen = /#setup\b/.test(location.hash || "");
   let pastedBlocks = null; // AI-read timetable rows, waiting to be checked
+  // AND HOW THEY WERE COME BY. "flattened" means the document's columns were
+  // gone and the days were worked out rather than read — which the check-back
+  // has to say, because the failure mode is not a gap you would notice but a
+  // timetable that looks entirely right with Tuesday's lessons on Monday.
+  let pastedFrom = "";
   let unreadableRows = []; // rows it couldn't make sense of — shown, never dropped
   let addingBlock = false;
   let movingId = null; // which planned task is having its slot changed
@@ -1854,6 +1859,9 @@
   // WHAT THE READER FOUND, ON SCREEN, BEFORE ANY OF IT IS KEPT.
   function showRead(got) {
     pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+    // Read off the page, not worked out — so whatever the last reading was, the
+    // warning about guessed days does not carry over onto this one.
+    pastedFrom = "";
     unreadableRows = [];
     renderSetup();
     setSuStatus(window.OrganiserTimetable ? window.OrganiserTimetable.words(got) : "");
@@ -1879,24 +1887,28 @@
     const T = window.OrganiserTimetable;
     const got = T ? T.bestOf(pdf && pdf.rows ? { ...pdf, text } : { text }) : null;
     if (got && got.blocks.length) return showRead(got);
-    // THE ONE FAILURE WORTH NAMING. A week with its days across the top, whose
-    // columns did not survive whatever flattened it, is not something a model
-    // will do better with — it is the same mush, and what comes back from mush
-    // reads perfectly well and is wrong. Saying which part is missing, and the
-    // two ways to keep it, is worth more than another go.
-    const lostColumns = got && got.note === "columns";
+    // A WEEK WHOSE COLUMNS DIDN'T SURVIVE. The plain reader can do nothing with
+    // it — one long list, no way to tell Monday's lessons from Tuesday's — so
+    // this is exactly where the model earns its place: five subjects in a row
+    // after five day names is a thing a reader can line up and arithmetic
+    // can't.
+    //
+    // IT IS STILL WORKING IT OUT RATHER THAN READING IT, so it is told so, the
+    // model is told so, and what comes back is labelled a reconstruction all
+    // the way to the screen. The failure mode here is not a blank — it is a
+    // timetable that looks entirely right and has Tuesday's lessons on Monday.
+    const lostColumns = !!(got && got.note === "columns");
+    pastedFrom = lostColumns ? "flattened" : "";
     setSuStatus(lostColumns
-      ? "The days are in there but the columns aren't — this has been flattened into " +
-        "one long list, so there's no way to tell Monday's lessons from Tuesday's. " +
-        "Opening the file itself works better than pasting from it, and so does " +
-        "copying the table out of Word or Excel, which keeps the columns."
+      ? "The columns didn't survive whatever flattened this — it's one long list now. " +
+        "Working out which lesson belongs to which day… that part is guesswork, so " +
+        "check the days when it comes back."
       : "Reading it… this one's allowed to take a moment.");
-    if (lostColumns) return;
     try {
       const r = await fetch("/api/timetable", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, flattened: lostColumns }),
       });
       const d = await r.json();
       if (!r.ok) {
@@ -1906,11 +1918,20 @@
       if (!d.blocks || !d.blocks.length) {
         unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
         pastedBlocks = null;
+        pastedFrom = "";
         renderSetup();
         setSuStatus(
-          unreadableRows.length
+          (unreadableRows.length
             ? `Nothing came out whole — but ${unreadableRows.length} row${unreadableRows.length === 1 ? " is" : "s are"} listed below so you can see what it stumbled on.`
-            : "Nothing in there looked like a timed block. Try adding one by hand to see the shape."
+            : "Nothing in there looked like a timed block. Try adding one by hand to see the shape.") +
+          // AND THE THING THAT WOULD HAVE WORKED. Only said once the guessing
+          // has been tried and failed — offered before that it reads as a
+          // refusal to try.
+          (lostColumns
+            ? " Opening the file itself works better than pasting out of it, and so does " +
+              "copying the table from Word or Excel — both keep the columns, and with the " +
+              "columns none of this is guesswork."
+            : "")
         );
         return;
       }
@@ -2051,6 +2072,7 @@
         return;
       }
       pastedBlocks = out.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+      pastedFrom = "";
       setSuStatus(
         `Read ${out.blocks.length} entr${out.blocks.length === 1 ? "y" : "ies"}.` +
           (out.skipped.length ? ` ${out.skipped.length} couldn't be read and ${out.skipped.length === 1 ? "was" : "were"} left out: ${out.skipped.slice(0, 3).join(", ")}${out.skipped.length > 3 ? "…" : ""}` : "")
@@ -2359,7 +2381,18 @@
     const box = document.createElement("div");
     box.className = "su-review";
     box.innerHTML = `<h3>Check these before they're saved</h3>
-      <p class="muted">Fix anything that's wrong, untick anything that isn't a real block. Nothing is saved until you press save.</p>`;
+      <p class="muted">Fix anything that's wrong, untick anything that isn't a real block. Nothing is saved until you press save.</p>` +
+      // THE DAYS ARE THE GUESSED PART, and they are the part that looks most
+      // certain. When the columns were gone, which lesson belongs to which day
+      // was worked out from the order things appeared in — so it is said here,
+      // once, above the rows it is about, and it names the day column rather
+      // than asking for a general air of caution nobody can act on.
+      (pastedFrom === "flattened"
+        ? `<p class="su-guessed"><strong>The days here were worked out, not read.</strong>
+           This document's columns were gone by the time it arrived, so which lesson falls on
+           which day came from the order they were written in. The times and the names are off
+           the page and should be right; the day against each one is the part to check.</p>`
+        : "");
     const table = document.createElement("div");
     table.className = "su-table";
     pastedBlocks.forEach((b, i) => {

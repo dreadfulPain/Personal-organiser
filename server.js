@@ -1168,8 +1168,22 @@ async function handleTimetable(res, body) {
   if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to read." });
   const cfg = aiConfig();
   if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+  // A FLATTENED GRID IS A DIFFERENT JOB, AND SAYING SO IS FREE.
+  //
+  // The plain reader gives up on a timetable whose columns are gone — one long
+  // list, no way to tell Monday's lessons from Tuesday's — and that is exactly
+  // where a model earns its place: five subjects after five day names is a
+  // thing a reader can line up and arithmetic cannot. But only if it knows
+  // that is what it is looking at. Handed the same list with no warning it
+  // reads it top to bottom as one day.
+  const flattened = body?.flattened === true;
+  const HINT = "\n\nThis one is a WEEKLY GRID that has been flattened: the day names are in " +
+    "it but the columns are gone, so the cells arrive one after another in reading order. " +
+    "Work out which lesson falls on which day from that order — a row of lessons after a row " +
+    "of day names lines up with them, in order. If you cannot tell for a row, leave it out " +
+    "rather than putting it on a day you are not sure of.";
   try {
-    const parsed = await runEngine(cfg, TIMETABLE_PROMPT, `Turn this timetable into blocks:\n"""\n${text.slice(0, 8000)}\n"""`, TIMETABLE_SCHEMA, "timetable");
+    const parsed = await runEngine(cfg, TIMETABLE_PROMPT + (flattened ? HINT : ""), `Turn this timetable into blocks:\n"""\n${text.slice(0, 8000)}\n"""`, TIMETABLE_SCHEMA, "timetable");
     const blocks = [];
     // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
     // FIXABLE. Rows that don't validate used to be silently dropped, which is

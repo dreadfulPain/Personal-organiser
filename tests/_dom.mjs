@@ -68,7 +68,27 @@ export function makeEl(tag, reg) {
     _on: {}, children: [], style: {}, dataset: {}, className: "", id: "",
     textContent: "", value: "", checked: false, hidden: false, disabled: false,
     type: "", href: "", title: "", placeholder: "", files: [],
-    set innerHTML(v) { this._html = v; this.children = []; },
+    // WRITING HTML REPLACES WHAT WAS THERE — including any element the new
+    // markup declares by id, which is a FRESH one with nothing in it. Elements
+    // are kept by id here so a listener can be found again, and the side effect
+    // was that a box the page had just rebuilt still held the last render's
+    // text. A status line set BEFORE the render that recreates it is wiped in a
+    // browser and survived here, so the one bug this could not see was
+    // "set it, then wipe it" — which is a real one and has happened.
+    set innerHTML(v) {
+      this._html = v;
+      this.children = [];
+      if (reg && reg._byId)
+        [...String(v || "").matchAll(/\bid="([^"]+)"/g)].forEach(([, id]) => {
+          const was = reg._byId.get(id);
+          if (!was || was === this) return;
+          was.textContent = "";
+          was.value = "";
+          was.children = [];
+          was._html = "";
+          was.hidden = false;
+        });
+    },
     get innerHTML() { return this._html || ""; },
     appendChild(c) { this.children.push(c); if (c) c._parent = this; return c; },
     append(...cs) { cs.forEach((c) => this.appendChild(c)); },
@@ -153,6 +173,9 @@ export async function open(pg, data, opts) {
   const html = read(pg);
   const created = [];
   const byId = new Map();
+  // Hung on the register so an element can find the page's id map when its own
+  // innerHTML is written — see the setter in makeEl.
+  created._byId = byId;
   [...html.matchAll(/\bid="([^"]+)"/g)].forEach((m) => {
     const e = makeEl("div", created);
     e.id = m[1];

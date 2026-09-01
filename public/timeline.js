@@ -1788,6 +1788,17 @@
           <button type="button" id="addBlockBtn" class="link">add one by hand</button>
         </div>
         <p id="ttStatus" class="su-status" hidden></p>
+        <!-- WHO READS IT FIRST. Off, the plain reader goes first and the model
+             is asked when it finds nothing; on, the other way round, and the
+             plain reader catches whatever the model doesn't. Either way both
+             are timed and the time is on screen, because "the model is slower"
+             was worth measuring on the machine it happens on rather than
+             asserting. -->
+        <label class="su-first"><input type="checkbox" id="ttModelFirst"${
+          S().normaliseConfig(cfg).modelFirst ? " checked" : ""} /> ask the model first
+          <span class="muted">— it reads unusual layouts better; reading it here is
+          quicker and needs nothing installed. Whichever goes first, the other one
+          picks up what it misses, and each says how long it took.</span></label>
       </div>
       <div id="makeUp" class="su-makeup"></div>
       <div id="fixedWords" class="su-makeup"></div>
@@ -1796,6 +1807,10 @@
       <div id="blockList" class="su-list"></div>`;
 
     $("#ttRead").addEventListener("click", readTimetable);
+    $("#ttModelFirst").addEventListener("change", (e) => {
+      cfg = { ...S().normaliseConfig(cfg), modelFirst: !!e.target.checked };
+      persist();
+    });
     // AND THE SAME ON THE TIMETABLE BOX — a dropped file, read. With whatever
     // structure the file had, not just the words out of it: a timetable is a
     // grid, a PDF keeps its grid in the coordinates, and this handed over the
@@ -1864,7 +1879,12 @@
   }
 
   // WHAT THE READER FOUND, ON SCREEN, BEFORE ANY OF IT IS KEPT.
-  function showRead(got, from, thin) {
+  const msNow = () => (typeof performance === "object" && performance.now ? performance.now() : Date.now());
+  // How long a reading took, said plainly. Under a tenth of a second is not a
+  // number anybody needs three decimal places of.
+  const took = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : ms >= 1 ? `${Math.round(ms)}ms` : "under 1ms");
+
+  function showRead(got, from, thin, ms) {
     pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
     // How it was come by, and what is doubtful about it — both set here so
     // neither can carry over from the last document onto this one.
@@ -1872,7 +1892,8 @@
     pastedThin = thin || "";
     unreadableRows = [];
     renderSetup();
-    setSuStatus(window.OrganiserTimetable ? window.OrganiserTimetable.words(got) : "");
+    setSuStatus((window.OrganiserTimetable ? window.OrganiserTimetable.words(got) : "") +
+      (typeof ms === "number" ? ` Read here in ${took(ms)}.` : ""));
   }
 
   // `pdf` is the whole reading of a dropped PDF, when there was one — its own
@@ -1885,16 +1906,28 @@
     const text = $("#ttText").value || "";
     if (!text.trim()) return;
     pastedText = text;
-    // READ HERE, IN PLAIN CODE, FIRST.
+    // READ HERE FIRST, ALWAYS — WHICHEVER ANSWER WINS.
     //
     // A timetable is a grid, and a grid is arithmetic: count the columns, find
     // the times, take what's in each cell. It went through the model for a
     // year, which meant no model meant no timetable, no server meant no
-    // timetable, and the same paste could come out differently twice. None of
-    // that was ever necessary. The model still gets a go at anything that
-    // isn't a grid or a list, because that part it genuinely is better at.
+    // timetable, and the same paste could come out differently twice.
+    //
+    // WHO GOES FIRST IS A SETTING NOW, because "the model is slower" was an
+    // assertion nobody had measured on the machine it happens on. But "the
+    // model first" means its ANSWER wins, not that the document goes unread:
+    // the reading below costs a fraction of a millisecond, and it is the only
+    // thing that can tell whether the columns survived — which decides what the
+    // model is told it is looking at, and what the check-back says about what
+    // comes back. Skipping it to save nothing lost the hint and the warning
+    // both, and the model then put a whole week on Monday with nothing said.
     const T = window.OrganiserTimetable;
+    const t0 = msNow();
     const got = T ? T.bestOf(pdf && pdf.rows ? { ...pdf, text } : { text }) : null;
+    const readMs = msNow() - t0;
+    const flattened = !!(got && got.note === "columns");
+    if (S().normaliseConfig(cfg).modelFirst)
+      return askTheModel(text, flattened, { text, got, ms: readMs });
     // AND WHETHER THAT READING IS WORTH TRUSTING, asked before it is shown.
     // "It produced blocks" is a very weak test for "it read the document", and
     // it was the whole test: eight lessons all called the same thing counted as
@@ -1902,7 +1935,7 @@
     // thin. It is measured now, and where it is thin the second opinion is
     // OFFERED — taking it automatically would be the same mistake reversed.
     if (got && got.blocks.length)
-      return showRead(got, "", T && T.thin ? T.thin(got, text) : "");
+      return showRead(got, "", T && T.thin ? T.thin(got, text) : "", readMs);
     // A WEEK WHOSE COLUMNS DIDN'T SURVIVE. The plain reader can do nothing with
     // it — one long list, no way to tell Monday's lessons from Tuesday's — so
     // this is exactly where the model earns its place: five subjects in a row
@@ -1925,13 +1958,19 @@
   // be worked out from the order things appear in. It changes the prompt and it
   // changes what the check-back says about the answer, so it is never passed on
   // a hunch: only where the reader established it.
-  async function askTheModel(text, flattened) {
+  // `already` is the plain reading, when the model is being asked first: its
+  // answer wins if it has one, and this is what is fallen back to if it hasn't.
+  // Held rather than re-read, because reading twice is how two readings of one
+  // document start to disagree.
+  async function askTheModel(text, flattened, already) {
     pastedFrom = flattened ? "flattened" : "";
+    pastedText = text;
     setSuStatus(flattened
       ? "The columns didn't survive whatever flattened this — it's one long list now. " +
         "Working out which lesson belongs to which day… that part is guesswork, so " +
         "check the days when it comes back."
       : "Reading it… this one's allowed to take a moment.");
+    const t0 = msNow();
     try {
       const r = await fetch("/api/timetable", {
         method: "POST",
@@ -1939,11 +1978,17 @@
         body: JSON.stringify({ text, flattened: !!flattened }),
       });
       const d = await r.json();
+      const modelMs = msNow() - t0;
       if (!r.ok) {
+        if (already) return fallBack(already, `The model couldn't — ${d.message || "it didn't answer"} — so:`);
         setSuStatus(d.message || "Couldn't read that — you can still add blocks by hand.");
         return;
       }
       if (!d.blocks || !d.blocks.length) {
+        // ASKED FIRST AND FOUND NOTHING is not an answer, it is a turn taken.
+        // The plain reader hasn't had its go, and on a clean grid it is the one
+        // that was always going to get it.
+        if (already) return fallBack(already, `The model found nothing in ${took(modelMs)}, so:`);
         unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
         // WHAT WAS ON SCREEN STAYS ON SCREEN when there was something. A second
         // opinion that comes back empty must not take the first reading away
@@ -1972,12 +2017,35 @@
       // thin, because the plain one is no longer what is on screen.
       pastedThin = "";
       unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
-      setSuStatus(`${d.blocks.length} block${d.blocks.length === 1 ? "" : "s"} read by the model. ` +
-        "Check them the same way — nothing is saved until you press save.");
+      // RENDER, THEN SAY. renderSetup rebuilds the whole panel, status line
+      // included — so a message set before it is wiped by it, which is how the
+      // timing this was all added for never once appeared on screen.
       renderSetup();
+      setSuStatus(`${d.blocks.length} block${d.blocks.length === 1 ? "" : "s"} read by the model in ${took(modelMs)}. ` +
+        "Check them the same way — nothing is saved until you press save.");
     } catch {
+      if (already) return fallBack(already, "The model couldn't be reached, so:");
       setSuStatus("Couldn't reach the reader just now — you can still add blocks by hand.");
     }
+  }
+
+  // THE READING THAT WAS ALREADY TAKEN, when the model was asked first and had
+  // nothing. Not read again: reading one document twice is how two readings of
+  // it start to disagree.
+  function fallBack(already, why) {
+    const T = window.OrganiserTimetable;
+    const { text, got, ms } = already;
+    if (got && got.blocks.length) {
+      showRead(got, "", T && T.thin ? T.thin(got, text) : "", ms);
+      setSuStatus(`${why} ${T.words(got)} Read here in ${took(ms)}.`);
+      return;
+    }
+    pastedBlocks = null;
+    pastedFrom = "";
+    pastedThin = "";
+    renderSetup();
+    setSuStatus(`${why} nothing in there looked like a timed block here either. ` +
+      "Try adding one by hand to see the shape.");
   }
 
   // A TIMETABLE OUT OF A PDF.

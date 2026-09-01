@@ -4124,6 +4124,11 @@ a.btn {
   border: 1px dashed var(--line); font-size: 0.84rem; line-height: 1.5;
   color: var(--ink-soft); }
 .su-thin .link { font-size: inherit; }
+/* Which reader goes first. A setting, not a warning — it sits under the box it
+   is about and stays quiet. */
+.su-first { display: block; margin-top: 8px; font-size: 0.84rem; line-height: 1.5; }
+.su-first input { margin-right: 6px; }
+.su-first .muted { display: block; margin-left: 22px; font-size: 0.8rem; }
 
 /* A lesson that could be traded, and one that isn't running this week. Both
    are facts about a block, shown the same way its other facts are. */

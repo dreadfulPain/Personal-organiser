@@ -93,6 +93,12 @@
     planHorizonDays: 28,
     // How many days before a meeting the app starts saying what you have.
     meetingLeadDays: 5,
+    // WHO READS A PASTED TIMETABLE FIRST. Off means the plain reader goes
+    // first and the model is asked when it comes back with nothing; on means
+    // the other way round. Off by default only because it is the one that works
+    // with nothing installed — not because it is the better answer, which is a
+    // measurement and belongs to whoever is sitting in front of it.
+    modelFirst: false,
     // Work owed to a block: how far ahead tasks are made, when they ping, and
     // what they're called. A week out, not a term out — a repeating lesson
     // would otherwise make 180 identical tasks. All three are yours to change;
@@ -172,6 +178,7 @@
     if (c.away && typeof c.away === "object" && c.away.startedAt) {
       out.away = { label: String(c.away.label || "").slice(0, 80), startedAt: String(c.away.startedAt) };
     }
+    if (typeof c.modelFirst === "boolean") out.modelFirst = c.modelFirst;
     if (c.plans && typeof c.plans === "object") out.plans = c.plans;
     if (c.learned && typeof c.learned === "object") out.learned = c.learned;
     return out;

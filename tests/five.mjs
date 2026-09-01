@@ -341,6 +341,114 @@ sec("And a week that read properly is not labelled a guess");
      !/worked out, not read/.test(said()), said().slice(0, 300));
 }
 
+sec("Who reads it first is a setting, and both of them say how long they took");
+{
+  // "THE MODEL IS SLOWER" WAS NEVER MEASURED on the machine it happens on. It
+  // is a defensible default and it was still an assertion, so it is a switch
+  // now, and each reader says how long it took — the decision belongs to
+  // whoever is sitting in front of it, made from their own numbers.
+  const asked = [];
+  const openWith = async (modelFirst, answer) => {
+    const r = await open("timeline.html", {
+      schedule: [], scheduleConfig: { modelFirst }, config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/timetable/.test(String(url))) asked.push(JSON.parse((init && init.body) || "{}"));
+        return { ok: true, json: async () => answer };
+      },
+    });
+    const toggle = r.get("#setupToggle");
+    toggle.fire("click", { target: toggle });
+    await r.settle();
+    return r;
+  };
+  const GRID = ["\tMonday\tTuesday", "08:40-09:25\tEnglish\tWriting"].join("\n");
+  const read = async (r, text) => {
+    r.get("#ttText").value = text;
+    const b = r.get("#ttRead");
+    b.fire("click", { target: b });
+    await r.settle();
+  };
+  const rows = (r) => {
+    const kids = [...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review"));
+    const box = kids[kids.length - 1];
+    const walk = (n) => !n ? [] : [...(n.children || [])]
+      .flatMap((c) => (String(c.className || "").includes("su-trow") ? [c] : walk(c)));
+    return walk(box);
+  };
+
+  // OFF: read here, and the model is never troubled by a grid it can't improve.
+  asked.length = 0;
+  const off = await openWith(false, { blocks: [], unreadable: [] });
+  await read(off, GRID);
+  ok("with it off the grid is read here", rows(off).length === 2, String(rows(off).length));
+  ok("and the model is not asked at all", asked.length === 0, JSON.stringify(asked));
+  ok("and it says how long that took",
+     /Read here in /.test(String(off.get("#ttStatus").textContent || "")),
+     String(off.get("#ttStatus").textContent));
+
+  // ON: the model is asked, and its answer is the one that is kept.
+  asked.length = 0;
+  const on = await openWith(true, { blocks: [
+    { label: "From the model", start: "09:00", end: "10:00", days: [1] }], unreadable: [] });
+  await read(on, GRID);
+  ok("with it on the model is asked", asked.length === 1, JSON.stringify(asked));
+  ok("and its answer is what is kept", rows(on).length === 1, String(rows(on).length));
+  ok("and it says how long the model took",
+     /read by the model in /.test(String(on.get("#ttStatus").textContent || "")),
+     String(on.get("#ttStatus").textContent));
+
+  // AND THE DOCUMENT IS STILL READ EITHER WAY. "The model first" means its
+  // answer wins, not that the document goes unread — the reading here costs a
+  // fraction of a millisecond and is the only thing that can say whether the
+  // columns survived, which is what the model gets told it is looking at.
+  asked.length = 0;
+  const flat = await openWith(true, { blocks: [
+    { label: "English", start: "08:40", end: "09:25", days: [1] }], unreadable: [] });
+  await read(flat, ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+    "08:40-09:25", "English", "Writing", "Reading", "Activity", "Art"].join("\n"));
+  ok("a flattened week is still spotted with the model going first",
+     asked[0] && asked[0].flattened === true, JSON.stringify(asked[0]));
+  const shown = (() => {
+    const kids = [...(flat.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review"));
+    const last = kids[kids.length - 1];
+    const all = (n) => !n ? "" : String(n.innerHTML || "") + [...(n.children || [])].map(all).join(" ");
+    return all(last);
+  })();
+  ok("and the days are still called a guess", /worked out, not read/.test(shown),
+     shown.slice(0, 200));
+}
+
+sec("And whichever goes first, the other one picks up what it misses");
+{
+  // A TURN TAKEN IS NOT AN ANSWER. With the model first and nothing coming
+  // back, the plain reader has not had its go — and on a clean grid it is the
+  // one that was always going to get it.
+  const r = await open("timeline.html", {
+    schedule: [], scheduleConfig: { modelFirst: true }, config: {}, items: [], goals: [],
+  }, { fetch: async () => ({ ok: true, json: async () => ({ blocks: [], unreadable: [] }) }) });
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  r.get("#ttText").value = ["\tMonday\tTuesday", "08:40-09:25\tEnglish\tWriting"].join("\n");
+  const b = r.get("#ttRead");
+  b.fire("click", { target: b });
+  await r.settle();
+  const kids = [...(r.get("#ttReview").children || [])]
+    .filter((c) => String(c.className || "").includes("su-review"));
+  const walk = (n) => !n ? [] : [...(n.children || [])]
+    .flatMap((c) => (String(c.className || "").includes("su-trow") ? [c] : walk(c)));
+  ok("the grid is read here after the model found nothing",
+     walk(kids[kids.length - 1]).length === 2, String(walk(kids[kids.length - 1]).length));
+  const status = String(r.get("#ttStatus").textContent || "");
+  ok("and it says the model went first and found nothing",
+     /model found nothing/.test(status), status);
+  ok("with how long that cost", /found nothing in /.test(status), status);
+  ok("and how long this one took", /Read here in /.test(status), status);
+}
+
 sec("A reading is measured before it is believed");
 {
   // THE HOLE THIS CLOSES. The plain reader goes first and the model is asked

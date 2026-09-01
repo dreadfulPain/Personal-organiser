@@ -9,15 +9,35 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, c, e) => { if (c) { pass++; console.log(`  ok  ${n}`); } else { fail++; console.log(`FAIL  ${n}${e ? "\n      " + String(e).slice(0,300) : ""}`); } };
 
+// A PORT EACH, IN ORDER.
+//
+// This picked one at random out of a range of thirty and is called four times,
+// so two calls could land on the same number — and then the second server
+// cannot bind, the FIRST one answers with the previous test's settings, and a
+// check fails for a reason that has nothing to do with what it is checking.
+// Two runs in five. A failure nobody can reproduce is a failure everybody
+// learns to ignore, which costs more than the check was ever worth.
+let nextPort = 3910;
+
 async function diag(env) {
-  const port = 3910 + Math.floor(Math.random() * 30);
+  const port = nextPort++;
   const srv = spawn(process.execPath, ["server.js"], {
     cwd: REPO_ROOT,
     env: { ...process.env, NO_OPEN: "1", PORT: String(port), ...env }, stdio: "ignore",
   });
-  await sleep(2200);
-  const d = await (await fetch(`http://localhost:${port}/api/diagnose`)).json();
-  srv.kill(); await sleep(200);
+  // AND WAITED FOR RATHER THAN GUESSED AT. A fixed pause is a guess about a
+  // machine: too long on a quick one, too short on a loaded one, and wrong in
+  // opposite directions on the same afternoon.
+  const until = Date.now() + 20000;
+  let d = null;
+  while (Date.now() < until) {
+    try {
+      d = await (await fetch(`http://localhost:${port}/api/diagnose`)).json();
+      break;
+    } catch { await sleep(120); }
+  }
+  srv.kill(); await sleep(100);
+  if (!d) throw new Error(`the server on port ${port} never answered`);
   return d;
 }
 const find = (d, n) => d.checks.find((c) => c.name === n);

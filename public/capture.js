@@ -354,7 +354,13 @@
       const r = await P.read(await file.arrayBuffer());
       if (!r.ok || !r.text.trim())
         return { text: "", note: (r.notes || []).join(" ") || "Nothing readable came out of that file." };
-      return { text: r.text, note: r.caution || "", pages: (r.pages || []).length };
+      // THE WHOLE READING, not just the words out of it. A PDF has no table in
+      // it, only words at coordinates — and those coordinates ARE the columns of
+      // a timetable. Handed on as text alone, a grid arrives as five lessons run
+      // together with nothing between them, and the reader that can rebuild the
+      // columns never gets to see them. `pages` stays a count because two places
+      // print it; the reading itself rides along beside it.
+      return { text: r.text, note: r.caution || "", pages: (r.pages || []).length, pdf: r };
     }
     // A WORD DOCUMENT. Schools send these constantly — it is what is on the
     // staffroom computer — and the app said "I can't open docx files yet" three

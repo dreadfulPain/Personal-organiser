@@ -247,6 +247,96 @@ sec("A PDF that positions every letter separately");
 }
 
 // ---------------------------------------------------------------------------
+sec("A class timetable whose columns didn't survive is not eight nameless lessons");
+{
+  // WHAT SOMEBODY GOT WHEN THEY READ IN THEIR OWN WEEK. Eight rows, every one
+  // called the same thing, none of them on any day, each with an empty date box
+  // wanting to know which single day it happened on — which a weekly timetable
+  // has no answer to. The times were right. Nothing else was.
+  //
+  // It had gone all the way through to readAgenda, which exists for a schedule
+  // with the times down one side and is not fussy, because the document it is
+  // for has no grid to find. Given a grid that has BEEN flattened it still
+  // produces something, and something is worse than nothing here: it looks like
+  // an answer, and every one of those blocks would have been thrown away on
+  // save for having no day and no date.
+  const FLAT = [
+    "Grade 1 Timetable",
+    "Period", "Time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+    "1", "08:40-09:25", "G1( )", "English(G1) Primary Section English(G1)",
+    "2", "09:35-10:15", "G1( )", "English(G1) Primary Section Story Telling",
+    "3", "10:30-11:05", "G1( )", "Writing (G1) Odd Primary Section",
+    "4", "12:15-12:35", "G1( )", "Activity(G1) Primary Section Reading",
+  ].join("\n");
+  const r = T.read(FLAT);
+  ok("it is not offered as a reading", r.blocks.length === 0,
+     JSON.stringify(r.blocks.map((b) => `${b.label} ${b.start}`)));
+  ok("and says which part is missing", r.note === "columns", r.note);
+
+  // AND WHAT TELLS IT APART FROM A REAL AGENDA is written on the document: a
+  // week names its days across the top, an orientation schedule names one or
+  // none. Same shape, same absence of dates, opposite answer.
+  const ONEDAY = [
+    "7:00-11:00", "Health Check", "(bring passport & ID photos)",
+    "11:30-13:00", "Lunch Break & Campus Tour",
+  ].join("\n");
+  ok("an undated agenda is still read", T.read(ONEDAY).shape === "agenda", T.read(ONEDAY).shape);
+  ok("with its entries", T.read(ONEDAY).blocks.length === 2, String(T.read(ONEDAY).blocks.length));
+
+  // AND A DATED ONE IS KEPT however few days it names — the dates are the
+  // answer to the only question this rule is asking.
+  const DATED = ["Monday 24 August 2026", "9:00-10:00", "Health Check",
+    "Tuesday 25 August 2026", "9:00-10:00", "Campus Tour"].join("\n");
+  const d = T.read(DATED);
+  ok("a dated schedule is kept even naming two days", d.shape === "agenda", d.shape);
+  ok("and its entries carry the dates", d.blocks.every((b) => b.date), JSON.stringify(d.blocks.map((b) => b.date)));
+}
+
+sec("And with the columns kept it is simply a timetable");
+{
+  // THE SAME DOCUMENT, READ THE WAY IT SHOULD HAVE BEEN. A PDF holds no table,
+  // only words at coordinates — and those coordinates ARE the columns. All that
+  // was ever needed was to hand them on.
+  const at = (x, text) => ({ x, text });
+  const rows = [
+    { cells: [at(40, "Period"), at(110, "Time"), at(210, "Monday"), at(330, "Tuesday"),
+              at(450, "Wednesday"), at(570, "Thursday"), at(690, "Friday")] },
+    { cells: [at(40, "1"), at(110, "08:40-09:25"), at(210, "English"), at(330, "English"),
+              at(450, "Story Telling"), at(570, "English"), at(690, "Writing")] },
+    { cells: [at(40, "2"), at(110, "09:35-10:15"), at(210, "Story Telling"), at(330, "Reading"),
+              at(450, "English"), at(570, "Activity"), at(690, "English")] },
+  ];
+  const r = T.bestOf({ rows, text: "" });
+  ok("it reads as a grid", r.shape === "grid", r.shape);
+  ok("across the whole week", JSON.stringify(r.days) === "[1,2,3,4,5]", JSON.stringify(r.days));
+  ok("ten lessons, two periods by five days", r.blocks.length === 10, String(r.blocks.length));
+  ok("each on its own day", r.blocks.every((b) => b.days.length === 1),
+     JSON.stringify(r.blocks.map((b) => b.days)));
+  ok("called what the square says", !!r.blocks[2] && r.blocks[2].label === "Story Telling",
+     r.blocks[2] && r.blocks[2].label);
+  ok("and not all called the same thing",
+     new Set(r.blocks.map((b) => b.label)).size > 1,
+     JSON.stringify(r.blocks.map((b) => b.label)));
+  // AND THE TIMES STILL COME OFF THE COLUMN THEY ARE IN.
+  ok("with the period's own time",
+     !!r.blocks[0] && r.blocks[0].start === "08:40" && r.blocks[0].end === "09:25",
+     JSON.stringify(r.blocks[0]));
+
+  // ONE WAY IN, NOT TWO. This decision used to live in the page, in the one
+  // handler that had a PDF to hand — so when a file could be DROPPED on the box
+  // as well as chosen, the drop handed over the text alone and the columns were
+  // gone before anything looked at them. Both ways in ask the same function now.
+  const tl = fs.readFileSync(`${REPO_ROOT}/public/timeline.js`, "utf8");
+  ok("the page asks the reader rather than deciding again",
+     (tl.match(/T\.bestOf\(/g) || []).length >= 2, "the two ways in have drifted apart");
+  ok("and a dropped file hands over what the file had in it",
+     /dropOnto\(\$\("#ttText"\), \(text, got\)/.test(tl), "the drop still hands over text alone");
+  const cap = fs.readFileSync(`${REPO_ROOT}/public/capture.js`, "utf8");
+  ok("and the reader of the file keeps its shape", /pdf: r/.test(cap),
+     "capture throws the positions away again");
+}
+
+// ---------------------------------------------------------------------------
 sec("The actual PDF the school sent");
 {
   if (!fs.existsSync(UPLOAD)) {

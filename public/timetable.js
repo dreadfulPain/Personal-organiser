@@ -567,8 +567,74 @@
     const found = C ? C.read(raw) : { rows: [] };
     const agenda = readAgenda(raw, found.rows.length
       ? { date: found.rows[0].date, year: found.year } : undefined);
-    if (agenda) return agenda;
-    return NOTHING;
+    // A WEEKLY TIMETABLE WHOSE COLUMNS DIDN'T SURVIVE IS NOT AN AGENDA.
+    //
+    // readAgenda is the last thing tried and it is not fussy, because the
+    // document it exists for — an orientation schedule, times down one side —
+    // has no grid to find and often no dates either; you fill those in on the
+    // way past. Handed a class timetable whose columns have been flattened away
+    // it still produces something: one entry per period, named after whatever
+    // text happened to follow the time, belonging to no day and no date.
+    //
+    // Which is worse than nothing, because it looks like an answer. Somebody
+    // read in their week and got eight lessons all called the same thing, each
+    // asking which single date it happened on — a question a weekly timetable
+    // has no answer to. And a block with neither a day nor a date is thrown
+    // away when it is saved, so every one of them was going to vanish anyway.
+    //
+    // WHAT TELLS THE TWO APART is written on the document. A week has its days
+    // named across the top; an orientation schedule names one day, or none. So
+    // a reading with no day and no date on any of it, out of a text that names
+    // most of a week, is a grid that lost its columns — and saying that is
+    // useful, where handing back the entries is not.
+    const dated = agenda && agenda.blocks.some((b) => b.date || (b.days && b.days.length));
+    if (agenda && (dated || namesAWeek(raw) < 3)) return agenda;
+    return agenda
+      ? { ...NOTHING, note: "columns" }
+      : NOTHING;
+  }
+
+  // How much of a week a document names. Not per line — a flattened grid puts
+  // each day on its own — so it is the count of DIFFERENT days anywhere in it.
+  //
+  // AND RUN TOGETHER TOO. A PDF that drew a table and put nothing between the
+  // cells hands back "PeriodTimeMondayTuesdayWednesdayThursdayFriday", where
+  // every day name is there and not one of them is a word. Written out in full
+  // a day name is not a substring of anything else, so those can be found
+  // without the word boundary that isn't there — which the short forms cannot,
+  // since "sat" and "sun" live inside ordinary words.
+  const WEEK_WORDS = /monday|tuesday|wednesday|thursday|friday|saturday|sunday/gi;
+  function namesAWeek(text) {
+    const raw = String(text || "");
+    const seen = new Set();
+    raw.split(LINE_BREAKS).forEach((l) => daysIn(l).forEach((d) => seen.add(d)));
+    (raw.match(WEEK_WORDS) || []).forEach((w) => {
+      const d = dayOf(w);
+      if (d >= 0) seen.add(d);
+    });
+    return seen.size;
+  }
+
+  // THREE WAYS INTO A PDF, STRONGEST FIRST.
+  //
+  // The PDF's own positions, if it drew a table with them. Then the text, if it
+  // still looks like a grid or a list. Then page by page as an agenda — a
+  // schedule with the times down one side and a date printed on each page,
+  // which is all that survives a PDF that positions every letter separately.
+  //
+  // THIS USED TO LIVE IN THE PAGE, in the one handler that had a PDF to hand.
+  // Then a file could be DROPPED on the box as well as chosen, and the drop
+  // handed over the text alone — so a timetable dropped rather than picked lost
+  // its columns before anything looked at it, and a grid that reads perfectly
+  // came out as prose. The two ways in are the same way in now.
+  function bestOf(got) {
+    const g = got || {};
+    const byRows = g.rows && g.rows.length ? fromRows(g.rows) : null;
+    const byText = read(g.text || "");
+    return (byRows && byRows.blocks.length ? byRows : null) ||
+      (byText.shape === "grid" || byText.shape === "lines" ? byText : null) ||
+      (g.pages && g.pages.length ? fromPages(g.pages) : null) ||
+      byText;
   }
 
   // ---- reading a PDF's own columns -----------------------------------------
@@ -669,6 +735,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, readAgenda, fromPages, fromRows, words, anHourAfter, looksLikePlace,
+    read, readAgenda, fromPages, fromRows, bestOf, words, anHourAfter, looksLikePlace,
   };
 })();

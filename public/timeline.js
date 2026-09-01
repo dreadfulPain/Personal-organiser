@@ -1784,10 +1784,15 @@
       <div id="blockList" class="su-list"></div>`;
 
     $("#ttRead").addEventListener("click", readTimetable);
-    // And the same on the timetable box — a dropped file, read.
-    dropOnto($("#ttText"), (text) => {
+    // AND THE SAME ON THE TIMETABLE BOX — a dropped file, read. With whatever
+    // structure the file had, not just the words out of it: a timetable is a
+    // grid, a PDF keeps its grid in the coordinates, and this handed over the
+    // text alone. So a timetable dropped rather than chosen lost its columns
+    // before anything looked at it, and came back as one nameless entry per
+    // period belonging to no day — which is what the box then offered to save.
+    dropOnto($("#ttText"), (text, got) => {
       $("#ttText").value = text;
-      readTimetable();
+      readTimetable(got && got.pdf);
     });
     $("#ttPdf").addEventListener("change", readTimetablePdf);
     $("#icsFile").addEventListener("change", readIcs);
@@ -1854,7 +1859,9 @@
     setSuStatus(window.OrganiserTimetable ? window.OrganiserTimetable.words(got) : "");
   }
 
-  async function readTimetable() {
+  // `pdf` is the whole reading of a dropped PDF, when there was one — its own
+  // positions included, because that is where a timetable keeps its columns.
+  async function readTimetable(pdf) {
     // NOT TRIMMED. A timetable's first line is the day names with an empty cell
     // in front of them, so the paste starts with a tab — and trimming it takes
     // that cell away and shifts every day one column to the left. Monday's
@@ -1870,9 +1877,21 @@
     // that was ever necessary. The model still gets a go at anything that
     // isn't a grid or a list, because that part it genuinely is better at.
     const T = window.OrganiserTimetable;
-    const got = T ? T.read(text) : null;
+    const got = T ? T.bestOf(pdf && pdf.rows ? { ...pdf, text } : { text }) : null;
     if (got && got.blocks.length) return showRead(got);
-    setSuStatus("Reading it… this one's allowed to take a moment.");
+    // THE ONE FAILURE WORTH NAMING. A week with its days across the top, whose
+    // columns did not survive whatever flattened it, is not something a model
+    // will do better with — it is the same mush, and what comes back from mush
+    // reads perfectly well and is wrong. Saying which part is missing, and the
+    // two ways to keep it, is worth more than another go.
+    const lostColumns = got && got.note === "columns";
+    setSuStatus(lostColumns
+      ? "The days are in there but the columns aren't — this has been flattened into " +
+        "one long list, so there's no way to tell Monday's lessons from Tuesday's. " +
+        "Opening the file itself works better than pasting from it, and so does " +
+        "copying the table out of Word or Excel, which keeps the columns."
+      : "Reading it… this one's allowed to take a moment.");
+    if (lostColumns) return;
     try {
       const r = await fetch("/api/timetable", {
         method: "POST",
@@ -1923,20 +1942,10 @@
           " Opening it and copying the table across will work.");
         return;
       }
-      // THREE WAYS IN, STRONGEST FIRST.
-      //
-      // The PDF's own positions, if it drew a table with them. Then the text,
-      // if it still looks like a grid or a list. Then page by page as an
-      // agenda — a schedule with the times down one side and a date printed on
-      // each page, which is what an orientation or an inset day arrives as, and
-      // which is all that survives a PDF that positions every letter separately.
-      const fromRows = r.rows && r.rows.length ? T.fromRows(r.rows) : null;
-      const fromText = T.read(r.text);
-      const got =
-        (fromRows && fromRows.blocks.length ? fromRows : null) ||
-        (fromText.shape === "grid" || fromText.shape === "lines" ? fromText : null) ||
-        T.fromPages(r.pages) ||
-        fromText;
+      // Three ways in, strongest first — worked out in timetable.js so that a
+      // file dropped on the box and a file chosen with the button cannot be
+      // read two different ways.
+      const got = T.bestOf(r);
       if (!got.blocks.length) {
         if ($("#ttText")) $("#ttText").value = r.text;
         setSuStatus("Nothing in there looked like a timetable — the text is in the box " +

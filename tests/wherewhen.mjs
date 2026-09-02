@@ -98,9 +98,14 @@ sec("And saying they repeat every week would be false");
   const src = read("timeline.js");
   // The whole save message, not a slice of it — the three sentences it can end
   // with are spread over more lines than a fixed window catches.
-  const said = (src.match(/setSuStatus\(\s*`Saved \$\{kept\.length\}[\s\S]*?\n      \);/) || [""])[0];
+  // NOT PINNED TO A VARIABLE NAME. This named `kept`, and when the thing that
+  // was actually saved stopped being `kept` — rows already in the week are no
+  // longer added — the check broke on a rename while the behaviour it is about
+  // was fine. What matters is that the sentence is decided by asking the blocks,
+  // whatever they are called.
+  const said = (src.match(/setSuStatus\(\s*`Saved \$\{\w+\.length\}[\s\S]*?\n      \);/) || [""])[0];
   ok("what gets said is read off what was saved",
-     /kept\.every\(\(b\) => b\.date\)/.test(said), "it still says one thing whatever was saved");
+     /\w+\.every\(\(b\) => b\.date\)/.test(said), "it still says one thing whatever was saved");
   ok("and dated ones are told they don't come round again",
      /don't come round again/.test(said), "an induction still reads as a weekly fixture");
   // AND A REAL TIMETABLE STILL GETS THE OTHER SENTENCE, because for a timetable

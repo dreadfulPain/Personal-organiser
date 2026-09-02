@@ -2577,8 +2577,19 @@
       // looking at 16 is the failure you can't see: the two that went are the
       // two you'd have wanted to know about.
       const lost = wanted.length - kept.length;
-      schedule = S().normalise(schedule).concat(kept);
-      const linked = kept.filter((b) => b.about.length).length;
+      // AND NOT TWICE. Reading the same document in again — because the first
+      // go was wrong, or because you weren't sure it had saved — put a second
+      // copy of every lesson in the week, and taking those out is one press
+      // each. The calendar's two ways in have always refused a day they
+      // already had; this one, which is the one people use, never did.
+      //
+      // The same name at the same time on ANOTHER DAY is not a duplicate — that
+      // is simply a timetable — so the days are part of what makes it one.
+      const already = new Set(S().normalise(schedule).map(sameAs));
+      const fresh = kept.filter((b) => !already.has(sameAs(b)));
+      const dupes = kept.length - fresh.length;
+      schedule = S().normalise(schedule).concat(fresh);
+      const linked = fresh.filter((b) => b.about.length).length;
       const jobs = applyJobs();
       pastedBlocks = null;
       peoplePick = null;
@@ -2589,19 +2600,27 @@
       renderSetup();
       render();
       setSuStatus(
-        `Saved ${kept.length} block${kept.length === 1 ? "" : "s"}. ✓` +
+        `Saved ${fresh.length} block${fresh.length === 1 ? "" : "s"}. ✓` +
+        // SAID, NOT SWALLOWED. "Saved 32" when you were looking at 40 is the
+        // failure you cannot see, and the eight that went are the eight you
+        // would want to know about.
+        (dupes ? ` ${dupes} ${dupes === 1 ? "was" : "were"} already in your week, so ${dupes === 1 ? "it wasn't" : "they weren't"} added again.` : "") +
         (linked ? ` ${linked} of them say who's running it.` : "") +
         (jobs ? ` ${jobs} job${jobs === 1 ? "" : "s"} added.` : "") +
         // A DATED BLOCK DOES NOT REPEAT, AND SAYING IT DOES IS ALARMING. An
         // orientation schedule read out of a PDF is sixteen things on two named
         // days, and this told you they would come round every week for ever —
         // which is true of a timetable and false of these. Which kind was just
-        // saved is a fact about what was saved, so it is read off that.
-        (kept.every((b) => b.date)
-          ? ` They're on the days they say, and don't come round again.`
-          : termFrom || termTo
-            ? ` Running ${termFrom ? `from ${calDay(termFrom)}` : "until now"}${termTo ? ` to ${calDay(termTo)}` : " onwards"}.`
-            : " They repeat every week — say when the term ends and they'll stop there.") +
+        // saved is a fact about what was saved, so it is read off that — off
+        // what actually went in, and only when something did: with every row a
+        // duplicate nothing was saved, and "they don't come round again" about
+        // an empty list is a sentence about nothing.
+        (!fresh.length ? ""
+          : fresh.every((b) => b.date)
+            ? ` They're on the days they say, and don't come round again.`
+            : termFrom || termTo
+              ? ` Running ${termFrom ? `from ${calDay(termFrom)}` : "until now"}${termTo ? ` to ${calDay(termTo)}` : " onwards"}.`
+              : " They repeat every week — say when the term ends and they'll stop there.") +
         (lost ? ` ${lost} couldn't be saved — ${lost === 1 ? "it had" : "they had"} no day or date on ${lost === 1 ? "it" : "them"}.` : "")
       );
     });
@@ -2734,6 +2753,13 @@
   let editingBlockId = null;
   // Which block is having its exceptions edited, if any.
   let swappingId = "";
+  // WHAT MAKES TWO BLOCKS THE SAME BLOCK. The name, the time, and the days or
+  // the date it happens on — because "English at 8:40" on Monday and on Tuesday
+  // is a timetable, not a thing entered twice.
+  const sameAs = (b) =>
+    [String(b.label || "").trim().toLowerCase(), b.start, b.end,
+     (b.days || []).slice().sort().join(","), b.date || ""].join("|");
+
   function renderBlockList() {
     const el = $("#blockList");
     if (!el) return;

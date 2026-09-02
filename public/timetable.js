@@ -708,6 +708,40 @@
     const xs = list.flatMap((r) => r.cells.map((c) => Number(c.x) || 0));
     const spread = Math.max(...xs) - Math.min(...xs);
     const tol = Math.max(4, spread * ((opts && opts.tolerance) || 0.02));
+
+    // THE COLUMNS ARE WHERE THE DAY NAMES ARE — not wherever a word happens to
+    // start.
+    //
+    // Clustering every position in the document makes a column out of every
+    // place any word begins. A cell wider than its column — "Science & Social
+    // Studies (G1) Primary Section", which is what a real one says — then
+    // becomes four or five columns, and only the FIRST is under a day name.
+    // Every column after it is one the reader never looks at, because the
+    // reader reads the day columns. So the cell arrived as "Science", the rest
+    // of it went nowhere, and a whole subject was named after its first word.
+    //
+    // A table's columns are set by its heading row, and its cells start at the
+    // left of them and run rightwards. So: find the row that names the days,
+    // take its positions as the left edges, and every run belongs to the last
+    // edge at or before it. Falls back to clustering when there is no such row,
+    // because a grid whose header is a picture still has columns.
+    const dayRow = list.find(
+      (r) => r.cells.filter((c) => dayOf(String(c.text || "").trim()) >= 0).length >= 2);
+    let edges = null;
+    if (dayRow) {
+      edges = [];
+      [...dayRow.cells].map((c) => Number(c.x) || 0).sort((a, b) => a - b).forEach((x) => {
+        const last = edges[edges.length - 1];
+        if (last !== undefined && x - last <= tol) return;
+        edges.push(x);
+      });
+      // AND WHATEVER IS LEFT OF THE FIRST ONE IS A COLUMN TOO. The time lives
+      // there, and on a header whose leading cell is blank there is no edge for
+      // it — so every time in the document would belong to Monday.
+      const leftMost = Math.min(...xs);
+      if (edges.length && leftMost < edges[0] - tol) edges.unshift(leftMost);
+    }
+
     // Cluster the x positions: anything within a tolerance of a known column
     // belongs to it.
     const centres = [];
@@ -716,14 +750,20 @@
       if (last !== undefined && x - last <= tol) return;
       centres.push(x);
     });
-    const colOf = (x) => {
-      let best = 0, gapTo = Infinity;
-      centres.forEach((c, i) => {
-        const d = Math.abs(c - x);
-        if (d < gapTo) { gapTo = d; best = i; }
-      });
-      return best;
-    };
+    const colOf = edges && edges.length > 1
+      ? (x) => {
+          let j = 0;
+          for (let i = 0; i < edges.length; i++) if (x >= edges[i] - tol) j = i;
+          return j;
+        }
+      : (x) => {
+          let best = 0, gapTo = Infinity;
+          centres.forEach((c, i) => {
+            const d = Math.abs(c - x);
+            if (d < gapTo) { gapTo = d; best = i; }
+          });
+          return best;
+        };
     const rows = list.map((r) => {
       const cells = [];
       r.cells.forEach((c) => {

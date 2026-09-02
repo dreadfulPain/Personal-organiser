@@ -341,6 +341,124 @@ sec("And a week that read properly is not labelled a guess");
      !/worked out, not read/.test(said()), said().slice(0, 300));
 }
 
+sec("And reading the same week in twice does not give you two of it");
+{
+  // WHAT WAS ON SCREEN. Fifteen blocks where the first three were the week and
+  // the rest were the same lessons again in another shape — because the first
+  // reading was wrong, it got saved, and the second reading was added on top of
+  // it. Taking those out is one press each.
+  //
+  // The calendar's two ways in have always refused a day they already had. This
+  // one — the one people actually use — never did.
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  const GRID = ["\tMonday\tTuesday", "08:40-09:25\tEnglish\tWriting"].join("\n");
+  const readAndSave = async () => {
+    r.get("#ttText").value = GRID;
+    const b = r.get("#ttRead");
+    b.fire("click", { target: b });
+    await r.settle();
+    const box = [...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review")).pop();
+    const save = [...(box.children || [])].concat(
+      ...[...(box.children || [])].map((c) => [...(c.children || [])]))
+      .find((c) => String(c.textContent || "") === "Save these blocks");
+    save.fire("click", { target: save });
+    await r.settle();
+  };
+  await readAndSave();
+  ok("the first reading goes in", (r.state.schedule || []).length === 2,
+     JSON.stringify((r.state.schedule || []).map((b) => `${b.label} ${b.days}`)));
+  await readAndSave();
+  ok("and the same one again adds nothing", (r.state.schedule || []).length === 2,
+     JSON.stringify((r.state.schedule || []).map((b) => `${b.label} ${b.days}`)));
+  ok("and it says so rather than looking like it saved them",
+     /already in your week/.test(String(r.get("#ttStatus").textContent || "")),
+     String(r.get("#ttStatus").textContent));
+
+  // THE SAME NAME AT THE SAME TIME ON ANOTHER DAY IS NOT A DUPLICATE — that is
+  // simply what a timetable looks like, and refusing it would quietly delete
+  // half of everybody's week.
+  // TWO DAY NAMES, because one is not a heading row: with a single day the
+  // reader has no header to find and falls back to "these columns are Monday
+  // onwards" — which puts the lesson back on Monday, where it really is a
+  // duplicate. The fixture was wrong, not the rule.
+  r.get("#ttText").value = ["\tWednesday\tThursday", "08:40-09:25\tEnglish\tArt"].join("\n");
+  const b2 = r.get("#ttRead");
+  b2.fire("click", { target: b2 });
+  await r.settle();
+  const box2 = [...(r.get("#ttReview").children || [])]
+    .filter((c) => String(c.className || "").includes("su-review")).pop();
+  const save2 = [...(box2.children || [])].concat(
+    ...[...(box2.children || [])].map((c) => [...(c.children || [])]))
+    .find((c) => String(c.textContent || "") === "Save these blocks");
+  save2.fire("click", { target: save2 });
+  await r.settle();
+  ok("the same lesson on another day still goes in", (r.state.schedule || []).length === 4,
+     JSON.stringify((r.state.schedule || []).map((b) => `${b.label} ${b.days}`)));
+}
+
+sec("A cell wider than its column is still one cell");
+{
+  // WHAT WAS ON SCREEN. A saved week where the lessons were called "English(G1",
+  // "Science & So", "Homework(G", "Activity(G1" — every one of them cut at the
+  // first word or two, and the rest of the subject simply gone.
+  //
+  // A PDF holds no cells, only words at positions, and the columns were being
+  // worked out by clustering EVERY position in the document. So a cell wider
+  // than its column — "Science & Social Studies (G1) Primary Section", which is
+  // what a real one says — became four or five columns of its own. Only the
+  // first sat under a day name, and the reader reads the day columns, so
+  // everything after the first word or two went into columns nothing ever looks
+  // at. Not truncated: dropped, silently, and the subject named after its
+  // opening word.
+  //
+  // A table's columns are set by its heading row. So they are taken from it.
+  const at = (x, text) => ({ x, text });
+  const runs = (x0, words) => {
+    const out = [];
+    let x = x0;
+    words.forEach((w) => { out.push(at(x, w)); x += w.length * 5.5 + 3; });
+    return out;
+  };
+  const rows = [
+    { cells: [at(40, "Time"), at(150, "Monday"), at(300, "Tuesday"), at(450, "Wednesday")] },
+    { cells: [at(40, "08:40-09:25"),
+              ...runs(150, ["Science", "&", "Social", "Studies", "(G1)"]),
+              ...runs(300, ["English", "(G1)", "Primary", "Section"]),
+              ...runs(450, ["Art"])] },
+  ];
+  const r = T.fromRows(rows);
+  ok("three lessons, one to a day", r.blocks.length === 3, JSON.stringify(r.blocks.map((b) => b.label)));
+  const on = (d) => (r.blocks.find((b) => b.days[0] === d) || {}).label;
+  ok("a wide cell keeps all of itself", on(1) === "Science & Social Studies (G1)", on(1));
+  ok("and does not stop at its first word", /Studies/.test(on(1) || ""), on(1));
+  ok("the day beside it is its own lesson", on(2) === "English (G1) Primary Section", on(2));
+  ok("and has not been given the tail of the one before it",
+     !/Studies/.test(on(2) || ""), on(2));
+  ok("and a short cell is unharmed", on(3) === "Art", on(3));
+
+  // AND THE TIME IS STILL TO THE LEFT OF THE DAYS. The heading row's leading
+  // cell is often blank, so there is no edge for the time column — and without
+  // one every time in the document belongs to Monday and no row has a time at
+  // all.
+  const blank = [
+    { cells: [at(150, "Monday"), at(300, "Tuesday")] },
+    { cells: [at(40, "08:40-09:25"), ...runs(150, ["Science", "&", "Social", "Studies"]),
+              ...runs(300, ["Art"])] },
+  ];
+  const b2 = T.fromRows(blank);
+  ok("a header with no cell over the times still reads", b2.blocks.length === 2,
+     JSON.stringify(b2.blocks.map((x) => `${x.label} ${x.start}`)));
+  ok("with the time off the left-hand column",
+     b2.blocks[0] && b2.blocks[0].start === "08:40", b2.blocks[0] && b2.blocks[0].start);
+  ok("and the whole of the wide cell",
+     b2.blocks[0] && b2.blocks[0].label === "Science & Social Studies",
+     b2.blocks[0] && b2.blocks[0].label);
+}
+
 sec("Who reads it first is a setting, and both of them say how long they took");
 {
   // "THE MODEL IS SLOWER" WAS NEVER MEASURED on the machine it happens on. It

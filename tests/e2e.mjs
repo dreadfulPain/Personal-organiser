@@ -155,7 +155,7 @@ ok("without that having to be typed in afterwards", first && first.label === "Sc
   const schema = (src.match(/const TIMETABLE_SCHEMA = \{[\s\S]*?\n\};/) || [""])[0];
   const handler = (src.match(/async function handleTimetable[\s\S]*?\n\}/) || [""])[0];
   const read = [...handler.matchAll(/\bb\.(\w+)/g)].map((m) => m[1]);
-  const missing = [...new Set(read)].filter((k) => !new RegExp(`\\b${k}: \\{ type:`).test(schema));
+  const missing = [...new Set(read)].filter((k) => !new RegExp(`\\b${k}:\\s*\\{\\s*type:`).test(schema));
   ok("everything the answer is read for is a field the model may send",
      missing.length === 0, `not in the schema: ${missing.join(", ")}`);
 }

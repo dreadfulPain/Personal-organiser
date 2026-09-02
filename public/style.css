@@ -4111,6 +4111,12 @@ a.btn {
    (who's running it, which room) kept rather than thrown away. */
 .su-date.missing { border-color: var(--warn, #b45309); }
 .su-tnote { flex: 1 1 100%; font-size: 0.78rem; color: var(--muted); }
+/* WHAT THE READER SAW THAT THERE IS NO FIELD FOR. Set apart from the app's own
+   labels, because these are not its words and it does nothing with them —
+   showing them as though they were settings would be a lie about both. */
+.su-textra { flex: 1 1 100%; font-size: 0.78rem; color: var(--muted);
+  padding-left: 10px; border-left: 2px solid var(--line); }
+.su-extra { font-size: 0.76rem; color: var(--muted); }
 /* THE DAYS WERE WORKED OUT, NOT READ. Not muted like the rest of the guidance:
    this is the one thing on the check-back that will look right and be wrong,
    and a warning nobody sees is the same as no warning. Never colour alone —

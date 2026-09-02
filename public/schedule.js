@@ -313,6 +313,30 @@
       // A cap, because a hand-typed note has no natural end and this is written
       // into the save file on every change.
       note: (b.note || "").toString().trim().slice(0, 600),
+      // ANYTHING ELSE THE DOCUMENT SAID, THAT THIS APP HAS NO FIELD FOR.
+      //
+      // Every field above is a question somebody thought to ask. A reader that
+      // can only answer those has to throw away everything else it saw — "swaps
+      // with PE in week B", "bring swimming kit", "covered by Ms Chen on
+      // Thursdays" — and what it throws away is invisible, because you cannot
+      // check a list for what isn't on it.
+      //
+      // So there is a place for the rest, and what goes in it is not this app's
+      // vocabulary: the name of each one comes from whoever wrote it. Kept and
+      // shown. NEVER ACTED ON — nothing in the app reads one of these to decide
+      // anything, because a thing nobody validated must not be able to change
+      // what happens to your week. That is the whole of the safety here, and it
+      // is what makes it safe to let anything at all be written.
+      //
+      // Shape only: strings, capped, and few. A model having a bad day fills a
+      // box, not the file.
+      extras: (Array.isArray(b.extras) ? b.extras : [])
+        .map((x) => ({
+          name: ((x && x.name) || "").toString().trim().slice(0, 60),
+          value: ((x && x.value) || "").toString().trim().slice(0, 200),
+        }))
+        .filter((x) => x.name && x.value)
+        .slice(0, 8),
     };
   }
   function normalise(list) {

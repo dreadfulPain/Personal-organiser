@@ -341,6 +341,96 @@ sec("And a week that read properly is not labelled a guess");
      !/worked out, not read/.test(said()), said().slice(0, 300));
 }
 
+sec("The model may write what this app has no field for, and it changes nothing");
+{
+  // WHAT WAS BEING ASKED FOR. Every field a block has is a question somebody
+  // once thought to ask, and a reader that can only answer those has to throw
+  // away everything else it saw — "swaps with PE in week B", "bring swimming
+  // kit", "covered by Ms Chen on Thursdays". What it throws away is invisible,
+  // because you cannot check a list for what isn't on it.
+  //
+  // So there is a place for the rest, named by whoever wrote the document
+  // rather than by this app. KEPT AND SHOWN. NEVER ACTED ON — and that last
+  // part is the whole of what makes it safe to let anything at all be written.
+  const S = sb.OrganiserSchedule;
+  const said = [{ name: "week", value: "B only" }, { name: "bring", value: "swimming kit" }];
+  const kept = S.normaliseBlock({
+    label: "Swimming", start: "09:00", end: "10:00", days: [1], extras: said,
+  });
+  ok("a name this app never heard of survives", kept.extras.length === 2,
+     JSON.stringify(kept.extras));
+  ok("with the words as written", kept.extras[0].name === "week" &&
+     kept.extras[0].value === "B only", JSON.stringify(kept.extras));
+
+  // AND IT CHANGES NOTHING. The same block with and without them must be the
+  // same block in every way the app can act on — that is the guarantee, and it
+  // is why this is safe to allow.
+  const bare = S.normaliseBlock({ label: "Swimming", start: "09:00", end: "10:00", days: [1] });
+  const same = (a, b) => {
+    const strip = (x) => { const c = { ...x }; delete c.id; delete c.extras; return JSON.stringify(c); };
+    return strip(a) === strip(b);
+  };
+  ok("everything else about it is untouched", same(kept, bare),
+     JSON.stringify(kept) + "\n vs \n" + JSON.stringify(bare));
+  ok("and it is still somewhere you can sit", S.mustBeThere(kept) === S.mustBeThere(bare),
+     `${S.mustBeThere(kept)} vs ${S.mustBeThere(bare)}`);
+
+  // A NAME THAT LOOKS LIKE ONE OF THE APP'S OWN CANNOT BECOME IT. This is the
+  // way a free-for-all turns into a way in: a model that answers
+  // {"name":"blocksDay","value":"true"} must not take the day off.
+  const sneaky = S.normaliseBlock({
+    label: "Swimming", start: "09:00", end: "10:00", days: [1],
+    extras: [{ name: "blocksDay", value: "true" }, { name: "beThere", value: "yes" },
+             { name: "where", value: "Room 9" }],
+  });
+  ok("a field name in the list is not that field", sneaky.blocksDay === false,
+     String(sneaky.blocksDay));
+  ok("nor does it make you have to be there", S.mustBeThere(sneaky) === false,
+     String(S.mustBeThere(sneaky)));
+  ok("and the real where is still empty", sneaky.where === "", JSON.stringify(sneaky.where));
+  ok("they are only ever a list on the side", sneaky.extras.length === 3,
+     JSON.stringify(sneaky.extras));
+
+  // AND A MODEL HAVING A BAD DAY FILLS A BOX, NOT THE FILE.
+  const flood = S.normaliseBlock({
+    label: "Swimming", start: "09:00", end: "10:00", days: [1],
+    extras: Array.from({ length: 200 }, (_, i) => ({ name: "n" + i, value: "x".repeat(9000) })),
+  });
+  ok("there are only ever a few", flood.extras.length === 8, String(flood.extras.length));
+  ok("and none of them is long", flood.extras.every((x) => x.value.length <= 200),
+     String(Math.max(...flood.extras.map((x) => x.value.length))));
+  ok("and rubbish is dropped rather than stored",
+     S.normaliseBlock({ label: "x", start: "09:00", end: "10:00", days: [1],
+       extras: [{ name: "", value: "no name" }, { name: "no value", value: "" }, "not even an object"] })
+       .extras.length === 0, "empty pairs were kept");
+}
+
+sec("And what it wrote is on the screen, not just in the file");
+{
+  // KEPT AND NOT SHOWN IS THE SAME AS THROWN AWAY, only with more disk used.
+  const r = await open("timeline.html", {
+    schedule: [], scheduleConfig: { modelFirst: true }, config: {}, items: [], goals: [],
+  }, {
+    fetch: async () => ({ ok: true, json: async () => ({
+      blocks: [{ label: "Swimming", start: "09:00", end: "10:00", days: [1],
+                 extras: [{ name: "week", value: "B only" }] }],
+      unreadable: [] }) }),
+  });
+  const toggle = r.get("#setupToggle");
+  toggle.fire("click", { target: toggle });
+  await r.settle();
+  r.get("#ttText").value = "Mon 09:00-10:00 Swimming";
+  const b = r.get("#ttRead");
+  b.fire("click", { target: b });
+  await r.settle();
+  const all = (n) => !n ? "" : String(n.innerHTML || "") +
+    [...(n.children || [])].map((c) => String(c.textContent || "") + all(c)).join(" ");
+  const box = [...(r.get("#ttReview").children || [])]
+    .filter((c) => String(c.className || "").includes("su-review")).pop();
+  ok("what the model wrote is on the check-back", /week: B only/.test(all(box)),
+     all(box).slice(0, 400));
+}
+
 sec("And what the model is sent is the table, not the flattened text");
 {
   // A PDF THAT POSITIONS ITS COLUMNS hands back text with the gaps missing

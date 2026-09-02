@@ -1138,6 +1138,14 @@ ONLY IF THE DOCUMENT SAYS SO — leave these out entirely rather than guessing:
 - "date": a single day it happens on, as "YYYY-MM-DD", for a schedule of dated
   one-offs rather than a repeating week. Use "days" for a repeating week and
   "date" for a one-off; a row with a date needs no days.
+- "extras": ANYTHING ELSE THE ROW SAYS that none of the fields above can hold —
+  a list of {"name","value"} pairs, named however the document names it. If the
+  row says the class swaps in week B, or which teacher covers it, or what to
+  bring, put it here rather than dropping it. You are not limited to the fields
+  above and you do not need permission for a name: if the document says it, it
+  can go in. Copy the words; do not summarise or interpret. Nothing here changes
+  what the app does — it is shown to the person as written — so the only wrong
+  answer is one the document does not say.
 
 Return only the JSON object.`;
 
@@ -1165,6 +1173,21 @@ const TIMETABLE_SCHEMA = {
           where: { type: "string" },
           note: { type: "string" },
           date: { type: "string" },
+          // AND ANYTHING THIS APP HAS NO FIELD FOR.
+          //
+          // Every field above is a question somebody thought to ask, and a
+          // reader that can only answer those throws away everything else it
+          // saw. This is where the rest goes, named by whoever wrote it rather
+          // than by this app. Kept and shown, never acted on.
+          extras: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { name: { type: "string" }, value: { type: "string" } },
+              required: ["name", "value"],
+              additionalProperties: false,
+            },
+          },
         },
         required: ["label", "start", "end", "days"],
         additionalProperties: false,
@@ -1224,6 +1247,16 @@ async function handleTimetable(res, body) {
         ? b.date.toString().trim() : "";
       const where = (b.where || "").toString().trim().slice(0, 120);
       const note = (b.note || "").toString().trim().slice(0, 300);
+      // CHECKED FOR SHAPE, NOT FOR MEANING. What these say is not this app's
+      // business — that is the point of them — but how big and how many is,
+      // because a model having a bad day must fill a box and not the file.
+      const extras = (Array.isArray(b.extras) ? b.extras : [])
+        .map((x) => ({
+          name: ((x && x.name) || "").toString().trim().slice(0, 60),
+          value: ((x && x.value) || "").toString().trim().slice(0, 200),
+        }))
+        .filter((x) => x.name && x.value)
+        .slice(0, 8);
       const why = !label
         ? "no name"
         : !start || !end
@@ -1237,7 +1270,7 @@ async function handleTimetable(res, body) {
         unreadable.push({ label: label || "(no name)", start: b.start || "", end: b.end || "", why });
         return;
       }
-      blocks.push({ label, start, end, days, date, where, note, soft: false, source: "paste" });
+      blocks.push({ label, start, end, days, date, where, note, extras, soft: false, source: "paste" });
     });
     return sendJson(res, 200, { blocks, unreadable });
   } catch (e) {

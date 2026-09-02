@@ -2550,6 +2550,16 @@
         note.textContent = b.note;
         row.appendChild(note);
       }
+      // AND ANYTHING THE READER SAW THAT THIS APP HAS NO FIELD FOR. Shown as
+      // written, named as the document named it, and doing nothing — it is
+      // here so that what was read is not quietly narrowed to what somebody
+      // once thought to build a box for.
+      (b.extras || []).forEach((x) => {
+        const e = document.createElement("span");
+        e.className = "su-textra";
+        e.textContent = `${x.name}: ${x.value}`;
+        row.appendChild(e);
+      });
       table.appendChild(row);
     });
     box.appendChild(table);
@@ -2786,7 +2796,7 @@
       row.className = "su-brow" + (b.soft ? " soft" : "");
       row.innerHTML = `
         <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
-        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${S().mustBeThere(b) ? ` <span class="su-theretag">be there${b.where ? ` · ${escapeHtml(b.where)}` : ""}${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}</span>`;
+        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${S().mustBeThere(b) ? ` <span class="su-theretag">be there${b.where ? ` · ${escapeHtml(b.where)}` : ""}${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}${(b.extras || []).map((x) => ` <span class="su-extra">${escapeHtml(x.name)}: ${escapeHtml(x.value)}</span>`).join("")}</span>`;
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "link";

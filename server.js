@@ -1048,6 +1048,37 @@ Example of a HANDOVER — "sarah's passed me the year 4 display board, and i gav
   {"kind":"handover","person":"Tom","direction":"from_me","note":"Trip forms","title":"","item_type":"","date":"","time":"","deadline":"","importance":"","effort":"","tags":[],"when_text":"","goal_link":"","open_loop":false,"promised_to":"","waiting_on":"","who":"","note_type":"","summary":"","topic":"","level":"","follow_up":false,"follow_up_date":"","standard":""}
 ]}`;
 
+// ANYTHING THIS APP HAS NO FIELD FOR — one shape, wherever it is offered.
+//
+// A list of {name, value}, because JSON Schema cannot say "any keys at all" and
+// a model asked for free-form keys sends different shapes on different days.
+// The name comes from whoever wrote the document, not from this app.
+//
+// Written once because it is now offered on three different things, and three
+// spellings of one idea is how they start meaning three different things.
+const EXTRAS_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: { name: { type: "string" }, value: { type: "string" } },
+    required: ["name", "value"],
+    additionalProperties: false,
+  },
+};
+
+// CHECKED FOR SHAPE, NOT FOR MEANING. What these say is not this app's business
+// — that is the point of them — but how big and how many is, because a model
+// having a bad day must fill a box and not the file.
+function extrasOf(v) {
+  return (Array.isArray(v) ? v : [])
+    .map((x) => ({
+      name: ((x && x.name) || "").toString().trim().slice(0, 60),
+      value: ((x && x.value) || "").toString().trim().slice(0, 200),
+    }))
+    .filter((x) => x.name && x.value)
+    .slice(0, 8);
+}
+
 const ROUTE_SCHEMA = {
   type: "object",
   properties: {
@@ -1081,11 +1112,13 @@ const ROUTE_SCHEMA = {
           person: { type: "string" },
           direction: { type: "string" },
           note: { type: "string" },
+          extras: EXTRAS_SCHEMA,
         },
         required: [
           "kind", "title", "item_type", "date", "time", "deadline", "importance", "effort", "tags",
           "when_text", "goal_link", "open_loop", "promised_to", "waiting_on", "who", "note_type", "summary",
           "topic", "level", "follow_up", "follow_up_date", "standard", "person", "direction", "note",
+          "extras",
         ],
         additionalProperties: false,
       },
@@ -1179,15 +1212,7 @@ const TIMETABLE_SCHEMA = {
           // reader that can only answer those throws away everything else it
           // saw. This is where the rest goes, named by whoever wrote it rather
           // than by this app. Kept and shown, never acted on.
-          extras: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: { name: { type: "string" }, value: { type: "string" } },
-              required: ["name", "value"],
-              additionalProperties: false,
-            },
-          },
+          extras: EXTRAS_SCHEMA,
         },
         required: ["label", "start", "end", "days"],
         additionalProperties: false,
@@ -1250,13 +1275,7 @@ async function handleTimetable(res, body) {
       // CHECKED FOR SHAPE, NOT FOR MEANING. What these say is not this app's
       // business — that is the point of them — but how big and how many is,
       // because a model having a bad day must fill a box and not the file.
-      const extras = (Array.isArray(b.extras) ? b.extras : [])
-        .map((x) => ({
-          name: ((x && x.name) || "").toString().trim().slice(0, 60),
-          value: ((x && x.value) || "").toString().trim().slice(0, 200),
-        }))
-        .filter((x) => x.name && x.value)
-        .slice(0, 8);
+      const extras = extrasOf(b.extras);
       const why = !label
         ? "no name"
         : !start || !end
@@ -1922,6 +1941,26 @@ async function handleRoute(res, body) {
       if (kind === "record" && whoIds.length) {
         const summary = (e.summary || "").toString().trim().slice(0, 200);
         if (!summary) return;
+        // WHAT DIDN'T FIT YOUR OWN LISTS IS NOT NOTHING.
+        //
+        // The kind of note, the topic and the level are yours — your words, in
+        // your settings — so anything else the reader says for them cannot be
+        // stored as one. It was being quietly replaced with the first one on
+        // the list, or with blank: so a note the model read as being about
+        // attendance, when "attendance" is not a topic you have, became a note
+        // about nothing, and there was no way to find out it had ever said so.
+        //
+        // Now it is kept beside the record, under the name it was given. It
+        // still is not a topic — nothing counts it, nothing filters by it —
+        // but you can see it said so, and add the word to your list if it
+        // ought to be one.
+        const said = (name, value, list) =>
+          value && !list.includes(value) ? [{ name, value: String(value).slice(0, 200) }] : [];
+        const extras = extrasOf(e.extras)
+          .concat(said("kind of note", e.note_type, types))
+          .concat(said("topic", e.topic, topics))
+          .concat(said("level", e.level, levels))
+          .slice(0, 8);
         entries.push({
           kind: "record",
           record: {
@@ -1933,6 +1972,7 @@ async function handleRoute(res, body) {
             tags: clean(e.tags).map((t) => t.toLowerCase()).slice(0, 4),
             follow_up: e.follow_up === true,
             follow_up_date: ISO.test(e.follow_up_date) ? e.follow_up_date : "",
+            extras,
           },
         });
         return;

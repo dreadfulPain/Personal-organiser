@@ -253,6 +253,33 @@
 
   // Push each entry into the right array of `state`, spawning follow-ups. Records
   // are born "AI-sorted · check me" (provenance stays true). Returns counts.
+  // WHAT THIS APP HAS NO FIELD FOR, AS THE THINGS THAT HOLD IT ALREADY HOLD IT.
+  //
+  // A reader may say anything, named however the document names it — but a
+  // record keeps its spare facts in `extra` and a person keeps theirs in
+  // `details`, and both are plain objects and were long before any of this. So
+  // the list of {name, value} that comes back is turned into one, rather than
+  // a third shape being introduced next to two that already work.
+  //
+  // Shape only: strings, capped, and few. What they SAY is not this app's
+  // business — that is the point of them — and nothing here reads one to decide
+  // anything, which is what makes it safe to allow at all.
+  function bagOf(extras, existing) {
+    const out = {};
+    if (existing && typeof existing === "object")
+      Object.keys(existing).slice(0, 8).forEach((k) => {
+        const key = String(k).trim().slice(0, 60);
+        const v = String(existing[k] == null ? "" : existing[k]).trim().slice(0, 200);
+        if (key && v) out[key] = v;
+      });
+    (Array.isArray(extras) ? extras : []).forEach((x) => {
+      const name = ((x && x.name) || "").toString().trim().slice(0, 60);
+      const value = ((x && x.value) || "").toString().trim().slice(0, 200);
+      if (name && value && Object.keys(out).length < 8) out[name] = value;
+    });
+    return out;
+  }
+
   function applyEntries(entries, state) {
     state.items = state.items || [];
     state.goals = state.goals || [];
@@ -271,7 +298,12 @@
           type: e.record.type || "",
           summary: e.record.summary || "",
           detail: "",
-          extra: {},
+          // ANYTHING THE READER SAW THAT A RECORD HAS NO FIELD FOR — including
+          // the kind, topic or level it named that isn't one of yours, which
+          // used to be replaced with a default or a blank and lost. The record
+          // already had this bag; nothing was ever allowed to put anything in
+          // it. Shown beside the record, counted by nothing.
+          extra: bagOf(e.record.extras),
           topic: e.record.topic || "",
           level: e.record.level || "",
           tags: (e.record.tags || []).slice(0, 4),
@@ -321,7 +353,9 @@
           group: "",
           ...(e.person.aka && e.person.aka.length ? { aka: e.person.aka.slice(0, 8) } : {}),
           ...(e.person.tag ? { tag: e.person.tag } : {}),
-          details: { ...(e.person.details || {}) },
+          // The same bag a person has always had, with the same rules as
+          // everything else's: names and values, capped, and few.
+          details: bagOf(e.person.extras, e.person.details),
           createdAt: nowISO(),
         });
         n.people++;

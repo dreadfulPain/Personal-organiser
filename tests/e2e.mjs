@@ -17,7 +17,15 @@ const ol = http.createServer((req, res) => {
   req.on("end", () => {
     const sys = (JSON.parse(b || "{}").messages || []).find((m) => m.role === "system")?.content || "";
     let out = {};
-    if (/router inside a calm personal organiser/.test(sys))
+    if (/router inside a calm personal organiser/.test(sys) && /RECORDPLEASE/.test(b))
+      out = { entries: [{ kind: "record", title: "", item_type: "", date: "", time: "", deadline: "",
+        importance: "normal", effort: "quick", tags: [], when_text: "", goal_link: "",
+        open_loop: false, promised_to: "", who: "S01", note_type: "", summary: "Quiet in group work",
+        // A TOPIC THIS TEACHER HAS NOT GOT, and something with nowhere to go.
+        topic: "attendance", level: "", follow_up: false, follow_up_date: "", standard: "",
+        person: "", direction: "", note: "",
+        extras: [{ name: "seat", value: "back row" }] }] };
+    else if (/router inside a calm personal organiser/.test(sys))
       out = { entries: [{ kind: "task", title: "Wait for SHSID's reply", item_type: "task", date: "", time: "", deadline: "", importance: "normal", effort: "quick", tags: [], when_text: "", goal_link: "", open_loop: true, promised_to: "Helen", who: "", note_type: "", summary: "", topic: "", level: "", follow_up: false, follow_up_date: "", standard: "", person: "", direction: "", note: "" }] };
     else if (/numbered line/.test(sys)) { const n = [...((JSON.parse(b).messages||[]).find(m=>m.role==="user")?.content||"").matchAll(/^(\d+)\. /gm)]; out = { answers: n.map(([,x]) => ({ n: Number(x), mine: true })) }; }
     else if (/ONE label/.test(sys)) out = { kind: "task" };
@@ -143,6 +151,39 @@ ok("and what was written beside it", first && /from the model/.test(first.note |
 ok("without that having to be typed in afterwards", first && first.label === "Science",
    first && first.label);
 
+// A RECORD KEEPS WHAT DIDN'T FIT YOUR OWN LISTS.
+//
+// The kind of note, the topic and the level are your words, in your settings,
+// so anything else the reader says for them cannot be stored as one — and was
+// being quietly replaced with the first on the list or with blank. A note the
+// model read as being about attendance, on a teacher whose topics do not
+// include it, became a note about nothing, and there was no way to find out it
+// had ever said so.
+{
+  const rr = await (await fetch(B + "/api/route", { method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ text: "RECORDPLEASE", today: "2026-08-12",
+      config: { whoIds: ["S01"], types: ["note", "praise"], topics: ["behaviour"], levels: [] } }) })).json();
+  const rec = (rr.entries || [])[0];
+  ok("the record comes back", rec && rec.kind === "record", JSON.stringify(rr).slice(0, 200));
+  ok("a topic that isn't one of yours is not stored as one", rec && rec.record.topic === "",
+     rec && rec.record.topic);
+  ok("but it is kept, under the name it was given",
+     rec && (rec.record.extras || []).some((x) => x.name === "topic" && x.value === "attendance"),
+     JSON.stringify(rec && rec.record.extras));
+  ok("along with what it saw that has nowhere to go",
+     rec && (rec.record.extras || []).some((x) => x.name === "seat" && x.value === "back row"),
+     JSON.stringify(rec && rec.record.extras));
+  // AND A TOPIC THAT IS ONE OF YOURS IS STILL JUST THE TOPIC.
+  const mine = await (await fetch(B + "/api/route", { method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ text: "RECORDPLEASE", today: "2026-08-12",
+      config: { whoIds: ["S01"], types: ["note"], topics: ["attendance"], levels: [] } }) })).json();
+  const m = (mine.entries || [])[0];
+  ok("a topic you do have is the topic", m && m.record.topic === "attendance", m && m.record.topic);
+  ok("and is not also sitting in the bag",
+     m && !(m.record.extras || []).some((x) => x.name === "topic"),
+     JSON.stringify(m && m.record.extras));
+}
+
 // AND THE SHAPE IT MAY ANSWER IN COVERS WHAT IS READ OFF THE ANSWER.
 //
 // The schema is what the model is TOLD it may return, and the validation below
@@ -150,13 +191,34 @@ ok("without that having to be typed in afterwards", first && first.label === "Sc
 // is one the model has no way to know it is allowed to send — which is how the
 // room went missing for as long as it did, and it cannot be seen by asking a
 // stand-in model, because a stand-in answers whatever it likes.
-{
+//
+// BOTH SCHEMAS, because the second one is where a record lives and it had the
+// same hole: adding a field to what the server reads without adding it to what
+// the model is told it may send leaves the model unable to guess it is allowed.
+for (const [name, schemaRe, handlerRe, readRe] of [
+  ["timetable", /const TIMETABLE_SCHEMA = \{[\s\S]*?\n\};/,
+   /async function handleTimetable[\s\S]*?\n\}/, /\bb\.(\w+)/g],
+  // THE WHOLE HANDLER, to its closing brace at the left margin. Reaching for
+  // the first "\n}" instead stopped at the first nested block and read a region
+  // with no fields in it at all — so the check passed by looking at nothing,
+  // which is the one way a check can be worse than absent.
+  ["route", /const ROUTE_SCHEMA = \{[\s\S]*?\n\};/,
+   /async function handleRoute\([\s\S]*?\n\}\n/, /\be\.(\w+)/g],
+]) {
   const src = fs.readFileSync(`${REPO_ROOT}/server.js`, "utf8");
-  const schema = (src.match(/const TIMETABLE_SCHEMA = \{[\s\S]*?\n\};/) || [""])[0];
-  const handler = (src.match(/async function handleTimetable[\s\S]*?\n\}/) || [""])[0];
-  const read = [...handler.matchAll(/\bb\.(\w+)/g)].map((m) => m[1]);
-  const missing = [...new Set(read)].filter((k) => !new RegExp(`\\b${k}:\\s*\\{\\s*type:`).test(schema));
-  ok("everything the answer is read for is a field the model may send",
+  const schema = (src.match(schemaRe) || [""])[0];
+  const handler = (src.match(handlerRe) || [""])[0];
+  const read = [...handler.matchAll(readRe)].map((m) => m[1]);
+  ok(`the ${name} handler is actually being looked at`, read.length > 3,
+     `only ${read.length} fields found — the region is wrong, so this check is reading nothing`);
+  // A FIELD MAY BE LISTED INLINE OR BY NAME. The shape for "anything this app
+  // has no field for" is written once and referred to from three schemas, so a
+  // check that only recognised `name: { type:` called it missing the moment it
+  // stopped being spelled out — which is a check failing on a tidy-up while
+  // what it is about was fine.
+  const listed = (k) => new RegExp(`\\b${k}:\\s*(\\{\\s*type:|[A-Z][A-Z_]*_SCHEMA\\b)`).test(schema);
+  const missing = [...new Set(read)].filter((k) => !listed(k));
+  ok(`everything the ${name} answer is read for is a field the model may send`,
      missing.length === 0, `not in the schema: ${missing.join(", ")}`);
 }
 

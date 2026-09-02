@@ -405,6 +405,87 @@ sec("The model may write what this app has no field for, and it changes nothing"
        .extras.length === 0, "empty pairs were kept");
 }
 
+sec("And the same for a person and for a student record");
+{
+  // BOTH ALREADY HAD A BAG for things this app has no field for — a record
+  // keeps them in `extra`, a person in `details`, and both are plain objects
+  // and were long before any of this. Neither was ever fillable by the reader,
+  // and neither was checked for size. Same idea, same rules, existing shapes.
+  // Its own sandbox: capture.js mounts a bar onto the page as it loads, so it
+  // needs a document to mount onto — see MOUNTS_ITSELF in _dom.mjs.
+  const cb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, Boolean,
+    RegExp, isNaN, parseInt, parseFloat, Intl, setTimeout,
+    document: { getElementById: () => null, querySelector: () => null } };
+  cb.window = cb;
+  vm.createContext(cb);
+  ["dates.js", "names.js", "roster.js", "quickparse.js", "capture.js"]
+    .forEach((f) => vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), cb));
+  const C = cb.OrganiserCapture;
+  const state = { items: [], records: [], contacts: [], goals: [] };
+  C.applyEntries([
+    { kind: "record", record: { who: "S01", type: "note", summary: "Quiet in group work",
+      topic: "", level: "", tags: [], follow_up: false,
+      extras: [{ name: "topic", value: "attendance" }, { name: "seat", value: "back row" }] } },
+    { kind: "person", person: { name: "Alex Sample",
+      extras: [{ name: "office hours", value: "Tue 2-4" }] } },
+  ], state);
+
+  const rec = state.records[0];
+  ok("a record keeps what the reader saw", rec && rec.extra && rec.extra.seat === "back row",
+     JSON.stringify(rec && rec.extra));
+  ok("in the bag it always had", rec && typeof rec.extra === "object", JSON.stringify(rec));
+  const who = state.contacts.find((c) => c.name === "Alex Sample");
+  ok("and a person does too", who && who.details["office hours"] === "Tue 2-4",
+     JSON.stringify(who && who.details));
+
+  // AND IT IS STILL NOT A TOPIC. The word is kept so you can see it was said —
+  // and add it to your own list if it ought to be one — but nothing counts it,
+  // filters by it, or files under it.
+  ok("a topic that isn't one of yours is kept as words", rec && rec.extra.topic === "attendance",
+     JSON.stringify(rec && rec.extra));
+  ok("and is not the record's topic", rec && rec.topic === "", JSON.stringify(rec && rec.topic));
+
+  // AND A NAME THAT LOOKS LIKE ONE OF THE APP'S OWN DOES NOT BECOME IT.
+  const state2 = { items: [], records: [], contacts: [], goals: [] };
+  C.applyEntries([{ kind: "person", person: { name: "Blair Instance",
+    extras: [{ name: "isMe", value: "true" }, { name: "tag", value: "Head" }] } }], state2);
+  const b = state2.contacts.find((c) => c.name === "Blair Instance");
+  ok("saying isMe does not make it you", !b.isMe, JSON.stringify(b.isMe));
+  ok("nor does saying tag set the tag", !b.tag, JSON.stringify(b.tag));
+  ok("they are words in the bag and nothing else", b.details.isMe === "true" && b.details.tag === "Head",
+     JSON.stringify(b.details));
+
+  // AND A BAD DAY FILLS A BOX, NOT THE FILE.
+  const state3 = { items: [], records: [], contacts: [], goals: [] };
+  C.applyEntries([{ kind: "person", person: { name: "Chris Specimen",
+    extras: Array.from({ length: 200 }, (_, i) => ({ name: "n" + i, value: "x".repeat(9000) })) } }], state3);
+  const c3 = state3.contacts[0];
+  ok("only a few are kept", Object.keys(c3.details).length === 8,
+     String(Object.keys(c3.details).length));
+  ok("and none of them long", Object.values(c3.details).every((v) => v.length <= 200),
+     String(Math.max(...Object.values(c3.details).map((v) => v.length))));
+}
+
+sec("And one shape for it, not three");
+{
+  // THREE THINGS CAN NOW CARRY WHAT THIS APP HAS NO FIELD FOR, and three
+  // spellings of one idea is how they start meaning three different things —
+  // which is the single most reliable source of bugs in this app. The model is
+  // asked for the same shape every time; what each thing STORES it in is the
+  // shape that thing already had.
+  const srv = fs.readFileSync(`${REPO_ROOT}/server.js`, "utf8");
+  const spelledOut = (srv.match(/name: \{ type: "string" \}, value: \{ type: "string" \}/g) || []).length;
+  ok("the shape the model answers in is written once", spelledOut === 1,
+     `written out ${spelledOut} times`);
+  ok("and referred to wherever it is offered",
+     (srv.match(/EXTRAS_SCHEMA/g) || []).length >= 3, "not offered on all three");
+  ok("and checked in one place too", (srv.match(/function extrasOf\(/g) || []).length === 1,
+     "the checking is written more than once");
+  const cap = fs.readFileSync(`${REPO_ROOT}/public/capture.js`, "utf8");
+  ok("and turned into a bag in one place", (cap.match(/function bagOf\(/g) || []).length === 1,
+     "the bag is built more than once");
+}
+
 sec("And what it wrote is on the screen, not just in the file");
 {
   // KEPT AND NOT SHOWN IS THE SAME AS THROWN AWAY, only with more disk used.

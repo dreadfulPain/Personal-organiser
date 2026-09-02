@@ -1132,6 +1132,13 @@ RULES
 - If a row is not a time block (a title, a note, a page number), leave it out.
 - Never invent a block that is not in the text. An empty list is a fine answer.
 
+ONLY IF THE DOCUMENT SAYS SO — leave these out entirely rather than guessing:
+- "where": the room or building, when the row names one. Copy it as written.
+- "note": anything else written on the row that isn't the name or the time.
+- "date": a single day it happens on, as "YYYY-MM-DD", for a schedule of dated
+  one-offs rather than a repeating week. Use "days" for a repeating week and
+  "date" for a one-off; a row with a date needs no days.
+
 Return only the JSON object.`;
 
 const TIMETABLE_SCHEMA = {
@@ -1146,6 +1153,18 @@ const TIMETABLE_SCHEMA = {
           start: { type: "string" },
           end: { type: "string" },
           days: { type: "array", items: { type: "integer" } },
+          // WHAT THE PLAIN READER CAN SAY AND THIS COULD NOT.
+          //
+          // Four fields, and everything else silently dropped — so a model that
+          // read "Science & Social Studies, Room 111" off the page had no way to
+          // hand back the room, and the block came out as something you could do
+          // from a chair at home. The reader written in plain code has always
+          // been able to say where a lesson is and what was written beside it;
+          // the model was allowed strictly less, which is not a rule about
+          // trusting it, just a shape nobody widened.
+          where: { type: "string" },
+          note: { type: "string" },
+          date: { type: "string" },
         },
         required: ["label", "start", "end", "days"],
         additionalProperties: false,
@@ -1198,20 +1217,27 @@ async function handleTimetable(res, body) {
       const days = (Array.isArray(b.days) ? b.days : [])
         .map((d) => Number(d))
         .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+      // A ONE-OFF HAS A DATE INSTEAD OF DAYS. An induction is sixteen things on
+      // two named days and repeats never; refusing everything without a weekday
+      // threw all of it away as unreadable.
+      const date = /^\d{4}-\d{2}-\d{2}$/.test((b.date || "").toString().trim())
+        ? b.date.toString().trim() : "";
+      const where = (b.where || "").toString().trim().slice(0, 120);
+      const note = (b.note || "").toString().trim().slice(0, 300);
       const why = !label
         ? "no name"
         : !start || !end
           ? "couldn't read the times"
           : end <= start
             ? "ends before it starts"
-            : !days.length
-              ? "no days"
+            : !days.length && !date
+              ? "no day or date"
               : "";
       if (why) {
         unreadable.push({ label: label || "(no name)", start: b.start || "", end: b.end || "", why });
         return;
       }
-      blocks.push({ label, start, end, days, soft: false, source: "paste" });
+      blocks.push({ label, start, end, days, date, where, note, soft: false, source: "paste" });
     });
     return sendJson(res, 200, { blocks, unreadable });
   } catch (e) {

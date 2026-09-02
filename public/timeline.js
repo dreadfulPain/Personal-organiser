@@ -1926,8 +1926,17 @@
     const got = T ? T.bestOf(pdf && pdf.rows ? { ...pdf, text } : { text }) : null;
     const readMs = msNow() - t0;
     const flattened = !!(got && got.note === "columns");
+    // AND WHAT THE MODEL GETS SENT IS THE TABLE, not the flattened text.
+    //
+    // A PDF that positions its columns hands back text with the gaps missing —
+    // "TimeMondayTuesday", and a row of lessons as one long word. That is what
+    // was going to the model, so it was being asked to make sense of a document
+    // with its word boundaries taken out, and what comes back from that reads
+    // perfectly well and is wrong. The positions have the cells in them; the
+    // reader can lay them out as a table, so it does.
+    const forModel = (pdf && pdf.rows && T && T.tableOf(pdf.rows)) || text;
     if (S().normaliseConfig(cfg).modelFirst)
-      return askTheModel(text, flattened, { text, got, ms: readMs });
+      return askTheModel(forModel, flattened, { text, got, ms: readMs });
     // AND WHETHER THAT READING IS WORTH TRUSTING, asked before it is shown.
     // "It produced blocks" is a very weak test for "it read the document", and
     // it was the whole test: eight lessons all called the same thing counted as
@@ -1946,8 +1955,7 @@
     // model is told so, and what comes back is labelled a reconstruction all
     // the way to the screen. The failure mode here is not a blank — it is a
     // timetable that looks entirely right and has Tuesday's lessons on Monday.
-    const lostColumns = !!(got && got.note === "columns");
-    return askTheModel(text, lostColumns);
+    return askTheModel(forModel, flattened);
   }
 
   // THE MODEL'S GO AT IT. Reached two ways — because plain code came back with

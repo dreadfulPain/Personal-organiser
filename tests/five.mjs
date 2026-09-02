@@ -341,6 +341,35 @@ sec("And a week that read properly is not labelled a guess");
      !/worked out, not read/.test(said()), said().slice(0, 300));
 }
 
+sec("And what the model is sent is the table, not the flattened text");
+{
+  // A PDF THAT POSITIONS ITS COLUMNS hands back text with the gaps missing
+  // entirely — "TimeMondayTuesday", and a row of lessons as one long word. That
+  // was what went to the model, so it was being asked to make sense of a
+  // document with its word boundaries taken out. The positions have the cells
+  // in them and always did.
+  const at = (x, text) => ({ x, text });
+  const rows = [
+    { cells: [at(40, "Time"), at(150, "Monday"), at(300, "Tuesday")] },
+    { cells: [at(40, "08:40-09:25"), at(150, "Science"), at(190, "&"), at(210, "Social"),
+              at(250, "Studies"), at(300, "English")] },
+  ];
+  const table = T.tableOf(rows);
+  ok("the cells come back as a table", /\t/.test(table), JSON.stringify(table));
+  ok("with the whole of a wide cell in one of them",
+     /Science & Social Studies\tEnglish/.test(table), JSON.stringify(table));
+  ok("and nothing run together", !/StudiesEnglish/.test(table), JSON.stringify(table));
+  // AND IT IS WHAT THE PAGE HANDS OVER. Pinned on the line that decides, because
+  // the alternative is the flattened text and the two look identical from here.
+  const tl = fs.readFileSync(`${REPO_ROOT}/public/timeline.js`, "utf8");
+  ok("the page sends it rather than the flattened text",
+     /const forModel = \(pdf && pdf\.rows && T && T\.tableOf\(pdf\.rows\)\) \|\| text;/.test(tl),
+     "the model is back on the flattened text");
+  ok("and both ways in send the same thing",
+     (tl.match(/askTheModel\(forModel/g) || []).length === 2,
+     "one way in still sends something else");
+}
+
 sec("And reading the same week in twice does not give you two of it");
 {
   // WHAT WAS ON SCREEN. Fifteen blocks where the first three were the week and

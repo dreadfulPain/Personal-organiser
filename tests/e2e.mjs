@@ -3,6 +3,7 @@ import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // End-to-end over real HTTP: the paths this turn touched, plus the ones it
 // could plausibly have broken.
+import fs from "node:fs";
 import http from "node:http";
 import { spawn } from "node:child_process";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -32,6 +33,9 @@ const ol = http.createServer((req, res) => {
       const DAY = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5 };
       const names = [];
       const blocks = [];
+      // A DATE ON THE PAGE dates everything under it — which is what an
+      // induction schedule looks like, and what the shape could not carry.
+      const dated = (/\b(\d{4}-\d{2}-\d{2})\b/.exec(user) || [])[1] || "";
       let span = null, col = 0;
       user.split("\n").map((l) => l.trim()).forEach((l) => {
         if (DAY[l]) { names.push(DAY[l]); return; }
@@ -42,7 +46,12 @@ const ol = http.createServer((req, res) => {
         // place — which is what the hint asks for, and what lets the server's
         // own refusal of a day-less block be checked below.
         const day = told ? names[col] : 1;
-        blocks.push({ label: l, start: span[1], end: span[2], days: day ? [day] : [] });
+        // A ROOM AND A NOTE WHEN THE ROW HAS THEM — which the model could not
+        // hand back at all until the shape it answers in was widened.
+        const room = (/\bRoom (\S+)/.exec(l) || [])[1] || "";
+        blocks.push({ label: l.replace(/\s*Room \S+/, ""), start: span[1], end: span[2],
+          days: dated ? [] : day ? [day] : [], date: dated,
+          where: room ? `Room ${room}` : "", note: room ? "from the model" : "" });
         col++;
       });
       out = { blocks };
@@ -115,8 +124,50 @@ ok("the same text without the flag has nothing to line it up with",
 const noDays = await askTt({ text: "09:00-10:00\nAssembly", flattened: true });
 ok("a block with no day is never saved", (noDays.blocks || []).length === 0,
    JSON.stringify(noDays).slice(0, 200));
+
+// AND THE MODEL MAY SAY WHAT THE PLAIN READER HAS ALWAYS BEEN ABLE TO.
+//
+// It could hand back four things — a name, two times and the weekdays — and
+// everything else was dropped on the way through. So a model that read
+// "Science & Social Studies, Room 111" off the page had no way to say the room,
+// and the lesson arrived as something you could do from a chair at home. Not a
+// rule about trusting it: a shape nobody had widened.
+const WITHROOM = ["Period", "Time", "Monday", "Tuesday",
+  "08:40-09:25", "Science Room 111", "English"].join("\n");
+const roomy = await askTt({ text: WITHROOM, flattened: true });
+const first = (roomy.blocks || [])[0];
+ok("the model can say where a lesson is", first && first.where === "Room 111",
+   JSON.stringify(roomy.blocks || []).slice(0, 240));
+ok("and what was written beside it", first && /from the model/.test(first.note || ""),
+   JSON.stringify(first));
+ok("without that having to be typed in afterwards", first && first.label === "Science",
+   first && first.label);
+
+// AND THE SHAPE IT MAY ANSWER IN COVERS WHAT IS READ OFF THE ANSWER.
+//
+// The schema is what the model is TOLD it may return, and the validation below
+// it is what gets read. A field the server reads and the schema does not list
+// is one the model has no way to know it is allowed to send — which is how the
+// room went missing for as long as it did, and it cannot be seen by asking a
+// stand-in model, because a stand-in answers whatever it likes.
+{
+  const src = fs.readFileSync(`${REPO_ROOT}/server.js`, "utf8");
+  const schema = (src.match(/const TIMETABLE_SCHEMA = \{[\s\S]*?\n\};/) || [""])[0];
+  const handler = (src.match(/async function handleTimetable[\s\S]*?\n\}/) || [""])[0];
+  const read = [...handler.matchAll(/\bb\.(\w+)/g)].map((m) => m[1]);
+  const missing = [...new Set(read)].filter((k) => !new RegExp(`\\b${k}: \\{ type:`).test(schema));
+  ok("everything the answer is read for is a field the model may send",
+     missing.length === 0, `not in the schema: ${missing.join(", ")}`);
+}
+
+// A DATE INSTEAD OF DAYS is a one-off, and refusing everything without a
+// weekday threw a whole induction away as unreadable.
+const oneOff = await askTt({ text: "2026-08-24\n09:00-10:00\nAssembly", flattened: false });
+const one = (oneOff.blocks || [])[0];
+ok("a dated one-off is kept, with no weekday at all",
+   one && one.date === "2026-08-24" && one.days.length === 0, JSON.stringify(oneOff.blocks));
 ok("it is handed back as one it couldn't read",
-   (noDays.unreadable || []).some((u) => /no days/.test(u.why || "")),
+   (noDays.unreadable || []).some((u) => /no day or date/.test(u.why || "")),
    JSON.stringify(noDays.unreadable));
 
 srv.kill(); ol.close();

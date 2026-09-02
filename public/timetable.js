@@ -701,10 +701,13 @@
     return short / cells.length < 0.3;
   }
 
-  function fromRows(pdfRows, opts) {
+  // THE PDF'S OWN POSITIONS, PUT BACK INTO COLUMNS. Returns rows of cells, or
+  // null when the layout is no use. Split out from fromRows because the same
+  // work answers a second question — what this document looks like as a TABLE —
+  // and clustering it twice is how two answers about one page start to differ.
+  function columnsOf(pdfRows, opts) {
     const list = (Array.isArray(pdfRows) ? pdfRows : []).filter((r) => r && r.cells && r.cells.length);
-    if (!list.length) return NOTHING;
-    if (!looksLikeColumns(list)) return { ...NOTHING, note: "glyphs" };
+    if (!list.length || !looksLikeColumns(list)) return null;
     const xs = list.flatMap((r) => r.cells.map((c) => Number(c.x) || 0));
     const spread = Math.max(...xs) - Math.min(...xs);
     const tol = Math.max(4, spread * ((opts && opts.tolerance) || 0.02));
@@ -773,8 +776,37 @@
       for (let j = 0; j < cells.length; j++) if (cells[j] === undefined) cells[j] = "";
       return cells;
     });
+    return rows;
+  }
+
+  function fromRows(pdfRows, opts) {
+    const list = (Array.isArray(pdfRows) ? pdfRows : []).filter((r) => r && r.cells && r.cells.length);
+    if (!list.length) return NOTHING;
+    if (!looksLikeColumns(list)) return { ...NOTHING, note: "glyphs" };
+    const rows = columnsOf(pdfRows, opts);
+    if (!rows) return NOTHING;
     const grid = readGrid(rows);
-    return grid || read(rows.map((c) => c.join("\t")).join("\n"));
+    return grid || read(asTable(rows));
+  }
+
+  const asTable = (rows) => (rows || []).map((c) => c.join("\t")).join("\n");
+
+  // THE DOCUMENT AS A TABLE, for anything that reads text rather than positions
+  // — the model, chiefly.
+  //
+  // A PDF that positions its columns hands back text with the gaps missing
+  // entirely: "TimeMondayTuesday", and a row of a timetable as
+  // "Science&SocialStudiesRoom111English(G1)Primary". That is what was being
+  // sent to the model, so it was being asked to make sense of a document with
+  // its word boundaries removed — which is not a fair question, and is exactly
+  // the mush that comes back as "English(G1".
+  //
+  // The positions have the cells in them and always did. Putting the gaps back
+  // in the TEXT is guesswork about glyph widths and cuts "ATTENDEES" into
+  // "ATTEN DEES"; handing over the cells is not guesswork at all.
+  function tableOf(pdfRows, opts) {
+    const rows = columnsOf(pdfRows, opts);
+    return rows ? asTable(rows) : "";
   }
 
   // Plain words for the preview: what it found and what it is unsure of.
@@ -811,6 +843,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, readAgenda, fromPages, fromRows, bestOf, thin, words, anHourAfter, looksLikePlace,
+    read, readAgenda, fromPages, fromRows, tableOf, bestOf, thin, words, anHourAfter, looksLikePlace,
   };
 })();

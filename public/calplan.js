@@ -1260,6 +1260,15 @@
           blocksDay: p.kind === "off",
           noLessons: p.kind === "noLessons",
           beThere: p.kind === "week",
+          // A MAKE-UP DAY: a Saturday that runs the Tuesday timetable, because
+          // a holiday moved and this is the day standing in for it. The app has
+          // always had somewhere to put that — see runsAs in schedule.js — and
+          // the calendar that ANNOUNCES it had no way to reach it. So a teacher
+          // read "Makeup, 2 days" off their own calendar and then typed both
+          // dates into a different form by hand.
+          ...(p.kind === "runsAs" && p.row && p.row.runsAsDay !== undefined
+            ? { runsAs: p.row.runsAsDay }
+            : {}),
           soft: false,
           source: "paste",
         });

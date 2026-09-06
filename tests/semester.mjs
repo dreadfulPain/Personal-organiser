@@ -1065,6 +1065,45 @@ sec("And a rule is one block that repeats, bounded by the term");
   ok("and blocks the day", off[0] && off[0].blocksDay === true, JSON.stringify(off[0]));
 }
 
+sec("A day that runs another day's timetable is what a calendar is for");
+{
+  // THE ONE THING A SCHOOL CALENDAR SAYS THAT THE APP COULD ALREADY STORE AND
+  // THE CALENDAR COULD NOT REACH.
+  //
+  // A make-up day is a Saturday that runs the Tuesday timetable, because a
+  // holiday moved and this is the day standing in for it. The app has had
+  // somewhere to put that for a long time — runsAs, in schedule.js, with a form
+  // to type one in by hand. The calendar that ANNOUNCES it had no connection to
+  // it at all: calplan.js did not contain the word.
+  //
+  // So a teacher read "Makeup — 2 days: Sun 20 Sept; Sat 10 Oct" off their own
+  // calendar and the only answers on offer were day off (they are working), no
+  // lessons (they are teaching), or a meaningless block — and then typed both
+  // dates into a different form by hand.
+  const row = C.read("Makeup day\t7 November 2026").rows[0];
+  const made = C.toBlocks([{ ...row, kind: "runsAs", runsAsDay: 2 }]);
+  ok("a dated row can be one", made.length === 1, JSON.stringify(made));
+  ok("and says which day it runs as", made[0] && made[0].runsAs === 2, JSON.stringify(made[0]));
+  ok("on the date the calendar gave", made[0] && made[0].date === "2026-11-07", JSON.stringify(made[0]));
+  ok("and it survives being saved", (function () {
+    const b = sb.OrganiserSchedule.normaliseBlock(made[0]);
+    return b && b.runsAs === 2;
+  })(), JSON.stringify(sb.OrganiserSchedule.normaliseBlock(made[0])));
+
+  // AND IT IS NOT PUT ON ANYTHING ELSE. Every other kind of day would be
+  // quietly claiming to run a timetable it has nothing to do with.
+  ["off", "noLessons", "week"].forEach((kind) => {
+    const other = C.toBlocks([{ ...row, kind, runsAsDay: 2 }]);
+    ok(`a "${kind}" day does not run another day's timetable`,
+       other[0] && other[0].runsAs === undefined, JSON.stringify(other[0]));
+  });
+  // AND A DAY OFF IS STILL A DAY OFF, which is the opposite thing: one you are
+  // not in at all, against one you are in on somebody else's timetable.
+  const off = C.toBlocks([{ ...row, kind: "off" }]);
+  ok("a day off still blocks the day", off[0] && off[0].blocksDay === true, JSON.stringify(off[0]));
+  ok("while a make-up day does not", made[0] && !made[0].blocksDay, JSON.stringify(made[0]));
+}
+
 sec("And nothing else is read as a term grid");
 {
   // A MONTH GRID HAS NO WEEK COLUMN, and reading one as a term would turn the

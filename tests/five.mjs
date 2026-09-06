@@ -856,6 +856,79 @@ sec("And the page says when a rule runs, since it has no date to show");
   ok("and asked what it is, like any other row", kinds.includes("in my week"), JSON.stringify(kinds));
 }
 
+sec("And the page asks which day a make-up day stands in for");
+{
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  const box = r.get("#calBox");
+  if (box) box.open = true;
+  const paste = r.get("#calPaste");
+  paste.value = ["Makeup day\t7 November 2026", "Half term\t26 - 30 October 2026"].join("\n");
+  paste.fire("input", { target: paste });
+  await r.settle();
+  const rows = [...(r.get("#calRows").children || [])];
+  const find = (t) => rows.find((x) => new RegExp(t).test(String((x.children[0] || {}).textContent || "")));
+  const mk = find("Makeup");
+  ok("the row is there", !!mk, JSON.stringify(rows.map((x) => (x.children[0]||{}).textContent)));
+  const kinds = [...(mk.children || [])].filter((c) => String(c.className || "").includes("cal-pick"))
+    .map((c) => String(c.textContent));
+  ok("and it is offered as running another day", kinds.includes("runs another day"),
+     JSON.stringify(kinds));
+  // NOT ASKED UNTIL IT IS THE QUESTION. Against a holiday "which day does this
+  // run as" means nothing, and a calendar is mostly holidays.
+  const kid = (row, cls) => row && [...(row.children || [])]
+    .find((c) => String(c.className || "").includes(cls));
+  ok("and is not asked which day before you say so", !kid(mk, "cal-runs"),
+     "it asks the question on every row");
+  const btn = [...((mk || {}).children || [])].find((c) => String(c.textContent) === "runs another day");
+  if (btn) btn.fire("click", { target: btn });
+  await r.settle();
+  const after = [...(r.get("#calRows").children || [])]
+    .find((x) => /Makeup/.test(String((x.children[0] || {}).textContent || "")));
+  ok("once said, it asks which day", !!kid(after, "cal-runs"), "it never asks");
+  const holiday = [...(r.get("#calRows").children || [])]
+    .find((x) => /Half term/.test(String((x.children[0] || {}).textContent || "")));
+  ok("and never asks it of a holiday", !kid(holiday, "cal-runs"), "it asks on every row");
+}
+
+sec("And a marked day can be one too, which is how a calendar usually says it");
+{
+  // A TERM GRID SAYS "Makeup" IN THE SQUARE, not in a sentence — which is how
+  // the school's own calendar says it, twice, on a Sunday and a Saturday. Those
+  // arrive as a marked KIND rather than as dated rows, so the choice has to be
+  // there as well or the commonest way of saying it is the one that cannot.
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  const box = r.get("#calBox");
+  if (box) box.open = true;
+  const paste = r.get("#calPaste");
+  paste.value = [
+    "Wk", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "9/6", "7", "8", "9", "10", "11", "12 Makeup",
+    "2", "13", "14", "15", "16", "17", "18", "19 Makeup",
+    "3", "20", "21", "22", "23", "24", "25", "26",
+  ].join("\n");
+  paste.fire("input", { target: paste });
+  await r.settle();
+  const marks = () => [...(r.get("#calMarks").children || [])]
+    .filter((x) => String(x.className || "") === "cal-mark");
+  const kidsOf = (node, cls) => (!node ? [] : (node.children || []).reduce((acc, c) =>
+    acc.concat(String(c.className || "").includes(cls) ? [c] : kidsOf(c, cls)), []));
+  const said = (n) => !n ? "" : String(n.textContent || "") +
+    (n.children || []).map(said).join(" ");
+  const mk = marks().find((x) => /Makeup/.test(said(x)));
+  ok("the marked days come through", !!mk, String(marks().length));
+  const opts = kidsOf(mk, "cal-mark-kind").map((b) => String(b.textContent));
+  ok("and running another day is one of the answers", opts.includes("runs another day"),
+     JSON.stringify(opts));
+  ok("and it is not asked which day before you say so",
+     kidsOf(mk, "cal-mark-runs").length === 0, "it asks on every kind");
+  const pick = kidsOf(mk, "cal-mark-kind").find((b) => String(b.textContent) === "runs another day");
+  if (pick) pick.fire("click", { target: pick });
+  await r.settle();
+  const after = marks().find((x) => /Makeup/.test(said(x)));
+  ok("once said, it asks which day", kidsOf(after, "cal-mark-runs").length === 1, "it never asks");
+  ok("and offers to set them", kidsOf(after, "cal-mark-add").length === 1, "nothing to press");
+}
+
 sec("A reading is measured before it is believed");
 {
   // THE HOLE THIS CLOSES. The plain reader goes first and the model is asked

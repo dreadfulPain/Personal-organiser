@@ -88,7 +88,16 @@
 
   // What each kind of marked day has been said to be. Nothing until you say —
   // the app cannot know, and the whole of this is asking rather than guessing.
+  // The days of the week, once. Three things in this file name them now — the
+  // rules a calendar can carry, the make-up day a date can stand in for, and
+  // the plural a repeating mark is said in — and three lists is how one of them
+  // learns a spelling the others don't.
+  const DAY_WORDS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
   let calMarkKind = new Map();
+  // And which weekday a kind of marked day stands in for, when it is a make-up
+  // day — see runsAs.
+  let calMarkRuns = new Map();
 
   // A PDF'S OWN COLUMNS, FOR THE CALENDAR READER TOO.
   //
@@ -154,7 +163,7 @@
   //
   // A weekday still wins where there is one: fourteen dates listed out is not
   // more informative than "Fridays", it is less.
-  const DAYNAME = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+  const DAYNAME = DAY_WORDS.map((d) => d + "s");
 
   function markDays(m) {
     if (m.weekday >= 0)
@@ -190,7 +199,7 @@
     // be", so a calendar with fifteen holidays on it offered to book you in for
     // all fifteen. That is not a wrong guess so much as a question never asked.
     const KINDS = [["off", "day off"], ["noLessons", "no lessons"],
-                   ["week", "in my week"], ["", "ignore"]];
+                   ["week", "in my week"], ["runsAs", "runs another day"], ["", "ignore"]];
     box.appendChild(el("p", "muted",
       "Marked on the calendar itself, and nowhere else in it. " +
       "Say what each kind is and those days go in."));
@@ -235,13 +244,36 @@
         when.appendChild(beLab);
         wrap.appendChild(when);
       }
+      // WHICH DAY THESE RUN AS. A calendar that says "Makeup" is telling you
+      // those days run somebody else's timetable, and never which — so it is
+      // asked once for the kind rather than once per day.
+      let runs = null;
+      if (kind === "runsAs") {
+        const when = el("div", "cal-mark-when");
+        const lab = el("label", "cal-mark-at", "runs as ");
+        runs = document.createElement("select");
+        runs.className = "cal-mark-runs";
+        DAY_WORDS.forEach((name, d) => {
+          const o = document.createElement("option");
+          o.value = String(d);
+          o.textContent = name;
+          runs.appendChild(o);
+        });
+        runs.value = String(calMarkRuns.get(i) === undefined ? 1 : calMarkRuns.get(i));
+        runs.addEventListener("change", () => calMarkRuns.set(i, Number(runs.value)));
+        lab.appendChild(runs);
+        when.appendChild(lab);
+        when.appendChild(el("span", "muted", " — your timetable runs on them as if they were that day."));
+        wrap.appendChild(when);
+      }
       if (kind) {
         const add = el("button", "p-opt cal-mark-add",
           kind === "week" ? `put ${n} days in my week`
             : kind === "off" ? `mark ${n} days off`
+            : kind === "runsAs" ? `set ${n} days to run another day`
             : `mark ${n} days with no lessons`);
         add.type = "button";
-        add.addEventListener("click", () => addMarked(m, kind, at, be));
+        add.addEventListener("click", () => addMarked(m, kind, at, be, runs));
         wrap.appendChild(add);
       }
       box.appendChild(wrap);
@@ -251,7 +283,7 @@
     box.appendChild(said);
   }
 
-  function addMarked(mark, kind, at, be) {
+  function addMarked(mark, kind, at, be, runs) {
     const said = $("#calMarkWords");
     if (!mark || !kind) return;
     const label = mark.name || `the “${mark.symbol}” days`;
@@ -283,10 +315,13 @@
       // make, and are stored the same way — one all-day entry each — so every
       // count in the app that already respects a day off respects these the
       // moment they exist. No time is asked for, because there isn't one.
+      const asDay = kind === "runsAs" ? Number(runs && runs.value ? runs.value : 1) : null;
       made = fresh.map((d) => ({
         id: uid(), label, date: d, start: "00:00", end: "23:59", days: [],
         blocksDay: kind === "off",
         noLessons: kind === "noLessons",
+        // A day standing in for another one — see runsAs in schedule.js.
+        ...(asDay === null ? {} : { runsAs: asDay }),
         soft: false, source: "paste",
       }));
     }
@@ -305,7 +340,9 @@
           ? "An hour each; open one to change how long it runs."
           : kind === "off"
             ? "Nothing will be planned into them."
-            : "Your timetable won't run on them.");
+            : kind === "runsAs"
+              ? `Your timetable runs on them as if they were a ${DAY_WORDS[Number(runs && runs.value ? runs.value : 1)]}.`
+              : "Your timetable won't run on them.");
   }
 
   function renderCalMonth(r) {
@@ -332,7 +369,6 @@
   // "every Friday", "every Monday and Wednesday", "every weekday". Said the way
   // somebody would say it, because this is the line you read to decide what the
   // row is.
-  const DAY_WORDS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   function everyWords(days) {
     const d = (days || []).slice().sort((a, b) => a - b);
     if (!d.length) return "every week";
@@ -385,8 +421,13 @@
       // of the four could hold one, so the choice was between losing a whole
       // evening to a "day off" and ignoring the line. The marked days on a term
       // grid were given this same choice first; the dated rows needed it more.
+      // SIX. A make-up day — a Saturday that runs the Tuesday timetable because
+      // a holiday moved — is the one thing a school calendar says that the app
+      // could already store and the calendar could not reach. Read "Makeup" off
+      // your own calendar and the only answers were day off (you are working),
+      // no lessons (you are teaching), or a meaningless block.
       [["noLessons", "no lessons"], ["off", "day off"], ["week", "in my week"],
-       ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
+       ["runsAs", "runs another day"], ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "p-opt cal-pick" + (r.kind === k ? " on" : "");
@@ -394,7 +435,15 @@
         b.addEventListener("click", () => {
           // Clearing a row clears the run-on with it — a tick on a line that
           // does nothing would sit there looking like it meant something.
-          calRows[i] = { ...r, kind: k, spans: k ? r.spans : false };
+          calRows[i] = {
+            ...r,
+            kind: k,
+            spans: k ? r.spans : false,
+            // Monday to begin with, because a make-up day most often stands in
+            // for the start of a week — and it is a dropdown, not a guess to
+            // live with.
+            ...(k === "runsAs" && r.runsAsDay === undefined ? { runsAsDay: 1 } : {}),
+          };
           renderCal();
         });
         row.appendChild(b);
@@ -425,6 +474,30 @@
           renderCal();
         });
         row.appendChild(sw);
+      }
+      // AND WHICH DAY IT RUNS AS. Only when that is the answer: against a
+      // holiday the question means nothing, and a calendar is mostly holidays.
+      if (r.kind === "runsAs") {
+        const wrap = document.createElement("label");
+        wrap.className = "cal-runs";
+        wrap.appendChild(document.createTextNode("runs as "));
+        const pick = document.createElement("select");
+        pick.className = "cal-runsday";
+        DAY_WORDS.forEach((name, n) => {
+          const o = document.createElement("option");
+          o.value = String(n);
+          o.textContent = name;
+          if (Number(r.runsAsDay) === n) o.selected = true;
+          pick.appendChild(o);
+        });
+        pick.value = String(r.runsAsDay === undefined ? 1 : r.runsAsDay);
+        pick.addEventListener("change", () => {
+          calRows[i] = { ...r, runsAsDay: Number(pick.value) };
+          renderCal();
+        });
+        wrap.appendChild(pick);
+        wrap.appendChild(document.createTextNode("'s timetable"));
+        row.appendChild(wrap);
       }
       // HOW LONG IT RUNS, IN A BOX YOU CAN CHANGE.
       //

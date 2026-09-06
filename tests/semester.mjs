@@ -912,6 +912,78 @@ sec("And a date written as two numbers is a date");
      JSON.stringify(grid.term && grid.term.weeks));
 }
 
+sec("A calendar is half things that happen at a time, and none of it was kept");
+{
+  // WHAT A SCHOOL CALENDAR ACTUALLY HOLDS. Half of it is days — term starts,
+  // half term, INSET — and the other half happens AT A TIME: a parents'
+  // evening at 6:30, a concert at seven, a photo at 10:15, an open morning
+  // from nine to eleven.
+  //
+  // Not one of those times was kept. Every row became a block from midnight to
+  // midnight. The time was even READ, in the sense that it stayed in the name —
+  // "Parents' evening , 6:30pm - 8:30pm" — so it was on the screen and nowhere
+  // the app could use it: not in the evening, not in the day plan, not against
+  // the hours it thinks are free.
+  const at = (line) => C.read(line, { year: 2026 }).rows[0] || {};
+
+  const pe = at("Parents' evening\t12 November 2026, 6:30pm - 8:30pm");
+  ok("a range on the line is the block's hours", pe.start === "18:30" && pe.end === "20:30",
+     JSON.stringify(pe));
+  ok("and is not left in the name", pe.label === "Parents' evening", JSON.stringify(pe.label));
+
+  const photo = at("Whole-school photo\t20 November 2026 at 10:15");
+  ok("a lone time announced by 'at' is kept", photo.start === "10:15", JSON.stringify(photo));
+  const concert = at("Christmas concert\t16 December 2026 7pm");
+  ok("and one at the end of the line", concert.start === "19:00", JSON.stringify(concert));
+
+  // A DAY HAS NO TIME AND MUST NOT BE GIVEN ONE.
+  const half = at("Half term\t26 - 30 October 2026");
+  ok("a holiday is still all day", !half.start, JSON.stringify(half));
+  const term = at("Term starts\t1 September 2026");
+  ok("and so is a term boundary", !term.start, JSON.stringify(term));
+  // AND A DATE IS NOT A TIME. "12 November" has two numbers in it and neither
+  // is a clock; reading one would put every dated line at some invented hour.
+  ok("a bare date gives no time", !at("Reports due\t4 December 2026").start,
+     JSON.stringify(at("Reports due\t4 December 2026")));
+
+  // AND IT SURVIVES TO THE BLOCK, which is the half that matters. "in my week"
+  // is the choice the four never had: a thing that happens, at a time, on a day
+  // you are working — so a timed line no longer has to be filed as a day off or
+  // thrown away.
+  const kept = C.toBlocks([{ ...pe, kind: "week" }]);
+  ok("a timed row is kept at its time", kept.length === 1 && kept[0].start === "18:30" &&
+     kept[0].end === "20:30", JSON.stringify(kept));
+  ok("and is somewhere you have to be", kept[0] && kept[0].beThere === true, JSON.stringify(kept[0]));
+  ok("and does not block the day", kept[0] && !kept[0].blocksDay, JSON.stringify(kept[0]));
+  // WHILE A DAY OFF STAYS A DAY OFF, whatever the line said.
+  const day = C.toBlocks([{ ...pe, kind: "off" }]);
+  ok("a day off is all day even when a time was read",
+     day[0] && day[0].start === "00:00" && day[0].end === "23:59", JSON.stringify(day[0]));
+
+  // AND THE PAGE OFFERS THAT CHOICE, or none of the above can be reached.
+  const tl = fs.readFileSync(`${REPO_ROOT}/public/timeline.js`, "utf8");
+  ok("the page offers it on a dated row", /\["week", "in my week"\]/.test(tl),
+     "there is still no way to say a row happens at a time");
+}
+
+sec("And an hour written as an hour is that hour");
+{
+  // "7pm" READ THE PIECES BACK OFF RegExp.$1 AND RegExp.$2 — the leftovers a
+  // match drops on the global RegExp object rather than its own result. Those
+  // belong to whichever RegExp ran last, so anywhere the two are not the same
+  // object — a sandbox, a frame, a worker — they are empty, and seven in the
+  // evening came back as midnight. Silently, on a concert.
+  const T = sb.OrganiserTimetable;
+  ok("7pm is the evening", T.timeOf("7pm") === "19:00", T.timeOf("7pm"));
+  ok("and 7 am is the morning", T.timeOf("7am") === "07:00", T.timeOf("7am"));
+  ok("with a space in it too", T.timeOf("7 pm") === "19:00", T.timeOf("7 pm"));
+  ok("noon is noon", T.timeOf("12pm") === "12:00", T.timeOf("12pm"));
+  ok("and midnight is midnight", T.timeOf("12am") === "00:00", T.timeOf("12am"));
+  ok("minutes still work", T.timeOf("9:30pm") === "21:30", T.timeOf("9:30pm"));
+  // AND A BARE NUMBER IS NOT A TIME, which is what stops a date becoming one.
+  ok("a bare number is not a time", T.timeOf("7") === "", JSON.stringify(T.timeOf("7")));
+}
+
 sec("And nothing else is read as a term grid");
 {
   // A MONTH GRID HAS NO WEEK COLUMN, and reading one as a term would turn the

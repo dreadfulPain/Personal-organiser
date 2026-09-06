@@ -359,7 +359,13 @@
       name.textContent = `${calDay(r.date)} — ${r.label}`;
       row.appendChild(name);
       // Four plain choices, and "nothing" is one of them and is the default.
-      [["noLessons", "no lessons"], ["off", "day off"],
+      // FIVE, NOT FOUR. The four were all about whether a day is a working one
+      // — and a school calendar is at least half things that HAPPEN AT A TIME:
+      // a parents' evening at 6:30, a concert at seven, a photo at 10:15. None
+      // of the four could hold one, so the choice was between losing a whole
+      // evening to a "day off" and ignoring the line. The marked days on a term
+      // grid were given this same choice first; the dated rows needed it more.
+      [["noLessons", "no lessons"], ["off", "day off"], ["week", "in my week"],
        ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
         const b = document.createElement("button");
         b.type = "button";

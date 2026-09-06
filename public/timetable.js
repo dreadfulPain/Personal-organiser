@@ -50,7 +50,16 @@
   function timeOf(raw) {
     const s = String(raw || "").trim();
     let m = /^(\d{1,2})[:.h](\d{2})\s*(am|pm)?$/i.exec(s);
-    if (!m) m = /^(\d{1,2})\s*(am|pm)$/i.exec(s) ? [null, RegExp.$1, "00", RegExp.$2] : null;
+    if (!m) {
+      // "7pm" — an hour and nothing else. This read the pieces back off
+      // RegExp.$1 and RegExp.$2, the legacy globals a match leaves lying
+      // around, rather than off its own result. They belong to whichever
+      // RegExp object ran last, so anywhere the two are not the same object —
+      // a sandbox, a frame, a worker — they are empty, and "7pm" came back as
+      // midnight. Silently: a concert at seven in the evening, filed at 00:00.
+      const hh = /^(\d{1,2})\s*(am|pm)$/i.exec(s);
+      if (hh) m = [hh[0], hh[1], "00", hh[2]];
+    }
     if (!m) return "";
     let h = Number(m[1]);
     const mins = Number(m[2]);

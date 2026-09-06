@@ -299,15 +299,56 @@
     const range = rangeIn(raw, defaultYear, order);
     const found = range && range.to > range.from ? range : findDate(raw, defaultYear, order);
     let s = found.text ? raw.replace(found.text, " ") : raw;
+    // The time belongs to the block, not to what it is called — see timeOnLine.
+    //
+    // UNLESS IT IS ALL THERE IS. "Nov. 2 16:00" is a paper deadline at four in
+    // the afternoon and the four o'clock is the whole of what distinguishes it;
+    // taking it out leaves a row called nothing at all. A name it can be read
+    // by beats a tidy one it hasn't got.
+    const clock = timeOnLine(s);
+    if (clock && clock.text) {
+      const without = s.replace(clock.text, " ");
+      if (/[A-Za-z]/.test(without)) s = without;
+    }
     // Any trailing year the pattern left behind — "…25 August" then "2026" as
     // its own word — is part of the date, not part of the name.
     s = s
       .replace(/\b(?:19|20)\d{2}\b/g, " ")
       .replace(/[\t|]+/g, " ")
       .replace(/\s{2,}/g, " ")
-      .replace(/^[\s\-–—:•*]+|[\s\-–—:•*]+$/g, "")
+      .replace(/^[\s\-–—:•*,]+|[\s\-–—:•*,]+$/g, "")
       .trim();
     return s.slice(0, 80);
+  }
+
+  // AND WHAT TIME IT IS AT.
+  //
+  // A school calendar is full of timed things — a parents' evening at 6:30, a
+  // concert at 7, a photo at 10:15, a trip that leaves at 8:15 — and not one of
+  // them was kept. Every row became a block from midnight to midnight, so the
+  // app knew you had something on the 12th and not that it was in the evening.
+  // The time was even read, in the sense that it stayed in the NAME: "Parents'
+  // evening , 6:30pm - 8:30pm". Words on screen, nothing the app could use.
+  //
+  // A RANGE, or a lone time announced by "at" or ending the line. Not any time
+  // anywhere: "back by 3:30" in the middle of a sentence is somebody mentioning
+  // a time, which is the same rule timetable.js draws for its own lines. How a
+  // clock time is READ stays in timetable.js — there is one answer to that.
+  function timeOnLine(line) {
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (!T || typeof T.spanIn !== "function") return null;
+    const s = String(line || "");
+    const span = T.spanIn(s);
+    if (span) {
+      const m = new RegExp(
+        `\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?\\s*(?:${DASH})\\s*\\d{1,2}\\s*[:.h]?\\s*\\d{0,2}\\s*(?:am|pm)?`, "i").exec(s);
+      return { start: span.start, end: span.end, text: m ? m[0] : "" };
+    }
+    const one = /\bat\s+(\d{1,2}[:.h]\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))\b/i.exec(s) ||
+      /(\d{1,2}[:.h]\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))\s*$/i.exec(s);
+    if (!one) return null;
+    const start = T.timeOf(one[1].replace(/\s+/g, ""));
+    return start ? { start, end: "", text: one[0] } : null;
   }
 
   // WHICH YEAR IS THIS CALENDAR ABOUT?
@@ -857,6 +898,12 @@
           // page could say until the grid started answering as well.
           endFrom: range && range.to > range.from ? "line" : "",
           label: labelOf(line, d, useYear, order) || "(no name)",
+          // When the line said one. Empty means all day, which is what a
+          // holiday is and what every row used to be.
+          ...(function () {
+            const t = timeOnLine(line);
+            return t ? { start: t.start, end: t.end } : {};
+          })(),
           line,
           // Whether the year came off the line itself or was borrowed. Shown,
           // because a borrowed year is the one thing here that can be quietly
@@ -1097,15 +1144,33 @@
     // A "lessons" row is a marker, not a day — it changes when the timetable
     // applies, and putting a block on that date would be inventing an event.
     plan(rows).filter((p) => p.kind !== "lessons").forEach((p) => {
+      // AT THE TIME THE LINE SAID, WHEN IT SAID ONE.
+      //
+      // Every row became midnight to midnight, so a parents' evening at 6:30
+      // was a whole day gone and a concert at seven was a whole day gone. The
+      // time was even read — it stayed in the NAME, "Parents' evening , 6:30pm
+      // - 8:30pm" — so it was on the screen and nowhere the app could use it.
+      //
+      // A DAY OFF IS STILL ALL DAY. A holiday has no time and being told one
+      // would be wrong; this is for the things that do.
+      const timed = p.kind !== "off" && p.row && p.row.start;
+      const T = typeof window !== "undefined" && window.OrganiserTimetable;
+      const end = timed
+        ? p.row.end || (T && T.anHourAfter ? T.anHourAfter(p.row.start) : "") || "23:59"
+        : "23:59";
       for (let d = p.from, n = 0; n < p.days; d = addDays(d, 1), n++) {
         out.push({
           label: p.label,
-          start: "00:00",
-          end: "23:59",
+          start: timed ? p.row.start : "00:00",
+          end,
           date: d,
           days: [],
+          // "in my week" is neither: a thing that happens, at a time, on a day
+          // you are working. Without it every timed line on a calendar had to
+          // be filed as a day off or thrown away.
           blocksDay: p.kind === "off",
           noLessons: p.kind === "noLessons",
+          beThere: p.kind === "week",
           soft: false,
           source: "paste",
         });

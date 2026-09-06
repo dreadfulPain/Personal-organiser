@@ -405,6 +405,49 @@ sec("The model may write what this app has no field for, and it changes nothing"
        .extras.length === 0, "empty pairs were kept");
 }
 
+sec("A term read in shows on the month, or reading it in was for nothing");
+{
+  // WHAT A SCHOOL CALENDAR MOSTLY IS: the days you are NOT in. Fifteen holidays
+  // read out of a real term calendar, stored correctly, every one of them
+  // drawn on the month grid as an ordinary empty square — on the one page you
+  // would go to in order to see the shape of a term.
+  //
+  // The grid knew. It read those very blocks in order to leave them out of the
+  // minutes it says are booked. It just never said.
+  const day = (n) => `2026-09-${String(n).padStart(2, "0")}`;
+  const off = (n, label) => ({ id: "h" + n, label, start: "00:00", end: "23:59",
+    date: day(n), days: [], blocksDay: true, soft: false, source: "paste" });
+  const r = await open("month.html", {
+    items: [], goals: [], contacts: [], waiting: [], config: {},
+    schedule: [off(25, "Holiday"), off(26, "Holiday"),
+      { id: "n1", label: "PD Day", start: "00:00", end: "23:59", date: day(18),
+        days: [], noLessons: true, soft: false, source: "paste" }],
+  });
+  ok("the month opens", r.errs.length === 0, r.errs.join("; "));
+  const cells = r.created.filter((e) => String(e.className || "").includes("mo-cell"));
+  ok("it draws a month", cells.length >= 28, String(cells.length));
+  const said = (c) => [c, ...(c.children || [])].map((x) => String(x.textContent || "")).join(" ");
+  const offCells = cells.filter((c) => String(c.className || "").includes("mo-off"));
+  ok("a day off is marked as one", offCells.length === 2, String(offCells.length));
+  // AND NAMED. Colour is never the only thing that says something here — about
+  // one man in twelve cannot separate red from green, and a square that is only
+  // a different shade says nothing at all to them.
+  ok("and says which day off it is", offCells.every((c) => /Holiday/.test(said(c))),
+     offCells.map(said).join(" | "));
+  // A DAY WITH NO LESSONS IS NOT A DAY OFF. One you are not in at all; the
+  // other you are in, and your timetable is not running.
+  const noLes = cells.filter((c) => String(c.className || "").includes("mo-nolessons"));
+  ok("a day with no lessons is told apart", noLes.length === 1, String(noLes.length));
+  ok("and named too", noLes.every((c) => /PD Day/.test(said(c))), noLes.map(said).join(" | "));
+  ok("and is not called a day off", !noLes.some((c) => String(c.className).includes("mo-off")),
+     noLes.map((c) => c.className).join(" | "));
+  // AND AN ORDINARY DAY IS STILL ORDINARY — a marker on every square is a
+  // marker on none.
+  ok("an ordinary day is left alone",
+     cells.filter((c) => !String(c.className || "").includes("mo-o")).length >= 25,
+     String(cells.length - offCells.length - noLes.length));
+}
+
 sec("And the same for a person and for a student record");
 {
   // BOTH ALREADY HAD A BAG for things this app has no field for — a record

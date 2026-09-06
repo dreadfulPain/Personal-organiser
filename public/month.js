@@ -102,6 +102,13 @@
         // Nothing was wrong with the timetable — this grid simply never looked
         // at it, while promising you could plan against the gaps.
         booked: bookedOn(iso),
+        // AND WHETHER IT IS A DAY AT ALL. A term calendar read in is mostly a
+        // list of days you are NOT in — holidays, the days off round them, the
+        // days with no teaching — and this grid, the one place you would look
+        // to see the shape of a term, drew every one of them as an ordinary
+        // empty square. It knew: it read the same blocks in order to leave them
+        // out of the minutes. It just never said.
+        off: offOn(iso),
         items: (byIso.get(iso) || [])
           .slice()
           .sort((a, b) => minuteOf(a) - minuteOf(b)),
@@ -117,6 +124,24 @@
     return S.blocksOn(schedule, iso)
       .filter((b) => !b.soft && !b.blocksDay && !b.noLessons)
       .reduce((n, b) => n + Math.max(0, S.toMin(b.end) - S.toMin(b.start)), 0);
+  }
+
+  // WHAT MAKES A DAY NOT AN ORDINARY ONE, and what it is called. Two kinds,
+  // told apart because they mean different things to a teacher: nothing at all
+  // is planned into a day off, while a day with no lessons is a working day
+  // your timetable does not run on.
+  function offOn(iso) {
+    const S = window.OrganiserSchedule;
+    if (!S || !S.blocksOn) return null;
+    const on = S.blocksOn(schedule, iso).filter((b) => b.blocksDay || b.noLessons);
+    if (!on.length) return null;
+    const day = on.find((b) => b.blocksDay);
+    return {
+      kind: day ? "off" : "nolessons",
+      // Its own name, because "Holiday" and "Sports Week" are not the same day
+      // and the calendar it came off said which.
+      label: (day || on[0]).label || (day ? "day off" : "no lessons"),
+    };
   }
 
   function weekdayNames() {
@@ -162,11 +187,22 @@
     cells.forEach((cell) => {
       const el = document.createElement("div");
       el.className =
-        "mo-cell" + (cell.inMonth ? "" : " faded") + (cell.iso === today ? " today" : "");
+        "mo-cell" + (cell.inMonth ? "" : " faded") + (cell.iso === today ? " today" : "") +
+        (cell.off ? " mo-" + cell.off.kind : "");
       const num = document.createElement("div");
       num.className = "mo-daynum";
       num.textContent = cell.day;
       el.appendChild(num);
+      // SAID, NOT JUST SHADED. About one man in twelve cannot separate red from
+      // green, and a square that is only a different colour is a square that
+      // says nothing to them — so the day says what it is in words, and the
+      // shading is the second way of saying it rather than the only one.
+      if (cell.off) {
+        const tag = document.createElement("div");
+        tag.className = "mo-off";
+        tag.textContent = cell.off.label;
+        el.appendChild(tag);
+      }
       if (cell.booked) {
         const on = document.createElement("div");
         on.className = "mo-booked";

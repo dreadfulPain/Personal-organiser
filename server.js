@@ -1226,6 +1226,135 @@ function routeTurn(nowLabel, today, text, goals, whoIds, types, topics, levels, 
 // editable table BEFORE anything is saved. It is allowed to be slow and it is
 // allowed to be wrong, because a person reads every row afterwards.
 //
+// ---- A SCHOOL CALENDAR ------------------------------------------------------
+//
+// The plain reader in calplan.js is good and gets better, and it is still a set
+// of patterns: it reads the shapes somebody thought to write down. A calendar
+// that says "the Friday before half term", or writes its dates in a way nobody
+// anticipated, or buries them in a paragraph, comes back empty — and empty was
+// the end of it, because this path had no model behind it at all.
+//
+// WHAT IT IS NOT ASKED IS WHAT A DATE MEANS.
+//
+// That is the one rule this whole panel is built on. "Winter break begins",
+// "Staff return" and "INSET day" are three different instructions to the app —
+// one is a day you may not work, one is a working day with no teaching, one
+// might be either — and telling them apart from the words would be the app
+// deciding somebody's term from a noun. A model would do that confidently and
+// be wrong about a fortnight. So it reads the STRUCTURE — what date, how long,
+// what time, how often, what it is called — and the person says what each one
+// is, exactly as they do for the plain reader's rows.
+const CALENDAR_PROMPT = `You read one school calendar and turn it into a plain list of dated entries. Nothing else.
+
+An entry has: a name, and WHEN it happens.
+
+RULES
+- COPY the name exactly as written. Do not tidy, translate, expand or interpret it.
+- "date" is the day it starts, as "YYYY-MM-DD".
+- "endsOn" is the last day, when it runs over more than one — a holiday, an exam week. Leave it empty for a single day.
+- "start" and "end" are clock times as 24-hour "HH:MM", ONLY when the line gives them. A holiday has no time; leave both empty.
+- "days" is for something that REPEATS every week rather than happening once: "staff meeting every Friday" is days [5] with no date. 0=Sunday, 1=Monday … 6=Saturday. Anything with a date is not a repeat.
+- If the year is not written on a line, use the year the rest of the document is about.
+- If a row is not an entry (a title, a page number, a column heading), leave it out.
+- Never invent an entry that is not in the text. An empty list is a fine answer.
+
+DO NOT SAY WHAT A DATE MEANS. Do not decide that something is a holiday, a day off, a working day, a training day or the start of term, and do not leave one out because you think it is not important. The person reading this will say what each entry is. Your job is what the document says and when.
+
+- "extras": anything else the line says that none of the fields above can hold — a room, a year group, who it is for, a note — as {"name","value"} pairs, named however the document names it. If the document says it, it can go in.
+
+Return only the JSON object.`;
+
+const CALENDAR_SCHEMA = {
+  type: "object",
+  properties: {
+    entries: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          date: { type: "string" },
+          endsOn: { type: "string" },
+          start: { type: "string" },
+          end: { type: "string" },
+          days: { type: "array", items: { type: "integer" } },
+          extras: EXTRAS_SCHEMA,
+        },
+        required: ["label", "date", "endsOn", "start", "end", "days", "extras"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["entries"],
+  additionalProperties: false,
+};
+
+async function handleCalendar(res, body) {
+  const text = (body?.text || "").toString().trim();
+  if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to read." });
+  const cfg = aiConfig();
+  if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
+  const year = Number(body?.year) || new Date().getFullYear();
+  try {
+    const parsed = await runEngine(
+      cfg, CALENDAR_PROMPT,
+      `The rest of this document is about the year ${year}.\n\nTurn this calendar into entries:\n"""\n${text.slice(0, 12000)}\n"""`,
+      CALENDAR_SCHEMA, "calendar");
+    const rows = [];
+    // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
+    // FIXABLE. You can check a list for what is wrong on it and never for what
+    // is not on it at all.
+    const unreadable = [];
+    (Array.isArray(parsed.entries) ? parsed.entries : []).slice(0, 300).forEach((e) => {
+      const label = (e.label || "").toString().trim().slice(0, 120);
+      const date = ISO.test((e.date || "").toString().trim()) ? e.date.toString().trim() : "";
+      const endsOn = ISO.test((e.endsOn || "").toString().trim()) ? e.endsOn.toString().trim() : "";
+      const days = (Array.isArray(e.days) ? e.days : [])
+        .map((d) => Number(d))
+        .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+      const start = tidyHM(e.start);
+      const end = tidyHM(e.end);
+      const why = !label
+        ? "no name"
+        : !date && !days.length
+          ? "no date and no day"
+          : endsOn && endsOn < date
+            ? "ends before it starts"
+            : start && end && end <= start
+              ? "the times run backwards"
+              : "";
+      if (why) {
+        // NAMED BY WHATEVER IT HAS, and a date is not a start time. The other
+        // reader's rows are time blocks and say start and end; a calendar row
+        // has a day, so it says the day — and the name is left empty when there
+        // wasn't one rather than filled with the word "(no name)", which the
+        // page would then print beside the reason "no name".
+        unreadable.push({ label, at: (e.date || "").toString().slice(0, 40), why });
+        return;
+      }
+      rows.push({
+        label, date, endsOn,
+        // A REPEAT AND A DATE ARE DIFFERENT ANSWERS. Something on a date does
+        // not also happen every week, and saying both would put a standing
+        // commitment on one day for ever.
+        ...(date ? {} : { days }),
+        ...(start ? { start, end } : {}),
+        extras: extrasOf(e.extras),
+        // What it MEANS is not asked and is not answered — see above.
+        kind: "",
+        line: label,
+        yearAssumed: false,
+        endFrom: endsOn ? "model" : "",
+      });
+    });
+    return sendJson(res, 200, { rows, unreadable });
+  } catch (e) {
+    console.warn("[calendar] failed:", e?.message || e);
+    const why = offlineReason(cfg, e);
+    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + "you can still type the dates in by hand." });
+  }
+}
+
 // It stays domain-neutral: the model is told to copy the labels it is given,
 // never to interpret them. "Period 3" and "Shift B" get identical treatment.
 const TIMETABLE_PROMPT = `You read one pasted timetable and turn it into a plain list of time blocks. Nothing else.
@@ -2891,6 +3020,15 @@ const server = http.createServer(async (req, res) => {
       return handleRecordUnderstand(res, parsed);
     }
 
+    if (pathname === "/api/calendar" && req.method === "POST") {
+      let parsed = {};
+      try {
+        parsed = JSON.parse((await readBody(req)) || "{}");
+      } catch {
+        return sendJson(res, 400, { error: "bad_json", message: "That didn't arrive in one piece." });
+      }
+      return handleCalendar(res, parsed);
+    }
     if (pathname === "/api/timetable" && req.method === "POST") {
       const body = await readBody(req);
       let parsed = {};

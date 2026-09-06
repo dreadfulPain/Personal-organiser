@@ -1226,6 +1226,12 @@
           blocksDay: r.kind === "off",
           noLessons: r.kind === "noLessons",
           beThere: r.kind === "week",
+          // AND ANYTHING READ OFF THE LINE THAT NOTHING HERE HAS A FIELD FOR —
+          // a room, a year group, who it is for. It reached the row and stopped
+          // there, so a reader that could say "Example Building 109" was giving
+          // it to a panel that dropped it on the way to the week. Carried, in
+          // the same shape a timetable block carries it.
+          ...((r.extras || []).length ? { extras: r.extras } : {}),
           soft: false,
           source: "paste",
         });
@@ -1269,6 +1275,7 @@
           ...(p.kind === "runsAs" && p.row && p.row.runsAsDay !== undefined
             ? { runsAs: p.row.runsAsDay }
             : {}),
+          ...((p.row && p.row.extras || []).length ? { extras: p.row.extras } : {}),
           soft: false,
           source: "paste",
         });
@@ -1298,10 +1305,21 @@
     // nothing else was read, because "no dates found" would be the wrong answer
     // to a page that is nothing but dates.
     const g = r.grid;
-    if (g && !g.month)
-      return "There's a month drawn as a grid in there, and nothing in the document says which month it is. " +
-        "Pick one and its days will go in.";
+    const ask = g && !g.month
+      ? "There's a month drawn as a grid in there, and nothing in the document says which month it is. " +
+        "Pick one and its days will go in. "
+      : "";
+    if (ask && !r.rows.length) return ask.trim();
     if (!r.rows.length) return "No dates found in that. Anything without a date on the line is left alone.";
+    // WHO READ IT CHANGES WHAT CAN HONESTLY BE SAID ABOUT IT.
+    //
+    // The provenance below — a year borrowed from elsewhere in the document, a
+    // month worked out from the shape of a grid — is a description of how THIS
+    // reader dated things. None of it is true of a reading the model did, and
+    // saying it anyway would be describing one reading while showing another.
+    // The term grid is not in that category: its marks come off the page
+    // either way and are on screen either way, so that sentence stays.
+    const mine = r.from !== "model";
     const list = chosen || r.rows;
     const decided = list.filter((x) => x.kind).length;
     // SAID FIRST, because a year that is quietly wrong makes every other number
@@ -1311,12 +1329,12 @@
     // runs from one September to the next January; whichever year is filled in
     // for the lines that don't say one, the other end of it comes out twelve
     // months out, looking exactly as reasonable as the rest.
-    const two = r.twoYears && r.borrowed
+    const two = mine && r.twoYears && r.borrowed
       ? `This mentions ${r.years.slice(0, 3).join(" and ")}` +
         `${r.years.length > 3 ? " among others" : ""}, so no single year is right for all of it — ` +
         `move any row that's on the wrong side of New Year. `
       : "";
-    let y = r.borrowed
+    let y = mine && r.borrowed
       ? `${r.borrowed} of them had no year on the line — read as ${r.year}. ` +
         (two || "Change the year if that's not right. ")
       : "";
@@ -1324,12 +1342,12 @@
     // it is said instead of the guessing above rather than as well as.
     if (r.term)
       y = `The term is drawn out as a grid too — ${r.term.weeks} weeks, ` +
-        `${d(r.term.from)} to ${d(r.term.to)}, which is where the years came from. ` +
+        `${d(r.term.from)} to ${d(r.term.to)}${mine ? ", which is where the years came from" : ""}. ` +
         (r.term.marks.length
           ? `${r.term.marks.length} thing${r.term.marks.length === 1 ? " is" : "s are"} marked on it; ` +
             "they're under the dates below. "
           : "") + y;
-    if (g)
+    if (g && mine)
       y = `${g.squares} of them came off a month drawn as a grid, which says no month anywhere — ` +
         `read as ${MONTH_WORDS[g.month - 1]} ${r.year}. Change it if that's wrong. ` +
         (g.missing
@@ -1337,6 +1355,11 @@
             `what was in ${g.missing === 1 ? "it has" : "them has"} ended up on the day before. `
           : "") +
         y;
+    // AND THE UNANSWERED MONTH IS STILL UNANSWERED even when something else was
+    // read. It used to replace the whole sentence, so a sheet with a nameless
+    // grid on it and thirty dated lines below said only "pick a month" and
+    // never that the thirty had been read.
+    y = ask + y;
     if (!decided)
       return y + `${r.rows.length} date${r.rows.length === 1 ? "" : "s"} read. Say what each one is and they'll go in.`;
     const p = plan(list);

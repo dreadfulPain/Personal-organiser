@@ -73,6 +73,33 @@ const ol = http.createServer((req, res) => {
       });
       out = { blocks };
     }
+    // THE CALENDAR JOB. There is no real model here and there cannot be, so
+    // this stands in for one by SAYING WHATEVER THE TEST TELLS IT TO: each line
+    // of the document is one entry, tab-separated. That puts the right thing
+    // under test — not whether a model can read a calendar, which cannot be
+    // measured from here, but whether the server does something sensible with
+    // whatever comes back, including the answers a model gets wrong.
+    else if (/turn it into a plain list of dated entries/i.test(sys)) {
+      const user = (JSON.parse(b).messages || []).find((m) => m.role === "user")?.content || "";
+      // NOT TRIMMED, on purpose: a leading tab is an entry whose name the model
+      // left empty, and that is one of the answers the server has to cope with.
+      const entries = user.split("\n").map((l) => l.replace(/\r/g, ""))
+        .filter((l) => l.trim() && !/^"{3}$/.test(l.trim()) &&
+          !/^(The rest of this|Turn this calendar)/.test(l.trim()))
+        .map((l) => {
+          const [label, date, endsOn, start, end, days] = l.split("\t");
+          return {
+            label: label || "", date: date || "", endsOn: endsOn || "",
+            start: start || "", end: end || "",
+            days: (days || "").split(",").filter(Boolean).map(Number),
+            // AND SOMETHING IT WAS NEVER ASKED FOR. A model told to say what a
+            // date means will say it; the server must not carry it through.
+            kind: "off",
+            extras: [{ name: "as written", value: l.split("\t")[0] || "" }],
+          };
+        });
+      out = { entries };
+    }
     res.writeHead(200, {"Content-Type":"application/json"});
     res.end(JSON.stringify({ message: { content: JSON.stringify(out) } }));
   });
@@ -304,6 +331,8 @@ ok("without that having to be typed in afterwards", first && first.label === "Sc
 for (const [name, schemaRe, handlerRe, readRe] of [
   ["timetable", /const TIMETABLE_SCHEMA = \{[\s\S]*?\n\};/,
    /async function handleTimetable[\s\S]*?\n\}/, /\bb\.(\w+)/g],
+  ["calendar", /const CALENDAR_SCHEMA = \{[\s\S]*?\n\};/,
+   /async function handleCalendar\([\s\S]*?\n\}\n/, /\be\.(\w+)/g],
   // THE WHOLE HANDLER, to its closing brace at the left margin. Reaching for
   // the first "\n}" instead stopped at the first nested block and read a region
   // with no fields in it at all — so the check passed by looking at nothing,
@@ -337,6 +366,101 @@ ok("a dated one-off is kept, with no weekday at all",
 ok("it is handed back as one it couldn't read",
    (noDays.unreadable || []).some((u) => /no day or date/.test(u.why || "")),
    JSON.stringify(noDays.unreadable));
+
+// ---------------------------------------------------------------------------
+// THE CALENDAR, READ BY THE MODEL.
+//
+// The endpoint that did not exist: a school calendar arrives as prose, in a
+// language whose month names this app has never heard of, or laid out in a way
+// no pattern-match will follow — and until now there was nowhere for a reader
+// to help. What comes back is STRUCTURE ONLY, and the checks below are about
+// the line the whole design turns on: it may say when something is, never what
+// it means.
+const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body) })).json());
+
+{
+  const cal = await askCal({ year: 2026, text: [
+    "Mid-Autumn Festival\t2026-09-25\t2026-09-27",
+    "Staff meeting\t\t\t16:00\t17:00\t5",
+    "Parents' evening\t2026-10-14\t\t18:30\t20:00",
+  ].join("\n") });
+  const by = (n) => (cal.rows || []).find((r) => r.label === n);
+  ok("the calendar endpoint answers with rows", (cal.rows || []).length === 3,
+     JSON.stringify(cal).slice(0, 300));
+  ok("a holiday keeps both of its ends",
+     by("Mid-Autumn Festival") && by("Mid-Autumn Festival").endsOn === "2026-09-27",
+     JSON.stringify(by("Mid-Autumn Festival")));
+  ok("and says where that end came from",
+     by("Mid-Autumn Festival") && by("Mid-Autumn Festival").endFrom === "model",
+     JSON.stringify(by("Mid-Autumn Festival")));
+  // A REPEAT IS NOT A DATE. "Staff meeting every Friday" has no day to be on;
+  // giving it one would put a standing commitment on a single Friday for ever.
+  ok("something weekly comes back as a rule, not a day",
+     by("Staff meeting") && !by("Staff meeting").date &&
+     JSON.stringify(by("Staff meeting").days) === "[5]",
+     JSON.stringify(by("Staff meeting")));
+  ok("with the time it happens at",
+     by("Staff meeting") && by("Staff meeting").start === "16:00" &&
+     by("Staff meeting").end === "17:00", JSON.stringify(by("Staff meeting")));
+  ok("and a dated evening keeps its clock times",
+     by("Parents' evening") && by("Parents' evening").start === "18:30",
+     JSON.stringify(by("Parents' evening")));
+  // THE WHOLE POINT. "Winter break begins", "Staff return" and "INSET day" are
+  // three different instructions to this app, and a model would tell them apart
+  // confidently and be wrong about a fortnight. The stand-in above says "off"
+  // on every single row; not one of them may arrive decided.
+  ok("nothing comes back already decided",
+     (cal.rows || []).every((r) => r.kind === ""),
+     JSON.stringify((cal.rows || []).map((r) => `${r.label}:${r.kind}`)));
+  // AND WHAT IT SAW THAT NOTHING HERE HAS A FIELD FOR is kept rather than
+  // narrowed away — same shape as the timetable and the records.
+  ok("and what it read beside a line is not thrown away",
+     (by("Parents' evening").extras || []).some((x) => x.name === "as written"),
+     JSON.stringify(by("Parents' evening").extras));
+}
+
+{
+  // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" CAN BE
+  // TYPED IN. You can check a list for what is wrong on it and never for what
+  // is not on it at all.
+  const bad = await askCal({ year: 2026, text: [
+    // NOT FIRST. The whole document is trimmed before it is sent, so a line
+    // beginning with a tab loses it if it is the first one — which is right for
+    // a document and wrong for what this line is here to be.
+    "Something\t\t\t\t\t",
+    "\t2026-09-25",
+    "Backwards\t2026-10-10\t2026-10-01",
+    "Wrong way round\t2026-11-02\t\t16:00\t09:00",
+    "Fine\t2026-12-01",
+  ].join("\n") });
+  ok("only the readable one is kept", (bad.rows || []).length === 1,
+     JSON.stringify(bad.rows));
+  const why = (bad.unreadable || []).map((u) => u.why);
+  ok("a line with no name is handed back", why.includes("no name"), JSON.stringify(why));
+  ok("so is one with nothing to happen on", why.includes("no date and no day"), JSON.stringify(why));
+  ok("so is a holiday that ends before it starts", why.includes("ends before it starts"),
+     JSON.stringify(why));
+  ok("and an evening whose times run backwards", why.includes("the times run backwards"),
+     JSON.stringify(why));
+  ok("four dropped rows, four things to look at", (bad.unreadable || []).length === 4,
+     JSON.stringify(bad.unreadable));
+  // AND ONE WITH NO NAME IS FINDABLE BY ITS DATE. A calendar row has a day, not
+  // a start time — the page needs something to call it, and "(no name)" beside
+  // the reason "no name" is a thing to read twice and act on never.
+  const anon = (bad.unreadable || []).find((u) => u.why === "no name");
+  ok("a nameless line comes back with the day it was on", anon && anon.at === "2026-09-25",
+     JSON.stringify(anon));
+}
+
+{
+  // NOTHING TO READ IS NOT AN ERROR TO SWALLOW.
+  const empty = await (await fetch(B + "/api/calendar", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "   " }) }));
+  ok("an empty document is refused rather than sent", empty.status === 400, String(empty.status));
+}
 
 srv.kill(); ol.close();
 console.log(`\n${pass} passed, ${fail} failed`);

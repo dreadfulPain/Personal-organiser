@@ -209,6 +209,20 @@ export async function open(pg, data, opts) {
     location: { hash: "", href: "file:///x", search: "", pathname: "/", reload() {} },
     navigator: { onLine: true, userAgent: "test", clipboard: { writeText: async () => {} } },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {}, clear() {} },
+    // A REAL ONE, because a whole journey runs through it: opening a document
+    // on the home page and being handed straight to the panel that checks it.
+    // Left undefined, every one of those paths threw and was caught, so the
+    // handover looked from here exactly like nothing having been handed over.
+    // opts.session is what the page finds waiting for it.
+    sessionStorage: (() => {
+      const m = new Map(Object.entries(o.session || {}));
+      return {
+        getItem: (k) => (m.has(k) ? m.get(k) : null),
+        setItem: (k, v) => m.set(String(k), String(v)),
+        removeItem: (k) => m.delete(String(k)),
+        clear: () => m.clear(),
+      };
+    })(),
     matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
     alert() {}, confirm: () => (o.confirm === undefined ? true : o.confirm),
     prompt: () => o.prompt ?? null, print() {}, open: () => null,

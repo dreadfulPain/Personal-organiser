@@ -2086,6 +2086,270 @@ sec("One reading of a clock time, not two");
 }
 
 // ---------------------------------------------------------------------------
+sec("A calendar can be handed to the model too, and it still never says what a date means");
+{
+  // THE PANEL THAT HAD NO MODEL AT ALL. The timetable could be handed to a
+  // reader when the columns were gone; the calendar could not be handed to one
+  // at all, so a calendar written in prose, or with month names this app has
+  // never heard of, was simply "no dates found in that".
+  //
+  // What comes back is STRUCTURE. "Winter break begins", "Staff return" and
+  // "INSET day" are three different instructions to this app, and a model would
+  // tell them apart confidently and be wrong about a fortnight — so its rows
+  // arrive undecided and go through the same questions as any other row.
+  const asked = [];
+  const openCal = async (opts) => {
+    const o = opts || {};
+    const r = await open("timeline.html", {
+      schedule: [], scheduleConfig: { modelFirst: !!o.modelFirst }, config: {}, items: [], goals: [],
+    }, {
+      // A DOCUMENT ALREADY WAITING, which is how one arrives from the home page:
+      // you open a PDF there and the next thing you see is this panel with what
+      // it made of it. Nothing had ever tested that journey, because the stub
+      // had no sessionStorage and every one of those paths threw and was caught.
+      session: o.handed ? { "organiser.handover": JSON.stringify({ to: "calendar", text: o.handed }) } : {},
+      fetch: async (url, init) => {
+        if (!/api\/calendar/.test(String(url))) return { ok: true, json: async () => ({}) };
+        asked.push(JSON.parse((init && init.body) || "{}"));
+        if (o.answer === "down") throw new Error("nothing listening");
+        return { ok: o.answer !== "refused", json: async () => (o.answer === "refused"
+          ? { message: "AI sorting isn't switched on yet." }
+          : { rows: o.answer || [], unreadable: o.unreadable || [] }) };
+      },
+    });
+    return r;
+  };
+  const rows = (r) => [...(r.get("#calRows").children || [])];
+  const said = (r) => String(r.get("#calWords").textContent || "");
+  // Prose with real dates in it that this app's own reader will not follow — no
+  // day-month pair it recognises anywhere.
+  const PROSE = "The autumn holiday runs from the twenty-fifth of September " +
+    "until the twenty-seventh, and staff come back on the Monday after.";
+
+  // TYPING IS NOT A DOCUMENT ARRIVING. This runs on every keystroke, and a model
+  // asked on every keystroke is a fresh reading of a half-finished sentence
+  // forty times a second.
+  {
+    asked.length = 0;
+    const r = await openCal({});
+    const paste = r.get("#calPaste");
+    paste.value = PROSE;
+    paste.fire("input", { target: paste });
+    await r.settle();
+    ok("typing never troubles the model", asked.length === 0, JSON.stringify(asked));
+    ok("and the offer to ask it is there instead",
+       r.get("#calSecondRow").hidden === false, String(r.get("#calSecondRow").hidden));
+    // ON THE PAGE, not merely wired up. The stub invents any id a script asks
+    // for, so every check above would go on passing with the button deleted
+    // from the markup — which is the one way it could actually go missing.
+    const HTML = fs.readFileSync(path.join(PUB, "timeline.html"), "utf8");
+    ok("and it is really in the page rather than only in the code",
+       /id="calSecond"/.test(HTML) && /id="calSecondRow"/.test(HTML),
+       "the button is not in timeline.html");
+  }
+
+  // A WHOLE DOCUMENT ARRIVING, and nothing in it this reader can follow.
+  {
+    asked.length = 0;
+    const r = await openCal({
+      handed: PROSE,
+      answer: [{ label: "Autumn holiday", date: "2026-09-25", endsOn: "2026-09-27",
+                 days: [], extras: [], kind: "", line: "Autumn holiday", endFrom: "model" }],
+    });
+    ok("a document handed over is read", String(r.get("#calPaste").value) === PROSE,
+       String(r.get("#calPaste").value).slice(0, 60));
+    ok("and when nothing here could follow it, the model is asked",
+       asked.length === 1, JSON.stringify(asked));
+    ok("with the document, not its name", asked[0] && asked[0].text === PROSE,
+       JSON.stringify(asked[0]));
+    ok("and what came back is on the page", rows(r).length === 1, String(rows(r).length));
+    ok("with how long it took", /by the model in /.test(said(r)), said(r));
+    // THE LINE THE WHOLE DESIGN TURNS ON. A row with a kind on it would already
+    // be a decision about somebody's term, made from a noun.
+    ok("and it is still asking what the date means, not saying",
+       /Say what each one is/.test(said(r)), said(r));
+  }
+
+  // AND THE SENTENCES ABOUT HOW *THIS* READER DATED THINGS ARE NOT SAID ABOUT A
+  // READING IT DIDN'T DO. "Nine of them had no year on the line" describes the
+  // plain reader borrowing a year; said over the model's rows it is a
+  // description of one reading printed above another.
+  {
+    const mine = { rows: [{ date: "2026-09-25", kind: "" }], year: 2026, borrowed: 1,
+                   years: [2026], twoYears: false, grid: null, term: null };
+    const CAL = sb.OrganiserCalPlan;
+    ok("this reader says where it got a year from", /had no year on the line/.test(CAL.words(mine)),
+       CAL.words(mine));
+    ok("and says nothing of the sort about the model's reading",
+       !/had no year on the line/.test(CAL.words({ ...mine, from: "model" })),
+       CAL.words({ ...mine, from: "model" }));
+    ok("but still asks what each one is", /Say what each one is/.test(CAL.words({ ...mine, from: "model" })),
+       CAL.words({ ...mine, from: "model" }));
+  }
+
+  // THE MODEL FIRST MEANS ITS ANSWER WINS — not that you sit looking at the last
+  // document while it thinks.
+  {
+    asked.length = 0;
+    // NO YEAR ON THE LINE, so this reader has to borrow one — and says so. That
+    // sentence is about how IT dated things, and must not end up printed over a
+    // reading the model did.
+    const r = await openCal({
+      modelFirst: true,
+      handed: "2026\nStaff return\t24 August",
+      answer: [{ label: "Staff return", date: "2026-08-24", endsOn: "", days: [],
+                 extras: [], kind: "", line: "Staff return", endFrom: "" }],
+    });
+    ok("with the model first it is asked even though this reader managed",
+       asked.length === 1, JSON.stringify(asked));
+    ok("and its answer is what is on screen", rows(r).length === 1, String(rows(r).length));
+    ok("and it says who read it", /by the model/.test(said(r)), said(r));
+    ok("and not how this reader would have dated it",
+       !/had no year on the line/.test(said(r)), said(r));
+    // The year this reader found in the document goes with the question, so both
+    // readers date a yearless line the same way rather than each having a guess.
+    ok("and the year this reader found went with it", asked[0] && asked[0].year === 2026,
+       JSON.stringify(asked[0]));
+  }
+
+  // ASKED FOR, OVER A READING THAT WORKED. A reading that found forty dates may
+  // still have the wrong forty, and nothing here can tell that from the outside
+  // — so the second opinion is a button rather than a judgement.
+  {
+    asked.length = 0;
+    const r = await openCal({
+      answer: [{ label: "Autumn holiday", date: "2026-09-25", endsOn: "2026-09-27",
+                 days: [], extras: [], kind: "", line: "Autumn holiday", endFrom: "model" }],
+    });
+    const paste = r.get("#calPaste");
+    paste.value = "Staff return\t24 August 2026\nStudents return\t26 August 2026";
+    paste.fire("input", { target: paste });
+    await r.settle();
+    ok("this reader gets it on its own", rows(r).length === 2, String(rows(r).length));
+    ok("and the model has not been asked", asked.length === 0, JSON.stringify(asked));
+    const btn = r.get("#calSecond");
+    btn.fire("click", { target: btn });
+    await r.settle();
+    ok("pressing the button asks it", asked.length === 1, JSON.stringify(asked));
+    ok("over the document that is on screen, not a re-read",
+       asked[0] && /Students return/.test(asked[0].text), JSON.stringify(asked[0]));
+    ok("and its answer takes over", rows(r).length === 1, String(rows(r).length));
+  }
+
+  // AND WHEN IT CANNOT BE REACHED, WHAT WAS READ STAYS. A second opinion that
+  // never comes must not take the first reading away with it.
+  {
+    asked.length = 0;
+    const r = await openCal({ modelFirst: true, answer: "down",
+      handed: "Staff return\t24 August 2026" });
+    ok("a reader that isn't there loses nothing", rows(r).length === 1, String(rows(r).length));
+    ok("and it says so rather than going quiet",
+       /couldn't be reached/.test(said(r)), said(r));
+    ok("with what was read still said underneath", /1 date read/.test(said(r)), said(r));
+  }
+
+  // AND A ROW IT COULDN'T PLACE IS SAID, NOT DROPPED. You can check a list for
+  // what is wrong on it and never for what is not on it at all.
+  {
+    const r = await openCal({
+      handed: PROSE,
+      answer: [{ label: "Autumn holiday", date: "2026-09-25", endsOn: "", days: [],
+                 extras: [], kind: "", line: "Autumn holiday", endFrom: "" }],
+      unreadable: [{ label: "staff come back on the Monday after", why: "no date and no day" }],
+    });
+    ok("what it stumbled on is named", /couldn't place/.test(said(r)), said(r));
+    ok("and said in enough detail to type in", /Monday after/.test(said(r)), said(r));
+  }
+
+  // AND A LINE WITH NO NAME IS FOUND BY ITS DATE. It read "(no name) (no name)"
+  // — the label it hasn't got, then the reason it hasn't got one — which is a
+  // thing to read twice and act on never. The date is how you find it again in
+  // the document.
+  {
+    const r = await openCal({
+      handed: PROSE,
+      answer: [{ label: "Autumn holiday", date: "2026-09-25", endsOn: "", days: [],
+                 extras: [], kind: "", line: "Autumn holiday", endFrom: "" }],
+      unreadable: [{ label: "", at: "2026-11-02", why: "no name" }],
+    });
+    ok("a nameless line is said by its date", /Nov 2, 2026 — no name/.test(said(r)), said(r));
+    ok("and never by the word it hasn't got", !/\(no name\)/.test(said(r)), said(r));
+    // AND NOT AS DIGITS. A raw 2026-11-02 is the hardest possible way to read a
+    // date, and this page writes them out everywhere else.
+    ok("and not as a string of digits", !/2026-11-02/.test(said(r)), said(r));
+  }
+
+  // THE COUNT IS SAID ONCE. "4 dates read by the model in 13ms. 4 dates read."
+  // is the same fact twice, and neither copy is the sentence that says what to
+  // do next.
+  {
+    const r = await openCal({
+      handed: PROSE,
+      answer: [1, 2, 3].map((n) => ({ label: `Thing ${n}`, date: `2026-09-0${n}`,
+        endsOn: "", days: [], extras: [], kind: "", line: `Thing ${n}`, endFrom: "" })),
+    });
+    ok("who read it and how long it took", /by the model in /.test(said(r)), said(r));
+    ok("and the count of what came back, once",
+       (said(r).match(/3 dates read/g) || []).length === 1, said(r));
+  }
+
+  // AND WHAT IT READ THAT THIS APP HAS NO FIELD FOR reaches the screen and then
+  // the week. A reader that can say "Example Building 109" was handing it to a
+  // panel that showed it nowhere and dropped it on the way to being saved —
+  // which is the whole fault this pair of paths was built to stop.
+  {
+    const r = await openCal({
+      handed: PROSE,
+      answer: [{ label: "Parents' evening", date: "2026-10-14", endsOn: "",
+                 start: "18:30", end: "20:00", days: [], kind: "", line: "Parents' evening",
+                 endFrom: "", extras: [{ name: "where", value: "Example Building 109" }] }],
+    });
+    const shown = rows(r).map((n) => String(n.textContent || "") +
+      [...(n.children || [])].map((c) => String(c.textContent || "")).join(" ")).join(" ");
+    ok("what it saw beside the line is on the row",
+       /where: Example Building 109/.test(shown), shown.slice(0, 240));
+    // AND ALL THE WAY INTO THE WEEK. Said what it is, then put it in.
+    const pick = rows(r)[0] && [...(rows(r)[0].children || [])]
+      .find((c) => String(c.textContent || "") === "in my week");
+    pick.fire("click", { target: pick });
+    await r.settle();
+    const add = r.get("#calAdd");
+    add.fire("click", { target: add });
+    await r.settle();
+    const kept = (r.state.schedule || []).find((b) => b.label === "Parents' evening");
+    ok("and it is still there once it is saved",
+       kept && (kept.extras || []).some((x) => x.value === "Example Building 109"),
+       JSON.stringify(kept));
+    ok("along with the time it happens at", kept && kept.start === "18:30",
+       JSON.stringify(kept));
+  }
+
+  // AND THE SAME FOR SOMETHING THAT REPEATS. A rule takes a different road into
+  // the week — one standing commitment rather than a block per day — and it is
+  // exactly the sort of second road that gets a fix on one of them.
+  {
+    const r = await openCal({
+      handed: PROSE,
+      answer: [{ label: "Staff briefing", date: "", endsOn: "", start: "07:50", end: "08:10",
+                 days: [1], kind: "", line: "Staff briefing",
+                 extras: [{ name: "who", value: "whole department" }] }],
+    });
+    const pick = rows(r)[0] && [...(rows(r)[0].children || [])]
+      .find((c) => String(c.textContent || "") === "in my week");
+    pick.fire("click", { target: pick });
+    await r.settle();
+    const add = r.get("#calAdd");
+    add.fire("click", { target: add });
+    await r.settle();
+    const kept = (r.state.schedule || []).find((b) => b.label === "Staff briefing");
+    ok("a rule keeps what was read beside it too",
+       kept && (kept.extras || []).some((x) => x.value === "whole department"),
+       JSON.stringify(kept));
+    ok("and is one standing commitment, not a day", kept && !kept.date &&
+       JSON.stringify(kept.days) === "[1]", JSON.stringify(kept));
+  }
+}
+
 sec("The two pages nothing had ever opened");
 {
   // Not because they were thought about and skipped — nobody had counted.

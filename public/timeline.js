@@ -85,6 +85,20 @@
   // What read() worked out — chiefly the year, which is the one number here that
   // can be quietly wrong and take every other date down with it.
   let calMeta = { rows: [], year: 0, borrowed: 0 };
+  // THE DOCUMENT ITSELF, held. The model can be asked at any point after the
+  // reading — from the button, or because the reading came back empty — and
+  // reading the box again at that moment is how one document turns into two
+  // readings that disagree.
+  let calText = "";
+  // AND THE READING THIS APP DID OF IT, held for the same reason: it is what
+  // the screen goes back to when the model has nothing, and re-reading to get
+  // it back would be the same mistake in the other direction.
+  let calPlain = null;
+  // What happened when the model was asked — how long it took, what it couldn't
+  // place. Kept rather than written to the page, because renderCal rewrites
+  // that line every time you answer a question about a row, and a message
+  // written after it disappears at the first click.
+  let calNote = "";
 
   // What each kind of marked day has been said to be. Nothing until you say —
   // the app cannot know, and the whole of this is asking rather than guessing.
@@ -118,15 +132,13 @@
     return table || (r ? r.text : "");
   };
 
-  function calRead(text, year, month) {
-    const C = window.OrganiserCalPlan;
-    if (!C) return;
-    const opts = {};
-    if (year) opts.year = year;
-    if (month) opts.month = month;
-    const r = C.read(text || "", opts);
+  // ONE READING ON SCREEN, WHOEVER DID IT. Both the plain reader and the model
+  // end here, so what happens to the year box, the marks and the answers you
+  // have already given cannot differ between the two.
+  function calShow(r, note) {
     calRows = r.rows;
     calMeta = r;
+    calNote = note || "";
     // A NEW DOCUMENT IS A NEW SET OF QUESTIONS. Kept choices would sit against
     // whatever mark landed at the same position in the next calendar, which is
     // an answer to a question nobody was asked.
@@ -136,6 +148,116 @@
     if (box && !box.value) box.value = String(r.year || "");
     renderCalMonth(r);
     renderCalMarks();
+    renderCal();
+  }
+
+  // `ask` says this is a whole document arriving — dropped, opened, or the
+  // button pressed — rather than a keystroke. It is what decides whether the
+  // model is allowed a go, and it is never true on typing: this runs on every
+  // character in the paste box, and asking a model on every character would be
+  // a new reading of a half-finished document forty times a second.
+  function calRead(text, year, month, ask) {
+    const C = window.OrganiserCalPlan;
+    if (!C) return;
+    const opts = {};
+    if (year) opts.year = year;
+    if (month) opts.month = month;
+    // READ HERE FIRST, ALWAYS — WHICHEVER ANSWER WINS. Same reasoning as the
+    // timetable: this costs a fraction of a millisecond, and it is the only
+    // thing that can find the year the document is about, the month a grid is
+    // showing, and the meetings marked on a term grid as symbols rather than
+    // words. The model gets none of that from the text, so it is worth having
+    // even when its answer is the one that ends up on screen.
+    const t0 = msNow();
+    const r = C.read(text || "", opts);
+    const ms = msNow() - t0;
+    calText = text || "";
+    calPlain = { r, ms };
+    // SHOWN BEFORE THE MODEL IS ASKED, EVEN WHEN THE MODEL GOES FIRST. Waiting
+    // with the last document still on the page is worse than either answer:
+    // this reading is instant and free, so it goes up, and the model's replaces
+    // it when it arrives. Nothing is kept from either until you press the
+    // button at the bottom.
+    calShow(r, "");
+    if (!ask || !calText.trim()) return;
+    if (S().normaliseConfig(cfg).modelFirst) return calAsk({ r, ms }, "Reading it too… ");
+    // NOTHING READ, AND A DOCUMENT THAT PLAINLY HAS SOMETHING IN IT. This is
+    // where the model earns its place — a calendar written in sentences, or in
+    // a language whose month names this app has never heard of, is a thing a
+    // reader can follow and a pattern-match cannot.
+    if (!r.rows.length) return calAsk({ r, ms }, "Nothing here looked like a date. Asking the model… ");
+  }
+
+  // THE MODEL'S GO AT THE CALENDAR. It is asked for the STRUCTURE only — what
+  // is written, what date, how long, how often — and never for what a date
+  // means. "Winter break begins", "Staff return" and "INSET day" are three
+  // different instructions to this app, and a model would tell them apart
+  // confidently and be wrong about a fortnight. So its rows arrive with no kind
+  // on them and go through exactly the same questions the plain reader's rows
+  // do: you say what each one is, once.
+  async function calAsk(already, saying) {
+    const text = calText;
+    if (!text.trim()) return;
+    calNote = (saying || "Asking the model… ") + "this one's allowed to take a moment. ";
+    renderCal();
+    const t0 = msNow();
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The year the plain reader found in the document, so the model dates
+        // the lines that don't say one the same way this app would. Worked out
+        // in one place and used by both, rather than each having a guess.
+        body: JSON.stringify({ text, year: (already && already.r && already.r.year) || 0 }),
+      });
+      const d = await res.json();
+      const modelMs = msNow() - t0;
+      if (!res.ok)
+        return calFallBack(`The model couldn't — ${d.message || "it didn't answer"} — so:`);
+      const rows = Array.isArray(d.rows) ? d.rows : [];
+      if (!rows.length)
+        return calFallBack(`The model found nothing in ${took(modelMs)}, so:`);
+      // WHAT IS KEPT OF THE FIRST READING, AND WHAT IS NOT. The grid and the
+      // term grid describe the DOCUMENT — which month a wall calendar is on,
+      // which days have a symbol against them — and are true no matter who read
+      // the words, so they stay and the marks stay on screen. The year counts
+      // describe how THIS reader dated things, so they go: they would otherwise
+      // be a sentence about a reading nobody is looking at.
+      calShow(
+        { ...already.r, rows, from: "model", borrowed: 0, twoYears: false },
+        // NOT THE COUNT — that is said next, by the one place that says what a
+        // reading came to. Said here as well it was "4 dates read by the model
+        // in 13ms. 4 dates read.", which is the same fact twice and neither of
+        // them is the sentence that tells you what to do next.
+        `Read by the model in ${took(modelMs)}. ` + calStumbles(d.unreadable));
+    } catch {
+      calFallBack("The model couldn't be reached, so:");
+    }
+  }
+
+  // A ROW THAT VANISHED IS INVISIBLE; A ROW THE READER SAYS IT STUMBLED ON CAN
+  // BE TYPED IN. You can check a list for what is wrong on it and never for
+  // what is not on it at all.
+  function calStumbles(list) {
+    const bad = Array.isArray(list) ? list : [];
+    if (!bad.length) return "";
+    // NAMED BY WHATEVER IT HAS. A line with no name has a date, and a date is
+    // how you find it again in the document — "(no name) (no name)" is a thing
+    // to read twice and act on never.
+    const said = bad.slice(0, 3).map((x) =>
+      `${x.label || (x.at ? calDay(x.at) : "one line")} — ${x.why}`);
+    return `${bad.length} line${bad.length === 1 ? "" : "s"} it couldn't place: ` +
+      said.join("; ") + (bad.length > said.length ? `; and ${bad.length - said.length} more. ` : ". ") +
+      "Type those in by hand if they matter. ";
+  }
+
+  // THE READING THAT WAS ALREADY TAKEN — which is still on the page, because it
+  // went up before the model was asked. So this says why the second opinion
+  // never came and leaves everything else exactly as it was, answers included.
+  // Nothing is re-read: reading one document twice is how two readings of it
+  // start to disagree.
+  function calFallBack(why) {
+    calNote = why + " ";
     renderCal();
   }
 
@@ -386,8 +508,15 @@
     const words = $("#calWords");
     const btn = $("#calAdd");
     if (!C || !box) return;
-    if (words) words.textContent = C.words({ ...calMeta, rows: calRows }, calRows, calDay);
+    if (words) words.textContent = calNote + C.words({ ...calMeta, rows: calRows }, calRows, calDay);
     if (btn) btn.hidden = !calRows.some((r) => r.kind);
+    // OFFERED, NOT TAKEN. A reading that found forty dates may still have the
+    // wrong forty, and a reading that found none may be a perfectly good answer
+    // to a page with no dates on it — neither is a thing this app can tell from
+    // the outside. So the second opinion is a button, next to what was read,
+    // whenever there is a document to read.
+    const more = $("#calSecondRow");
+    if (more) more.hidden = !calText.trim();
     // What each row will actually cover, worked out by the reader rather than
     // guessed at again here — so what this shows is what gets kept.
     const marks = new Map();
@@ -414,6 +543,17 @@
         ? `${calDay(r.date)} — ${r.label}`
         : `${everyWords(r.days)} — ${r.label}`;
       row.appendChild(name);
+      // AND ANYTHING THE READER SAW THAT THIS APP HAS NO FIELD FOR — a room, a
+      // year group, who it is for. Shown as written, named as the document
+      // named it, exactly as the timetable's check-back shows it. It is here so
+      // that what was read is not quietly narrowed to what somebody once
+      // thought to build a box for.
+      (r.extras || []).forEach((x) => {
+        const e = document.createElement("span");
+        e.className = "su-textra";
+        e.textContent = `${x.name}: ${x.value}`;
+        row.appendChild(e);
+      });
       // Four plain choices, and "nothing" is one of them and is the default.
       // FIVE, NOT FOUR. The four were all about whether a day is a working one
       // — and a school calendar is at least half things that HAPPEN AT A TIME:
@@ -642,6 +782,12 @@
     persist();
     calRows = [];
     calTermPick = null;
+    // AND THE DOCUMENT WITH THEM. What was read is now in your week, so the
+    // offer to read it again — and anything the model said about the last
+    // reading — belongs to a document that is no longer on the page.
+    calText = "";
+    calPlain = null;
+    calNote = "";
     const box = $("#calPaste");
     if (box) box.value = "";
     renderCal();
@@ -1823,7 +1969,10 @@
         paste.value = handed.text;
         const y = $("#calYear");
         if (y) y.value = "";
-        calRead(handed.text);
+        // A DOCUMENT HANDED OVER FROM THE HOME BOX IS STILL A DOCUMENT
+        // ARRIVING. Opening a PDF on one page and dropping it on another must
+        // not read it two different ways.
+        calRead(handed.text, 0, 0, true);
       }
       if (box) box.scrollIntoView({ block: "start" });
       return true;
@@ -3071,7 +3220,9 @@
       calBox.value = said;
       const y = $("#calYear");
       if (y) y.value = "";
-      calRead(said);
+      // A WHOLE DOCUMENT ARRIVING, so the model is allowed a go at it. Typing
+      // is not: see calRead.
+      calRead(said, 0, 0, true);
     });
     // Changing the year re-reads what's already there rather than making you
     // paste it again.
@@ -3080,6 +3231,12 @@
     if (calMonth) calMonth.addEventListener("change", () => reRead(true));
     const calAdd = $("#calAdd");
     if (calAdd) calAdd.addEventListener("click", calApply);
+    // ASKED FOR, RATHER THAN ASKED ON EVERY KEYSTROKE. The reading it is a
+    // second opinion on is the one already on screen, so the document is taken
+    // from where that reading took it rather than read out of the box again.
+    const calSecond = $("#calSecond");
+    if (calSecond)
+      calSecond.addEventListener("click", () => calAsk(calPlain || { r: calMeta, ms: 0 }, "Asking the model… "));
     const calFile = $("#calFile");
     if (calFile)
       calFile.addEventListener("change", async () => {
@@ -3099,7 +3256,7 @@
           if (calBox) calBox.value = said;
           // A new document brings its own year, so the old one is let go of.
           if (calYear) calYear.value = "";
-          calRead(said);
+          calRead(said, 0, 0, true);
           if (words) words.textContent = r.caution + " " + words.textContent;
         } catch (e) {
           if (words) words.textContent = "That file couldn't be opened. Copy the text across instead.";

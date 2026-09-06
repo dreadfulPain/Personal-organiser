@@ -69,9 +69,36 @@ const ol = http.createServer((req, res) => {
 }).listen(11210);
 const nomodel = await diag({ AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b", AI_BASE_URL: "http://localhost:11210" });
 const s2 = find(nomodel, "Smart sorting");
-ok("running-but-no-model is told apart from not running", /Ollama is running/.test(s2.detail), s2.detail);
-ok("and gives the pull command", /ollama pull qwen3:14b/.test(s2.fix));
+// A COMPUTER WITH A DIFFERENT MODEL ON IT IS NOT A BROKEN COMPUTER.
+//
+// This used to be "Ollama is running, but qwen3:14b isn't pulled — run ollama
+// pull qwen3:14b", which is true and useless: the machine is perfectly able to
+// sort, with a model sitting right there. Two computers sharing one settings
+// file is all it takes, and it is the ordinary case, not a fault.
+//
+// So it reports working, names the one it is USING — a report naming a model
+// this machine hasn't got is a report about a different machine, which is the
+// exact thing this file exists to stop — and says what the settings asked for,
+// because a setting quietly overridden is worth knowing about.
+ok("a machine with another model reports working", s2.state === "ok", s2.state);
+ok("and names the one it is actually using", /llama3\.2:3b/.test(s2.detail), s2.detail);
+ok("and says what the settings asked for instead", /qwen3:14b/.test(s2.detail), s2.detail);
+ok("and there is nothing to fix", !s2.fix, JSON.stringify(s2.fix));
 ol.close();
+
+// AND NOTHING USABLE AT ALL IS STILL A PROBLEM, with the command that fixes it.
+// An embedding model cannot hold a conversation, so a machine with only one of
+// those has nothing to sort with.
+const olE = http.createServer((req, res) => {
+  if (/\/api\/tags/.test(req.url)) { res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ models: [{ name: "nomic-embed-text" }] })); }
+  if (/\/api\/show/.test(req.url)) { res.writeHead(404, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ error: "model not found" })); }
+  res.writeHead(200, {"Content-Type":"application/json"}); res.end("{}");
+}).listen(11212);
+const noneUsable = await diag({ AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b", AI_BASE_URL: "http://localhost:11212" });
+const s2b = find(noneUsable, "Smart sorting");
+ok("nothing that can sort is still a problem", s2b.state === "problem", s2b.state);
+ok("and still gives the pull command", /ollama pull qwen3:14b/.test(s2b.fix), s2b.fix);
+olE.close();
 
 // Working.
 const ol2 = http.createServer((req, res) => {

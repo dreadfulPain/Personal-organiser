@@ -68,9 +68,26 @@ await check("4. everything working", ["qwen3:14b"], "qwen3:14b", true, "");
 // Ollama sometimes reports "qwen3" for "qwen3:14b". Refusing to sort over that
 // would be the app breaking itself on a naming detail.
 await check("5. tag reported bare", ["qwen3"], "qwen3:14b", true, "");
-// Other models are pulled and yours isn't. THIS is the one worth saying, and
-// it says the command rather than the problem.
-await check("6. wrong model pulled", ["llama3.2:3b"], "qwen3:14b", false, "ollama pull qwen3:14b");
+// ANOTHER MODEL IS PULLED AND YOURS ISN'T — which is what two computers looks
+// like. The same folder, synced between a desktop and a laptop, carries one
+// setting naming one model, and only one machine has it.
+//
+// This used to be "sorting is off, run ollama pull", which is true and useless:
+// the machine is perfectly able to sort, with a model sitting right there. So
+// it uses that one and SAYS SO — a setting quietly overridden is the thing you
+// want to know before wondering why the answers changed.
+await check("6. another model pulled, not yours", ["llama3.2:3b"], "qwen3:14b", true,
+  'Using "llama3.2:3b"');
+// AND A TEXT MODEL BEFORE ONE THAT SEES, on a machine that has both. A vision
+// model will hold a conversation and is not what anybody would pick to sort with.
+await check("6b. a text model and a vision one", ["llava:7b", "llama3.2:3b"], "qwen3:14b", true,
+  'Using "llama3.2:3b"');
+// AND AN EMBEDDING MODEL IS NOT A SORTER. It cannot hold a conversation at all,
+// and plenty of people have one pulled without knowing — picked as the sorter it
+// fails every request with an error about something else entirely. So this is
+// still "nothing usable here", with the command that fixes it.
+await check("6c. only an embedding model", ["nomic-embed-text"], "qwen3:14b", false,
+  "ollama pull qwen3:14b");
 // AN EMPTY LIST IS NOT AN ANSWER EITHER WAY, so it is no longer treated as
 // one. Some builds report nothing while having the model — assuming the worst
 // would switch sorting off for people who have it — and a machine with nothing

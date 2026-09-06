@@ -11,10 +11,19 @@ let pass = 0, fail = 0;
 const ok = (n, c, e) => { if (c) { pass++; console.log(`  ok  ${n}`); } else { fail++; console.log(`FAIL  ${n}${e ? "\n      " + String(e).slice(0,300) : ""}`); } };
 
 const oport = 11700, sport = 3700;
+// WHICH MODEL EACH REQUEST ACTUALLY ASKED FOR — the point of the whole thing
+// below: a name out of a settings file is not evidence that this computer has
+// it, and two computers is all it takes for it to be wrong on one of them.
+const modelsAsked = [];
+// What this stand-in Ollama says it has pulled, which is deliberately NOT the
+// model the server is configured with.
+const PULLED = ["llama3.2:3b"];
 const ol = http.createServer((req, res) => {
-  if (/\/api\/tags/.test(req.url)) { res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ models: [{ name: "qwen3:14b" }] })); }
+  if (/\/api\/tags/.test(req.url)) { res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ models: PULLED.map((name) => ({ name })) })); }
   let b = ""; req.on("data", (c) => (b += c));
   req.on("end", () => {
+    const askedFor = JSON.parse(b || "{}").model || "";
+    if (askedFor) modelsAsked.push(askedFor);
     const sys = (JSON.parse(b || "{}").messages || []).find((m) => m.role === "system")?.content || "";
     let out = {};
     if (/router inside a calm personal organiser/.test(sys) && /RECORDPLEASE/.test(b))
@@ -69,6 +78,30 @@ const ol = http.createServer((req, res) => {
   });
 }).listen(oport);
 
+// THE PORT MUST BE OURS.
+//
+// These are fixed numbers, and a server left running from an earlier go holds
+// them — so the one spawned here fails to bind, the OLD one answers every
+// request, and the suite reports confidently on a server it did not start and
+// whose code it has never seen. That is not a flake that makes a check fail:
+// it makes a check PASS while looking at the wrong thing, which is worse. It
+// hid a real fault for three runs.
+//
+// So it is checked, and being unable to check it is itself the failure.
+async function mustBeFree(port, what) {
+  const free = await new Promise((done) => {
+    const probe = http.createServer();
+    probe.once("error", () => done(false));
+    probe.listen(port, () => probe.close(() => done(true)));
+  });
+  if (!free) {
+    console.log(`FAIL  port ${port} (${what}) is already in use — something is still running from an earlier go.`);
+    console.log("      Nothing below would be about this copy of the code. Stopping.");
+    process.exit(1);
+  }
+}
+await mustBeFree(sport, "the app");
+
 const srv = spawn(process.execPath, ["server.js"], {
   cwd: REPO_ROOT,
   env: { ...process.env, AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b", AI_BASE_URL: `http://localhost:${oport}`, NO_OPEN: "1", PORT: String(sport) },
@@ -82,8 +115,81 @@ for (const p of ["", "index.html", "records.html", "class.html", "timeline.html"
   ok(`serves /${p || "(root)"}`, p === "pipeline.js" ? r.status === 404 : r.ok, String(r.status));
 }
 
+// ---------------------------------------------------------------------------
+// THE MODEL ON THIS COMPUTER, NOT THE ONE IN THE FILE.
+//
+// The server is started with AI_MODEL=qwen3:14b and this Ollama has only
+// llama3.2:3b. Same folder, two machines: the setting names a model one of them
+// hasn't got, and every request used to ask for it anyway and fail.
+{
+  modelsAsked.length = 0;
+  const r = await (await fetch(B + "/api/route", { method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ text: "call the dentist", today: "2026-08-12", config: {} }) })).json();
+  ok("it still sorts on a computer without the configured model",
+     Array.isArray(r.entries), JSON.stringify(r).slice(0, 160));
+  ok("and asked for the model this computer actually has",
+     modelsAsked.length > 0 && modelsAsked.every((m) => m === "llama3.2:3b"),
+     JSON.stringify(modelsAsked));
+  ok("rather than the one in the settings file",
+     !modelsAsked.includes("qwen3:14b"), JSON.stringify(modelsAsked));
+}
+
+// AND WHICH ONE IT PICKS, ON FOUR DIFFERENT COMPUTERS.
+//
+// A fresh stub and a fresh app each time: the answer is cached against where it
+// asked, so the only honest way to ask again is to ask somewhere else — which
+// is also what actually happens, since the two machines are two machines.
+let nextPair = 11730;
+async function picksOn(pulled, wanted) {
+  const op = nextPair++, ap = nextPair++;
+  await mustBeFree(op, "a stand-in ollama");
+  await mustBeFree(ap, "a second app");
+  const got = [];
+  const o = http.createServer((rq, rs) => {
+    if (/\/api\/tags/.test(rq.url)) { rs.writeHead(200, {"Content-Type":"application/json"});
+      return rs.end(JSON.stringify({ models: pulled.map((name) => ({ name })) })); }
+    let bb = ""; rq.on("data", (c) => (bb += c));
+    rq.on("end", () => {
+      const m = JSON.parse(bb || "{}").model || "";
+      if (m) got.push(m);
+      rs.writeHead(200, {"Content-Type":"application/json"});
+      rs.end(JSON.stringify({ message: { content: JSON.stringify({ entries: [] }) } }));
+    });
+  }).listen(op);
+  const app = spawn(process.execPath, ["server.js"], { cwd: REPO_ROOT, stdio: "ignore",
+    env: { ...process.env, AI_ENGINE: "ollama", AI_MODEL: wanted,
+           AI_BASE_URL: `http://localhost:${op}`, NO_OPEN: "1", PORT: String(ap) } });
+  await sleep(2200);
+  await fetch(`http://localhost:${ap}/api/route`, { method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ text: "call the dentist", today: "2026-08-12", config: {} }) })
+    .then((x) => x.text()).catch(() => "");
+  await sleep(200);
+  app.kill(); o.close();
+  await sleep(200);
+  return got[0] || "(never asked)";
+}
+
+// YOUR OWN SETTING STILL WINS when this computer has the model you named — the
+// whole point is to stop a machine failing over a name it hasn't got, not to
+// start overruling a choice that works.
+ok("the model you asked for is used when it is here",
+   (await picksOn(["llama3.2:3b", "qwen3:14b"], "qwen3:14b")) === "qwen3:14b",
+   "it overrode a setting that was perfectly good");
+// AND A TEXT MODEL BEFORE ONE THAT SEES, on a machine with both.
+ok("a text model is preferred to one that sees",
+   (await picksOn(["llava:7b", "llama3.2:3b"], "qwen3:14b")) === "llama3.2:3b",
+   "it picked the vision model to sort with");
+// AND AN EMBEDDING MODEL IS NOT A SORTER — it cannot hold a conversation at
+// all, and picked as one it fails every request with an error about something
+// else entirely. Better to ask for the model that isn't there and say so.
+ok("an embedding model is never picked to sort with",
+   (await picksOn(["nomic-embed-text"], "qwen3:14b")) === "qwen3:14b",
+   "it tried to sort with an embedding model");
+
 const h = await (await fetch(B + "/api/health")).json();
-ok("health says the engine is live", h.hasAI === true && h.engineNote === "");
+ok("health says the engine is live", h.hasAI === true, JSON.stringify(h));
+ok("and names the one it is actually using", /llama3\.2:3b/.test(h.engineNote || ""), h.engineNote);
 
 const rt = await (await fetch(B + "/api/route", { method: "POST", headers: {"Content-Type":"application/json"},
   body: JSON.stringify({ text: "sent message to Helen (from SHSID) with the wording for the next school year. waiting for the school's reply", today: "2026-08-12", config: {} }) })).json();

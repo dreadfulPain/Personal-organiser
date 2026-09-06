@@ -679,6 +679,18 @@ async function engineLive(cfg) {
       // one cheap request only when the fast path hasn't already said yes.
       if (names.some((n) => n === cfg.model || base(n) === base(cfg.model))) {
         out = { ok: true, note: "" };
+      } else if (names.some((n) => n && !NOT_A_CHATTER.test(n))) {
+        // A MODEL THIS COMPUTER HASN'T GOT, AND ONE IT HAS.
+        //
+        // The same folder on a desktop and a laptop carries one setting naming
+        // one model, and only one of them has it. Reported as "not pulled" that
+        // is true and useless: the machine is perfectly able to sort, with the
+        // model sitting right there. So it says which it is using instead —
+        // said out loud, because a setting being quietly overridden is the kind
+        // of thing you want to know before you wonder why the answers changed.
+        const use = await modelHere(cfg);
+        out = { ok: true, note: use && use !== cfg.model
+          ? `Using "${use}" — this computer hasn't got "${cfg.model}".` : "" };
       } else {
         let there = false;
         try {
@@ -811,8 +823,73 @@ function readEvents() {
 // Every model call is timed and its outcome recorded — no prompt, no answer,
 // just "which job, how long, did it work". That is the single most useful thing
 // for working out whether a setup is healthy or the model is struggling.
+// WHICH MODELS CAN SEE A PICTURE. Up here because two things ask now — the
+// photo reader below, and the choice of sorter, which prefers a text model over
+// one that sees when a machine has both.
+const VISION_MODELS = [
+  "llava", "bakllava", "llama3.2-vision", "llama3.2vision", "llama4",
+  "minicpm-v", "moondream", "qwen2-vl", "qwen2.5vl", "qwen2.5-vl",
+  "granite3.2-vision", "gemma3", "mistral-small3", "internvl",
+];
+const looksLikeVision = (name) => {
+  const n = String(name || "").toLowerCase();
+  return VISION_MODELS.some((v) => n.includes(v));
+};
+
+// WHICH MODEL IS ACTUALLY ON THIS COMPUTER.
+//
+// The name was read out of .env and used as fact. That is fine on one machine
+// and wrong the moment there are two: the same folder, synced or copied between
+// a desktop and a laptop, carries a setting naming a model only one of them has
+// — so on the other one every request asks for something that isn't there, and
+// the app quietly falls back to sorting by hand.
+//
+// Ollama can simply be asked. So it is, and what is asked for is:
+//   · the model in .env, if this computer has it — your setting still wins
+//   · otherwise whatever this computer HAS, and it says so rather than failing
+//   · nothing, if nothing is pulled, so the "run ollama pull" message still
+//     names the model you meant
+//
+// AN EMBEDDING MODEL CANNOT HOLD A CONVERSATION and several people have one
+// pulled without knowing; picked as the sorter it fails every request with an
+// error about the wrong thing entirely.
+const NOT_A_CHATTER = /(^|[-\/])(embed|embedding|bge|gte|e5|minilm|reranker)/i;
+let chosenModel = { at: 0, base: "", name: "" };
+
+async function modelHere(cfg) {
+  if (!cfg || cfg.engine !== "ollama") return cfg ? cfg.model : "";
+  const want = (process.env.AI_MODEL || "").trim();
+  // Asked once a minute at most, and again whenever the machine changes under
+  // it — which is the whole point, so the cache is keyed on where it is asking.
+  if (chosenModel.base === cfg.baseUrl && Date.now() - chosenModel.at < 60000)
+    return chosenModel.name || cfg.model;
+  let names = [];
+  try {
+    const r = await fetch(cfg.baseUrl.replace(/\/+$/, "") + "/api/tags",
+      { signal: AbortSignal.timeout(2500) });
+    if (r.ok) names = ((await r.json()).models || []).map((m) => String(m.name || m.model || ""));
+  } catch {
+    /* not answering — leave the setting alone and let engineLive say so */
+  }
+  const sameAs = (a, b) => a === b || a.split(":")[0] === b.split(":")[0];
+  const usable = names.filter((n) => n && !NOT_A_CHATTER.test(n));
+  const name =
+    (want && names.find((n) => sameAs(n, want))) ||
+    // A TEXT MODEL BEFORE ONE THAT SEES. A vision model will hold a
+    // conversation, but it is not what you would choose for sorting, and on a
+    // machine with both the text one is plainly the one meant.
+    usable.find((n) => !looksLikeVision(n)) ||
+    usable[0] ||
+    "";
+  chosenModel = { at: Date.now(), base: cfg.baseUrl, name };
+  return name || cfg.model;
+}
+
 async function runEngine(cfg, system, user, schema, label) {
   const t0 = Date.now();
+  // Whatever this computer has, rather than whatever the file says it has.
+  const here = await modelHere(cfg);
+  if (here && here !== cfg.model) cfg = { ...cfg, model: here };
   try {
     const out =
       cfg.engine === "anthropic"
@@ -1557,10 +1634,17 @@ async function handleDiagnose(res) {
       }
     } else {
       const live = await engineLive(cfg);
+      // THE MODEL IT IS ACTUALLY USING, not the one named in the settings. On a
+      // computer that hasn't got the one you named, the app uses what is here —
+      // and a report naming the other one is a report about a different
+      // machine, which is the exact thing this file exists to stop.
+      const using = live.ok ? await modelHere(cfg) : cfg.model;
       add(
         "Smart sorting",
         live.ok ? "ok" : "problem",
-        live.ok ? `Working — ${cfg.model} at ${cfg.baseUrl}.` : live.note,
+        live.ok ? `Working — ${using} at ${cfg.baseUrl}.` +
+          (using !== cfg.model ? ` The settings ask for "${cfg.model}", which this computer hasn't got.` : "")
+          : live.note,
         live.ok ? "" : `In a terminal: ollama pull ${cfg.model}`
       );
     }
@@ -2098,15 +2182,6 @@ async function handleTranscribe(req, res, query) {
 // in it, a register on a desk, a screen with somebody's marks on it. So this
 // refuses to run against a cloud engine — not "warns", refuses. There is no
 // setting that turns that off.
-const VISION_MODELS = [
-  "llava", "bakllava", "llama3.2-vision", "llama3.2vision", "llama4",
-  "minicpm-v", "moondream", "qwen2-vl", "qwen2.5vl", "qwen2.5-vl",
-  "granite3.2-vision", "gemma3", "mistral-small3", "internvl",
-];
-const looksLikeVision = (name) => {
-  const n = String(name || "").toLowerCase();
-  return VISION_MODELS.some((v) => n.includes(v));
-};
 
 // Word for word, and the LAYOUT with it. A timetable read into one long
 // paragraph is unreadable by anything here; the same timetable with a tab

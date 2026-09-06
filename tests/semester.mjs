@@ -984,6 +984,87 @@ sec("And an hour written as an hour is that hour");
   ok("a bare number is not a time", T.timeOf("7") === "", JSON.stringify(T.timeOf("7")));
 }
 
+sec("A line that says every Friday is a rule, not a day");
+{
+  // "Staff meeting every Friday, 3:30-4:30" is on most school calendars and it
+  // got NO ROW AT ALL — no date on the line, so nothing to read, so nothing
+  // offered. A standing commitment, printed on the calendar the app had just
+  // been handed, invisible to it. The same shape as a class timetable that
+  // could only be filed as single dates.
+  const one = (line) => C.read(line, { year: 2026 }).rows[0] || {};
+
+  const staff = one("Staff meeting every Friday\t3:30pm - 4:30pm");
+  // Everything below reads off it, so a reading that came back empty must say
+  // so once rather than throw and take the rest of the file with it.
+  ok("it is read at all", !!staff.days, JSON.stringify(staff));
+  ok("on the day it names", JSON.stringify(staff.days) === "[5]", JSON.stringify(staff.days));
+  ok("with no date, because it hasn't got one", !staff.date, JSON.stringify(staff.date));
+  ok("at the time it says", staff.start === "15:30" && staff.end === "16:30", JSON.stringify(staff));
+  ok("and called what it is, not what the rule is",
+     staff.label === "Staff meeting", JSON.stringify(staff.label));
+
+  // THE PLURAL IS A RULE TOO — "Assembly Mondays" says it as plainly as "every".
+  const assembly = one("Assembly Mondays 8:40-9:00");
+  ok("a plural day name says it repeats", JSON.stringify(assembly.days) === "[1]",
+     JSON.stringify(assembly));
+  // AND A RANGE OF DAYS.
+  const duty = one("Gate duty every Mon-Fri 8:15");
+  ok("a range of days is all of them", JSON.stringify(duty.days) === "[1,2,3,4,5]",
+     JSON.stringify(duty.days));
+
+  // AND WHAT MUST NOT BECOME ONE. A day name is on half the lines of a
+  // calendar; reading every one as a standing appointment would fill somebody's
+  // week with things nobody said.
+  ok("a bare day name is a heading, not a rule", !one("Friday").days, JSON.stringify(one("Friday")));
+  ok("a dated line is one day, whatever weekday it is",
+     one("Term starts\tFriday 4 September 2026").date === "2026-09-04",
+     JSON.stringify(one("Term starts\tFriday 4 September 2026")));
+  ok("and a dated line is never a rule",
+     !one("Term starts\tFriday 4 September 2026").days,
+     JSON.stringify(one("Term starts\tFriday 4 September 2026").days));
+  ok("nor is a day named inside a sentence about a date",
+     !one("Makeup day (Saturday, runs Mondays timetable)\t7 November 2026").days,
+     JSON.stringify(one("Makeup day (Saturday, runs Mondays timetable)\t7 November 2026")));
+}
+
+sec("And a rule is one block that repeats, bounded by the term");
+{
+  // WRITTEN OUT AS DATES it would be fourteen things to change when it moves,
+  // and it would stop at whatever date the writing-out stopped at.
+  //
+  // AND IT MUST END. A weekly thing with no end runs through the holidays and
+  // through next July — which is the exact fault the "lessons start" row exists
+  // to fix for a timetable, so a rule read off a calendar must not walk
+  // straight back into it. The same calendar says when the teaching runs.
+  const doc = ["Term starts\t1 September 2026", "Lessons begin\t7 September 2026",
+    "Term ends\t18 December 2026", "Staff meeting every Friday\t3:30pm - 4:30pm"].join("\n");
+  const rows = C.read(doc, { year: 2026 }).rows.map((r) => ({
+    ...r,
+    kind: r.days ? "week" : /Lessons begin/.test(r.label) ? "lessons" : "off",
+  }));
+  const blocks = C.toBlocks(rows);
+  const rule = blocks.filter((b) => (b.days || []).length);
+  ok("one block, not one a week", rule.length === 1, JSON.stringify(rule.map((b) => b.label)));
+  ok("that repeats on its day", !!rule[0] && JSON.stringify(rule[0].days) === "[5]",
+     JSON.stringify(rule[0]));
+  ok("at its time", !!rule[0] && rule[0].start === "15:30" && rule[0].end === "16:30",
+     JSON.stringify(rule[0]));
+  ok("and it does not run before the teaching does", !!rule[0] && rule[0].from === "2026-09-07",
+     rule[0] && rule[0].from);
+  ok("and is somewhere you have to be", !!rule[0] && rule[0].beThere === true,
+     JSON.stringify(rule[0] && rule[0].beThere));
+  // AND THE DATED ROWS ARE UNCHANGED BY ANY OF IT.
+  const dated = blocks.filter((b) => b.date);
+  ok("the dated rows still become days", dated.length === 2,
+     JSON.stringify(dated.map((b) => b.date + " " + b.label)));
+  ok("all day, as days are", dated.every((b) => b.start === "00:00"), JSON.stringify(dated));
+
+  // A DAY OFF THAT REPEATS IS STILL ALL DAY.
+  const off = C.toBlocks([{ ...C.read("Closed every Friday 3:30pm", { year: 2026 }).rows[0], kind: "off" }]);
+  ok("a repeating day off has no time", off[0] && off[0].start === "00:00", JSON.stringify(off[0]));
+  ok("and blocks the day", off[0] && off[0].blocksDay === true, JSON.stringify(off[0]));
+}
+
 sec("And nothing else is read as a term grid");
 {
   // A MONTH GRID HAS NO WEEK COLUMN, and reading one as a term would turn the

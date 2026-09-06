@@ -43,6 +43,15 @@
     const w = String(word || "").trim().toLowerCase().replace(/[^a-z]/g, "");
     if (!w) return -1;
     for (let i = 0; i < DAYS.length; i++) if (DAYS[i].includes(w)) return i;
+    // AND THE PLURAL, which is how a repeat gets written. "Fridays" is Friday
+    // said about more than one of them — a column heading on some timetables,
+    // and on a calendar the whole of what makes "Staff meeting Fridays" a
+    // weekly thing rather than a single day. Only where taking the s off leaves
+    // a day: "starts" does not become one.
+    if (w.length > 2 && w.endsWith("s")) {
+      const one = w.slice(0, -1);
+      for (let i = 0; i < DAYS.length; i++) if (DAYS[i].includes(one)) return i;
+    }
     return -1;
   }
 

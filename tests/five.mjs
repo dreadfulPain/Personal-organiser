@@ -826,6 +826,36 @@ sec("And whichever goes first, the other one picks up what it misses");
   ok("and how long this one took", /Read here in /.test(status), status);
 }
 
+sec("And the page says when a rule runs, since it has no date to show");
+{
+  // A ROW WITHOUT A DATE drawn by the date-drawing code has nothing at all in
+  // front of its name — so the one row on the calendar that says "this happens
+  // every week" would be the one row you could not tell apart.
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  const box = r.get("#calBox");
+  if (box) box.open = true;
+  const paste = r.get("#calPaste");
+  paste.value = ["Term starts\t1 September 2026",
+    "Staff meeting every Friday\t3:30pm - 4:30pm",
+    "Gate duty every Mon-Fri 8:15"].join("\n");
+  paste.fire("input", { target: paste });
+  await r.settle();
+  const rows = [...(r.get("#calRows").children || [])];
+  const said = rows.map((x) => String((x.children[0] || {}).textContent || ""));
+  ok("the calendar reads", rows.length === 3, JSON.stringify(said));
+  ok("a rule says which day it runs on", said.some((t) => /every Friday — Staff meeting/.test(t)),
+     JSON.stringify(said));
+  ok("and a run of days is said as one", said.some((t) => /every weekday — Gate duty/.test(t)),
+     JSON.stringify(said));
+  ok("while a dated row still shows its date", said.some((t) => /Sep 1, 2026 — Term starts/.test(t)),
+     JSON.stringify(said));
+  // AND IT IS OFFERED THE SAME CHOICES, or reading it changes nothing.
+  const kinds = [...(rows.find((x) => /every Friday/.test(String((x.children[0]||{}).textContent||""))) || { children: [] }).children]
+    .filter((c) => String(c.className || "").includes("cal-pick"))
+    .map((c) => String(c.textContent));
+  ok("and asked what it is, like any other row", kinds.includes("in my week"), JSON.stringify(kinds));
+}
+
 sec("A reading is measured before it is believed");
 {
   // THE HOLE THIS CLOSES. The plain reader goes first and the model is asked

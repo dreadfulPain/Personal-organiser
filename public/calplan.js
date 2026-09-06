@@ -351,6 +351,31 @@
     return start ? { start, end: "", text: one[0] } : null;
   }
 
+  // A LINE THAT SAYS "EVERY FRIDAY" IS NOT A DAY, IT IS A RULE.
+  //
+  // "Staff meeting every Friday, 3:30-4:30" is on most school calendars and it
+  // got no row at all — no date on it, so nothing to read, so nothing offered.
+  // A whole standing commitment, printed on the calendar, invisible to the app.
+  //
+  // THE TELL IS THAT IT NAMES DAYS AND NO DATE. A line with a date is one day,
+  // whatever weekday it happens to fall on: "Friday 25 October" is the 25th.
+  // A line with weekday names and no date at all is either a rule or a heading,
+  // and what separates those two is that a rule SAYS SO — "every", "each",
+  // "weekly", or the day said in the plural. "Friday" on its own is a heading
+  // and stays one; guessing otherwise would turn every day name in a document
+  // into a standing appointment.
+  const SAYS_EVERY = /\b(?:every|each|weekly|fortnightly|alternate)\b/i;
+  function repeatIn(line) {
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (!T || typeof T.daysIn !== "function") return null;
+    const s = String(line || "");
+    const days = T.daysIn(s);
+    if (!days.length) return null;
+    const plural = (s.match(/\b[A-Za-z]{4,10}s\b/g) || []).some((w) => T.dayOf(w) >= 0);
+    if (!SAYS_EVERY.test(s) && !plural) return null;
+    return days;
+  }
+
   // WHICH YEAR IS THIS CALENDAR ABOUT?
   //
   // Found on a real one: a PDF table put "Saturday", "2026" and "24 August" on
@@ -886,7 +911,31 @@
         // it began on the 29th and ended on the 29th: a week of half term
         // collapsed onto its own last day, from a line that plainly said both.
         const d = (range && range.to > range.from && range.from) || dateIn(line, useYear, order);
-        if (!d) return;
+        if (!d) {
+          // NO DATE, BUT IT MAY STILL BE SOMETHING. A line naming weekdays and
+          // saying "every" is a standing commitment — see repeatIn.
+          const every = repeatIn(line);
+          if (!every) return;
+          const t = timeOnLine(line);
+          rows.push({
+            date: "",
+            days: every,
+            endsOn: "",
+            endFrom: "",
+            // "Staff meeting every Friday" is a staff meeting. The rule is
+            // shown beside it on the page, so saying it twice in the name is
+            // just less room for the part that says what it is.
+            label: labelOf(
+              line.replace(SAYS_EVERY, " ")
+                .replace(/\b[A-Za-z]{3,10}s?\b/g, (w) => (repeatIn("every " + w) ? " " : w)),
+              "", useYear, order) || "(no name)",
+            ...(t ? { start: t.start, end: t.end } : {}),
+            line,
+            yearAssumed: false,
+            kind: "",
+          });
+          return;
+        }
         rows.push({
           date: d,
           // Both ends, when the line itself gave both — see rangeIn. Nothing is
@@ -992,8 +1041,14 @@
     // they came off is kept apart.
     const byDate = new Map();
     rows.forEach((r) => byDate.set(
-      r.date + "|" + r.label.toLowerCase() + (r.label === "(no name)" ? "|" + r.line : ""), r));
-    let out = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+      // A repeat has no date to be the same day as, so it is told apart by the
+      // days it runs on — two lines both saying "every Friday assembly" are one
+      // rule said twice, and "every Friday" and "every Monday" are not.
+      (r.date || "every " + (r.days || []).join(",")) + "|" +
+      r.label.toLowerCase() + (r.label === "(no name)" ? "|" + r.line : ""), r));
+    // Dated rows in date order, and the rules that have no date after them.
+    let out = [...byDate.values()].sort((a, b) =>
+      (a.date ? 0 : 1) - (b.date ? 0 : 1) || a.date.localeCompare(b.date));
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A
     // booklet that draws August as a grid and then writes "26th August" over its
     // detailed page gives that day twice: once as "All-Staff Orientation" and
@@ -1141,6 +1196,40 @@
 
   function toBlocks(rows) {
     const out = [];
+    // A RULE IS ONE BLOCK THAT REPEATS, not a block on every day it falls on.
+    //
+    // "Staff meeting every Friday" is one standing commitment. Written out as
+    // fourteen dated entries it would be fourteen things to change when it
+    // moves, and it would stop at whatever date the writing-out stopped at.
+    //
+    // AND IT IS BOUNDED BY THE TERM THE SAME CALENDAR GIVES. A weekly thing
+    // with no end runs through the holidays and through next July — which is
+    // the exact fault the "lessons start" row exists to fix for a timetable, so
+    // a rule read off a calendar should not walk straight back into it. When
+    // the calendar says when the teaching runs, the rule runs then.
+    const t = term(rows);
+    (Array.isArray(rows) ? rows : [])
+      .filter((r) => r && r.kind && r.kind !== "lessons" && !r.date && (r.days || []).length)
+      .forEach((r) => {
+        const T = typeof window !== "undefined" && window.OrganiserTimetable;
+        const timed = r.kind !== "off" && r.start;
+        out.push({
+          label: r.label,
+          start: timed ? r.start : "00:00",
+          end: timed
+            ? r.end || (T && T.anHourAfter ? T.anHourAfter(r.start) : "") || "23:59"
+            : "23:59",
+          date: "",
+          days: r.days.slice(),
+          from: (t && t.from) || "",
+          to: (t && t.to) || "",
+          blocksDay: r.kind === "off",
+          noLessons: r.kind === "noLessons",
+          beThere: r.kind === "week",
+          soft: false,
+          source: "paste",
+        });
+      });
     // A "lessons" row is a marker, not a day — it changes when the timetable
     // applies, and putting a block on that date would be inventing an event.
     plan(rows).filter((p) => p.kind !== "lessons").forEach((p) => {

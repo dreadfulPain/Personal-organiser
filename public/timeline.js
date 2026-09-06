@@ -329,6 +329,21 @@
     sel.value = String(g.month || order[0]);
   }
 
+  // "every Friday", "every Monday and Wednesday", "every weekday". Said the way
+  // somebody would say it, because this is the line you read to decide what the
+  // row is.
+  const DAY_WORDS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  function everyWords(days) {
+    const d = (days || []).slice().sort((a, b) => a - b);
+    if (!d.length) return "every week";
+    if (d.length === 5 && d.join(",") === "1,2,3,4,5") return "every weekday";
+    if (d.length === 7) return "every day";
+    const names = d.map((n) => DAY_WORDS[n]);
+    return "every " + (names.length === 1
+      ? names[0]
+      : names.slice(0, -1).join(", ") + " and " + names[names.length - 1]);
+  }
+
   function renderCal() {
     const C = window.OrganiserCalPlan;
     const box = $("#calRows");
@@ -356,7 +371,12 @@
       // table cell somewhere else — so the date is the only thing telling you
       // which row you're looking at, and a string of digits is the hardest
       // possible way to read one.
-      name.textContent = `${calDay(r.date)} — ${r.label}`;
+      // A RULE SAYS WHEN IT RUNS, not what date it is. "every Friday" is the
+      // whole of what a standing commitment has instead of a date, and drawn
+      // with calDay("") it would have had nothing at all in front of its name.
+      name.textContent = r.date
+        ? `${calDay(r.date)} — ${r.label}`
+        : `${everyWords(r.days)} — ${r.label}`;
       row.appendChild(name);
       // Four plain choices, and "nothing" is one of them and is the default.
       // FIVE, NOT FOUR. The four were all about whether a day is a working one
@@ -530,8 +550,13 @@
     const made = C.toBlocks(calRows).map((b) => ({ ...b, id: uid() }));
     // A day already in the schedule is left as it is — reading the calendar in
     // twice must not put two of every holiday in your week.
-    const have = new Set(schedule.filter((b) => b && b.date).map((b) => b.date + "|" + (b.label || "")));
-    const fresh = made.filter((b) => !have.has(b.date + "|" + b.label));
+    // A RULE HAS NO DATE TO BE THE SAME DAY AS. This looked only at blocks that
+    // had one, so reading a calendar in twice kept one copy of every holiday
+    // and a second copy of every "every Friday" — the one kind of entry where a
+    // duplicate is not a duplicated day but a standing commitment said twice.
+    const key = (b) => (b.date || "every " + (b.days || []).join(",")) + "|" + (b.label || "");
+    const have = new Set(schedule.filter((b) => b && (b.date || (b.days || []).length)).map(key));
+    const fresh = made.filter((b) => !have.has(key(b)));
     // The term dates are a separate thing that can arrive on its own — a
     // calendar saying only "students return" still has something to tell you.
     const t = C.term(calRows);

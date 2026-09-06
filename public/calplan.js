@@ -93,7 +93,7 @@
 
   // The date, and the exact words it was read off — so the label can take out
   // that and nothing else. See labelOf.
-  function findDate(text, defaultYear) {
+  function findDate(text, defaultYear, order) {
     const s = String(text || "");
     const at = (m, isoDate) => ({ iso: isoDate, text: m[0] });
     // 2026-08-24 / 2026/8/24
@@ -117,7 +117,53 @@
     // almost never American, and the ISO form above catches the other order.
     m = s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
     if (m && +m[1] <= 31 && +m[2] <= 12) return at(m, iso(year(m[3], defaultYear), +m[2], +m[1]));
+    // 12/18 — TWO NUMBERS AND NO YEAR, which is how half the calendars in the
+    // world write a date and how this one wrote its whole winter break. There
+    // was no pattern for it at all, so "Winter break 12/18 - 1/4" was not a
+    // line with a date on it and the break simply did not exist.
+    //
+    // WHICH NUMBER IS THE MONTH is the whole difficulty, and it is answered by
+    // the document rather than assumed — see slashOrder. Where the document
+    // says nothing either way, month-first, because that is what the grid
+    // reader in this same file has always taken "9/1" to mean and one file
+    // should not read one date two ways.
+    // AND A SQUARE OF A GRID IS NOT AN ENTRY. A wall calendar writes the first
+    // of a new month into its square as "11/1", and read as prose that is a
+    // dated line with nothing on it — so a term grid quietly grew a row for the
+    // first of every month it crossed, each one called "(no name)". A line with
+    // no letters anywhere in it is a square; an entry says what it is.
+    m = /[A-Za-z]/.test(s) ? s.match(/\b(\d{1,2})\/(\d{1,2})\b(?!\s*[-/.]\s*\d)/) : null;
+    if (m) {
+      const a = +m[1], b = +m[2];
+      const dayFirst = order === "dmy" || (order !== "mdy" && a > 12 && b <= 12);
+      const mo = dayFirst ? b : a;
+      const dy = dayFirst ? a : b;
+      if (mo >= 1 && mo <= 12 && dy >= 1 && dy <= 31)
+        return at(m, iso(defaultYear || new Date().getFullYear(), mo, dy));
+    }
     return { iso: "", text: "" };
+  }
+
+  // WHICH NUMBER IS THE MONTH, ASKED OF THE WHOLE DOCUMENT.
+  //
+  // "12/18" is the eighteenth of December or the twelfth of June and nothing in
+  // those five characters says which. But a calendar is not one date: it is
+  // thirty, and among thirty there is nearly always one that settles it — a
+  // first number over twelve can only be a day, a second number over twelve can
+  // only be a day, and one of those decides the lot.
+  //
+  // Only where the document says nothing at all does anything get assumed, and
+  // then it is month-first, because that is what the grid reader in this same
+  // file has always taken "9/1" to mean.
+  function slashOrder(text) {
+    let dmy = 0;
+    let mdy = 0;
+    for (const m of String(text || "").matchAll(/\b(\d{1,2})\/(\d{1,2})\b(?!\s*[-/.]\s*\d)/g)) {
+      const a = +m[1], b = +m[2];
+      if (a > 12 && b <= 12) dmy++;
+      else if (b > 12 && a <= 12) mdy++;
+    }
+    return dmy && !mdy ? "dmy" : mdy && !dmy ? "mdy" : "";
   }
 
   // "25-27 SEPTEMBER" IS THREE DAYS, NOT ONE.
@@ -136,8 +182,42 @@
   // A month name has to be in it. That is what separates "1-7 October" from
   // "exercise 4-6", which is a page reference and not three days off.
   const DASH = "[-–—]|\\bto\\b|\\buntil\\b";
-  function rangeIn(text, defaultYear) {
-    const s = String(text || "");
+  // A WEEKDAY NAME IN FRONT OF A DATE IS DECORATION. "Monday 25 October 2027 -
+  // Friday 29 October 2027" is the commonest way a half term is written down,
+  // and every pattern below expects a number after the dash — so it found the
+  // start, hit "Friday", and handed back a one-day half term. Worse, "Monday 25
+  // - Friday 29 October" came back as the 29th: the END read as the whole of it.
+  //
+  // Taken out before the shapes are tried, because "Monday 25 October" and "25
+  // October" are the same date and only one of them has to be understood twice.
+  // Asked of timetable.js, which is where "is this word a weekday" lives.
+  function noDayNames(s) {
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (!T || typeof T.dayOf !== "function") return s;
+    return String(s || "").replace(/\b([A-Za-z]{3,9})\.?,?\s+(?=\d)/g,
+      (whole, word) => (T.dayOf(word) >= 0 ? " " : whole));
+  }
+
+  function rangeIn(text, defaultYear, order) {
+    const s = noDayNames(text);
+    // 12/18 - 1/4 — two numbers each side and no year anywhere, which is how a
+    // winter break gets written and the one time of year a range CROSSES a New
+    // Year. Read without that in mind it ends four months before it starts.
+    {
+      const two = /\b(\d{1,2})\/(\d{1,2})\s*(?:[-–—]|\bto\b)\s*(\d{1,2})\/(\d{1,2})\b(?!\s*[-/.]\s*\d)/.exec(s);
+      if (two) {
+        const dayFirst = order === "dmy";
+        const pick = (a, b) => (dayFirst ? { mo: +b, dy: +a } : { mo: +a, dy: +b });
+        const A = pick(two[1], two[2]);
+        const B = pick(two[3], two[4]);
+        const y = defaultYear || new Date().getFullYear();
+        if (A.mo >= 1 && A.mo <= 12 && B.mo >= 1 && B.mo <= 12 && A.dy <= 31 && B.dy <= 31) {
+          const from = iso(y, A.mo, A.dy);
+          const to = iso(B.mo < A.mo ? y + 1 : y, B.mo, B.dy);
+          return { from, to, text: two[0] };
+        }
+      }
+    }
     const MO = "[A-Za-z]{3,9}";
     const month = (w) => MONTHS.indexOf(String(w).slice(0, 3).toLowerCase());
     // 25-27 September 2026
@@ -185,10 +265,10 @@
     return null;
   }
 
-  function dateIn(text, defaultYear) {
+  function dateIn(text, defaultYear, order) {
     const r = rangeIn(text, defaultYear);
     if (r && r.to > r.from) return r.from;
-    return findDate(text, defaultYear).iso;
+    return findDate(text, defaultYear, order).iso;
   }
 
   function year(raw, fallback) {
@@ -206,10 +286,18 @@
   // Reading the date and naming the row are the same question asked twice, and
   // the two answers had drifted; now the second one is told what the first
   // found and removes exactly that.
-  function labelOf(line, isoDate, defaultYear) {
-    const raw = String(line || "");
-    const range = rangeIn(raw, defaultYear);
-    const found = range && range.to > range.from ? range : findDate(raw, defaultYear);
+  function labelOf(line, isoDate, defaultYear, order) {
+    // THE SAME LINE THE DATE WAS READ OFF. The readers take the weekday names
+    // out before they look — "Monday 25 October" is the 25th of October — so
+    // the words they hand back to be removed are the words of the stripped
+    // line. Taken off the original, nothing matched and the whole date stayed
+    // in the name: "Half term Monday 25 October 2027 - Friday 29 October 2027".
+    //
+    // And a weekday belongs to the date rather than the name in any case. The
+    // date says which day of the week it is; the name is what happens on it.
+    const raw = noDayNames(line);
+    const range = rangeIn(raw, defaultYear, order);
+    const found = range && range.to > range.from ? range : findDate(raw, defaultYear, order);
     let s = found.text ? raw.replace(found.text, " ") : raw;
     // Any trailing year the pattern left behind — "…25 August" then "2026" as
     // its own word — is part of the date, not part of the name.
@@ -314,12 +402,29 @@
   const A_DESCRIPTION = 5;
   const A_SYMBOL = 2;
 
+  // A GRID, ONE CELL TO A LINE — WHICHEVER WAY IT ARRIVED.
+  //
+  // Both readers below were written for what a PDF gives back: every square on
+  // its own line. A WORD OR EXCEL TABLE PASTES AS TABS — one whole ROW to a
+  // line — which is the likeliest way of all for a calendar to arrive, and
+  // neither of them could see it. The day names were all on one line, so the
+  // header scan never fired, so a pasted calendar was not a calendar at all.
+  //
+  // A line with no tab in it is left exactly as it was, so the shape that
+  // already worked still does.
+  function cellLines(text) {
+    return String(text || "")
+      .split(LINE_BREAKS)
+      .flatMap((l) => (l.indexOf("\t") >= 0 ? l.split("\t") : [l]))
+      .map((l) => l.replace(/\u00a0/g, " ").trim())
+      .filter(Boolean);
+  }
+
   function weekGridIn(text) {
     // Which weekday a word is has one owner, in timetable.js.
     const T = typeof window !== "undefined" && window.OrganiserTimetable;
     if (!T || typeof T.dayOf !== "function") return null;
-    const lines = String(text || "").split(LINE_BREAKS)
-      .map((l) => l.replace(/ /g, " ").trim()).filter(Boolean);
+    const lines = cellLines(text);
 
     let at = -1;
     let dows = [];
@@ -550,10 +655,27 @@
   // weekday the first column is, and that the numbers run without a break — and
   // between them those pin the month down, usually to exactly one. Where they
   // do not, the choice is offered rather than guessed.
-  const dayNumber = (line) => {
-    const m = /^(\d{1,2})$/.exec(String(line || "").trim());
+  // A SQUARE IS ITS NUMBER, AND WHAT IS IN IT.
+  //
+  // This took a number and nothing else, so "1 INSET" — a day with the one thing
+  // on it that matters — was not a square at all. The day was skipped, and with
+  // it the word that says why it is on the calendar: a month whose INSET day,
+  // sports day and two holidays were the entire reason it was printed came out
+  // as thirty plain numbers.
+  //
+  // The term grid learnt this and this one did not, which is the same question
+  // answered in two places and only one of them kept up. Returns the day and
+  // whatever else the square said.
+  const squareIn = (line) => {
+    const t = String(line || "").trim();
+    let m = /^(\d{1,2})$/.exec(t);
+    if (!m) m = /^(\d{1,2})\s+(\S.{0,38})$/.exec(t);
     const n = m ? Number(m[1]) : 0;
-    return n >= 1 && n <= 31 ? n : 0;
+    return n >= 1 && n <= 31 ? { day: n, words: (m[2] || "").trim() } : null;
+  };
+  const dayNumber = (line) => {
+    const sq = squareIn(line);
+    return sq ? sq.day : 0;
   };
   const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 
@@ -569,8 +691,7 @@
     // hearing about it.
     const T = typeof window !== "undefined" && window.OrganiserTimetable;
     if (!T || typeof T.dayOf !== "function") return null;
-    const lines = String(text || "").split(LINE_BREAKS)
-      .map((l) => l.replace(/ /g, " ").trim()).filter(Boolean);
+    const lines = cellLines(text);
 
     // THE HEADER IS THE ONLY THING THAT SAYS THIS IS A CALENDAR. Five or more
     // day names in a row: five, not seven, because a grid of the working week
@@ -592,8 +713,14 @@
     const cells = [];
     let cur = null;
     for (let i = at; i < lines.length; i++) {
-      const n = dayNumber(lines[i]);
-      if (n) { cur = { day: n, lines: [] }; cells.push(cur); continue; }
+      const sq = squareIn(lines[i]);
+      if (sq) {
+        // Whatever was written beside the number is the first thing in the
+        // square, not a line under the one before it.
+        cur = { day: sq.day, lines: sq.words ? [sq.words] : [] };
+        cells.push(cur);
+        continue;
+      }
       if (!cur) continue;
       // A LINE TOO LONG TO BE IN A SQUARE IS THE PAGE UNDERNEATH.
       if (lines[i].length > CELL_LINE) break;
@@ -690,6 +817,9 @@
     // them is the year: it walks from September to January, so it can say which
     // side of New Year each month is on, and its own first column pins the year
     // itself. Read before anything else, because everything below leans on it.
+    // Which number is the month, decided by the whole document rather than
+    // guessed at line by line — see slashOrder.
+    const order = slashOrder(all);
     const wg = weekGridIn(all);
     // Yours if you said one, then what the grid works out, then the year the
     // document says most often, then this one.
@@ -705,9 +835,17 @@
       .forEach((raw) => {
         const line = raw.replace(/\u00a0/g, " ").trim();
         if (!line) return;
-        const d = dateIn(line, useYear);
+        const range = rangeIn(line, useYear, order);
+        // WHERE A RANGE WAS FOUND, ITS START IS THE DATE.
+        //
+        // These were two searches over one line and nothing made them agree.
+        // On "Half term 25/10 - 29/10" the date search skipped the first date —
+        // it is followed by a dash and a number, which is how a three-part date
+        // looks, so it is passed over — and took the SECOND. The row then said
+        // it began on the 29th and ended on the 29th: a week of half term
+        // collapsed onto its own last day, from a line that plainly said both.
+        const d = (range && range.to > range.from && range.from) || dateIn(line, useYear, order);
         if (!d) return;
-        const range = rangeIn(line, useYear);
         rows.push({
           date: d,
           // Both ends, when the line itself gave both — see rangeIn. Nothing is
@@ -718,7 +856,7 @@
           // look the same — and "as written" was the only one of the two the
           // page could say until the grid started answering as well.
           endFrom: range && range.to > range.from ? "line" : "",
-          label: labelOf(line, d, useYear) || "(no name)",
+          label: labelOf(line, d, useYear, order) || "(no name)",
           line,
           // Whether the year came off the line itself or was borrowed. Shown,
           // because a borrowed year is the one thing here that can be quietly

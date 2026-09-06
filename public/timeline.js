@@ -90,6 +90,25 @@
   // the app cannot know, and the whole of this is asking rather than guessing.
   let calMarkKind = new Map();
 
+  // A PDF'S OWN COLUMNS, FOR THE CALENDAR READER TOO.
+  //
+  // A calendar drawn as a table — a term grid, a month on a wall — is columns,
+  // and a PDF keeps its columns in the coordinates rather than in the text.
+  // Read as text those cells run together with nothing between them, so a grid
+  // that reads perfectly out of Word came back from the same document as a PDF
+  // as nothing at all.
+  //
+  // The timetable reader was given this and the calendar reader was not, which
+  // is one gap in two halves of the same job. Same function, same table, and the
+  // grid readers now understand a tab-separated one.
+  const asRead = (r) => {
+    const T = window.OrganiserTimetable;
+    const table = r && r.rows && r.rows.length && T && T.tableOf ? T.tableOf(r.rows) : "";
+    // The flattened text is kept as the fallback: a PDF that positions every
+    // letter has no columns worth having, and tableOf says so by giving nothing.
+    return table || (r ? r.text : "");
+  };
+
   function calRead(text, year, month) {
     const C = window.OrganiserCalPlan;
     if (!C) return;
@@ -2941,11 +2960,14 @@
     // what browsers do: put "2026 First Semester Calendar.docx" in as text. The
     // reader then said "no dates found in that", which was true of the sentence
     // it had been given and useless about the file it hadn't. Read the file.
-    dropOnto(calBox, (text) => {
-      calBox.value = text;
+    dropOnto(calBox, (text, got) => {
+      // With the file's own columns when it had any — a dropped PDF and a
+      // chosen one are the same document and must not read two different ways.
+      const said = (got && got.pdf && asRead(got.pdf)) || text;
+      calBox.value = said;
       const y = $("#calYear");
       if (y) y.value = "";
-      calRead(text);
+      calRead(said);
     });
     // Changing the year re-reads what's already there rather than making you
     // paste it again.
@@ -2969,10 +2991,11 @@
               " Opening it and copying the text across will work.";
             return;
           }
-          if (calBox) calBox.value = r.text;
+          const said = asRead(r);
+          if (calBox) calBox.value = said;
           // A new document brings its own year, so the old one is let go of.
           if (calYear) calYear.value = "";
-          calRead(r.text);
+          calRead(said);
           if (words) words.textContent = r.caution + " " + words.textContent;
         } catch (e) {
           if (words) words.textContent = "That file couldn't be opened. Copy the text across instead.";

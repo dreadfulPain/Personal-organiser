@@ -244,6 +244,22 @@ sec("A PDF that positions every letter separately");
   const r = T.fromRows(glyphs);
   ok("it refuses rather than inventing a grid of letters", r.shape === "none", r.shape);
   ok("and says why", r.note === "glyphs", r.note);
+
+  // BUT A NUMBER IS SHORT BECAUSE IT IS A NUMBER. The rule above counted every
+  // short cell as evidence of a broken document — and a CALENDAR is almost
+  // entirely one- and two-digit numbers, so the guard that exists to protect
+  // the reader from nonsense refused the commonest well-formed table there is.
+  // A term grid and a month grid both came back as nothing out of a PDF while
+  // reading perfectly out of the same document as Word.
+  const at = (x, text) => ({ x, text });
+  const cal = [
+    { cells: [at(40, "Wk"), at(120, "Sun"), at(200, "Mon"), at(280, "Tue"), at(360, "Wed")] },
+    { cells: [at(40, "1"), at(120, "7"), at(200, "8"), at(280, "9"), at(360, "10")] },
+    { cells: [at(40, "2"), at(120, "14"), at(200, "15"), at(280, "16"), at(360, "17")] },
+  ];
+  const table = T.tableOf(cal);
+  ok("a grid of day numbers is columns, not broken glyphs", /\t/.test(table), JSON.stringify(table));
+  ok("with the numbers in their own columns", /1\t7\t8\t9\t10/.test(table), JSON.stringify(table));
 }
 
 sec("And when the columns are gone the model is asked, and told what it's looking at");

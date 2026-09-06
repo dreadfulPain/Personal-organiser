@@ -778,6 +778,140 @@ sec("And a marked day is asked what it is, not assumed to be a meeting");
      kidsOf(stf2, "cal-mark-be").length === 1, "the attendance question went with it");
 }
 
+// ---------------------------------------------------------------------------
+// FOUR CALENDARS, EACH WRITTEN THREE WAYS.
+//
+// Made up on purpose, and made up DIFFERENTLY on purpose: a term-dates list, a
+// week-numbered grid, a month on a wall. Each of them arrives as a paste, as a
+// Word table and as a PDF — the three ways a school actually hands one over —
+// and every one of those found something the others didn't.
+sec("A calendar pasted from Word or Excel is still a calendar");
+{
+  // A GRID PASTES AS TABS. One whole ROW to a line, not one square — and both
+  // grid readers were written for what a PDF gives back, which is one square to
+  // a line. So the day names all landed on a single line, the header scan never
+  // fired, and a pasted calendar was not a calendar at all. The likeliest way of
+  // all for one to arrive, and the one shape neither reader could see.
+  const term = [
+    ["Wk", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    ["1", "3/7", "8", "9", "10", "11", "12 Staff Mtg", "13"],
+    ["2", "14", "15", "16", "17", "18", "19 Staff Mtg", "20 Makeup"],
+    ["3", "21 Holiday", "22 Holiday", "23 Holiday", "24", "25", "26 Staff Mtg", "27"],
+    ["4", "28", "29", "30", "31", "4/1", "2 Staff Mtg", "3 Makeup"],
+  ];
+  const tabbed = term.map((r) => r.join("\t")).join("\n");
+  const g = C.weekGridIn(tabbed);
+  ok("a term grid pasted with tabs is read", !!g, "not read");
+  ok("all of its weeks", g && g.weeks.length === 4, g && String(g.weeks.length));
+  const marks = g ? C.weekGridMarks(g, 2027) : [];
+  const kind = (n) => (marks.find((m) => m.name === n) || {}).dates;
+  ok("with the staff meetings", (kind("Staff Mtg") || []).length === 4,
+     JSON.stringify(marks.map((m) => `${m.name}×${m.dates.length}`)));
+  ok("the makeup days", (kind("Makeup") || []).length === 2, JSON.stringify(kind("Makeup")));
+  ok("and the holidays", (kind("Holiday") || []).length === 3, JSON.stringify(kind("Holiday")));
+
+  // AND ONE SQUARE TO A LINE STILL WORKS — the shape a PDF gives, which is what
+  // both readers were written for and must not be broken to gain the other.
+  const flat = term.flat().join("\n");
+  ok("and one square to a line reads the same", (C.weekGridIn(flat) || {}).weeks.length === 4,
+     JSON.stringify((C.weekGridIn(flat) || {}).weeks ? C.weekGridIn(flat).weeks.length : null));
+
+  // A MONTH ON A WALL, THE SAME TWO WAYS.
+  const month = [
+    ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    ["", "1 INSET", "2", "3", "4", "5", "6"],
+    ["7", "8", "9", "10", "11", "12 Sports Day", "13"],
+    ["14", "15 Holiday", "16 Holiday", "17", "18", "19", "20"],
+  ];
+  const m = C.gridIn(month.map((r) => r.join("\t")).join("\n"));
+  ok("a month grid pasted with tabs is read", !!m, "not read");
+  // AND THE WORDS IN ITS SQUARES. A square is its number AND what is in it —
+  // the term grid learnt that and this one had not, so a month whose INSET day,
+  // sports day and two holidays were the entire reason it was printed came out
+  // as a page of plain numbers.
+  const said = (m ? m.cells : []).filter((c) => c.lines.length).map((c) => `${c.day} ${c.lines[0]}`);
+  ok("with what is written in them", said.length === 4, JSON.stringify(said));
+  ok("the inset day", said.includes("1 INSET"), JSON.stringify(said));
+  ok("the sports day", said.includes("12 Sports Day"), JSON.stringify(said));
+  ok("and both holidays", said.filter((x) => /Holiday/.test(x)).length === 2, JSON.stringify(said));
+}
+
+sec("And a half term written out in full is a week, not a day");
+{
+  // THE COMMONEST WAY A HALF TERM IS WRITTEN, and every pattern expected a
+  // number after the dash. It found the start, hit "Friday", and handed back a
+  // one-day half term — five days of holiday quietly turned into one.
+  const one = C.read("Half term\tMonday 25 October 2027 - Friday 29 October 2027").rows[0];
+  ok("both ends are read", one && one.date === "2027-10-25" && one.endsOn === "2027-10-29",
+     JSON.stringify(one));
+  ok("and the weekday is not left in the name", one && one.label === "Half term", one && one.label);
+  // WORSE THAN LOSING THE END: taking it for the whole. "Monday 25 - Friday 29
+  // October" came back as the 29th, so the holiday started on the day it ended.
+  const short = C.read("Half term\tMonday 25 - Friday 29 October 2027").rows[0];
+  ok("a range with the month said once still starts where it starts",
+     short && short.date === "2027-10-25", JSON.stringify(short));
+  ok("and ends where it ends", short && short.endsOn === "2027-10-29", JSON.stringify(short));
+  // AND ONE THAT CROSSES A MONTH END, with a weekday on each side.
+  const over = C.read("Christmas holiday\tMonday 20 December 2027 - Friday 7 January 2028").rows[0];
+  ok("and one that crosses a New Year keeps both years",
+     over && over.date === "2027-12-20" && over.endsOn === "2028-01-07", JSON.stringify(over));
+  // A DATE WITH A WEEKDAY AND NO RANGE keeps its name too.
+  const plain = C.read("Makeup Saturday\tSaturday 6 November 2027").rows[0];
+  ok("a single dated line is unharmed", plain && plain.date === "2027-11-06", JSON.stringify(plain));
+  ok("and keeps the name it was given", plain && plain.label === "Makeup Saturday", plain && plain.label);
+}
+
+sec("And a date written as two numbers is a date");
+{
+  // "12/18" IS HOW HALF THE CALENDARS IN THE WORLD WRITE A DATE and there was
+  // no pattern for it at all — so "Winter break 12/18 - 1/4" was not a line
+  // with a date on it, and a two-week holiday did not exist.
+  const r = C.read(["Spring 2028", "Winter break\t12/18 - 1/4", "Staff return\t1/5",
+    "Makeup day\t1/14", "Half term\t2/12 - 2/16"].join("\n"), { year: 2027 });
+  ok("all four dated lines are read", r.rows.length === 4,
+     JSON.stringify(r.rows.map((x) => x.date + " " + x.label)));
+  const by = (n) => r.rows.find((x) => x.label === n);
+  ok("a single one lands right", by("Staff return") && by("Staff return").date === "2027-01-05",
+     by("Staff return") && by("Staff return").date);
+  // AND A RANGE THAT CROSSES A NEW YEAR runs forwards. Read without that in
+  // mind it ends four months before it starts.
+  const w = by("Winter break");
+  ok("a range across New Year starts in the old year", w && w.date === "2027-12-18", w && w.date);
+  ok("and ends in the new one", w && w.endsOn === "2028-01-04", w && w.endsOn);
+
+  // WHICH NUMBER IS THE MONTH IS ASKED OF THE DOCUMENT, not assumed. A first
+  // number over twelve can only be a day, and one line like that settles the
+  // whole calendar.
+  const dmy = C.read(["Half term\t25/10 - 29/10", "Term ends\t17/12"].join("\n"), { year: 2027 });
+  const ht = dmy.rows.find((x) => x.label === "Half term");
+  ok("a day-first calendar is read day-first", ht && ht.date === "2027-10-25", JSON.stringify(ht));
+  ok("throughout", dmy.rows.some((x) => x.date === "2027-12-17"),
+     JSON.stringify(dmy.rows.map((x) => x.date)));
+  // AND A FRACTION IS NOT A DATE. Three numbers with slashes is a written-out
+  // date and is handled above it; this is about not inventing one.
+  ok("a number with a year after it is still the older reading",
+     C.read("Trip\t24/08/2027").rows[0].date === "2027-08-24",
+     JSON.stringify(C.read("Trip\t24/08/2027").rows[0]));
+
+  // AND A SQUARE OF A GRID IS NOT AN ENTRY. A wall calendar writes the first of
+  // a new month into its square as "11/1", and read as prose that is a dated
+  // line with nothing on it — so a term grid quietly grew a row for the first
+  // of every month it crossed, each called "(no name)", and they appeared on a
+  // real school calendar the moment two-number dates started being read.
+  const grid = C.read([
+    "Week", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "10/1 Holiday", "2", "3", "4", "5", "6", "7",
+    "2", "8", "9", "10", "11", "12", "13", "14",
+    "3", "15", "16", "17", "18", "19", "20", "11/1",
+  ].join("\n"), { year: 2026 });
+  ok("a bare month marker in a square is not a dated row",
+     !grid.rows.some((x) => x.label === "(no name)"),
+     JSON.stringify(grid.rows.filter((x) => x.label === "(no name)").map((x) => x.date + " " + x.line)));
+  // AND THE GRID ITSELF IS STILL READ, which is what those squares are for.
+  ok("while the grid it belongs to still reads", grid.term && grid.term.weeks === 3,
+     JSON.stringify(grid.term && grid.term.weeks));
+}
+
 sec("And nothing else is read as a term grid");
 {
   // A MONTH GRID HAS NO WEEK COLUMN, and reading one as a term would turn the

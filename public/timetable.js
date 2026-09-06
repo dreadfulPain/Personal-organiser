@@ -694,11 +694,25 @@
   //
   // The tell is the size of the pieces. Columns hold words; a document that is
   // positioning letters hands back cells one or two characters long.
+  // A NUMBER IS SHORT BECAUSE IT IS A NUMBER, not because it is broken.
+  //
+  // This counted every short cell as evidence of a document positioning
+  // glyphs — and a CALENDAR is almost entirely one- and two-digit numbers, so
+  // the test that exists to protect the reader from nonsense refused the
+  // commonest well-formed table there is. A term grid and a month grid both
+  // came back as nothing out of a PDF, while reading perfectly out of Word.
+  //
+  // The tell was never the length. It is that a glyph-positioned document
+  // hands back FRAGMENTS OF WORDS — "TIM" and "E", "A" and "TTEN" — and those
+  // are letters. A square holding "8" is a square holding the eighth.
   function looksLikeColumns(rows) {
     const cells = rows.flatMap((r) => r.cells);
     if (cells.length < 4) return false;
-    const short = cells.filter((c) => String(c.text || "").trim().length <= 2).length;
-    return short / cells.length < 0.3;
+    const broken = cells.filter((c) => {
+      const t = String(c.text || "").trim();
+      return t.length <= 2 && !/^\d{1,2}$/.test(t);
+    }).length;
+    return broken / cells.length < 0.3;
   }
 
   // THE PDF'S OWN POSITIONS, PUT BACK INTO COLUMNS. Returns rows of cells, or

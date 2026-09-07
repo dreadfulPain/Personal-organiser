@@ -34,7 +34,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { open } from "./_dom.mjs";
+import { open, calRowsOf } from "./_dom.mjs";
 import { buildPdf } from "./_pdf.mjs";
 import { checker } from "./_check.mjs";
 const { ok, done, sec } = checker();
@@ -256,7 +256,7 @@ sec("And the switch is on the page, next to the row it moves");
   paste.fire("input", { target: paste });
   await r.settle();
 
-  const rows = r.get("#calRows").children;
+  const rows = calRowsOf(r);
   ok("the prose comes up as rows", rows.length >= 10, String(rows.length));
   const text = (row) => String(row.children[0].textContent);
   const sept = [...rows].find((x) => /Sep 25/.test(text(x)));
@@ -270,11 +270,11 @@ sec("And the switch is on the page, next to the row it moves");
      [...sept.children].map((c) => c.textContent).join(" / "));
   swap.fire("click", { target: swap });
   await r.settle();
-  const after = [...r.get("#calRows").children].find((x) => /Sep 25/.test(text(x)));
+  const after = calRowsOf(r).find((x) => /Sep 25/.test(text(x)));
   ok("and pressing it moves that row", /2026/.test(text(after)), text(after));
   // ONE ROW, NOT ALL OF THEM. Changing the year in the box moves everything,
   // which is exactly what is no use here.
-  const jan = [...r.get("#calRows").children].find((x) => /Jan 15/.test(text(x)));
+  const jan = calRowsOf(r).find((x) => /Jan 15/.test(text(x)));
   ok("and leaves the others where they were", jan && /2027/.test(text(jan)), jan && text(jan));
 }
 
@@ -285,7 +285,7 @@ sec("And a row that wrote its own year is not offered the choice");
   paste.value = PROSE;
   paste.fire("input", { target: paste });
   await r.settle();
-  const rows = [...r.get("#calRows").children];
+  const rows = calRowsOf(r);
   const said = rows.find((x) => /Jan 22/.test(String(x.children[0].textContent)));
   ok("the row that said 2027 itself is there", !!said,
      rows.map((x) => x.children[0].textContent).join(" | "));
@@ -651,7 +651,7 @@ sec("And the page lets you say it, rather than only offering its guess");
   paste.fire("input", { target: paste });
   await r.settle();
 
-  const rowFor = (t) => [...r.get("#calRows").children]
+  const rowFor = (t) => calRowsOf(r)
     .find((x) => new RegExp(t).test(String(x.children[0].textContent)));
   const kid = (row, cls) => row && [...(row.children || [])].find((c) => String(c.className || "").includes(cls));
   const press = (row, words) => {
@@ -661,7 +661,7 @@ sec("And the page lets you say it, rather than only offering its guess");
 
   const mid = rowFor("Mid-Autumn");
   ok("the one-day holiday is on the page", !!mid,
-     [...r.get("#calRows").children].map((x) => x.children[0].textContent).join(" | "));
+     calRowsOf(r).map((x) => x.children[0].textContent).join(" | "));
   press(mid, "day off");
   await r.settle();
 

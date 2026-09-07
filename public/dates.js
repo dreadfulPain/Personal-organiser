@@ -127,5 +127,16 @@
   // and fmtTime were in before one of them was quietly changed.
   const today = () => isoOf(new Date());
 
-  window.OrganiserDates = { timeWords, dayWords, daysWords, agoWords, isoOf, isISO, today };
+  // THE DAYS OF THE WEEK, ONCE, WHERE EVERY PAGE CAN REACH THEM.
+  //
+  // This file already owns how a date reads. The list lived in one page's own
+  // script, so the month grid — which had to say "runs Monday's timetable" —
+  // could either reach across to another page's private variable or start a
+  // second copy. A second copy is how one of them quietly learns a spelling the
+  // other hasn't got. Indexed the way getDay() indexes, 0 = Sunday, because
+  // that is what every caller here already has in its hand.
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const dayName = (n) => DAY_NAMES[Number(n)] || "";
+
+  window.OrganiserDates = { timeWords, dayWords, daysWords, agoWords, isoOf, isISO, today, DAY_NAMES, dayName };
 })();

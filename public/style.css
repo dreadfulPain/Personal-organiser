@@ -4056,8 +4056,27 @@ a.btn {
 /* Reading a calendar in. One row a date, three plain choices, nothing guessed. */
 .cal-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   padding: 5px 0; border-bottom: 1px solid var(--line); }
-.cal-name { flex: 1 1 14rem; font-size: 0.9rem; }
+.cal-name { flex: 1 1 12rem; font-size: 0.9rem; }
+/* THE SIX CHOICES AS ONE BLOCK, so they wrap among themselves rather than one
+   of them ending up alone beside the name and the rest below it. */
+.cal-opts { flex: 1 1 20rem; display: flex; flex-wrap: wrap; gap: 6px; }
 .cal-pick { font-size: 0.78rem; }
+/* A ROW NOBODY HAS ANSWERED YET. Not an alarm — a mark down the edge, so the
+   done and the not-done are told apart at a glance instead of by counting. It
+   goes when you answer, which makes the panel visibly empty itself. */
+.cal-row.cal-waiting { border-left: 3px solid var(--accent); padding-left: 8px; }
+/* A ROW THAT FILLED ITSELF IN FROM WHAT YOU SAID BEFORE. The sentence does the
+   work; this only keeps it on its own line so it reads as a note about the row
+   rather than another choice in it. */
+.cal-recall { flex: 1 1 100%; font-size: 0.75rem; padding-left: 2px; }
+/* Who reads it first. Under the offer it belongs to, not on a line of its own. */
+.cal-first { display: block; margin-top: 4px; font-size: 0.78rem; }
+/* WHICH MONTH YOU ARE IN. A term sheet read as one flat run means reading every
+   line to find the half-term; a calendar's own order is months, so that is the
+   order it is drawn in and the month says so. */
+.cal-month { margin: 12px 0 2px; font-size: 0.8rem; font-weight: 600;
+  color: var(--ink-soft); letter-spacing: 0.02em; }
+.cal-month:first-child { margin-top: 4px; }
 /* The run-on. Set apart from the three choices, because it answers a different
    question — not what this day is, but how far it reaches. */
 .cal-span { font-size: 0.78rem; margin-left: 6px; border-style: dashed; }
@@ -4122,6 +4141,11 @@ a.btn {
    the only thing saying something here. */
 .mo-cell.mo-off { background: var(--reminder); }
 .mo-cell.mo-nolessons { background: var(--surface); border-style: dashed; }
+/* A MAKE-UP DAY. Not shaded like a day off — it is the opposite of one, a
+   working day where you expected a weekend — so it is marked rather than
+   greyed, and the words underneath say which day it is standing in for. */
+.mo-cell.mo-runsas { background: var(--surface); border-style: solid;
+  border-color: var(--accent); }
 .mo-off { font-size: 0.72rem; line-height: 1.3; margin-top: 2px;
   color: var(--reminder-ink, var(--muted)); font-weight: 600; }
 /* THE DAYS WERE WORKED OUT, NOT READ. Not muted like the rest of the guidance:

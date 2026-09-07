@@ -1148,8 +1148,13 @@
       // document, and offering to run it on to the next line is offering to
       // contradict it. `ranged` therefore asks whether it actually covers more
       // than a day, rather than whether an end was given.
-      const ownEnd = r.endsOn && r.endsOn >= r.date ? r.endsOn : "";
-      const canSpan = !ownEnd && !!next && next.date > r.date;
+      // A DEADLINE IS A MOMENT, NOT A STRETCH. "Reports due" covering the four
+      // days to the next line would be four days of reports being due, which is
+      // not a thing that happens — so it never ranges and is never offered the
+      // run-on, whatever the line after it says.
+      const due = r.kind === "due";
+      const ownEnd = !due && r.endsOn && r.endsOn >= r.date ? r.endsOn : "";
+      const canSpan = !due && !ownEnd && !!next && next.date > r.date;
       const to = ownEnd || (r.spans && canSpan ? next.date : r.date);
       const ranged = to > r.date;
       out.push({
@@ -1209,7 +1214,8 @@
     // the calendar says when the teaching runs, the rule runs then.
     const t = term(rows);
     (Array.isArray(rows) ? rows : [])
-      .filter((r) => r && r.kind && r.kind !== "lessons" && !r.date && (r.days || []).length)
+      .filter((r) => r && r.kind && r.kind !== "lessons" && r.kind !== "due" &&
+        !r.date && (r.days || []).length)
       .forEach((r) => {
         const T = typeof window !== "undefined" && window.OrganiserTimetable;
         const timed = r.kind !== "off" && r.start;
@@ -1238,7 +1244,7 @@
       });
     // A "lessons" row is a marker, not a day — it changes when the timetable
     // applies, and putting a block on that date would be inventing an event.
-    plan(rows).filter((p) => p.kind !== "lessons").forEach((p) => {
+    plan(rows).filter((p) => p.kind !== "lessons" && p.kind !== "due").forEach((p) => {
       // AT THE TIME THE LINE SAID, WHEN IT SAID ONE.
       //
       // Every row became midnight to midnight, so a parents' evening at 6:30
@@ -1282,6 +1288,30 @@
       }
     });
     return out;
+  }
+
+  // A DATE WITH SOMETHING DUE ON IT.
+  //
+  // The choices on a row were all about what kind of DAY it is — off, no
+  // lessons, in my week, standing in for another one — and the commonest thing
+  // on a school calendar after a holiday is none of those. "Reports due, 2 Nov
+  // 16:00" is a job with a deadline. There was no answer for it: you could book
+  // yourself an hour to attend your own deadline, or throw the line away. This
+  // app has had tasks with deadlines since the beginning; the calendar simply
+  // could not reach them.
+  //
+  // Shaped here and made by the page, the same way toBlocks is — what a task
+  // needs to look like is the store's business, not this file's.
+  function toTasks(rows) {
+    return (Array.isArray(rows) ? rows : [])
+      .filter((r) => r && r.kind === "due" && r.date)
+      .map((r) => ({
+        title: r.label || "(no name)",
+        date: r.date,
+        // The time it is due BY, when the line gave one. A deadline at four in
+        // the afternoon and one at the end of the day are different days.
+        time: r.start || "",
+      }));
   }
 
   const addDays = (isoDate, n) => {
@@ -1363,7 +1393,8 @@
     if (!decided)
       return y + `${r.rows.length} date${r.rows.length === 1 ? "" : "s"} read. Say what each one is and they'll go in.`;
     const p = plan(list);
-    const days = p.filter((x) => x.kind !== "lessons").reduce((n, x) => n + x.days, 0);
+    const days = p.filter((x) => x.kind !== "lessons" && x.kind !== "due")
+      .reduce((n, x) => n + x.days, 0);
     const t = term(list);
     return y + `${r.rows.length} date${r.rows.length === 1 ? "" : "s"} read, ${decided} of them said what they are` +
       (days && days !== decided ? ` — ${days} days in all.` : ".") +
@@ -1371,7 +1402,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, labelOf, docYear, docYears, atYear, read, plan, span, term, toBlocks, words, addDays,
+    dateIn, labelOf, docYear, docYears, atYear, read, plan, span, term, toBlocks, toTasks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
     weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };

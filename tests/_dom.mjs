@@ -242,7 +242,12 @@ export async function open(pg, data, opts) {
     DecompressionStream: typeof DecompressionStream !== "undefined" ? DecompressionStream : undefined,
     Option: function (t, v) { const e = makeEl("option", created); e.textContent = t; e.value = v; return e; },
     Image: function () { return makeEl("img", created); },
-    AbortController: class { constructor() { this.signal = {}; } abort() {} },
+    // A REAL ONE. The stand-in had a bare object for a signal and an abort()
+    // that did nothing, so every path that gives up on a request — a timeout, a
+    // cancel, a second press replacing the first — was untestable: passing a
+    // signal to a stub fetch threw, and the page reported "couldn't be reached"
+    // for what was actually a working abort.
+    AbortController,
     MutationObserver: class { observe() {} disconnect() {} },
     getComputedStyle: () => ({ getPropertyValue: () => "" }),
     scrollTo() {}, history: { replaceState() {}, pushState() {} },
@@ -279,6 +284,34 @@ export async function open(pg, data, opts) {
   const tellStatus = (st) => { statusCbs.forEach((cb) => cb(st)); };
   return { errs, byId, created, saves, state, sb, get, settle, tellStatus, statusCbs };
 }
+
+// THE ROWS IN THE CALENDAR PANEL, and only the rows.
+//
+// Its children used to be nothing but rows, so nineteen checks read
+// `#calRows.children` and meant "the dates it read". Then the dates were
+// grouped under month headings and every one of those checks was counting
+// headings too — a proxy that was true until it wasn't, in nineteen places at
+// once. Asked here, it is asked once.
+export const calRowsOf = (r) => [...(r.get("#calRows").children || [])]
+  .filter((c) => String(c.className || "").includes("cal-row"));
+
+// A CONTROL INSIDE ONE ROW, BY WHAT IT SAYS.
+//
+// Rows nest. The six choices in a calendar row are a block of their own so they
+// wrap together instead of one of them being orphaned beside the name — and the
+// moment they were, every check reading `row.children` was asking a different
+// question from the one it meant. "Somewhere in this row" is the question.
+export const deep = (el) => {
+  const all = [];
+  const walk = (n) => { if (!n) return; all.push(n); (n.children || []).forEach(walk); };
+  ((el && el.children) || []).forEach(walk);
+  return all;
+};
+export const within = (el, want) =>
+  deep(el).filter((c) =>
+    want instanceof RegExp
+      ? want.test(String(c.textContent || ""))
+      : String(c.textContent || "") === want);
 
 // Everything the page made clickable, whatever tag it is.
 export const clickable = (r) => {

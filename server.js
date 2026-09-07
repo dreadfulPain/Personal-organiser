@@ -128,6 +128,8 @@ const STORES = [
   ["areas", []],
   ["targeted", {}],
   ["tried", []],
+  // What you said a line on the school calendar meant — see store.js.
+  ["calendarSaid", {}],
   ["lessons", []],
   ["lessonConfig", null],
   ["rotas", []],
@@ -1295,10 +1297,18 @@ async function handleCalendar(res, body) {
   const cfg = aiConfig();
   if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
   const year = Number(body?.year) || new Date().getFullYear();
+  // HOW MUCH OF IT ACTUALLY WENT, AND WHETHER THAT WAS ALL OF IT.
+  //
+  // A whole-year calendar goes over this, and going over it meant the rest was
+  // simply not read — silently. Nothing on the page said the summer had been
+  // cut off, so a document that came back missing a third of itself looked
+  // exactly like one the model had read and found nothing more in.
+  const CAP = 12000;
+  const sent = text.slice(0, CAP);
   try {
     const parsed = await runEngine(
       cfg, CALENDAR_PROMPT,
-      `The rest of this document is about the year ${year}.\n\nTurn this calendar into entries:\n"""\n${text.slice(0, 12000)}\n"""`,
+      `The rest of this document is about the year ${year}.\n\nTurn this calendar into entries:\n"""\n${sent}\n"""`,
       CALENDAR_SCHEMA, "calendar");
     const rows = [];
     // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
@@ -1347,7 +1357,7 @@ async function handleCalendar(res, body) {
         endFrom: endsOn ? "model" : "",
       });
     });
-    return sendJson(res, 200, { rows, unreadable });
+    return sendJson(res, 200, { rows, unreadable, ...(text.length > CAP ? { cut: CAP } : {}) });
   } catch (e) {
     console.warn("[calendar] failed:", e?.message || e);
     const why = offlineReason(cfg, e);

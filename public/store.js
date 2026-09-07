@@ -64,6 +64,14 @@
     ["targeted", "organiser.targeted.v1", {}],
     // What you tried, so "did anything move afterwards" has something to join to.
     ["tried", "organiser.tried.v1", []],
+    // WHAT YOU SAID A LINE ON THE CALENDAR MEANT, keyed by the words on it.
+    //
+    // Not the app learning vocabulary — it is the app remembering YOUR answer.
+    // A term-dates sheet is ten rows and six choices, and next term's sheet has
+    // the same names on it and asked all sixty questions again. Nothing is
+    // decided by this: a remembered row arrives with what you said last time
+    // showing, and saying so, and one press changes it.
+    ["calendarSaid", "organiser.calendarsaid.v1", {}],
     // Lesson plans written elsewhere and pasted in, plus the headings yours use.
     ["lessons", "organiser.lessons.v1", []],
     ["lessonConfig", "organiser.lessonconfig.v1", null],

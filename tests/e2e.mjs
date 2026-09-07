@@ -455,6 +455,23 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
 }
 
 {
+  // A DOCUMENT TOO LONG TO SEND IN ONE GO SAYS SO.
+  //
+  // A whole-year calendar goes over the limit, and going over it meant the rest
+  // was simply not read — silently. Nothing anywhere said the summer had been
+  // cut off, so a document that came back missing a third of itself looked
+  // exactly like one the model had read and found nothing more in.
+  const long = "Padding line with no date on it at all.\n".repeat(400) +
+    "Sports Day\t2026-06-12";
+  const big = await askCal({ year: 2026, text: long });
+  ok("a document longer than the limit is still read", "rows" in big, JSON.stringify(big).slice(0, 160));
+  ok("and says how much of it went", big.cut === 12000, JSON.stringify(big.cut));
+  const small = await askCal({ year: 2026, text: "Sports Day\t2026-06-12" });
+  ok("while a short one says nothing about being cut", !("cut" in small),
+     JSON.stringify(small).slice(0, 160));
+}
+
+{
   // NOTHING TO READ IS NOT AN ERROR TO SWALLOW.
   const empty = await (await fetch(B + "/api/calendar", {
     method: "POST", headers: { "Content-Type": "application/json" },

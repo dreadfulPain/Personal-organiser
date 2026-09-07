@@ -349,7 +349,7 @@ sec("The preview and the days that get kept can't disagree");
 // ---------------------------------------------------------------------------
 sec("And the tick is on the page, not just in the model");
 {
-  const { open } = await import("./_dom.mjs");
+  const { open, calRowsOf, within } = await import("./_dom.mjs");
   const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
   ok("the timeline page opens without error", r.errs.length === 0, r.errs.join("; "));
 
@@ -360,10 +360,10 @@ sec("And the tick is on the page, not just in the model");
   await r.settle();
 
   ok("every dated line comes up as a row to label",
-     r.get("#calRows").children.length === 6, String(r.get("#calRows").children.length));
+     calRowsOf(r).length === 6, String(calRowsOf(r).length));
   // The year box fills itself in from what was pasted.
   const yearBox = r.get("#calYear");
-  const firstDate = () => String(r.get("#calRows").children[0].children[0].textContent);
+  const firstDate = () => String(calRowsOf(r)[0].children[0].textContent);
   ok("the year it used is filled in and visible", yearBox.value === "2026", yearBox.value);
   // A line that carries its own year is not the box's business, and correcting
   // the box must not drag it somewhere else.
@@ -394,14 +394,14 @@ sec("And the tick is on the page, not just in the model");
   paste.fire("input", { target: paste });
   await r.settle();
   ok("and the calendar reads back the same as before",
-     r.get("#calRows").children.length === 6, String(r.get("#calRows").children.length));
+     calRowsOf(r).length === 6, String(calRowsOf(r).length));
 
   // Read live each time: every render replaces the rows, and holding on to an
   // old one is how a test comes to press a button that is no longer on screen.
-  const rowNow = (i) => r.get("#calRows").children[i];
+  const rowNow = (i) => calRowsOf(r)[i];
   const say = (i, label) => {
-    const b = rowNow(i).children.find((c) => c.textContent === label);
-    ok(`row ${i} offers “${label}”`, !!b, rowNow(i).children.map((c) => c.textContent).join(" | "));
+    const b = within(rowNow(i), label)[0];
+    ok(`row ${i} offers “${label}”`, !!b, within(rowNow(i), /./).map((c) => c.textContent).join(" | "));
     if (b) b.click();
   };
   // 0 staff return, 1 students return, 2 INSET, 3 break begins, 4 break ends, 5 term ends
@@ -410,21 +410,21 @@ sec("And the tick is on the page, not just in the model");
   say(4, "no lessons");
   await r.settle();
 
-  const rows2 = r.get("#calRows").children;
-  const tickOn = (rs, i) => rs[i].children.find((c) => /runs on to|and stop on/.test(String(c.textContent)));
+  const rows2 = calRowsOf(r);
+  const tickOn = (rs, i) => within(rs[i], /runs on to|and stop on/)[0];
   ok("a labelled row with another after it offers a run-on", !!tickOn(rows2, 3),
-     rows2[3].children.map((c) => c.textContent).join(" | "));
+     within(rows2[3], /./).map((c) => c.textContent).join(" | "));
   ok("and the last labelled row does not — there is nothing to run on to",
-     !tickOn(rows2, 5), rows2[5].children.map((c) => c.textContent).join(" | "));
+     !tickOn(rows2, 5), within(rows2[5], /./).map((c) => c.textContent).join(" | "));
   // BEFORE you press it, it already says what pressing it would cost.
   ok("untouched, it already says where it would land and how far",
      hasDay(tickOn(rows2, 3).textContent, "Dec", 13, 2026) && /28 days\?$/.test(tickOn(rows2, 3).textContent),
      tickOn(rows2, 3).textContent);
   ok("and the row after it isn't swallowed yet",
-     !rows2[4].children.some((c) => /end of/.test(String(c.textContent))),
-     rows2[4].children.map((c) => c.textContent).join(" | "));
+     !within(rows2[4], /end of/).length,
+     within(rows2[4], /./).map((c) => c.textContent).join(" | "));
   ok("the last labelled row offers none — nothing labelled comes after it",
-     !tickOn(rows2, 4), rows2[4].children.map((c) => c.textContent).join(" | "));
+     !tickOn(rows2, 4), within(rows2[4], /./).map((c) => c.textContent).join(" | "));
   // THE BUG THIS WHOLE THING EXISTS FOR. The INSET day sits right before the
   // break and used to be married to it silently. The tick is still offered
   // there — it has to be, the app can't know — but it says 53 days out loud,
@@ -435,7 +435,7 @@ sec("And the tick is on the page, not just in the model");
 
   tickOn(rows2, 3).click();
   await r.settle();
-  const rows3 = r.get("#calRows").children;
+  const rows3 = calRowsOf(r);
   const tick3 = tickOn(rows3, 3);
   // THE WHOLE REASON THIS IS A TICK. Seven weeks is not something that should
   // happen to you quietly; it says the date and the number before you keep it.
@@ -466,7 +466,7 @@ sec("And the tick is on the page, not just in the model");
   paste.value = CAL_TEXT;
   paste.fire("input", { target: paste });
   await r.settle();
-  const again = r.get("#calRows").children;
+  const again = calRowsOf(r);
   const inset = again[2].children.find((c) => c.textContent === "no lessons");
   if (inset) inset.click();
   await r.settle();
@@ -512,7 +512,7 @@ sec("And the one that matters most: when do the lessons start");
 
 sec("From that line to a timetable that knows when it applies");
 {
-  const { open } = await import("./_dom.mjs");
+  const { open, calRowsOf, within } = await import("./_dom.mjs");
   // A week already typed in: two lessons and a briefing that happens whether or
   // not the students are there. The app cannot tell which is which.
   const WEEK = [
@@ -527,14 +527,14 @@ sec("From that line to a timetable that knows when it applies");
   paste.value = CAL_TEXT;
   paste.fire("input", { target: paste });
   await r.settle();
-  const rows = r.get("#calRows").children;
+  const rows = calRowsOf(r);
   ok("nothing about the timetable is asked until you say lessons start",
      r.get("#calTerm").hidden === true, String(r.get("#calTerm").hidden));
 
   // Row 1 is "Students return".
-  const lessons = rows[1].children.find((c) => c.textContent === "lessons start");
+  const lessons = within(rows[1], "lessons start")[0];
   ok("there is a way to say the lessons start here", !!lessons,
-     rows[1].children.map((c) => c.textContent).join(" | "));
+     within(rows[1], /./).map((c) => c.textContent).join(" | "));
   lessons.click();
   await r.settle();
 

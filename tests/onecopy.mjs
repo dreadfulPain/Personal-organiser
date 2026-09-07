@@ -176,6 +176,20 @@ sec("And the ones already pulled into one place stay there");
       !["dates.js", "names.js", "schedule.js", "chart.js", "month.js", "app.js"].includes(f))
     .filter((f) => /toLocaleTimeString\(/.test(fs.readFileSync(path.join(PUB, f), "utf8")));
   ok("nothing else turns a time into words its own way", rogue.length === 0, rogue.join(", "));
+
+  // AND THE SEVEN DAYS OF THE WEEK. Written out in one page's own script, and
+  // then the month grid needed the same seven words to say which day a make-up
+  // day stands in for — one line away from a second copy, which is how one of
+  // them quietly learns a spelling the other hasn't got.
+  const spelt = fs
+    .readdirSync(PUB)
+    .filter((f) => f.endsWith(".js") && f !== "dates.js")
+    .filter((f) => /["']Sunday["']\s*,\s*["']Monday["']/.test(fs.readFileSync(path.join(PUB, f), "utf8")));
+  ok("the days of the week are spelt out in dates.js and nowhere else",
+     spelt.length === 0, `${spelt.join(", ")} — use OrganiserDates.DAY_NAMES`);
+  ok("and dates.js really has them",
+     /DAY_NAMES = \["Sunday", "Monday"/.test(fs.readFileSync(path.join(PUB, "dates.js"), "utf8")),
+     "the one list has gone");
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +304,33 @@ sec("And the suites themselves only answer this once");
     .filter((f) => /\/\\\*\[\\s\\S\]\*\?\\\*\\\//.test(fs.readFileSync(path.join(HERE, f), "utf8")));
   ok("no suite writes its own comment-stripper", own.length === 0,
      `${own.join(", ")} — use codeOf from _check.mjs`);
+}
+
+sec("A module that leans on another one is never loaded without it");
+{
+  // A SILENT DEPENDENCY IS WORSE THAN A MISSING ONE.
+  //
+  // calplan.js reads the time off a line by asking OrganiserTimetable. Without
+  // that module it does not fail, warn, or return an error: it quietly reads no
+  // times at all and leaves them in the name, so "Reports due 2 Nov 16:00"
+  // becomes a row called "Reports due 16:00" with nothing due at four o'clock.
+  // Every page happens to load both today. Nothing said it had to, and the way
+  // this breaks is a page that looks like it works.
+  //
+  // Written as a table so adding a dependency is one line here and nothing else.
+  const NEEDS = [
+    ["calplan.js", "timetable.js", "it asks OrganiserTimetable for the times on a line"],
+  ];
+  const pages = fs.readdirSync(PUB).filter((f) => f.endsWith(".html"));
+  NEEDS.forEach(([mod, needs, why]) => {
+    const missing = pages.filter((p) => {
+      const html = fs.readFileSync(path.join(PUB, p), "utf8");
+      const loads = (f) => new RegExp(`<script src="${f.replace(".", "\\.")}"`).test(html);
+      return loads(mod) && !loads(needs);
+    });
+    ok(`every page with ${mod} also has ${needs}`, missing.length === 0,
+       `${missing.join(", ")} — ${why}, and without it the failure is silent`);
+  });
 }
 
 done();

@@ -12,7 +12,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { open } from "./_dom.mjs";
+import { open, calRowsOf, within, deep } from "./_dom.mjs";
 
 const PUB = join(REPO_ROOT, "public");
 const UPLOAD = "/root/.claude/uploads/2a3fbe32-10e5-5444-988f-643a421d1a40/" +
@@ -840,7 +840,7 @@ sec("And the page says when a rule runs, since it has no date to show");
     "Gate duty every Mon-Fri 8:15"].join("\n");
   paste.fire("input", { target: paste });
   await r.settle();
-  const rows = [...(r.get("#calRows").children || [])];
+  const rows = calRowsOf(r);
   const said = rows.map((x) => String((x.children[0] || {}).textContent || ""));
   ok("the calendar reads", rows.length === 3, JSON.stringify(said));
   ok("a rule says which day it runs on", said.some((t) => /every Friday — Staff meeting/.test(t)),
@@ -850,7 +850,7 @@ sec("And the page says when a rule runs, since it has no date to show");
   ok("while a dated row still shows its date", said.some((t) => /Sep 1, 2026 — Term starts/.test(t)),
      JSON.stringify(said));
   // AND IT IS OFFERED THE SAME CHOICES, or reading it changes nothing.
-  const kinds = [...(rows.find((x) => /every Friday/.test(String((x.children[0]||{}).textContent||""))) || { children: [] }).children]
+  const kinds = deep(rows.find((x) => /every Friday/.test(String((x.children[0]||{}).textContent||""))))
     .filter((c) => String(c.className || "").includes("cal-pick"))
     .map((c) => String(c.textContent));
   ok("and asked what it is, like any other row", kinds.includes("in my week"), JSON.stringify(kinds));
@@ -865,27 +865,27 @@ sec("And the page asks which day a make-up day stands in for");
   paste.value = ["Makeup day\t7 November 2026", "Half term\t26 - 30 October 2026"].join("\n");
   paste.fire("input", { target: paste });
   await r.settle();
-  const rows = [...(r.get("#calRows").children || [])];
+  const rows = calRowsOf(r);
   const find = (t) => rows.find((x) => new RegExp(t).test(String((x.children[0] || {}).textContent || "")));
   const mk = find("Makeup");
   ok("the row is there", !!mk, JSON.stringify(rows.map((x) => (x.children[0]||{}).textContent)));
-  const kinds = [...(mk.children || [])].filter((c) => String(c.className || "").includes("cal-pick"))
+  const kinds = deep(mk).filter((c) => String(c.className || "").includes("cal-pick"))
     .map((c) => String(c.textContent));
   ok("and it is offered as running another day", kinds.includes("runs another day"),
      JSON.stringify(kinds));
   // NOT ASKED UNTIL IT IS THE QUESTION. Against a holiday "which day does this
   // run as" means nothing, and a calendar is mostly holidays.
-  const kid = (row, cls) => row && [...(row.children || [])]
+  const kid = (row, cls) => row && deep(row)
     .find((c) => String(c.className || "").includes(cls));
   ok("and is not asked which day before you say so", !kid(mk, "cal-runs"),
      "it asks the question on every row");
-  const btn = [...((mk || {}).children || [])].find((c) => String(c.textContent) === "runs another day");
+  const btn = within(mk, "runs another day")[0];
   if (btn) btn.fire("click", { target: btn });
   await r.settle();
-  const after = [...(r.get("#calRows").children || [])]
+  const after = calRowsOf(r)
     .find((x) => /Makeup/.test(String((x.children[0] || {}).textContent || "")));
   ok("once said, it asks which day", !!kid(after, "cal-runs"), "it never asks");
-  const holiday = [...(r.get("#calRows").children || [])]
+  const holiday = calRowsOf(r)
     .find((x) => /Half term/.test(String((x.children[0] || {}).textContent || "")));
   ok("and never asks it of a holiday", !kid(holiday, "cal-runs"), "it asks on every row");
 }
@@ -2109,6 +2109,11 @@ sec("A calendar can be handed to the model too, and it still never says what a d
       // had no sessionStorage and every one of those paths threw and was caught.
       session: o.handed ? { "organiser.handover": JSON.stringify({ to: "calendar", text: o.handed }) } : {},
       fetch: async (url, init) => {
+        // THERE IS SOMETHING TO ASK. The offer is gated on it now — five other
+        // pages in this app check before they offer the model and this one
+        // found out by trying — so a test of the offer has to say so.
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
         if (!/api\/calendar/.test(String(url))) return { ok: true, json: async () => ({}) };
         asked.push(JSON.parse((init && init.body) || "{}"));
         if (o.answer === "down") throw new Error("nothing listening");
@@ -2119,7 +2124,7 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     });
     return r;
   };
-  const rows = (r) => [...(r.get("#calRows").children || [])];
+  const rows = (r) => calRowsOf(r);
   const said = (r) => String(r.get("#calWords").textContent || "");
   // Prose with real dates in it that this app's own reader will not follow — no
   // day-month pair it recognises anywhere.
@@ -2139,6 +2144,22 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     ok("typing never troubles the model", asked.length === 0, JSON.stringify(asked));
     ok("and the offer to ask it is there instead",
        r.get("#calSecondRow").hidden === false, String(r.get("#calSecondRow").hidden));
+    // AND NOT OFFERED AT ALL WHERE THERE IS NOTHING TO ASK. It used to promise
+    // a reader that might not be running and let you find out by pressing it.
+    const none = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: false }) }
+        : { ok: false, json: async () => ({}) }),
+    });
+    none.get("#calBox").open = true;
+    none.get("#calPaste").value = PROSE;
+    none.get("#calPaste").fire("input", { target: none.get("#calPaste") });
+    await none.settle();
+    ok("and with no reader running it is not offered at all",
+       none.get("#calSecondRow").hidden === true, String(none.get("#calSecondRow").hidden));
+    ok("while the calendar is still read here regardless",
+       String(none.get("#calWords").textContent || "").length > 0,
+       String(none.get("#calWords").textContent));
     // ON THE PAGE, not merely wired up. The stub invents any id a script asks
     // for, so every check above would go on passing with the button deleted
     // from the markup — which is the one way it could actually go missing.
@@ -2309,8 +2330,7 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     ok("what it saw beside the line is on the row",
        /where: Example Building 109/.test(shown), shown.slice(0, 240));
     // AND ALL THE WAY INTO THE WEEK. Said what it is, then put it in.
-    const pick = rows(r)[0] && [...(rows(r)[0].children || [])]
-      .find((c) => String(c.textContent || "") === "in my week");
+    const pick = within(rows(r)[0], "in my week")[0];
     pick.fire("click", { target: pick });
     await r.settle();
     const add = r.get("#calAdd");
@@ -2334,8 +2354,7 @@ sec("A calendar can be handed to the model too, and it still never says what a d
                  days: [1], kind: "", line: "Staff briefing",
                  extras: [{ name: "who", value: "whole department" }] }],
     });
-    const pick = rows(r)[0] && [...(rows(r)[0].children || [])]
-      .find((c) => String(c.textContent || "") === "in my week");
+    const pick = within(rows(r)[0], "in my week")[0];
     pick.fire("click", { target: pick });
     await r.settle();
     const add = r.get("#calAdd");
@@ -2348,6 +2367,302 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     ok("and is one standing commitment, not a day", kept && !kept.date &&
        JSON.stringify(kept.days) === "[1]", JSON.stringify(kept));
   }
+}
+
+sec("Nineteen things found by using the calendar panel, and not one of them a crash");
+{
+  const A = await import("./_dom.mjs");
+  const openCal = async (data, opts) => {
+    const r = await open("timeline.html",
+      { schedule: [], config: {}, items: [], goals: [], ...(data || {}) },
+      { fetch: async (url) => (/api\/health/.test(String(url))
+          ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
+          : { ok: false, json: async () => ({}) }), ...(opts || {}) });
+    r.get("#calBox").open = true;
+    return r;
+  };
+  const paste = async (r, text) => {
+    const box = r.get("#calPaste");
+    box.value = text;
+    box.fire("input", { target: box });
+    await r.settle();
+  };
+  const rowFor = (r, name) => calRowsOf(r)
+    .find((x) => new RegExp(name).test(String((x.children[0] || {}).textContent || "")));
+  const press = async (r, name, label) => {
+    const b = within(rowFor(r, name), label)[0];
+    if (b) b.fire("click", { target: b });
+    await r.settle();
+  };
+
+  // 1 — NOTHING IS LIT UNTIL YOU HAVE SAID SOMETHING.
+  //
+  // "" was the kind for "ignore" AND the kind a row starts with, so every row
+  // arrived with ignore filled in dark. Ten of them down a phone screen: the
+  // app had decided nothing and the screen said it had decided to throw the
+  // whole calendar away.
+  {
+    const r = await openCal();
+    await paste(r, "Staff return\t24 August 2026\nStudents return\t26 August 2026");
+    const lit = calRowsOf(r).flatMap((x) => A.deep(x)
+      .filter((c) => String(c.className || "").includes(" on")).map((c) => c.textContent));
+    ok("no answer is filled in before you give one", lit.length === 0, JSON.stringify(lit));
+    ok("and a row still waiting says so", calRowsOf(r).every((x) => /cal-waiting/.test(x.className)),
+       calRowsOf(r).map((x) => x.className).join(" | "));
+    await press(r, "Staff return", "day off");
+    const first = rowFor(r, "Staff return");
+    ok("answering one lights that one", A.within(first, "day off")
+       .some((c) => / on\b/.test(String(c.className))), first.className);
+    ok("and it stops looking like it is waiting", !/cal-waiting/.test(first.className), first.className);
+    ok("while the one you haven't answered still is",
+       /cal-waiting/.test(rowFor(r, "Students return").className));
+  }
+
+  // 2 — THE LENGTH IS SHOWN BEFORE YOU HAVE TO DECIDE WHAT IT IS.
+  //
+  // The end box hung off the plan, and the plan only holds rows that already
+  // have a kind — so the app read "25 Sept - 27 Sept", knew it was three days,
+  // and showed "Fri, Sep 25" and nothing else until after you had decided. The
+  // length is the evidence: three days is obviously a holiday.
+  {
+    const r = await openCal();
+    await paste(r, "Mid-Autumn Festival\t25 Sept 2026 - 27 Sept 2026");
+    const row = rowFor(r, "Mid-Autumn");
+    ok("how long it runs is on the row before any answer",
+       A.within(row, /3 days/).length > 0, A.deep(row).map((c) => c.textContent).join(" | "));
+    ok("and where that came from", A.within(row, /as written/).length > 0,
+       A.deep(row).map((c) => c.textContent).join(" | "));
+    ok("with the end date in a box you can change",
+       A.deep(row).some((c) => c.type === "date" && c.value === "2026-09-27"),
+       JSON.stringify(A.deep(row).filter((c) => c.type === "date").map((c) => c.value)));
+  }
+
+  // 5 — A DEADLINE IS A JOB, NOT A KIND OF DAY.
+  //
+  // The six choices were all about what kind of DAY it is, and the commonest
+  // line on a school calendar after a holiday is none of them. "Reports due, 2
+  // Nov 16:00" could be booked as an hour to attend your own deadline, or
+  // thrown away. This app has had tasks with deadlines from the beginning.
+  {
+    const r = await openCal();
+    await paste(r, "Reports due\t2 Nov 2026 16:00");
+    ok("there is an answer for something being due",
+       A.within(rowFor(r, "Reports"), "due that day").length > 0,
+       A.deep(rowFor(r, "Reports")).map((c) => c.textContent).join(" | "));
+    await press(r, "Reports", "due that day");
+    const add = r.get("#calAdd");
+    add.fire("click", { target: add });
+    await r.settle();
+    const task = (r.state.items || []).find((i) => i.title === "Reports due");
+    ok("and it becomes something to do", !!task, JSON.stringify(r.state.items));
+    ok("on the day it is due", task && task.date === "2026-11-02", task && task.date);
+    ok("at the time the line gave", task && task.time === "16:00", task && task.time);
+    ok("as a hard deadline, because a calendar date is not a hope",
+       task && task.deadlineType === "hard", task && task.deadlineType);
+    ok("and it is not also an hour in your week",
+       !(r.state.schedule || []).some((b) => b.label === "Reports due"),
+       JSON.stringify(r.state.schedule));
+  }
+
+  // 6 — WHAT YOU SAID LAST TIME IS REMEMBERED, AND SAYS THAT IT IS.
+  //
+  // Ten rows and six choices is sixty decisions, and next term's sheet has the
+  // same names on it and asked all sixty again. This is not the app acquiring a
+  // vocabulary — it is recall of your own answer, and it says so on the row so
+  // it can never be mistaken for the app having decided.
+  {
+    const r = await openCal({ calendarSaid: { "mid-autumn festival": { kind: "off" } } });
+    await paste(r, "Mid-Autumn Festival\t14 Sept 2027\nSports Day\t22 Sept 2027");
+    const known = rowFor(r, "Mid-Autumn");
+    ok("a line you have answered before comes back answered",
+       A.within(known, "day off").some((c) => / on\b/.test(String(c.className))), known.className);
+    ok("and says where that answer came from",
+       A.within(known, /what you said last time/).length > 0,
+       A.deep(known).map((c) => c.textContent).join(" | "));
+    ok("while a line you have never seen is still waiting",
+       /cal-waiting/.test(rowFor(r, "Sports Day").className));
+    // AND ANSWERING IT MAKES IT YOURS NOW rather than a recollection.
+    await press(r, "Mid-Autumn", "no lessons");
+    ok("changing it drops the note", A.within(rowFor(r, "Mid-Autumn"), /what you said last time/).length === 0);
+    // AND WHAT YOU SAY IS KEPT.
+    const add = r.get("#calAdd");
+    add.fire("click", { target: add });
+    await r.settle();
+    ok("what you said this time is what is remembered",
+       (r.state.calendarSaid || {})["mid-autumn festival"] &&
+       r.state.calendarSaid["mid-autumn festival"].kind === "noLessons",
+       JSON.stringify(r.state.calendarSaid));
+  }
+
+  // 16 and 19 — LESS TO READ BEFORE THE BOX, AND A SHAPE ONCE THERE IS ONE.
+  {
+    const html = fs.readFileSync(path.join(PUB, "timeline.html"), "utf8");
+    const panel = html.slice(html.indexOf('id="calBox"'), html.indexOf("</details>", html.indexOf('id="calBox"')));
+    const words = (t) => t.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, " ")
+      .replace(/&#\d+;/g, " ").replace(/\s+/g, " ").trim().split(" ").length;
+    // EIGHTY-THREE WORDS BEFORE THE BOX, and the second paragraph explained a
+    // tick that often never appears — when a line carries both its dates the app
+    // reads them and the tick is not offered at all. A wall in front of the door.
+    ok("there is not a wall of words in front of the box",
+       words(panel.slice(0, panel.indexOf("<textarea"))) <= 45,
+       String(words(panel.slice(0, panel.indexOf("<textarea")))) + " words");
+    const r = await openCal();
+    ok("and how to answer them is not said over an empty panel",
+       r.get("#calHow").hidden === true, String(r.get("#calHow").hidden));
+    await paste(r, "Staff return\t24 August 2026\nHalf term\t26 October 2026");
+    ok("it is said once there are some", r.get("#calHow").hidden === false);
+    // GROUPED, because twenty rows in one flat run means reading every line to
+    // find the half-term you came for.
+    const heads = [...(r.get("#calRows").children || [])]
+      .filter((c) => String(c.className || "").includes("cal-month")).map((c) => c.textContent);
+    ok("and the dates are grouped by month", heads.length === 2, JSON.stringify(heads));
+    ok("in the calendar's own words", /August 2026/.test(heads[0]) && /October 2026/.test(heads[1]),
+       JSON.stringify(heads));
+  }
+
+  // 7 — A FILE THAT COULDN'T BE READ SAYS SO WHERE YOU DROPPED IT.
+  //
+  // Every answer went through setSuStatus — the timetable's status line, inside
+  // the "set up my week" panel and hidden while that panel is shut. So a file
+  // dropped on the CALENDAR box emptied the box and wrote the reason, correctly
+  // and in full, into a hidden element in a different section of the page.
+  {
+    const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+    ok("dropping is told which panel it happened in",
+       /function dropOnto\(box, then, say\)/.test(tl),
+       "dropOnto still has one place to put every answer");
+    ok("and the calendar hands it its own",
+       /dropOnto\(calBox,[\s\S]*?\}, calSay\);/.test(tl),
+       "the calendar's drop still reports into the timetable's status line");
+    ok("and that one writes into the calendar's own line",
+       /const calSay = \(msg\) => \{[\s\S]{0,400}?calNote = msg/.test(tl),
+       "calSay does not write where the calendar panel says things");
+    ok("and the answer goes through it rather than past it",
+       /\(say \|\| setSuStatus\)\(got\.note/.test(tl),
+       "a failed drop still writes straight to setSuStatus");
+  }
+
+  // 8 — ONE READER, BOTH DOORS. "Choose File" opened PDFs and only PDFs while
+  // dropping a file on the box beside it read Word files, text and photographs,
+  // so a teacher's Word calendar was greyed out in the picker and the
+  // reasonable conclusion — this app can't read my calendar — was wrong.
+  {
+    const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+    const html = fs.readFileSync(path.join(PUB, "timeline.html"), "utf8");
+    ok("the file picker offers what the reader can actually read",
+       /calFile\.accept = window\.OrganiserCapture\.READS/.test(tl),
+       "the accept list is not taken from the reader");
+    ok("and is not a second copy of that list in the markup",
+       !/id="calFile"[^>]*accept=/.test(html),
+       "timeline.html writes out its own list of file types");
+    ok("and choosing a file goes through the same reader as dropping one",
+       /const got = await K\.textOf\(f, \(w\) => calSay\(w\)\);/.test(tl),
+       "choosing a file still goes straight to OrganiserPdfText");
+  }
+}
+
+sec("And asking the model can be got out of, and cannot be won by the slower answer");
+{
+  const A = await import("./_dom.mjs");
+  // A REQUEST THAT NEVER COMES BACK, which is the ordinary case on a laptop
+  // running a big model over a long document — not the broken one. Nothing ever
+  // timed out: the panel said "this one's allowed to take a moment" at two
+  // seconds, at twenty, and would have said it at twenty minutes, with the
+  // button still pressable and no way out but reloading the page.
+  const hung = [];
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+    fetch: async (url, init) => {
+      if (/api\/health/.test(String(url)))
+        return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+      if (/api\/calendar/.test(String(url))) {
+        // Never resolves, but abortable — which is the whole point.
+        return new Promise((_, no) => {
+          const sig = init && init.signal;
+          if (sig) sig.addEventListener("abort", () => no(new Error("aborted")));
+          hung.push(1);
+        });
+      }
+      return { ok: false, json: async () => ({}) };
+    },
+  });
+  r.get("#calBox").open = true;
+  const box = r.get("#calPaste");
+  box.value = "Staff return\t24 August 2026";
+  box.fire("input", { target: box });
+  await r.settle();
+  const btn = r.get("#calSecond");
+  btn.fire("click", { target: btn });
+  await r.settle();
+  ok("a question is out", hung.length === 1, String(hung.length));
+  ok("and the way to ask has become the way to stop",
+     String(btn.textContent) === "stop waiting", String(btn.textContent));
+  ok("which says there is a limit either way",
+     /two minutes/.test(String(r.get("#calSecondWhy").textContent || "")),
+     String(r.get("#calSecondWhy").textContent));
+  btn.fire("click", { target: btn });
+  await r.settle();
+  ok("stopping says so", /Stopped waiting/.test(String(r.get("#calWords").textContent || "")),
+     String(r.get("#calWords").textContent));
+  ok("and keeps what was read here", calRowsOf(r).length === 1, String(calRowsOf(r).length));
+  ok("and the button goes back to asking",
+     String(btn.textContent) === "let the model read it too", String(btn.textContent));
+
+  // AND THE SLOWER ANSWER NEVER WINS. Two requests went out and whichever came
+  // BACK last landed on the screen, so a stale answer overwrote a fresh one —
+  // the worst way for a race to go, because it looks like it worked.
+  const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+  ok("a late answer to a replaced question is discarded",
+     /if \(got\.stale\) return;/.test(tl), "a stale answer can still land on the screen");
+  ok("and both panels ask through the one guard",
+     (tl.match(/await askModel\(/g) || []).length === 2,
+     "one of the two ways of asking has its own fetch again");
+  ok("which gives up on its own", /const MODEL_WAIT = \d+;/.test(tl) &&
+     /ctl\.why = "slow"; ctl\.abort\(\);/.test(tl), "nothing stops a request that never ends");
+}
+
+sec("And the month says what a day is, including the one you are working");
+{
+  const A = await import("./_dom.mjs");
+  const S = sb.OrganiserSchedule;
+  const mk = (b) => ({ id: b.label, label: "", start: "00:00", end: "23:59", date: "", days: [],
+    from: "", to: "", soft: false, swappable: false, beThere: false, getThere: 0, skip: [],
+    blocksDay: false, noLessons: false, runsAs: null, ...b });
+  const state = {
+    items: [], goals: [], schedule: [
+      // A Sunday standing in for a Monday — the most surprising day in anybody's
+      // year, and the month grid drew it as an ordinary empty square.
+      mk({ label: "Makeup day", date: "2026-09-20", runsAs: 1 }),
+      mk({ label: "Mid-Autumn Festival", date: "2026-09-25", blocksDay: true }),
+      // A standing Friday commitment, which fell on the holiday.
+      mk({ label: "Staff meeting", days: [5], start: "16:00", end: "17:00", beThere: true }),
+    ],
+  };
+  const r = await open("month.html", state);
+  const cells = r.created.filter((c) => String(c.className || "").includes("mo-cell"));
+  const said = (n) => A.deep(n).map((c) => String(c.textContent || "")).join(" | ");
+  const on = (day) => cells.find((c) => A.deep(c)
+    .some((k) => String(k.className || "").includes("mo-daynum") && String(k.textContent) === String(day)));
+  const makeup = on(20), holiday = on(25), friday = on(18);
+  ok("the month opens", cells.length > 20, String(cells.length));
+  // 3 — A MAKE-UP DAY IS MARKED AND NAMED.
+  ok("a Sunday you are working is not an empty square",
+     makeup && /mo-runsas/.test(String(makeup.className)), makeup && makeup.className);
+  ok("and it says which day it is standing in for",
+     makeup && /runs Monday's timetable/.test(said(makeup)), makeup && said(makeup));
+  // 4 — AND A DAY OFF HAS NOTHING BOOKED ON IT.
+  ok("a holiday is still shaded and named",
+     holiday && /mo-off/.test(String(holiday.className)) && /Mid-Autumn/.test(said(holiday)),
+     holiday && said(holiday));
+  // NOTHING ELSE IS ON IT AT ALL. The square said "Mid-Autumn Festival" and "1
+  // hour booked" at once, because a standing Friday commitment fell on the
+  // Friday of the holiday — two true-looking facts contradicting each other in
+  // one square. A day marked off is a day the school is shut, and the rest of
+  // the app already treats it that way.
+  ok("and nothing else is on a day the school is shut",
+     holiday && !/booked|Staff meeting/.test(said(holiday)), holiday && said(holiday));
+  // 18 — AND WHAT IS ON A DAY IS NAMED WHERE THERE IS ROOM TO NAME IT.
+  ok("an ordinary day says what is on it, not just how long",
+     friday && /Staff meeting/.test(said(friday)), friday && said(friday));
 }
 
 sec("The two pages nothing had ever opened");

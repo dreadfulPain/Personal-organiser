@@ -109,6 +109,7 @@
         // empty square. It knew: it read the same blocks in order to leave them
         // out of the minutes. It just never said.
         off: offOn(iso),
+        names: namesOn(iso),
         items: (byIso.get(iso) || [])
           .slice()
           .sort((a, b) => minuteOf(a) - minuteOf(b)),
@@ -118,12 +119,35 @@
   }
 
   // Minutes already committed on a day — lessons, form time, duty, meetings.
+  //
+  // NOT ON A DAY YOU ARE NOT IN. A day marked off is a day the school is shut,
+  // and the rest of the app already treats it that way — dayIsBlocked stops the
+  // planner putting anything there. This grid asked a narrower question and got
+  // a square that said "Mid-Autumn Festival" and "1 hour booked" at the same
+  // time, because a standing Friday meeting still fell on the Friday of the
+  // holiday. Two true-looking facts that contradict each other, in one square.
+  function onThatDay(iso) {
+    const S = window.OrganiserSchedule;
+    if (!S || !S.blocksOn) return [];
+    if (S.dayIsBlocked && S.dayIsBlocked(schedule, iso)) return [];
+    return S.blocksOn(schedule, iso).filter((b) => !b.soft && !b.blocksDay && !b.noLessons);
+  }
   function bookedOn(iso) {
     const S = window.OrganiserSchedule;
-    if (!S || !S.blocksOn) return 0;
-    return S.blocksOn(schedule, iso)
-      .filter((b) => !b.soft && !b.blocksDay && !b.noLessons)
-      .reduce((n, b) => n + Math.max(0, S.toMin(b.end) - S.toMin(b.start)), 0);
+    if (!S) return 0;
+    return onThatDay(iso).reduce((n, b) => n + Math.max(0, S.toMin(b.end) - S.toMin(b.start)), 0);
+  }
+
+  // AND WHAT THEY ARE, WHEN THERE ARE FEW ENOUGH TO SAY.
+  //
+  // "1 hour booked" every Friday tells you nothing you did not know. The
+  // holiday on the same grid gets its name; the meeting got a number. But a
+  // teaching day is eight lessons, and eight names in a month square is a wall
+  // — so the rule is how MANY, not what they are: one or two get named, more
+  // than that and the total is the useful thing. No vocabulary either way.
+  function namesOn(iso) {
+    const on = onThatDay(iso);
+    return on.length && on.length <= 2 ? on.map((b) => b.label).filter(Boolean) : [];
   }
 
   // WHAT MAKES A DAY NOT AN ORDINARY ONE, and what it is called. Two kinds,
@@ -133,6 +157,19 @@
   function offOn(iso) {
     const S = window.OrganiserSchedule;
     if (!S || !S.blocksOn) return null;
+    // A MAKE-UP DAY IS THE THIRD KIND, and it was the only one this grid drew
+    // as an ordinary empty square. A Sunday that runs Monday's timetable is the
+    // most surprising day in anybody's year — you are teaching at the weekend —
+    // and the app had it stored exactly right and said it nowhere. It is not
+    // "off" and it is not "no lessons": it is a working day borrowed from
+    // another one, so it says which.
+    const stand = S.standingIn && S.standingIn(schedule, iso);
+    if (stand)
+      return {
+        kind: "runsas",
+        label: (stand.label ? stand.label + " — " : "") +
+          `runs ${OrganiserDates.dayName(stand.runsAs) || "another day"}'s timetable`,
+      };
     const on = S.blocksOn(schedule, iso).filter((b) => b.blocksDay || b.noLessons);
     if (!on.length) return null;
     const day = on.find((b) => b.blocksDay);
@@ -203,7 +240,15 @@
         tag.textContent = cell.off.label;
         el.appendChild(tag);
       }
-      if (cell.booked) {
+      // Named where there are few enough to name, counted where there are not.
+      if (cell.names.length)
+        cell.names.forEach((name) => {
+          const on = document.createElement("div");
+          on.className = "mo-booked";
+          on.textContent = name;
+          el.appendChild(on);
+        });
+      else if (cell.booked) {
         const on = document.createElement("div");
         on.className = "mo-booked";
         on.textContent =

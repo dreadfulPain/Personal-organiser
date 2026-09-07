@@ -99,6 +99,17 @@
   // that line every time you answer a question about a row, and a message
   // written after it disappears at the first click.
   let calNote = "";
+  // WHAT YOU SAID A LINE MEANT, LAST TIME YOU SAW IT. Keyed by the words on the
+  // line, because that is all a calendar gives you and it is the same words
+  // next term. See the store: this is recall of your own answer, not the app
+  // acquiring a vocabulary — it never fills one in without saying it did.
+  let calSaid = {};
+  // IS THERE ANYTHING TO ASK. Five other pages in this app check before they
+  // offer the model; this one offered it and found out by trying. So the button
+  // promised a reader that might not exist, and the only way to discover that
+  // was to press it and read an error.
+  let aiHere = false;
+  const saidKey = (label) => String(label || "").trim().toLowerCase().replace(/\s+/g, " ");
 
   // What each kind of marked day has been said to be. Nothing until you say —
   // the app cannot know, and the whole of this is asking rather than guessing.
@@ -106,7 +117,9 @@
   // rules a calendar can carry, the make-up day a date can stand in for, and
   // the plural a repeating mark is said in — and three lists is how one of them
   // learns a spelling the others don't.
-  const DAY_WORDS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  // Read from the one place that has them — see dates.js. It was written out
+  // here, and then the month grid needed the same seven words.
+  const DAY_WORDS = OrganiserDates.DAY_NAMES;
 
   let calMarkKind = new Map();
   // And which weekday a kind of marked day stands in for, when it is a make-up
@@ -136,8 +149,17 @@
   // end here, so what happens to the year box, the marks and the answers you
   // have already given cannot differ between the two.
   function calShow(r, note) {
-    calRows = r.rows;
-    calMeta = r;
+    // ANYTHING YOU HAVE ALREADY ANSWERED ONCE COMES BACK ANSWERED — and says
+    // so on the row, so it can never be mistaken for the app having decided.
+    calRows = (r.rows || []).map((x) => {
+      const had = calSaid[saidKey(x.label)];
+      if (!had || !had.kind) return x;
+      return {
+        ...x, kind: had.kind, said: true, saidBefore: true,
+        ...(had.kind === "runsAs" && had.runsAs !== undefined ? { runsAsDay: had.runsAs } : {}),
+      };
+    });
+    calMeta = { ...r, rows: calRows };
     calNote = note || "";
     // A NEW DOCUMENT IS A NEW SET OF QUESTIONS. Kept choices would sit against
     // whatever mark landed at the same position in the next calendar, which is
@@ -201,19 +223,29 @@
     calNote = (saying || "Asking the model… ") + "this one's allowed to take a moment. ";
     renderCal();
     const t0 = msNow();
-    try {
-      const res = await fetch("/api/calendar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // The year the plain reader found in the document, so the model dates
-        // the lines that don't say one the same way this app would. Worked out
-        // in one place and used by both, rather than each having a guess.
-        body: JSON.stringify({ text, year: (already && already.r && already.r.year) || 0 }),
-      });
-      const d = await res.json();
-      const modelMs = msNow() - t0;
-      if (!res.ok)
-        return calFallBack(`The model couldn't — ${d.message || "it didn't answer"} — so:`);
+    const got = await askModel("/api/calendar",
+      // The year the plain reader found in the document, so the model dates the
+      // lines that don't say one the same way this app would. Worked out in one
+      // place and used by both, rather than each having a guess.
+      { text, year: (already && already.r && already.r.year) || 0 }, renderCal);
+    const modelMs = msNow() - t0;
+    // A REPLACED REQUEST IS NOT AN ANSWER. You pressed again, so the answer you
+    // are waiting for is the second one; this is the first one arriving late.
+    if (got.stale) return;
+    if (got.stopped) return calFallBack("Stopped waiting, so:");
+    if (got.slow)
+      return calFallBack(`The model still hadn't answered after ${took(MODEL_WAIT)}, so:`);
+    if (got.failed) return calFallBack("The model couldn't be reached, so:");
+    {
+      const d = got.data;
+      if (!got.ok)
+        // ONE SENTENCE, NOT TWO WELDED TOGETHER. The server writes a whole
+        // sentence — "Ollama isn't answering at …, is it running? You can still
+        // type the dates in by hand." — and dropping it into "The model
+        // couldn't — X — so:" produced two dashes, a question mark mid-clause
+        // and a lowercase word after it. It is said on its own, and this adds
+        // only the join.
+        return calFallBack((d && d.message) || "The model couldn't read that.", true);
       const rows = Array.isArray(d.rows) ? d.rows : [];
       if (!rows.length)
         return calFallBack(`The model found nothing in ${took(modelMs)}, so:`);
@@ -229,10 +261,18 @@
         // reading came to. Said here as well it was "4 dates read by the model
         // in 13ms. 4 dates read.", which is the same fact twice and neither of
         // them is the sentence that tells you what to do next.
-        `Read by the model in ${took(modelMs)}. ` + calStumbles(d.unreadable));
-    } catch {
-      calFallBack("The model couldn't be reached, so:");
+        `Read by the model in ${took(modelMs)}. ` + calCut(d.cut) + calStumbles(d.unreadable));
     }
+  }
+
+  // WHAT WAS NOT SENT. The server has a limit on how much of a document goes to
+  // the model in one go, and going over it used to mean the rest simply was not
+  // read — silently, so a year calendar came back missing its summer and
+  // nothing anywhere said why.
+  function calCut(cut) {
+    if (!cut) return "";
+    return `Only the first part of this went to the model — about ${Math.round(cut / 1000)},000 ` +
+      "characters of it. Anything after that is still in the box; read it in on its own. ";
   }
 
   // A ROW THAT VANISHED IS INVISIBLE; A ROW THE READER SAYS IT STUMBLED ON CAN
@@ -256,9 +296,71 @@
   // never came and leaves everything else exactly as it was, answers included.
   // Nothing is re-read: reading one document twice is how two readings of it
   // start to disagree.
-  function calFallBack(why) {
-    calNote = why + " ";
+  function calFallBack(why, whole) {
+    // `whole` says the message is already a finished sentence and needs no
+    // "so:" welded onto the end of it.
+    calNote = whole ? why + " What was read here is still below. " : why + " ";
     renderCal();
+  }
+
+  // ---- asking the model, without waiting for ever ---------------------------
+  //
+  // Two faults, one fix, and the timetable had both of them too — so it is
+  // written once and both call it.
+  //
+  //   NOTHING EVER TIMED OUT. Pointed at a server that accepts the connection
+  //   and never answers, the panel said "this one's allowed to take a moment"
+  //   at two seconds, at twenty, and would have said it at twenty minutes. On a
+  //   laptop running a big model over a long document that is the ordinary
+  //   case, not the broken one.
+  //
+  //   AND PRESSING TWICE LET THE SLOWER ANSWER WIN. Two requests went out and
+  //   whichever came BACK last landed on the screen — so a stale answer
+  //   overwrote a fresh one, which is the worst possible way for a race to go:
+  //   it looks like it worked.
+  const MODEL_WAIT = 120000;
+  let asking = null;
+  let askSeq = 0;
+
+  // `told` is called when a request starts and when it ends, so whichever panel
+  // is asking can redraw its own controls. Kept as a hook rather than calling a
+  // particular panel's render, because both panels on this page ask.
+  async function askModel(url, body, told) {
+    const mine = ++askSeq;
+    // A second press replaces the first rather than joining it.
+    if (asking) { asking.why = "replaced"; asking.abort(); }
+    const ctl = new AbortController();
+    asking = ctl;
+    const timer = setTimeout(() => { ctl.why = "slow"; ctl.abort(); }, MODEL_WAIT);
+    if (told) told();
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+      });
+      const data = await res.json();
+      return { stale: mine !== askSeq, ok: res.ok, data };
+    } catch {
+      return {
+        stale: mine !== askSeq || ctl.why === "replaced",
+        stopped: ctl.why === "stopped",
+        slow: ctl.why === "slow",
+        failed: !ctl.why,
+      };
+    } finally {
+      clearTimeout(timer);
+      if (asking === ctl) { asking = null; if (told) told(); }
+    }
+  }
+
+  // Stopping is a decision, and a decision needs a control. Without one the
+  // only way out of a wait that will not end is to reload the page.
+  function stopAsking() {
+    if (!asking) return;
+    asking.why = "stopped";
+    asking.abort();
   }
 
   // WHICH MONTH A GRID IS SHOWING. A wall calendar says nowhere what month it
@@ -515,8 +617,20 @@
     // to a page with no dates on it — neither is a thing this app can tell from
     // the outside. So the second opinion is a button, next to what was read,
     // whenever there is a document to read.
+    // How to answer them, shown when there are some.
+    const how = $("#calHow");
+    if (how) how.hidden = !calRows.length;
     const more = $("#calSecondRow");
-    if (more) more.hidden = !calText.trim();
+    const btn2 = $("#calSecond");
+    const why = $("#calSecondWhy");
+    // OFFERED ONLY WHERE THERE IS SOMETHING TO ASK, and while a question is out
+    // it is the way to stop waiting rather than a second way to ask.
+    if (more) more.hidden = !calText.trim() || !(aiHere || asking);
+    if (btn2) btn2.textContent = asking ? "stop waiting" : "let the model read it too";
+    if (why)
+      why.textContent = asking
+        ? "It gets two minutes, then it gives up on its own and what was read here stays."
+        : "It reads the words and the dates; what each one means to your week is still yours to say.";
     // What each row will actually cover, worked out by the reader rather than
     // guessed at again here — so what this shows is what gets kept.
     const marks = new Map();
@@ -525,9 +639,50 @@
       if (p.endRow) marks.set(p.endRow, { endOf: p });
     });
     box.innerHTML = "";
+    // GROUPED, BECAUSE A TERM SHEET IS NOT A LIST.
+    //
+    // Twenty rows arrived as one flat run — September, October, the weekly
+    // meeting and December all the same shape one after another — so finding
+    // the half-term you were looking for meant reading every line. A calendar
+    // has a natural order and it is months; the things that repeat every week
+    // belong to no month and go together at the end. Headings appear only where
+    // there is more than one group, because a heading over the only thing on
+    // the page is just another line to read.
+    const monthOf = (r) => (r.date ? r.date.slice(0, 7) : "every week");
+    const groups = [];
     calRows.forEach((r, i) => {
+      const key = monthOf(r);
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.rows.push([r, i]);
+      else groups.push({ key, rows: [[r, i]] });
+    });
+    const headed = groups.length > 1;
+    groups.forEach((g) => {
+      if (headed) {
+        const h = document.createElement("p");
+        h.className = "cal-month";
+        h.textContent = g.key === "every week"
+          ? "Every week"
+          : `${MONTH_WORDS[Number(g.key.slice(5, 7)) - 1]} ${g.key.slice(0, 4)}`;
+        box.appendChild(h);
+      }
+      g.rows.forEach(([r, i]) => drawCalRow(r, i, marks, box));
+    });
+    renderCalTerm();
+  }
+
+  const MONTH_WORDS = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+
+  function drawCalRow(r, i, marks, box) {
+    const C = window.OrganiserCalPlan;
+    {
       const row = document.createElement("div");
-      row.className = "cal-row";
+      // AND A ROW STILL WAITING ON YOU LOOKS LIKE ONE. Ten identical rows with
+      // nothing to separate the done from the undone means counting them, and
+      // counting is the thing this app exists to save you.
+      row.className = "cal-row" + (r.said ? "" : " cal-waiting") +
+        (r.saidBefore ? " cal-recalled" : "");
       const mark = marks.get(r);
       const name = document.createElement("span");
       name.className = "cal-name";
@@ -566,11 +721,35 @@
       // could already store and the calendar could not reach. Read "Makeup" off
       // your own calendar and the only answers were day off (you are working),
       // no lessons (you are teaching), or a meaningless block.
+      //
+      // KEPT TOGETHER IN ONE BLOCK. Loose in the row they flowed straight on
+      // from the name, so on a phone the first choice was orphaned up beside it
+      // and the other five dropped below — one question broken across two
+      // places, ten times down the page. As a block they wrap among themselves
+      // and the row reads name-then-choices at any width.
+      const opts = document.createElement("div");
+      opts.className = "cal-opts";
+      // SEVEN. The six were all about what kind of DAY it is, and the commonest
+      // line on a school calendar after a holiday is none of them: something is
+      // DUE. "Reports due, 2 Nov 16:00" could be booked as an hour to attend
+      // your own deadline or thrown away, and this app has had tasks with
+      // deadlines since the beginning — the calendar just had no way to reach
+      // them. See toTasks.
       [["noLessons", "no lessons"], ["off", "day off"], ["week", "in my week"],
-       ["runsAs", "runs another day"], ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
+       ["runsAs", "runs another day"], ["due", "due that day"],
+       ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "p-opt cal-pick" + (r.kind === k ? " on" : "");
+        // NOTHING IS LIT UNTIL YOU HAVE SAID SOMETHING.
+        //
+        // "" is the kind for "ignore" AND the kind a row starts with, so every
+        // row arrived with the ignore button filled in dark — ten of them down
+        // a phone screen, and the most prominent thing on the page. The app had
+        // decided nothing and the screen said it had decided to throw your
+        // whole calendar away. Only the screen needs to tell the two apart, so
+        // only the screen does: `said` is display, and every other question in
+        // this app still asks the one thing it was asking, which is `kind`.
+        b.className = "p-opt cal-pick" + (r.said && r.kind === k ? " on" : "");
         b.textContent = lab;
         b.addEventListener("click", () => {
           // Clearing a row clears the run-on with it — a tick on a line that
@@ -578,6 +757,10 @@
           calRows[i] = {
             ...r,
             kind: k,
+            said: true,
+            // Pressing anything makes it your answer now rather than a
+            // recollection of one, so the note beside it goes.
+            saidBefore: false,
             spans: k ? r.spans : false,
             // Monday to begin with, because a make-up day most often stands in
             // for the start of a week — and it is a dropdown, not a guess to
@@ -586,8 +769,18 @@
           };
           renderCal();
         });
-        row.appendChild(b);
+        opts.appendChild(b);
       });
+      row.appendChild(opts);
+      // AND WHERE THAT ANSWER CAME FROM. A row that filled itself in must say
+      // why, or it is indistinguishable from the app having decided — which is
+      // the one thing this panel promises it never does.
+      if (r.saidBefore) {
+        const recall = document.createElement("span");
+        recall.className = "muted cal-recall";
+        recall.textContent = "what you said last time — change it if it's different";
+        row.appendChild(recall);
+      }
       // THE OTHER YEAR. A first-semester calendar runs September to January and
       // therefore holds two of them, and every line that didn't write its own
       // gets the same one — so half the document comes out twelve months wrong,
@@ -651,14 +844,28 @@
       // The date it ends is the thing being decided, so it is a date box. What
       // filled it in is said beside it, because a number the app put there and a
       // number you put there should not look the same.
-      if (mark && !mark.endOf && mark.kind !== "lessons") {
+      //
+      // AND IT IS SHOWN BEFORE YOU ANSWER, NOT AFTER. This hung off the plan,
+      // and the plan only holds rows that have been given a kind — so the app
+      // read "25 Sept - 27 Sept", knew it was three days, and showed you "Fri,
+      // Sep 25" and nothing else until you had already decided what it was. The
+      // length is the evidence: three days is obviously a holiday and one day
+      // might be anything. Withholding it until after the decision was
+      // withholding the one thing that helps you make it.
+      const ownEnd = r.date && r.endsOn && r.endsOn >= r.date ? r.endsOn : "";
+      const ends = mark && !mark.endOf && mark.kind !== "lessons"
+        ? { to: mark.to, days: mark.days }
+        : !mark && ownEnd
+          ? { to: ownEnd, days: C.span(r.date, ownEnd) }
+          : null;
+      if (ends) {
         const wrap = document.createElement("label");
         wrap.className = "cal-until";
         wrap.appendChild(document.createTextNode("ends "));
         const upto = document.createElement("input");
         upto.type = "date";
         upto.className = "cal-upto";
-        upto.value = mark.to;
+        upto.value = ends.to;
         upto.min = r.date;
         upto.addEventListener("change", () => {
           const v = upto.value && upto.value >= r.date ? upto.value : r.date;
@@ -671,7 +878,7 @@
         const how = document.createElement("span");
         how.className = "muted cal-howlong";
         how.textContent =
-          (mark.days === 1 ? "one day" : `${mark.days} days`) +
+          (ends.days === 1 ? "one day" : `${ends.days} days`) +
           (r.endFrom === "grid" ? " — as the calendar draws it"
             : r.endFrom === "line" ? " — as written"
             : "");
@@ -708,8 +915,7 @@
         row.appendChild(end);
       }
       box.appendChild(row);
-    });
-    renderCalTerm();
+    }
   }
 
   // WHICH OF YOUR TIMETABLE ENTRIES ARE THE LESSONS.
@@ -761,6 +967,23 @@
     const C = window.OrganiserCalPlan;
     if (!C) return;
     const made = C.toBlocks(calRows).map((b) => ({ ...b, id: uid() }));
+    // AND ANYTHING DUE, WHICH IS A TASK AND NOT A DAY. Deduped the same way the
+    // days are: reading one calendar in twice must not leave you with the
+    // reports due twice.
+    const haveDue = new Set(items.filter((i) => i && i.date).map((i) => i.date + "|" + (i.title || "")));
+    const due = C.toTasks(calRows)
+      .filter((t) => !haveDue.has(t.date + "|" + t.title))
+      .map((t) => ({
+        id: uid(), title: t.title, type: "task", date: t.date, time: t.time, tags: [],
+        // A DATE OFF A CALENDAR IS A HARD ONE. "Reports due 2 November" is the
+        // day it is due, not a day somebody hoped to get to it.
+        deadlineType: "hard", importance: "normal", effort: "medium",
+        goalId: "", openLoop: false, promisedTo: "", waitingOn: "", done: false,
+        createdAt: new Date().toISOString(), completedAt: null, plannedMinutes: 0,
+        spentMinutes: 0, optional: false, committed: true, notBefore: "", areas: [],
+        // What it came off, so you can see why it is there a month later.
+        whenText: "from the school calendar",
+      }));
     // A day already in the schedule is left as it is — reading the calendar in
     // twice must not put two of every holiday in your week.
     // A RULE HAS NO DATE TO BE THE SAME DAY AS. This looked only at blocks that
@@ -774,11 +997,19 @@
     // calendar saying only "students return" still has something to tell you.
     const t = C.term(calRows);
     const picked = t && calTermPick ? [...calTermPick] : [];
-    if (!fresh.length && !picked.length) return;
+    if (!fresh.length && !picked.length && !due.length) return;
     if (picked.length)
       schedule = schedule.map((b) =>
         b && calTermPick.has(b.id) ? { ...b, from: t.from, to: t.to || b.to || "" } : b);
     schedule = schedule.concat(fresh);
+    if (due.length) items = items.concat(due);
+    // AND WHAT YOU SAID EACH LINE MEANT, so next term's sheet does not ask all
+    // sixty questions again. Kept only for lines you actually answered.
+    calRows.forEach((r) => {
+      if (!r || !r.said || !r.label) return;
+      calSaid = { ...calSaid, [saidKey(r.label)]:
+        { kind: r.kind, ...(r.runsAsDay === undefined ? {} : { runsAs: r.runsAsDay }) } };
+    });
     persist();
     calRows = [];
     calTermPick = null;
@@ -797,6 +1028,8 @@
     if (words)
       words.textContent =
         (fresh.length ? `${fresh.length} day${fresh.length === 1 ? "" : "s"} added. ` : "") +
+        (due.length ? `${due.length} thing${due.length === 1 ? "" : "s"} to do, with the date ` +
+          `${due.length === 1 ? "it is" : "they are"} due. ` : "") +
         (picked.length
           ? `${picked.length} timetable entr${picked.length === 1 ? "y" : "ies"} now only run` +
             `${picked.length === 1 ? "s" : ""} from ${calDay(t.from)}${t.to ? ` to ${calDay(t.to)}` : " onwards"}. `
@@ -898,7 +1131,8 @@
   }
 
   function persist() {
-    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList, rotas });
+    OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList, rotas,
+      calendarSaid: calSaid });
   }
 
   // People are saved SEPARATELY, and only when this page actually changed them.
@@ -1994,7 +2228,17 @@
 
   // A file dropped on a paste box, read rather than named. Shared by the two
   // boxes on this page because they want exactly the same thing.
-  function dropOnto(box, then) {
+  //
+  // `say` IS WHICH PANEL IT HAPPENED IN, and it is not optional.
+  //
+  // This wrote every answer with setSuStatus — the timetable's status line,
+  // which lives inside the "set up my week" panel and is hidden while that
+  // panel is shut. So somebody dropping a file the reader could not open onto
+  // the CALENDAR box watched the box empty itself and got nothing else: the
+  // reason was written, correctly and in full, into a hidden element in a
+  // different section of the page. Two boxes sharing one piece of machinery is
+  // right; sharing one place to put the answer is not.
+  function dropOnto(box, then, say) {
     if (!box) return;
     ["dragover", "drop"].forEach((n) =>
       box.addEventListener(n, async (e) => {
@@ -2010,7 +2254,8 @@
           // The box is where the answer goes, because that is where they are
           // looking — and it says what to do rather than sitting there.
           box.value = "";
-          setSuStatus(got.note || "That file couldn't be read.");
+          (say || setSuStatus)(got.note ||
+            `Couldn't read anything out of ${f.name}. Opening it and copying the text across will work.`);
           return;
         }
         then(got.text, got);
@@ -2251,16 +2496,27 @@
         "check the days when it comes back."
       : "Reading it… this one's allowed to take a moment.");
     const t0 = msNow();
-    try {
-      const r = await fetch("/api/timetable", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, flattened: !!flattened }),
-      });
-      const d = await r.json();
+    {
+      // THE SAME GUARD THE CALENDAR GOT, because this had the same two faults:
+      // nothing ever timed out, and pressing twice let whichever answer came
+      // back last win. See askModel.
+      const got = await askModel("/api/timetable", { text, flattened: !!flattened }, renderSetup);
       const modelMs = msNow() - t0;
-      if (!r.ok) {
-        if (already) return fallBack(already, `The model couldn't — ${d.message || "it didn't answer"} — so:`);
+      if (got.stale) return;
+      if (got.stopped || got.slow || got.failed) {
+        const why = got.stopped
+          ? "Stopped waiting, so:"
+          : got.slow
+            ? `The model still hadn't answered after ${took(MODEL_WAIT)}, so:`
+            : "The model couldn't be reached, so:";
+        if (already) return fallBack(already, why);
+        setSuStatus(`${why.replace(/, so:$/, ".")} You can still add blocks by hand.`);
+        return;
+      }
+      const d = got.data;
+      if (!got.ok) {
+        // One sentence, not two welded together — see calFallBack.
+        if (already) return fallBack(already, d.message || "The model couldn't read that.");
         setSuStatus(d.message || "Couldn't read that — you can still add blocks by hand.");
         return;
       }
@@ -2303,9 +2559,6 @@
       renderSetup();
       setSuStatus(`${d.blocks.length} block${d.blocks.length === 1 ? "" : "s"} read by the model in ${took(modelMs)}. ` +
         "Check them the same way — nothing is saved until you press save.");
-    } catch {
-      if (already) return fallBack(already, "The model couldn't be reached, so:");
-      setSuStatus("Couldn't reach the reader just now — you can still add blocks by hand.");
     }
   }
 
@@ -3196,6 +3449,7 @@
     schedule = data.schedule || [];
     cfg = data.scheduleConfig || null;
     worked = data.worked || {};
+    calSaid = data.calendarSaid || {};
     areaList = data.areas || [];
     rotas = data.rotas || [];
     contacts = data.contacts || [];
@@ -3213,6 +3467,15 @@
     // what browsers do: put "2026 First Semester Calendar.docx" in as text. The
     // reader then said "no dates found in that", which was true of the sentence
     // it had been given and useless about the file it hadn't. Read the file.
+    // WITH ITS ANSWER GOING WHERE THE DROP HAPPENED — this panel's own line,
+    // not the timetable's hidden one.
+    const calSay = (msg) => {
+      // The box has just been emptied, so anything still drawn under it is a
+      // reading of a document that is no longer there.
+      if (calBox && !calBox.value.trim()) calRead("");
+      calNote = msg ? msg + " " : "";
+      renderCal();
+    };
     dropOnto(calBox, (text, got) => {
       // With the file's own columns when it had any — a dropped PDF and a
       // chosen one are the same document and must not read two different ways.
@@ -3223,7 +3486,7 @@
       // A WHOLE DOCUMENT ARRIVING, so the model is allowed a go at it. Typing
       // is not: see calRead.
       calRead(said, 0, 0, true);
-    });
+    }, calSay);
     // Changing the year re-reads what's already there rather than making you
     // paste it again.
     if (calYear) calYear.addEventListener("input", () => reRead(false));
@@ -3236,30 +3499,62 @@
     // from where that reading took it rather than read out of the box again.
     const calSecond = $("#calSecond");
     if (calSecond)
-      calSecond.addEventListener("click", () => calAsk(calPlain || { r: calMeta, ms: 0 }, "Asking the model… "));
+      calSecond.addEventListener("click", () =>
+        asking ? stopAsking() : calAsk(calPlain || { r: calMeta, ms: 0 }, "Asking the model… "));
+    // AND WHO GOES FIRST, WHERE THE READING HAPPENS. The switch existed and
+    // lived in the timetable's setup panel, labelled for a timetable — so it
+    // governed this panel too and there was nothing here that said so.
+    const calFirst = $("#calFirst");
+    if (calFirst) {
+      calFirst.checked = !!S().normaliseConfig(cfg).modelFirst;
+      calFirst.addEventListener("change", (e) => {
+        cfg = { ...S().normaliseConfig(cfg), modelFirst: !!e.target.checked };
+        persist();
+        renderSetup();
+      });
+    }
+    // Asked once, on the way in, the same way the other pages ask.
+    try {
+      const h = await (await fetch("/api/health")).json();
+      aiHere = !!h.hasAI;
+    } catch { aiHere = false; }
+    renderCal();
+    // TWO DOORS, ONE READER.
+    //
+    // This one opened PDFs and only PDFs, straight through OrganiserPdfText,
+    // while dropping a file on the box next to it went through textOf and read
+    // Word files, text files and photographs. So the accept list offered a
+    // teacher nothing but PDFs, their Word calendar was greyed out in the file
+    // picker, and the reasonable conclusion — this app can't read my calendar —
+    // was wrong. Same reader, same list, same answers, either way in.
     const calFile = $("#calFile");
+    // The list of what can be opened comes from the thing that opens them, so
+    // there is one of it.
+    if (calFile && window.OrganiserCapture) calFile.accept = window.OrganiserCapture.READS;
     if (calFile)
       calFile.addEventListener("change", async () => {
         const f = calFile.files && calFile.files[0];
-        const P = window.OrganiserPdfText;
-        const words = $("#calWords");
-        if (!f || !P) return;
-        if (words) words.textContent = "Reading…";
+        const K = window.OrganiserCapture;
+        if (!f || !K) return;
+        calSay("Reading…");
         try {
-          const r = await P.read(await f.arrayBuffer());
-          if (!r.ok || !r.text.trim()) {
-            if (words) words.textContent = (r.notes.join(" ") || "Nothing readable in that file.") +
-              " Opening it and copying the text across will work.";
+          const got = await K.textOf(f, (w) => calSay(w));
+          if (!got.text) {
+            calSay(got.note ||
+              `Couldn't read anything out of ${f.name}. Opening it and copying the text across will work.`);
             return;
           }
-          const said = asRead(r);
+          // With the file's own columns when it had any — see asRead. A chosen
+          // file and a dropped one are the same document and must not read two
+          // different ways.
+          const said = (got.pdf && asRead(got.pdf)) || got.text;
           if (calBox) calBox.value = said;
           // A new document brings its own year, so the old one is let go of.
           if (calYear) calYear.value = "";
           calRead(said, 0, 0, true);
-          if (words) words.textContent = r.caution + " " + words.textContent;
+          if (got.note) calSay(got.note);
         } catch (e) {
-          if (words) words.textContent = "That file couldn't be opened. Copy the text across instead.";
+          calSay("That file couldn't be opened. Copy the text across instead.");
         }
       });
 

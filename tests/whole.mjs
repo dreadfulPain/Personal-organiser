@@ -291,6 +291,9 @@ const FULL = {
   areas: [{ id: "work", name: "work", hints: ["marking"] }, { id: "prof", name: "professional", hints: [] }],
   targeted: { "9A": { id: "targeted:9A", everyDays: 21, lastDone: { p1: TODAY } } },
   tried: [{ id: "y1", what: "modelled it first", skill: "Reading", date: TODAY, group: "9A", whoIds: ["p1"], note: "" }],
+  // What you said a line on the school calendar meant, so next term's sheet
+  // doesn't ask all sixty questions again.
+  calendarSaid: { "mid-autumn festival": { kind: "off" }, "makeup day": { kind: "runsAs", runsAs: 1 } },
   lessons: [{ id: "l1", title: "Settings", date: TODAY, slotId: "sl1", group: "9A", skill: "Reading",
     plan: "Learning Objective:\nsenses\n\nActivities\n- modelled it", objective: "senses",
     ways: ["modelled it"], checks: ["exit ticket"], taught: true, note: "went well",

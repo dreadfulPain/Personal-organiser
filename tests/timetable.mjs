@@ -329,9 +329,20 @@ sec("And all of it on the page, not just in the modules");
   // reads the timetable, it read it in code.
   const rows = r.get("#ttReview").children;
   const table = r.created.filter((e) => String(e.className).includes("su-trow"));
-  ok("it read without reaching for the model", table.length === 25, String(table.length));
+  // TWENTY-FIVE SQUARES, ELEVEN BLOCKS. Registration is on all five days and
+  // that is one block on five days, not five blocks — the shape `days` has
+  // always had and the grid reader was not using. A week with registration and
+  // lunch in it arrived as forty-five rows to check where the document had
+  // nine, and forty-five went into the schedule.
+  ok("it read without reaching for the model", table.length === 11, String(table.length));
   ok("and says what it found",
-     /25 blocks read/.test(String(r.get("#ttStatus").textContent)),
+     /11 blocks read/.test(String(r.get("#ttStatus").textContent)),
+     String(r.get("#ttStatus").textContent));
+  // AND SAYS THAT SOME OF THEM REPEAT, because "11 blocks" out of a document
+  // with twenty-five squares in it is otherwise a number that looks like a
+  // failure rather than the shape of a week.
+  ok("and that some of them cover more than one day",
+     /run on more than one day/.test(String(r.get("#ttStatus").textContent)),
      String(r.get("#ttStatus").textContent));
 
   const save = r.created.find((e) => String(e.textContent) === "Save these blocks");
@@ -339,7 +350,16 @@ sec("And all of it on the page, not just in the modules");
   save.click();
   await r.settle();
   const kept = r.state.schedule || [];
-  ok("25 blocks are saved", kept.length === 25, String(kept.length));
+  ok("11 blocks are saved", kept.length === 11, String(kept.length));
+  // AND THE WEEK IS STILL THE SAME WEEK. Fewer rows must not mean fewer
+  // lessons: registration is one block now and still happens on all five days.
+  ok("registration is one block on every weekday",
+     kept.filter((b) => b.label === "Registration").length === 1 &&
+     JSON.stringify(kept.find((b) => b.label === "Registration").days) === "[1,2,3,4,5]",
+     JSON.stringify(kept.filter((b) => b.label === "Registration").map((b) => b.days)));
+  ok("and it still lands on a Wednesday",
+     S.blocksOn(kept, "2026-09-16").some((b) => b.label === "Registration"),
+     JSON.stringify(S.blocksOn(kept, "2026-09-16").map((b) => b.label)));
   ok("a Tuesday lesson lands on the Tuesday",
      S.blocksOn(kept, "2026-09-15").some((b) => b.label === "9A English"),
      JSON.stringify(S.blocksOn(kept, "2026-09-15").map((b) => b.label)));

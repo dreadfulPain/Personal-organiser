@@ -479,6 +479,34 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   ok("an empty document is refused rather than sent", empty.status === 400, String(empty.status));
 }
 
+// AND WHEN IT CANNOT ANSWER, THE MESSAGE IS SENTENCES, NOT ONE WELDED TO
+// ANOTHER'S TAIL. offlineReason writes a whole sentence and it ends in a
+// question mark, so this came back as "…is it running? you can still type the
+// blocks in by hand."
+{
+  // Pointed at a port with nothing on it, so the engine is configured and dead.
+  const dead = spawn(process.execPath, ["server.js"], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b",
+           AI_BASE_URL: "http://localhost:11719", NO_OPEN: "1", PORT: "3719" },
+    stdio: "ignore",
+  });
+  await sleep(2200);
+  const say = async (path, body) => (await (await fetch(`http://localhost:3719${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) })).json()).message || "";
+  for (const [what, path, body] of [
+    ["timetable", "/api/timetable", { text: "Mon 09:00-10:00 Duty" }],
+    ["calendar", "/api/calendar", { text: "Staff return 24 August 2026", year: 2026 }],
+  ]) {
+    const msg = await say(path, body);
+    ok(`the ${what} says why it couldn't`, /isn't answering/.test(msg), msg);
+    ok(`and does not carry on in lower case after a question mark`,
+       !/\?\s+[a-z]/.test(msg), msg);
+  }
+  dead.kill();
+}
+
 srv.kill(); ol.close();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -301,6 +301,18 @@ export const calRowsOf = (r) => [...(r.get("#calRows").children || [])]
 // wrap together instead of one of them being orphaned beside the name — and the
 // moment they were, every check reading `row.children` was asking a different
 // question from the one it meant. "Somewhere in this row" is the question.
+// A STUB FETCH THAT SAYS THE SORTER IS RUNNING.
+//
+// Pages ask /api/health before they offer the model — five of them always did,
+// and the two reading panels do now, because offering a reader that isn't there
+// and letting somebody find out by pressing it is not an offer. A stub that
+// answers only the endpoint under test therefore leaves the page believing
+// there is nothing to ask, and the endpoint under test is never reached.
+export const withAI = (fn) => async (url, init) =>
+  (/api\/health/.test(String(url))
+    ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
+    : fn(url, init));
+
 export const deep = (el) => {
   const all = [];
   const walk = (n) => { if (!n) return; all.push(n); (n.children || []).forEach(walk); };

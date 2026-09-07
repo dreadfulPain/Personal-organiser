@@ -2289,15 +2289,17 @@
     if (!setupOpen) return;
 
     panel.innerHTML = `
-      <p class="muted">Your week's shape. This is a once-a-term job — take your time over it, it's worth getting right.
-      Blocks marked <em>fixed</em> are facts and hold reminders back; <em>soft</em> ones are guesses and never silence anything.</p>
+      <p class="muted">Your week's shape. This is a once-a-term job — take your time over it,
+      it's worth getting right.</p>
       <div class="su-import">
         <label class="su-lab">Paste your timetable — any layout, it gets read into rows you check before saving.</label>
         <textarea id="ttText" rows="4" placeholder="Mon-Fri 08:40-09:00 Registration&#10;Mon 09:00-09:45 P1 Maths 7B&#10;…"></textarea>
         <div class="su-row">
           <button type="button" id="ttRead" class="btn">Read this</button>
-          <label class="su-file">or open the PDF
-            <input type="file" id="ttPdf" accept=".pdf,application/pdf" hidden />
+          <label class="su-file">or open the file
+            <!-- WHAT IT ACCEPTS IS SET FROM THE READER — see below. Written
+                 out here it would be a second copy of a list that exists. -->
+            <input type="file" id="ttPdf" hidden />
           </label>
           <label class="su-file">or import a calendar file (.ics)
             <input type="file" id="icsFile" accept=".ics,text/calendar" hidden />
@@ -2311,17 +2313,22 @@
              are timed and the time is on screen, because "the model is slower"
              was worth measuring on the machine it happens on rather than
              asserting. -->
-        <label class="su-first"><input type="checkbox" id="ttModelFirst"${
+        <label class="su-first"${aiHere ? "" : " hidden"}><input type="checkbox" id="ttModelFirst"${
           S().normaliseConfig(cfg).modelFirst ? " checked" : ""} /> ask the model first
           <span class="muted">— it reads unusual layouts better; reading it here is
           quicker and needs nothing installed. Whichever goes first, the other one
           picks up what it misses, and each says how long it took.</span></label>
       </div>
-      <div id="makeUp" class="su-makeup"></div>
-      <div id="fixedWords" class="su-makeup"></div>
       <div id="ttReview"></div>
       <div id="blockAdd"></div>
-      <div id="blockList" class="su-list"></div>`;
+      <div id="blockList" class="su-list"></div>
+      <!-- TWO SETTINGS PANELS, AFTER THE WORK RATHER THAN THROUGH THE MIDDLE OF
+           IT. They sat between the paste box and the rows it had just read —
+           so the first thing under "Read this" was a folded-away list of
+           vocabulary with a number after it, and the reading you were waiting
+           for was below that. -->
+      <div id="makeUp" class="su-makeup"></div>
+      <div id="fixedWords" class="su-makeup"></div>`;
 
     $("#ttRead").addEventListener("click", readTimetable);
     $("#ttModelFirst").addEventListener("change", (e) => {
@@ -2338,6 +2345,11 @@
       $("#ttText").value = text;
       readTimetable(got && got.pdf);
     });
+    // TWO DOORS, ONE READER. This one opened PDFs and only PDFs, while dropping
+    // a file on the box beside it read Word files, text and photographs — so a
+    // teacher's Word timetable was greyed out in the picker and the reasonable
+    // conclusion, that the app couldn't read it, was wrong.
+    if (window.OrganiserCapture) $("#ttPdf").accept = window.OrganiserCapture.READS;
     $("#ttPdf").addEventListener("change", readTimetablePdf);
     $("#icsFile").addEventListener("change", readIcs);
     renderMakeUp();
@@ -2365,7 +2377,7 @@
     const c = S().normaliseConfig(cfg);
     box.innerHTML = `
       <details class="p-setup">
-        <summary>Words that mean something happens at a time (${c.fixedWords.length})</summary>
+        <summary>Words that mean “be there”, not “have it done by” (${c.fixedWords.length})</summary>
         <p class="muted">A deadline means have it finished by then, so the app looks for
           room earlier. These words mean the opposite — the thing happens when it happens,
           and turning up early is not being ahead of it. Anything with one of these in it
@@ -2402,7 +2414,7 @@
   const took = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : ms >= 1 ? `${Math.round(ms)}ms` : "under 1ms");
 
   function showRead(got, from, thin, ms) {
-    pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+    pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true, beThere: b.beThere !== false }));
     // How it was come by, and what is doubtful about it — both set here so
     // neither can carry over from the last document onto this one.
     pastedFrom = from || "";
@@ -2421,7 +2433,15 @@
     // that cell away and shifts every day one column to the left. Monday's
     // lessons come out on Sunday and nothing looks wrong.
     const text = $("#ttText").value || "";
-    if (!text.trim()) return;
+    // AN EMPTY BOX AND A PRESSED BUTTON IS A QUESTION, NOT A NO-OP. This
+    // returned in silence, so somebody whose paste had not landed pressed
+    // "Read this", watched nothing at all happen, and had no way to tell that
+    // from the app being broken.
+    if (!text.trim()) {
+      setSuStatus("There's nothing in the box yet — paste your timetable in, open the file, " +
+        "or add one block by hand to see the shape.");
+      return;
+    }
     pastedText = text;
     // READ HERE FIRST, ALWAYS — WHICHEVER ANSWER WINS.
     //
@@ -2472,6 +2492,17 @@
     // model is told so, and what comes back is labelled a reconstruction all
     // the way to the screen. The failure mode here is not a blank — it is a
     // timetable that looks entirely right and has Tuesday's lessons on Monday.
+    //
+    // AND WITH NOTHING TO ASK, THE ANSWER IS ABOUT THE DOCUMENT. Pasting a
+    // sentence that was never a timetable got "Ollama isn't answering at
+    // http://localhost:11434 — is it running?", which blames a missing reader
+    // for text no reader would have helped with.
+    if (!aiHere) {
+      setSuStatus("Nothing in there looked like a timed block — no times, or nothing " +
+        "attached to them. Paste the table itself if you can, or add one block by hand " +
+        "to see the shape.");
+      return;
+    }
     return askTheModel(forModel, flattened);
   }
 
@@ -2548,7 +2579,7 @@
         );
         return;
       }
-      pastedBlocks = d.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+      pastedBlocks = d.blocks.map((b) => ({ ...b, id: uid(), keep: true, beThere: b.beThere !== false }));
       // The model's own reading — so nothing is left saying the plain one looked
       // thin, because the plain one is no longer what is on screen.
       pastedThin = "";
@@ -2589,29 +2620,38 @@
   // columns, so those are what this uses, and the text is only the fallback.
   async function readTimetablePdf(e) {
     const f = e.target.files && e.target.files[0];
-    const P = window.OrganiserPdfText;
+    const K = window.OrganiserCapture;
     const T = window.OrganiserTimetable;
-    if (!f || !P || !T) return;
+    if (!f || !K || !T) return;
     setSuStatus("Opening it…");
     try {
-      const r = await P.read(await f.arrayBuffer());
-      if (!r.ok) {
-        setSuStatus((r.notes.join(" ") || "That file couldn't be opened.") +
+      // THE SAME READER AS A DROPPED FILE. It went straight to OrganiserPdfText,
+      // so this door opened PDFs and the door beside it opened everything.
+      const said = await K.textOf(f, (w) => setSuStatus(w));
+      if (!said.text) {
+        setSuStatus((said.note || `Couldn't read anything out of ${f.name}.`) +
           " Opening it and copying the table across will work.");
         return;
       }
+      // Its own columns when it had any — a PDF keeps a timetable's grid in the
+      // coordinates, and read as text a whole row of lessons comes out run
+      // together with nothing between them.
+      const r = said.pdf || { text: said.text };
       // Three ways in, strongest first — worked out in timetable.js so that a
       // file dropped on the box and a file chosen with the button cannot be
       // read two different ways.
       const got = T.bestOf(r);
       if (!got.blocks.length) {
-        if ($("#ttText")) $("#ttText").value = r.text;
+        if ($("#ttText")) $("#ttText").value = r.text || said.text;
         setSuStatus("Nothing in there looked like a timetable — the text is in the box " +
           "above so you can see what came out, and tidy it.");
         return;
       }
       showRead(got);
-      setSuStatus(r.caution + " " + T.words(got));
+      // The caution belongs to a PDF; a Word file or a paste has its own note or
+      // none. Said either way rather than printing "undefined" in front of the
+      // reading, which is what taking it off a PDF-only path used to guarantee.
+      setSuStatus(((said.note || r.caution || "") + " " + T.words(got)).trim());
     } catch {
       setSuStatus("That file couldn't be opened. Copy the table across instead.");
     }
@@ -2708,7 +2748,7 @@
         setSuStatus("No events found in that file.");
         return;
       }
-      pastedBlocks = out.blocks.map((b) => ({ ...b, id: uid(), keep: true }));
+      pastedBlocks = out.blocks.map((b) => ({ ...b, id: uid(), keep: true, beThere: b.beThere !== false }));
       pastedFrom = "";
       pastedThin = "";
       setSuStatus(
@@ -2942,7 +2982,6 @@
   // ON BY DEFAULT HERE, unlike everything else in this box. Everything else is
   // the app proposing something about your words; this is the plain reading of
   // what a schedule IS. Untick it if these are places you're already sitting.
-  let therePick = true;
   let thereMins = 0;
   // Blank = for ever, which is the honest default for a timetable nobody has
   // told us the term dates for. See termOffer().
@@ -2990,17 +3029,35 @@
     if (!pastedBlocks || !pastedBlocks.length) return box;
     const p = document.createElement("p");
     p.className = "muted";
+    // SAYING WHAT IT ASSUMED, rather than doing it quietly. The app has no
+    // vocabulary and never will — it cannot know that "P3 Maths" is somewhere
+    // you must be and "Lunch" is not. So it takes the general fact about a
+    // timetable, says out loud that it has, and points at where it is likely to
+    // be wrong without pretending to know which row that is.
     p.textContent =
-      "These are places you have to be. Counted as jobs, nothing gets planned " +
-      "into the time it takes to get there, and the day tells you when to leave.";
+      "Somewhere you have to be: nothing gets planned into it, and the day tells " +
+      "you when to leave. All of them to start with — take it off anything you " +
+      "don't actually have to turn up to, like a break.";
     box.appendChild(p);
     const row = document.createElement("div");
     row.className = "su-row";
+    // ALL OF THEM OR NONE OF THEM WAS THE ONLY CHOICE, and it started as all.
+    //
+    // So break and lunch went into the week as places you have to be, with
+    // travel time in front of them and nothing plannable inside them — and
+    // break and lunch are the only time in a school day a teacher can actually
+    // plan into. There is a per-row control now; this sets them all at once,
+    // which is what it was for.
+    const on = pastedBlocks.filter((b) => b.keep && b.beThere).length;
     const tick = document.createElement("button");
     tick.type = "button";
-    tick.className = "p-opt su-chip" + (therePick ? " on" : "");
-    tick.textContent = therePick ? "count these as jobs ✓" : "count these as jobs";
-    tick.addEventListener("click", () => { therePick = !therePick; renderSetup(); });
+    tick.className = "p-opt su-chip" + (on ? " on" : "");
+    tick.textContent = on ? `count these as jobs ✓ (${on})` : "count these as jobs";
+    tick.addEventListener("click", () => {
+      const want = !on;
+      pastedBlocks = pastedBlocks.map((b) => ({ ...b, beThere: want }));
+      renderSetup();
+    });
     row.appendChild(tick);
     const lab = document.createElement("label");
     lab.innerHTML = `minutes to get there <input type="number" class="th-mins" min="0" max="240" value="${thereMins}" />`;
@@ -3036,15 +3093,66 @@
       // of the same duty, so this may be a perfectly good reading of an unusual
       // document. What was wrong before was not preferring one over the other —
       // it was never noticing there was a question.
+      // OFFERED ONLY WHERE THERE IS SOMETHING TO ASK. It promised a second
+      // reader whether or not one was running, and the way to find out was to
+      // press it and read a connection error. Five other pages in this app
+      // check first; so does the calendar now.
       (pastedThin
         ? `<p class="su-thin">This one came out looking thin — ${escapeHtml(pastedThin)}.
-           It may be right; some weeks really are like that. If it isn't,
+           It may be right; some weeks really are like that.${aiHere
+             ? ` If it isn't,
            <button type="button" id="ttSecond" class="link">let the model read it too</button>
-           and you can keep whichever is better.</p>`
+           and you can keep whichever is better.`
+             : ""}</p>`
         : "");
     const table = document.createElement("div");
     table.className = "su-table";
+    // GROUPED BY WHEN, WHICH IS HOW THE DOCUMENT IS LAID OUT.
+    //
+    // A check-back is read against the paper in your hand, and the paper is a
+    // grid with the times down the side. As one flat run of rows there was
+    // nothing to line the two up by, so checking meant reading every row and
+    // remembering where you were. Headings only where there is more than one
+    // group — a heading over the only thing on the page is another line to read.
+    let lastWhen = null;
     pastedBlocks.forEach((b, i) => {
+      const when = `${b.start}-${b.end}`;
+      if (when !== lastWhen) {
+        lastWhen = when;
+        // AND THE TIMES LIVE ON THE HEADING, NOT IN EVERY ROW.
+        //
+        // Every row carried two time boxes, and inside a group every one of
+        // them held what the heading above it already said — five copies of
+        // 08:20–09:05 down the page, two wide controls each, which is what
+        // pushed a phone's check-back to eight thousand pixels. Worse, moving a
+        // period ten minutes later was one edit per row.
+        //
+        // The group IS the period: these rows are together because they share a
+        // start and an end. So the period is edited once, here, and the rows
+        // below it move together.
+        const h = document.createElement("div");
+        h.className = "su-when";
+        const at = (cls, val, what) => {
+          const t = document.createElement("input");
+          t.type = "time";
+          t.className = cls;
+          t.value = val;
+          t.setAttribute("aria-label", what);
+          t.addEventListener("change", (e) => {
+            const was = when;
+            pastedBlocks = pastedBlocks.map((x) =>
+              `${x.start}-${x.end}` === was
+                ? { ...x, [cls === "su-start" ? "start" : "end"]: e.target.value }
+                : x);
+            renderSetup();
+          });
+          return t;
+        };
+        h.appendChild(at("su-start", b.start, "Start"));
+        h.appendChild(document.createTextNode(" – "));
+        h.appendChild(at("su-end", b.end, "End"));
+        table.appendChild(h);
+      }
       const row = document.createElement("div");
       row.className = "su-trow" + (b.keep ? "" : " dropped");
       // A ONE-OFF NEEDS ITS DATE ON SCREEN, NOT JUST IN THE DATA. Something
@@ -3055,20 +3163,68 @@
       row.innerHTML = `
         <input type="checkbox" class="su-keep" ${b.keep ? "checked" : ""} aria-label="Keep this row" />
         <input type="text" class="su-label" value="${escapeHtml(b.label)}" aria-label="Label" />
-        <input type="time" class="su-start" value="${escapeHtml(b.start)}" aria-label="Start" />
-        <input type="time" class="su-end" value="${escapeHtml(b.end)}" aria-label="End" />
         ${dated
           ? `<input type="date" class="su-date${b.date ? "" : " missing"}" value="${escapeHtml(b.date || "")}" aria-label="Date" />`
-          : `<span class="su-days">${escapeHtml(daysWords(b))}</span>`}`;
+          : `<span class="su-days"></span>`}`;
+      // THE DAY IS THE PART THIS PANEL TELLS YOU TO CHECK, AND IT WAS A LABEL.
+      //
+      // Every other thing on the row could be corrected — the name, both times,
+      // a date — and the days were a span of text you could read and not touch.
+      // Which is the worst one to lock, because when a document's columns are
+      // gone this panel prints, in a box of its own, "the days here were worked
+      // out, not read — the day against each one is the part to check", and
+      // then offers no way to change it. The only fix was to untick the row and
+      // type the whole block in again by hand.
+      //
+      // Seven letters, pressed on and off. It is also how you correct the
+      // grouping when two lessons that only look alike were folded together.
+      if (!dated) {
+        const box2 = row.querySelector(".su-days");
+        DAY_WORDS.forEach((name, n) => {
+          const d = document.createElement("button");
+          d.type = "button";
+          d.className = "p-opt su-day" + ((b.days || []).indexOf(n) >= 0 ? " on" : "");
+          d.textContent = name.slice(0, 1);
+          // The letter alone is ambiguous — three days start with T or S — so
+          // the whole word is what a screen reader and a hover get.
+          d.title = name;
+          d.setAttribute("aria-label", name);
+          d.addEventListener("click", () => {
+            const had = pastedBlocks[i].days || [];
+            pastedBlocks[i].days = had.indexOf(n) >= 0
+              ? had.filter((x) => x !== n)
+              : had.concat([n]).sort((x, y) => x - y);
+            renderSetup();
+          });
+          box2.appendChild(d);
+        });
+      }
       row.querySelector(".su-keep").addEventListener("change", (e) => {
         pastedBlocks[i].keep = e.target.checked;
         row.classList.toggle("dropped", !e.target.checked);
       });
       row.querySelector(".su-label").addEventListener("input", (e) => (pastedBlocks[i].label = e.target.value));
-      row.querySelector(".su-start").addEventListener("change", (e) => (pastedBlocks[i].start = e.target.value));
-      row.querySelector(".su-end").addEventListener("change", (e) => (pastedBlocks[i].end = e.target.value));
       if (dated)
         row.querySelector(".su-date").addEventListener("change", (e) => (pastedBlocks[i].date = e.target.value));
+      // AND WHETHER THIS ONE IS SOMEWHERE YOU HAVE TO BE.
+      //
+      // It used to be one answer for the whole document, and it started as yes
+      // — so break and lunch went into the week as places you have to be, with
+      // travel time in front of them and nothing plannable inside them. Those
+      // are the two times in a school day a teacher can actually plan into.
+      // The app cannot know which is which, so it asks, per row, where the
+      // question is.
+      const there = document.createElement("button");
+      there.type = "button";
+      there.className = "p-opt su-there" + (b.beThere ? " on" : "");
+      there.textContent = b.beThere ? "be there ✓" : "be there";
+      there.title = "Somewhere you have to be: nothing gets planned into it, " +
+        "and the day tells you when to leave.";
+      there.addEventListener("click", () => {
+        pastedBlocks[i].beThere = !pastedBlocks[i].beThere;
+        renderSetup();
+      });
+      row.appendChild(there);
       if (b.note) {
         const note = document.createElement("span");
         note.className = "su-tnote";
@@ -3109,8 +3265,10 @@
         .map((b) => S().normaliseBlock({
           ...b,
           about: (b.about || []).concat(who.get(b.id) || []),
-          beThere: therePick,
-          getThere: therePick ? thereMins : 0,
+          // Per row now — see thereOffer. It was one answer for the whole
+          // document, which meant lunch was a place you had to be.
+          beThere: !!b.beThere,
+          getThere: b.beThere ? thereMins : 0,
           // Blank stays blank, and blank means for ever.
           from: termFrom || b.from || "",
           to: termTo || b.to || "",
@@ -3137,7 +3295,6 @@
       pastedBlocks = null;
       peoplePick = null;
       jobPick = null;
-      therePick = true;
       thereMins = 0;
       persist();
       renderSetup();
@@ -3312,6 +3469,15 @@
       el.innerHTML = `<p class="empty">No blocks yet.</p>`;
       return;
     }
+    // SAID WHERE THE THING IT DESCRIBES IS. "Blocks marked fixed are facts and
+    // hold reminders back; soft ones are guesses and never silence anything"
+    // was the second sentence on the panel, above an empty page, about a word
+    // that appears on no block until you have some.
+    const soft = document.createElement("p");
+    soft.className = "muted su-listnote";
+    soft.textContent = "Anything marked guess is a soft block — it never silences a reminder " +
+      "and the planner may move work through it. The rest are treated as facts.";
+    el.appendChild(soft);
     list.forEach((b) => {
       if (editingBlockId === b.id) {
         el.appendChild(blockForm(b));

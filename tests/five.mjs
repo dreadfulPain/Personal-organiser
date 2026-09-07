@@ -12,7 +12,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { open, calRowsOf, within, deep } from "./_dom.mjs";
+import { open, calRowsOf, within, deep, withAI } from "./_dom.mjs";
 
 const PUB = join(REPO_ROOT, "public");
 const UPLOAD = "/root/.claude/uploads/2a3fbe32-10e5-5444-988f-643a421d1a40/" +
@@ -276,14 +276,14 @@ sec("And when the columns are gone the model is asked, and told what it's lookin
     "08:40-09:25", "English", "Story Telling", "Writing", "Reading", "Activity"].join("\n");
   const asked = [];
   const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
-    fetch: async (url, init) => {
+    fetch: withAI(async (url, init) => {
       const body = JSON.parse((init && init.body) || "{}");
       asked.push({ url, body });
       return { ok: true, json: async () => ({
         blocks: ["English", "Story Telling", "Writing", "Reading", "Activity"].map((label, i) =>
           ({ label, start: "08:40", end: "09:25", days: [i + 1] })),
         unreadable: [] }) };
-    },
+    }),
   });
   ok("the page opens", r.errs.length === 0, r.errs.join("; "));
   const toggle = r.get("#setupToggle");
@@ -322,8 +322,8 @@ sec("And a week that read properly is not labelled a guess");
   // is set and never cleared only shows itself on the SECOND one, and a caution
   // that appears over a reading it isn't about teaches somebody to ignore it.
   const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
-    fetch: async () => ({ ok: true, json: async () => ({
-      blocks: [{ label: "English", start: "08:40", end: "09:25", days: [1] }], unreadable: [] }) }),
+    fetch: withAI(async () => ({ ok: true, json: async () => ({
+      blocks: [{ label: "English", start: "08:40", end: "09:25", days: [1] }], unreadable: [] }) })),
   });
   const toggle = r.get("#setupToggle");
   toggle.fire("click", { target: toggle });
@@ -1139,11 +1139,26 @@ sec("And with the columns kept it is simply a timetable");
   const r = T.bestOf({ rows, text: "" });
   ok("it reads as a grid", r.shape === "grid", r.shape);
   ok("across the whole week", JSON.stringify(r.days) === "[1,2,3,4,5]", JSON.stringify(r.days));
-  ok("ten lessons, two periods by five days", r.blocks.length === 10, String(r.blocks.length));
-  ok("each on its own day", r.blocks.every((b) => b.days.length === 1),
-     JSON.stringify(r.blocks.map((b) => b.days)));
-  ok("called what the square says", !!r.blocks[2] && r.blocks[2].label === "Story Telling",
-     r.blocks[2] && r.blocks[2].label);
+  // TEN SQUARES, SEVEN BLOCKS. English at 08:40 falls on Monday, Tuesday and
+  // Thursday, and that is ONE block on three days rather than three blocks —
+  // the shape `days` has always had, which the grid reader was not using. Read
+  // cell by cell, a week with registration and lunch in it arrived as forty-five
+  // rows to check where the document had nine.
+  const by = (label, start) => r.blocks.find((b) => b.label === label && b.start === start);
+  ok("ten squares come back as seven blocks", r.blocks.length === 7, String(r.blocks.length));
+  ok("the one that falls on three days is one block on three days",
+     by("English", "08:40") && JSON.stringify(by("English", "08:40").days) === "[1,2,4]",
+     JSON.stringify(r.blocks.map((b) => `${b.label}:${b.days}`)));
+  ok("and nothing is listed twice",
+     new Set(r.blocks.map((b) => `${b.label}|${b.start}`)).size === r.blocks.length,
+     JSON.stringify(r.blocks.map((b) => `${b.label}|${b.start}`)));
+  // AND A NAME THAT REPEATS IN ANOTHER PERIOD IS STILL ITS OWN BLOCK — same
+  // words, different time, different thing.
+  ok("the same name at a different time stays separate",
+     !!by("English", "09:35") && !!by("English", "08:40"),
+     JSON.stringify(r.blocks.map((b) => `${b.label}|${b.start}`)));
+  ok("called what the square says", !!by("Story Telling", "08:40"),
+     JSON.stringify(r.blocks.map((b) => b.label)));
   ok("and not all called the same thing",
      new Set(r.blocks.map((b) => b.label)).size > 1,
      JSON.stringify(r.blocks.map((b) => b.label)));
@@ -2663,6 +2678,239 @@ sec("And the month says what a day is, including the one you are working");
   // 18 — AND WHAT IS ON A DAY IS NAMED WHERE THERE IS ROOM TO NAME IT.
   ok("an ordinary day says what is on it, not just how long",
      friday && /Staff meeting/.test(said(friday)), friday && said(friday));
+}
+
+sec("Seventeen things found by using the timetable panel rather than reading it");
+{
+  const A = await import("./_dom.mjs");
+  // COPIED OUT OF WORD: tab between cells, days across the top, times down the
+  // side. This is the shape a school actually hands out.
+  const GRID = [
+    "\tMonday\tTuesday\tWednesday\tThursday\tFriday",
+    "08:00-08:20\tRegistration\tRegistration\tRegistration\tRegistration\tRegistration",
+    "08:20-09:05\tP1 Eng 7B\tP1 Eng 7B\tP1 Maths 7B\tP1 Eng 7C\tP1 Eng 7B",
+    "09:05-09:50\tBreak\tBreak\tBreak\tBreak\tBreak",
+    // The same word at another time is another thing — a morning break and an
+    // afternoon one are not one block that happens twice.
+    "14:00-14:15\tBreak\tBreak\tBreak\tBreak\tBreak",
+  ].join("\n");
+  const openTt = async (opts) => {
+    const o = opts || {};
+    const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url, init) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: o.ai !== false }) }
+        : (o.fetch ? o.fetch(url, init) : { ok: false, json: async () => ({}) })),
+    });
+    const t = r.get("#setupToggle");
+    t.fire("click", { target: t });
+    await r.settle();
+    return r;
+  };
+  const readIn = async (r, text) => {
+    r.get("#ttText").value = text;
+    const b = r.get("#ttRead");
+    b.fire("click", { target: b });
+    await r.settle();
+  };
+  const rows = (r) => {
+    const kids = [...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review"));
+    const walk = (n) => !n ? [] : [...(n.children || [])]
+      .flatMap((c) => (String(c.className || "").includes("su-trow") ? [c] : walk(c)));
+    return walk(kids[kids.length - 1]);
+  };
+  // The row's own fields are written as innerHTML and reached with
+  // querySelector, so they are not among its children — see _dom.mjs.
+  // Read out of the row's own HTML: the stand-in hands back a fresh element for
+  // a selector rather than parsing the markup, so the value written into the
+  // attribute is in the string and not on the object.
+  const labelOf = (row) =>
+    (String(row.innerHTML || "").match(/class="su-label" value="([^"]*)"/) || [])[1] || "";
+  const daysOf = (row) => [...(row.querySelector(".su-days").children || [])];
+  const rowFor = (r, name) => rows(r).find((x) => labelOf(x) === name);
+
+  // 1 — THE SAME LESSON ON FIVE DAYS IS ONE BLOCK, NOT FIVE.
+  //
+  // A grid was read cell by cell, so a week with registration, break and lunch
+  // in it arrived as forty-five rows to check where the document had nine —
+  // fifteen of them the same three things said five times. Then forty-five went
+  // into the week, and moving registration ten minutes later was five edits.
+  // The shape has always existed: `days` is a list and the lines reader has
+  // always used it. Only the grid reader made one block per cell.
+  {
+    const r = await openTt();
+    await readIn(r, GRID);
+    ok("twenty squares come back as six rows", rows(r).length === 6,
+       `${rows(r).length}: ${rows(r).map(labelOf).join(" | ")}`);
+    const reg = rowFor(r, "Registration");
+    ok("and the one on every weekday is one row", !!reg, rows(r).map(labelOf).join(" | "));
+    ok("with five days lit on it",
+       daysOf(reg).filter((c) => / on\b/.test(String(c.className))).length === 5,
+       daysOf(reg).map((c) => `${c.textContent}${/ on\b/.test(String(c.className)) ? "*" : ""}`).join(""));
+    ok("and the reading says so rather than just being a smaller number",
+       /run on more than one day/.test(String(r.get("#ttStatus").textContent || "")),
+       String(r.get("#ttStatus").textContent));
+    // AND THE SAME NAME AT A DIFFERENT TIME IS STILL ITS OWN THING.
+    ok("the same name at another time stays its own row",
+       rows(r).filter((x) => labelOf(x) === "Break").length === 2,
+       rows(r).map(labelOf).join(" | "));
+  }
+
+  // 2 — THE DAY IS THE PART THIS PANEL TELLS YOU TO CHECK, AND IT WAS A LABEL.
+  //
+  // Every other field could be corrected — the name, both times, a date — and
+  // the days were a span of text. Which is the worst one to lock, because when
+  // a document's columns are gone this panel prints, in a box of its own, "the
+  // day against each one is the part to check", and then offers no way.
+  {
+    const r = await openTt();
+    await readIn(r, GRID);
+    const reg = rowFor(r, "Registration");
+    const wed = daysOf(reg).find((c) => c.title === "Wednesday");
+    ok("each day is a control, not a label", !!wed && !!(wed._on && wed._on.click),
+       "the days are still a span of text");
+    ok("named in full for anything that isn't looking at the letter",
+       wed && wed.title === "Wednesday", wed && wed.title);
+    wed.fire("click", { target: wed });
+    await r.settle();
+    const after = rowFor(r, "Registration");
+    const lit = daysOf(after).filter((c) => / on\b/.test(String(c.className))).map((c) => c.title);
+    ok("pressing one takes that day off", lit.length === 4 && lit.indexOf("Wednesday") < 0,
+       JSON.stringify(lit));
+  }
+
+  // 3 — SOMEWHERE YOU HAVE TO BE WAS ONE ANSWER FOR THE WHOLE DOCUMENT.
+  //
+  // And it started as yes, so break and lunch went into the week as places you
+  // have to be, with travel time in front of them and nothing plannable inside
+  // them. Those are the two times in a school day a teacher can plan into.
+  {
+    const r = await openTt();
+    await readIn(r, GRID);
+    const brk = rows(r).find((x) => labelOf(x) === "Break");
+    const there = A.deep(brk).find((c) => String(c.className || "").includes("su-there"));
+    ok("each row says whether it is somewhere you have to be", !!there,
+       "there is no per-row control at all");
+    ok("and starts as yes, which is what a timetable usually is",
+       / on\b/.test(String(there.className)), there.className);
+    there.fire("click", { target: there });
+    await r.settle();
+    const save = A.within(r.get("#ttReview"), "Save these blocks")[0] ||
+      A.clickable(r).find((c) => String(c.textContent) === "Save these blocks");
+    save.fire("click", { target: save });
+    await r.settle();
+    const kept = (r.state.schedule || []);
+    const brkB = kept.find((b) => b.label === "Break");
+    const regB = kept.find((b) => b.label === "Registration");
+    ok("what you took it off is saved without it", brkB && brkB.beThere === false,
+       JSON.stringify(brkB));
+    ok("and what you left alone keeps it", regB && regB.beThere === true, JSON.stringify(regB));
+    ok("and registration is one block on five days once saved",
+       regB && JSON.stringify(regB.days) === "[1,2,3,4,5]", JSON.stringify(regB && regB.days));
+  }
+
+  // 4 — AN EMPTY BOX AND A PRESSED BUTTON IS A QUESTION, NOT A NO-OP. It
+  // returned in silence, so somebody whose paste had not landed pressed "Read
+  // this", watched nothing happen, and could not tell that from a broken app.
+  {
+    const r = await openTt();
+    const b = r.get("#ttRead");
+    b.fire("click", { target: b });
+    await r.settle();
+    ok("pressing read with nothing in the box says so",
+       /nothing in the box/.test(String(r.get("#ttStatus").textContent || "")),
+       JSON.stringify(String(r.get("#ttStatus").textContent)));
+  }
+
+  // 5, 6 and 10 — IT OFFERED A READER THAT MIGHT NOT BE RUNNING, and blamed one
+  // for text that was never a timetable.
+  {
+    const none = await openTt({ ai: false });
+    await readIn(none, "Mon 09:00-10:00 Duty\nMon 10:00-11:00 Duty\nMon 11:00-12:00 Duty");
+    const shown = [...(none.get("#ttReview").children || [])]
+      .map((c) => String(c.innerHTML || "")).join(" ");
+    ok("a thin reading is still called thin with no model running",
+       /came out looking thin/.test(shown), shown.slice(0, 160));
+    ok("but the second opinion is not offered", !/ttSecond/.test(shown), shown.slice(0, 240));
+    ok("and neither is the setting about who goes first",
+       /id="ttModelFirst"[\s\S]{0,40}/.test(String(none.get("#setup").innerHTML || "")) &&
+       /class="su-first" hidden/.test(String(none.get("#setup").innerHTML || "")),
+       "the model-first switch is offered with nothing to ask");
+    await readIn(none, "hello this is not a timetable at all");
+    ok("and something that was never a timetable is answered as one, not as a broken connection",
+       /Nothing in there looked like a timed block/.test(String(none.get("#ttStatus").textContent || "")),
+       String(none.get("#ttStatus").textContent));
+  }
+
+  // 7 — ONE READER, BOTH DOORS. "Open the PDF" opened PDFs and only PDFs while
+  // dropping a file beside it read Word files, text and photographs.
+  {
+    const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+    ok("the file picker offers what the reader can actually read",
+       /\$\("#ttPdf"\)\.accept = window\.OrganiserCapture\.READS/.test(tl),
+       "the accept list is not taken from the reader");
+    ok("and is not a list written out beside it",
+       !/id="ttPdf"[^>]*accept=/.test(tl), "the markup writes its own list of file types");
+    ok("and choosing a file goes through the same reader as dropping one",
+       /const said = await K\.textOf\(f, \(w\) => setSuStatus\(w\)\);/.test(tl),
+       "choosing a file still goes straight to OrganiserPdfText");
+  }
+
+  // 13, 14 and 17 — SHAPE. A check-back is read against the paper in your hand,
+  // and the paper is a grid with the times down the side; as one flat run there
+  // was nothing to line the two up by. The times were also in every row,
+  // repeating the group they were in — two wide controls each, which is what
+  // made a phone's check-back eight thousand pixels tall.
+  {
+    const r = await openTt();
+    await readIn(r, GRID);
+    const kids = [...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review"));
+    const heads = A.deep(kids[kids.length - 1])
+      .filter((c) => String(c.className || "") === "su-when");
+    ok("the rows are grouped by when they happen", heads.length === 4, String(heads.length));
+    ok("and the time is edited once, on the group",
+       heads.every((h) => A.deep(h).filter((c) => c.type === "time").length === 2),
+       JSON.stringify(heads.map((h) => A.deep(h).filter((c) => c.type === "time").length)));
+    const tl0 = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+    ok("rather than in every row",
+       !/class="su-start" value="\$\{escapeHtml\(b\.start\)/.test(tl0),
+       "the rows still carry a copy of their group's times");
+    // AND EDITING THE GROUP MOVES THE ROWS UNDER IT.
+    const start = A.deep(heads[0]).find((c) => c.type === "time" && c.className === "su-start");
+    start.value = "07:55";
+    start.fire("change", { target: start });
+    await r.settle();
+    const reg = rowFor(r, "Registration");
+    ok("moving a period moves everything in it", !!reg,
+       "the row vanished when its period was edited");
+    const nowHeads = A.deep([...(r.get("#ttReview").children || [])]
+      .filter((c) => String(c.className || "").includes("su-review")).pop())
+      .filter((c) => String(c.className || "") === "su-when");
+    ok("and the heading says the new time",
+       A.deep(nowHeads[0]).some((c) => c.value === "07:55"),
+       JSON.stringify(A.deep(nowHeads[0]).filter((c) => c.type === "time").map((c) => c.value)));
+  }
+
+  // 15 and 16 — SAID WHERE THE THING IT DESCRIBES IS.
+  {
+    const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+    const panel = tl.slice(tl.indexOf("panel.innerHTML = `"), tl.indexOf("$(\"#ttRead\").addEventListener"));
+    // "Blocks marked fixed are facts and hold reminders back; soft ones are
+    // guesses" was the second sentence, above an empty page, about a word that
+    // appears on no block until you have some.
+    ok("the panel does not explain a word before anything wears it",
+       !/soft.{0,40}guesses/.test(panel), "the fixed/soft sentence is still the opening paragraph");
+    ok("it is said where the blocks are instead",
+       /Anything marked guess is a soft block/.test(tl), "it is not said anywhere");
+    // AND THE TWO SETTINGS PANELS SAT BETWEEN THE PASTE BOX AND THE READING.
+    ok("the settings come after the work, not through the middle of it",
+       panel.indexOf('id="ttReview"') < panel.indexOf('id="fixedWords"'),
+       "a folded list of vocabulary is still the first thing under Read this");
+    ok("and that list says what it is for",
+       /Words that mean .be there., not .have it done by./.test(tl),
+       "it is still called \"Words that mean something happens at a time\"");
+  }
 }
 
 sec("The two pages nothing had ever opened");

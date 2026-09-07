@@ -1361,7 +1361,8 @@ async function handleCalendar(res, body) {
   } catch (e) {
     console.warn("[calendar] failed:", e?.message || e);
     const why = offlineReason(cfg, e);
-    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + "you can still type the dates in by hand." });
+    // Same join, same reason — see handleTimetable.
+    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + `${why ? "Y" : "y"}ou can still type the dates in by hand.` });
   }
 }
 
@@ -1511,7 +1512,10 @@ async function handleTimetable(res, body) {
   } catch (e) {
     console.warn("[timetable] failed:", e?.message || e);
     const why = offlineReason(cfg, e);
-    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + "you can still type the blocks in by hand." });
+    // TWO SENTENCES, NOT ONE WELDED TO ANOTHER'S TAIL. offlineReason writes a
+    // whole one and it ends in a question mark, so this produced "…is it
+    // running? you can still type the blocks in by hand."
+    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + `${why ? "Y" : "y"}ou can still type the blocks in by hand.` });
   }
 }
 

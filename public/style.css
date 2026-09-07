@@ -1409,6 +1409,9 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
+/* The days a block runs on. Seven letters you press — see the rule further
+   down, which is the one that lays them out. This keeps the width so a row of
+   them lines up with the row above. */
 .su-days {
   font-size: 0.82rem;
   color: var(--ink-soft);
@@ -4133,6 +4136,21 @@ a.btn {
 /* WHAT THE READER SAW THAT THERE IS NO FIELD FOR. Set apart from the app's own
    labels, because these are not its words and it does nothing with them —
    showing them as though they were settings would be a lie about both. */
+/* THE DAYS A BLOCK RUNS ON, as seven letters you press. It was a label, on the
+   one field this panel tells you to check. */
+.su-days { display: flex; gap: 2px; flex-wrap: wrap; }
+.su-day { min-width: 1.6rem; padding: 3px 4px; font-size: 0.72rem; text-align: center; }
+/* Whether this one is somewhere you have to be. Per row, because one answer for
+   the whole document made lunch a job. */
+.su-there { font-size: 0.72rem; }
+/* WHEN, over the rows that happen then. A timetable is a grid with the times
+   down the side, and the check-back is read against the paper in your hand. */
+.su-when { display: flex; align-items: center; gap: 4px;
+  margin: 12px 0 2px; font-size: 0.8rem; font-weight: 600;
+  color: var(--ink-soft); letter-spacing: 0.02em; }
+.su-when:first-child { margin-top: 2px; }
+.su-when input[type="time"] { font-size: 0.8rem; padding: 2px 4px; }
+.su-listnote { margin: 0 0 8px; font-size: 0.8rem; }
 .su-textra { flex: 1 1 100%; font-size: 0.78rem; color: var(--muted);
   padding-left: 10px; border-left: 2px solid var(--line); }
 .su-extra { font-size: 0.76rem; color: var(--muted); }

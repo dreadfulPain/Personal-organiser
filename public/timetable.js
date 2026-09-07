@@ -685,10 +685,50 @@
     const g = got || {};
     const byRows = g.rows && g.rows.length ? fromRows(g.rows) : null;
     const byText = read(g.text || "");
-    return (byRows && byRows.blocks.length ? byRows : null) ||
+    return merged(
+      (byRows && byRows.blocks.length ? byRows : null) ||
       (byText.shape === "grid" || byText.shape === "lines" ? byText : null) ||
       (g.pages && g.pages.length ? fromPages(g.pages) : null) ||
-      byText;
+      byText);
+  }
+
+  // THE SAME LESSON ON FIVE DAYS IS ONE BLOCK, NOT FIVE.
+  //
+  // A grid is read cell by cell, so every cell became its own block: a week with
+  // registration, break and lunch in it arrived as forty-five rows to check
+  // where the document had nine, fifteen of them the same three things said five
+  // times. Then forty-five went into the week, and moving registration ten
+  // minutes later was five edits — for ever, because they never merge afterwards
+  // either.
+  //
+  // The shape for this has always existed. `days` is a list, the lines reader
+  // has always used it, and the placeholder in the box on screen says
+  // "Mon-Fri 08:40-09:00 Registration". Only the grid reader was making one
+  // block per cell.
+  //
+  // SAME NAME, SAME START, SAME END, AND NEITHER ON A DATE. A one-off keeps its
+  // date and is never folded into a weekly rule; two lessons that merely share a
+  // time are different names and stay apart.
+  function merged(got) {
+    if (!got || !Array.isArray(got.blocks)) return got;
+    const key = (b) => `${b.label}\u0000${b.start}\u0000${b.end}`;
+    const seen = new Map();
+    const out = [];
+    got.blocks.forEach((b) => {
+      const rule = !b.date && Array.isArray(b.days) && b.days.length;
+      const had = rule ? seen.get(key(b)) : null;
+      if (!had) {
+        const copy = { ...b, days: Array.isArray(b.days) ? b.days.slice() : [] };
+        out.push(copy);
+        if (rule) seen.set(key(b), copy);
+        return;
+      }
+      b.days.forEach((d) => { if (had.days.indexOf(d) < 0) had.days.push(d); });
+      had.days.sort((x, y) => x - y);
+      // A guess anywhere in the group is a guess about the whole of it.
+      if (b.endGuessed) had.endGuessed = true;
+    });
+    return { ...got, blocks: out };
   }
 
   // ---- reading a PDF's own columns -----------------------------------------
@@ -861,8 +901,18 @@
       const mins = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
       return mins(z) - mins(a) > 8 * 60;
     }).length;
+    // AND HOW MANY OF THEM REPEAT. A grid used to arrive as one block per cell,
+    // so a week with registration, break and lunch in it said "45 blocks read"
+    // where the document had nine rows — a number that is alarming and tells
+    // you nothing. Merged, the count is smaller and the interesting part is
+    // that some of them cover several days, so that is what is said.
+    const rules = r.blocks.filter((b) => (b.days || []).length > 1).length;
     return `${r.blocks.length} block${r.blocks.length === 1 ? "" : "s"} read` +
       (days ? `, across ${days} day${days === 1 ? "" : "s"}` : "") + ". " +
+      (rules
+        ? `${rules} of them ${rules === 1 ? "runs" : "run"} on more than one day — ` +
+          `that's one block each, not one per day. `
+        : "") +
       (r.note ? r.note + " " : "") +
       (guessed
         ? `${guessed} of them didn't say when they end — an hour is filled in, change any that are wrong. `
@@ -875,6 +925,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, readAgenda, fromPages, fromRows, tableOf, bestOf, thin, words, anHourAfter, looksLikePlace,
+    read, readAgenda, fromPages, fromRows, tableOf, bestOf, merged, thin, words, anHourAfter, looksLikePlace,
   };
 })();

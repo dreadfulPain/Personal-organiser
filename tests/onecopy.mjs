@@ -330,6 +330,32 @@ sec("A module that leans on another one is never loaded without it");
     });
     ok(`every page with ${mod} also has ${needs}`, missing.length === 0,
        `${missing.join(", ")} — ${why}, and without it the failure is silent`);
+    // AND EVERY TEST SANDBOX THAT NAMES ITS MODULES BY HAND.
+    //
+    // The pages were guarded and the suites were not, and one of them loaded
+    // calplan without timetable — so a check written for make-up days read a
+    // Sunday with "Tuesday" beside it and found no weekday at all. The module
+    // was not broken; the sandbox it was asked in had been quietly narrowed.
+    // Exactly the failure this guard exists for, in the place doing the
+    // guarding.
+    const HERE2 = path.join(REPO_ROOT, "tests");
+    const thin = fs.readdirSync(HERE2)
+      .filter((f) => f.endsWith(".mjs"))
+      .filter((f) => {
+        const t = fs.readFileSync(path.join(HERE2, f), "utf8");
+        // Only where the list is written out by hand — a suite that loads every
+        // module (see everyModule) cannot forget one.
+        if (/everyModule\(/.test(t)) return false;
+        // NAMED ANYWHERE IN THE FILE, not only in the same list. One suite
+        // loads it on the next line on purpose, so that it can say whether it
+        // loaded; a suite that names the file at all has thought about it, and
+        // the failure this guards against is one that was never named.
+        return new RegExp(`"${mod.replace(".", "\\.")}"`).test(t) &&
+          !new RegExp(`"${needs.replace(".", "\\.")}"`).test(t);
+      });
+    ok(`and every suite that loads ${mod} by hand loads ${needs} with it`,
+       thin.length === 0,
+       `${thin.join(", ")} — ${why}, and without it the failure is silent`);
   });
 }
 

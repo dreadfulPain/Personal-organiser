@@ -155,7 +155,30 @@
     // so a reading handed back in the order the document mentioned things drew
     // November, October, December, October again. See inOrder.
     const CP = window.OrganiserCalPlan;
-    calRows = (CP ? CP.inOrder(r.rows || []) : (r.rows || [])).map((x) => {
+    // EVERY OTHER DATE A LINE NAMED, WHOEVER READ IT.
+    //
+    // The plain reader pulls these out of the line itself — see alsoOn. A model
+    // hands back one entry per line and puts the rest of what the line said in
+    // "extras", so the make-up days a holiday is paid for with arrive as a
+    // sentence in a box rather than as the two Sundays you are working. Same
+    // function, same rows, over the words it gave back.
+    const spread = (rows) => {
+      if (!CP || !CP.alsoOn) return rows;
+      const out = [];
+      rows.forEach((row) => {
+        out.push(row);
+        if (!row.date) return;
+        (row.extras || []).forEach((x) => {
+          CP.alsoOn(String(x.value || ""), [], Number(String(row.date).slice(0, 4)) || 0, "")
+            // NOT THE ROW'S OWN DAY AGAIN. The extra usually repeats the line,
+            // and the line begins with the date this row already is.
+            .filter((more) => more.date !== row.date && more.date !== row.endsOn)
+            .forEach((more) => out.push(more));
+        });
+      });
+      return out;
+    };
+    calRows = (CP ? CP.inOrder(spread(r.rows || [])) : (r.rows || [])).map((x) => {
       const had = calSaid[saidKey(x.label)];
       if (!had || !had.kind) return x;
       return {
@@ -819,6 +842,18 @@
         });
         row.appendChild(sw);
       }
+      // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
+      //
+      // "Sep. 20 is a working day, even week Tuesday schedule" is a Sunday with
+      // Tuesday written beside it, which is the whole shape of a make-up day.
+      // Said, not decided: the row is still undecided like every other one, and
+      // pressing "runs another day" finds the weekday already filled in.
+      if (r.runsAsDay !== undefined && r.kind !== "runsAs") {
+        const hint = document.createElement("span");
+        hint.className = "muted cal-hint";
+        hint.textContent = `the line says ${DAY_WORDS[r.runsAsDay]}`;
+        row.appendChild(hint);
+      }
       // AND WHICH DAY IT RUNS AS. Only when that is the answer: against a
       // holiday the question means nothing, and a calendar is mostly holidays.
       if (r.kind === "runsAs") {
@@ -864,7 +899,14 @@
       // might be anything. Withholding it until after the decision was
       // withholding the one thing that helps you make it.
       const ownEnd = r.date && r.endsOn && r.endsOn >= r.date ? r.endsOn : "";
-      const ends = mark && !mark.endOf && mark.kind !== "lessons"
+      // A DAY THAT STANDS IN FOR ANOTHER, AND A DEADLINE, ARE SINGLE DAYS.
+      //
+      // Neither has a length worth asking about — a Sunday running Tuesday's
+      // timetable is that Sunday, and a paper is due when it is due. They were
+      // offered a date box saying "one day" and, worse, a tick offering to run
+      // the make-up day on for twelve days to meet the holiday after it.
+      const ONE_DAY = mark && (mark.kind === "runsAs" || mark.kind === "due");
+      const ends = mark && !mark.endOf && mark.kind !== "lessons" && !ONE_DAY
         ? { to: mark.to, days: mark.days }
         : !mark && ownEnd
           ? { to: ownEnd, days: C.span(r.date, ownEnd) }
@@ -899,7 +941,7 @@
       // THE RUN-ON. A holiday arrives as two lines — begins, ends — and only
       // you know which pairs are a stretch and which are two separate days.
       // Offered only where pressing it would change something.
-      if (mark && mark.canSpan) {
+      if (mark && mark.canSpan && !ONE_DAY) {
         const tick = document.createElement("button");
         tick.type = "button";
         tick.className = "p-opt cal-span" + (r.spans ? " on" : "");

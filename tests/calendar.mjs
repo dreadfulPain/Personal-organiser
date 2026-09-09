@@ -37,8 +37,12 @@ const sb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array,
   Promise, isNaN, parseInt, parseFloat, Uint8Array, ArrayBuffer, DecompressionStream,
   Response, Blob, setTimeout };
 sb.window = sb; vm.createContext(sb);
+// timetable.js IS ONE OF calplan's DEPENDENCIES, not an extra. calplan asks it
+// "is this word a weekday" and "what time is this" — and without it does not
+// fail or warn: it quietly reads no times at all and no weekday beside a date,
+// so a make-up day comes back as an ordinary Sunday. See onecopy.
 ["schedule.js", "dayshape.js", "ics.js", "pdftext.js", "roster.js", "goalplan.js",
- "priority.js", "dayplan.js", "calplan.js"].forEach((f) =>
+ "priority.js", "dayplan.js", "timetable.js", "calplan.js"].forEach((f) =>
   vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), sb));
 const S = sb.OrganiserSchedule, D = sb.OrganiserDayShape, PDF = sb.OrganiserPdfText;
 
@@ -590,6 +594,71 @@ sec("From that line to a timetable that knows when it applies");
 }
 
 // ---------------------------------------------------------------------------
+sec("A line can name more than one date, and the second one is usually the important one");
+{
+  const CP = sb.OrganiserCalPlan;
+  // FROM THE REAL CALENDAR, going through the app. A week off, and buried in
+  // the brackets after it, the two weekend days you are working to pay for it:
+  //
+  //   "National Day: Oct. 1 - Oct. 7 (Sep. 20 is a working day, even week
+  //    Tuesday schedule; Oct. 10 is a working day, even week Wednesday
+  //    schedule)"
+  //
+  // A line was one date. Those two were read, and thrown away, because the line
+  // had already produced its row — and they are the days a teacher would most
+  // want warning of, because a Sunday you are teaching does not look like one.
+  const LINE = "National Day: Oct. 1 - Oct. 7 (Sep. 20 is a working day, even week " +
+    "Tuesday schedule; Oct. 10 is a working day, even week Wednesday schedule)";
+  const rows = CP.read(LINE, { year: 2026 }).rows;
+  const on = (d) => rows.find((r) => r.date === d);
+  ok("the week off is still one row", !!on("2026-10-01") && on("2026-10-01").endsOn === "2026-10-07",
+     JSON.stringify(rows.map((r) => `${r.date}→${r.endsOn}`)));
+  ok("and the days in the brackets are rows of their own", rows.length === 3,
+     JSON.stringify(rows.map((r) => r.date)));
+  // NOTHING HERE KNOWS WHAT A WORKING DAY IS. It sees a date with a weekday
+  // named beside it that the date is NOT, which is the whole shape of a day
+  // standing in for another — and fills in which, so that pressing "runs
+  // another day" finds the answer already there.
+  ok("the Sunday knows it is running a Tuesday", on("2026-09-20") && on("2026-09-20").runsAsDay === 2,
+     JSON.stringify(on("2026-09-20")));
+  ok("and the Saturday a Wednesday", on("2026-10-10") && on("2026-10-10").runsAsDay === 3,
+     JSON.stringify(on("2026-10-10")));
+  ok("both are still undecided, like every other row",
+     rows.every((r) => r.kind === ""), JSON.stringify(rows.map((r) => r.kind)));
+  // AND THE ROW THE LINE ALREADY MADE STOPS AT THE FIRST OF THEM. It was called
+  // "National Day: (Sep. 20 is a working day, even week Tuesday schedule; Oct.
+  // 10 is" — the whole bracket, now two rows of its own, read out again as part
+  // of its name.
+  ok("the holiday is called what it is called",
+     on("2026-10-01").label === "National Day", on("2026-10-01").label);
+
+  // THE SAME SHAPE WITHOUT A HOLIDAY IN IT: two deadlines, one line, and the
+  // second was the one in January.
+  const two = CP.read("Score Input & Report Confirm: Midterm Nov. 17 16:00 Final Jan. 15 16:00",
+    { year: 2026 }).rows;
+  ok("two deadlines on one line are two rows", two.length === 2,
+     JSON.stringify(two.map((r) => `${r.date} ${r.label}`)));
+  ok("and each keeps what tells it from the other",
+     two.some((r) => /Midterm/.test(r.label)) && two.some((r) => /Final/.test(r.label)),
+     JSON.stringify(two.map((r) => r.label)));
+
+  // AND A WEEKDAY THAT IS ONLY NAMING THE DATE IS NOT A MAKE-UP DAY. The 14th of
+  // October 2026 IS a Wednesday; saying so adds nothing, and reading it as "this
+  // Wednesday runs a Wednesday" would put a meaningless marker in the week and
+  // a make-up day in front of somebody who has not got one.
+  const plain = CP.read("Half term Oct. 26 - Oct. 30 (Oct. 14 runs the Wednesday timetable)",
+    { year: 2026 }).rows;
+  const mid = plain.find((r) => r.date === "2026-10-14");
+  ok("the second date is still read", !!mid, JSON.stringify(plain.map((r) => r.date)));
+  ok("a weekday that matches the date is not a day standing in for another",
+     mid && mid.runsAsDay === undefined, JSON.stringify(mid));
+  // AND A RANGE IS STILL ONE ROW, not its two ends read as two entries.
+  const half = CP.read("Half term\t25/10 - 29/10", { year: 2026 }).rows;
+  ok("a plain range is one row with two ends", half.length === 1 &&
+     half[0].date === "2026-10-25" && half[0].endsOn === "2026-10-29",
+     JSON.stringify(half));
+}
+
 sec("Every line a school calendar actually has on it");
 {
   // A CORPUS, not a handful of phrases. Calendars were being read one shape at

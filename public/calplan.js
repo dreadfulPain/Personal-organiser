@@ -286,6 +286,101 @@
   // Reading the date and naming the row are the same question asked twice, and
   // the two answers had drifted; now the second one is told what the first
   // found and removes exactly that.
+  // EVERY OTHER DATE THE LINE NAMES.
+  //
+  // A line was one date, and the rest of what it said went nowhere. A school
+  // calendar puts the important part in the second half constantly:
+  //
+  //   "National Day: Oct. 1 - Oct. 7 (Sep. 20 is a working day, even week
+  //    Tuesday schedule; Oct. 10 is a working day, even week Wednesday
+  //    schedule)"
+  //
+  // — a week off, and buried in the brackets after it, the TWO SATURDAYS AND
+  // SUNDAYS YOU ARE WORKING to pay for it. Those are the days a teacher would
+  // most want warning of, they were read, and they were thrown away because the
+  // line had already produced its row.
+  //
+  //   "Score input: Midterm Nov. 17 16:00 Final Jan. 15 16:00" is the same
+  //   shape: two deadlines, one kept.
+  //
+  // NOTHING HERE KNOWS WHAT A WORKING DAY IS. It finds a date, takes the words
+  // around it as the name, and — where a weekday is named beside a date that is
+  // NOT that weekday — fills in which day it stands in for, because that is
+  // what "the 20th, Tuesday schedule" is saying and the app already has
+  // somewhere to put it. The row still arrives undecided like every other one.
+  function alsoOn(line, taken, useYear, order) {
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    let rest = noDayNames(line);
+    // THE FIRST OCCURRENCE, NOT EVERY ONE. Blanking "Oct. 1" everywhere also
+    // blanks the front of "Oct. 10", so the second make-up day in the brackets
+    // — the whole reason this exists — was cut in half and never found.
+    //
+    // AND BLANKED TO THE SAME LENGTH. Replacing a date with a shorter marker
+    // shifts every position after it, and the positions are what tell the row
+    // this line already made where its own name stops — so the holiday came
+    // back called "National Day: Oct." with the sentence cut mid-word.
+    const gone = (n) => "•".repeat(n);
+    (taken || []).forEach((t) => {
+      const at = t ? rest.indexOf(t) : -1;
+      if (at >= 0) rest = rest.slice(0, at) + gone(t.length) + rest.slice(at + t.length);
+    });
+    const out = [];
+    // Six is a line that is really a paragraph; past that the words around each
+    // date stop being a name and the row stops being worth offering.
+    for (let n = 0; n < 6; n++) {
+      const range = rangeIn(rest, useYear, order);
+      const ranged = range && range.to > range.from;
+      const found = ranged ? range : findDate(rest, useYear, order);
+      const date = ranged ? range.from : found.iso;
+      if (!date || !found.text) break;
+      const at = rest.indexOf(found.text);
+      // THE CLAUSE IT SITS IN is its name. A calendar separates these with a
+      // semicolon or a bracket far more often than with a full stop, and where
+      // it separates them with nothing the whole remainder is the honest
+      // answer — the words are the document's, not this app's.
+      const CUT = /[;()\[\]•]|\.\s/;
+      const before = rest.slice(0, at).split(CUT).pop();
+      const after = rest.slice(at + found.text.length).split(CUT)[0];
+      const clause = `${before} ${after}`;
+      const label = labelOf(clause, date, useYear, order) ||
+        `${before} ${after}`.replace(/\s+/g, " ").trim();
+      // AND WHICH DAY IT STANDS IN FOR, when the clause names a weekday that is
+      // not the one the date falls on. Same weekday means the words are only
+      // naming the date and say nothing more.
+      let runsAsDay;
+      if (T && typeof T.dayOf === "function") {
+        const own = new Date(date + "T12:00:00").getDay();
+        clause.split(/[^A-Za-z]+/).some((w) => {
+          const d = T.dayOf(w);
+          if (d < 0 || d === own) return false;
+          runsAsDay = d;
+          return true;
+        });
+      }
+      const t = timeOnLine(clause);
+      out.push({
+        date,
+        endsOn: ranged ? range.to : "",
+        endFrom: ranged ? "line" : "",
+        label: label || "(no name)",
+        ...(t ? { start: t.start, end: t.end } : {}),
+        ...(runsAsDay === undefined ? {} : { runsAsDay }),
+        line,
+        yearAssumed: !hasYearOnIt(clause),
+        kind: "",
+        // Where it came from, so the page can say that this row and the one
+        // above it were the same line of the document — and where in the line
+        // its clause began, so the row that line already made can stop calling
+        // itself by words that now belong to this one.
+        alsoOn: true,
+        clauseAt: Math.max(0, at - String(before).length),
+
+      });
+      rest = rest.slice(0, at) + gone(found.text.length) + rest.slice(at + found.text.length);
+    }
+    return out;
+  }
+
   function labelOf(line, isoDate, defaultYear, order) {
     // THE SAME LINE THE DATE WAS READ OFF. The readers take the weekday names
     // out before they look — "Monday 25 October" is the 25th of October — so
@@ -963,6 +1058,26 @@
           // week of INSET. Starts as nothing and you choose.
           kind: "",
         });
+        // AND EVERY OTHER DATE THE SAME LINE NAMES — see alsoOn. The make-up
+        // days a holiday is paid for with are written in the brackets after it.
+        //
+        // ONE THING TAKEN, because the row above consumed exactly one: the
+        // range where there was one, otherwise the single date.
+        const already = range && range.to > range.from
+          ? range.text
+          : findDate(noDayNames(line), useYear, order).text;
+        const more = alsoOn(line, [already], useYear, order);
+        if (more.length) {
+          // AND THE ROW THIS LINE ALREADY MADE STOPS AT THE FIRST OF THEM. The
+          // holiday was called "National Day: (Sep. 20 is a working day, even
+          // week Tuesday schedule; Oct. 10 is" — the whole bracket, which is
+          // now two rows of its own, read out again as part of its name.
+          const cut = Math.min(...more.map((x) => x.clauseAt));
+          const head = noDayNames(line).slice(0, cut).replace(/[\s(;,:•-]+$/, "");
+          const short = labelOf(head, d, useYear, order);
+          if (short) rows[rows.length - 1].label = short;
+          rows.push(...more);
+        }
       });
     // AND THE GRID SETTLES THE YEARS. A line that didn't write its own year, in a
     // month the grid walked through, gets the year the grid was in when it got
@@ -1416,7 +1531,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, labelOf, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
+    dateIn, labelOf, alsoOn, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
     weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };

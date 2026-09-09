@@ -2742,6 +2742,122 @@ sec("A real school calendar, read by the model, in the order a person reads one"
   // by the server, so that one is checked over real HTTP — see e2e.)
 }
 
+sec("And the days a holiday is paid for with come out of the brackets");
+{
+  const A = await import("./_dom.mjs");
+  // FROM THE REAL CALENDAR. A week off, and buried in the brackets after it the
+  // two weekend days you are working to pay for it — which is the thing on that
+  // page a teacher would most want warning of, because a Sunday you are
+  // teaching does not look like one.
+  const LINE = "National Day: Oct. 1 - Oct. 7 (Sep. 20 is a working day, even week " +
+    "Tuesday schedule; Oct. 10 is a working day, even week Wednesday schedule)";
+  const openCal = async (opts) => {
+    const o = opts || {};
+    const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
+        : /api\/calendar/.test(String(url)) && o.rows
+          ? { ok: true, json: async () => ({ rows: o.rows, unreadable: [] }) }
+          : { ok: false, json: async () => ({}) }),
+    });
+    r.get("#calBox").open = true;
+    const box = r.get("#calPaste");
+    box.value = LINE;
+    box.fire("input", { target: box });
+    await r.settle();
+    return r;
+  };
+  const headOf = (row) => String((row.children[0] || {}).textContent || "");
+  const rowOn = (r, day) => calRowsOf(r).find((x) => new RegExp(day).test(headOf(x)));
+
+  for (const [how, opts] of [
+    ["read here", null],
+    // A MODEL HANDS BACK ONE ENTRY PER LINE and puts the rest of what the line
+    // said in "extras" — so the same two days arrive as a sentence in a box.
+    // Same function over the words it gave back; see spread.
+    ["read by the model", { rows: [{ label: "National Day", date: "2026-10-01",
+      endsOn: "2026-10-07", kind: "", line: LINE, endFrom: "model",
+      extras: [{ name: "as written", value: LINE }] }] }],
+  ]) {
+    const r = await openCal(opts);
+    if (opts) {
+      const btn = r.get("#calSecond");
+      btn.fire("click", { target: btn });
+      await r.settle();
+    }
+    const dates = calRowsOf(r).map(headOf);
+    ok(`${how}: the week off and both days that pay for it`, calRowsOf(r).length === 3,
+       JSON.stringify(dates));
+    ok(`${how}: in date order`, /Sep 20/.test(dates[0]) && /Oct 1,/.test(dates[1]) &&
+       /Oct 10/.test(dates[2]), JSON.stringify(dates));
+    // SAID, NOT DECIDED. The row is undecided like every other one; what the
+    // line said about it is on the row so you can act on it.
+    const sun = rowOn(r, "Sep 20");
+    ok(`${how}: and the Sunday says which day the line named`,
+       A.within(sun, /the line says Tuesday/).length > 0,
+       A.deep(sun).map((c) => c.textContent).join(" | ").slice(0, 200));
+    ok(`${how}: while still asking what it is`,
+       A.within(sun, /./).filter((c) => / on\b/.test(String(c.className || ""))).length === 0,
+       "it arrived already answered");
+  }
+
+  // AND PRESSING "runs another day" FINDS THE WEEKDAY ALREADY THERE, all the
+  // way into the week.
+  {
+    const r = await openCal();
+    for (const [day, kind] of [["Sep 20", "runs another day"], ["Oct 10", "runs another day"],
+                               ["Oct 1,", "day off"]]) {
+      const b = A.within(rowOn(r, day), kind)[0];
+      b.fire("click", { target: b });
+      await r.settle();
+    }
+    const sun = rowOn(r, "Sep 20");
+    const pick = A.deep(sun).find((c) => String(c.className || "").includes("cal-runsday"));
+    ok("the weekday is filled in rather than asked for again", pick && pick.value === "2",
+       pick && pick.value);
+    const add = r.get("#calAdd");
+    add.fire("click", { target: add });
+    await r.settle();
+    const kept = r.state.schedule || [];
+    const at = (d) => kept.find((b) => b.date === d);
+    ok("the Sunday goes into the week running a Tuesday",
+       at("2026-09-20") && at("2026-09-20").runsAs === 1 + 1,
+       JSON.stringify(at("2026-09-20")));
+    ok("and the Saturday a Wednesday",
+       at("2026-10-10") && at("2026-10-10").runsAs === 3,
+       JSON.stringify(at("2026-10-10")));
+    ok("with the week off still seven days off",
+       kept.filter((b) => b.blocksDay).length === 7,
+       JSON.stringify(kept.filter((b) => b.blocksDay).map((b) => b.date)));
+  }
+
+  // AND A DAY THAT STANDS IN FOR ANOTHER HAS NO LENGTH TO ASK ABOUT.
+  //
+  // It was offered a date box saying "one day" and — because the next row was
+  // the holiday nine days later — a tick offering to run the make-up day on for
+  // twelve days to meet it. A Sunday running Tuesday's timetable is that
+  // Sunday. Same for a deadline.
+  {
+    const r = await openCal();
+    const b = A.within(rowOn(r, "Sep 20"), "runs another day")[0];
+    b.fire("click", { target: b });
+    await r.settle();
+    const sun = rowOn(r, "Sep 20");
+    ok("no end date is asked for", !A.deep(sun).some((c) => c.type === "date"),
+       A.deep(sun).filter((c) => c.type === "date").map((c) => c.value).join(" "));
+    ok("and nothing offers to run it on to the next row",
+       A.within(sun, /runs on to/).length === 0,
+       A.deep(sun).map((c) => c.textContent).join(" | ").slice(0, 200));
+    // WHILE THE HOLIDAY BESIDE IT STILL HAS BOTH.
+    const off = A.within(rowOn(r, "Oct 1,"), "day off")[0];
+    off.fire("click", { target: off });
+    await r.settle();
+    ok("a holiday still says how long it is",
+       A.within(rowOn(r, "Oct 1,"), /7 days/).length > 0,
+       A.deep(rowOn(r, "Oct 1,")).map((c) => c.textContent).join(" | ").slice(0, 200));
+  }
+}
+
 sec("And a marked day is not pre-answered either");
 {
   const A = await import("./_dom.mjs");

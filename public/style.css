@@ -4385,6 +4385,9 @@ a.btn {
 /* THE DAYS A TERM GRID HAS A SYMBOL AGAINST — see timeline.js. One line each,
    wrapping on a narrow screen rather than pushing the button off the edge. */
 .cal-mark { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+/* A marked day nobody has answered yet, marked the same way an unanswered row
+   is — it is the same question in the other half of the same panel. */
+.cal-mark.cal-waiting { border-left: 3px solid var(--accent); padding-left: 8px; }
 .cal-mark-head { flex: 1 1 100%; font-size: 0.9rem; }
 .cal-mark-name { font-weight: 600; }
 .cal-mark-opts { display: flex; flex-wrap: wrap; gap: 6px; }

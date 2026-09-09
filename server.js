@@ -1258,6 +1258,9 @@ RULES
 - "days" is for something that REPEATS every week rather than happening once: "staff meeting every Friday" is days [5] with no date. 0=Sunday, 1=Monday … 6=Saturday. Anything with a date is not a repeat.
 - If the year is not written on a line, use the year the rest of the document is about.
 - If a row is not an entry (a title, a page number, a column heading), leave it out.
+- ONE LINE CAN HOLD MORE THAN ONE ENTRY. "Score input: Midterm Nov. 17 16:00, Final Jan. 15 16:00" is TWO entries on two different dates, not one. Give each its own entry, and put in the name what tells them apart ("Score input — Midterm", "Score input — Final").
+- A WEEK NUMBER IS NOT A DATE. "Week 16 - Week 17", "Tentatively Week 7", "Return Week 12" say where in the term something falls, not what date it is — never read that number as a day of the month. Leave the date empty; it will be asked about.
+- NEVER WORK OUT A DATE THAT IS NOT WRITTEN. If a line does not give one, leave "date" empty rather than choosing a likely day.
 - Never invent an entry that is not in the text. An empty list is a fine answer.
 
 DO NOT SAY WHAT A DATE MEANS. Do not decide that something is a holiday, a day off, a working day, a training day or the start of term, and do not leave one out because you think it is not important. The person reading this will say what each entry is. Your job is what the document says and when.
@@ -1290,6 +1293,33 @@ const CALENDAR_SCHEMA = {
   required: ["entries"],
   additionalProperties: false,
 };
+
+// WHAT IT SAID BESIDE THE LINE, WITHOUT THE LINE AGAIN.
+//
+// Asked for "anything else the line says", a model hands back the whole line —
+// so a row called "Score Input & Report Confirm" sat above the words "Score
+// Input & Report Confirm: Midterm Nov. 17 16:00 Final Jan. 15 16:00". The tail
+// of that is worth keeping and the head of it is the name you are already
+// looking at, twice, on every row of a twenty-row calendar.
+function notTheLabel(label, extras) {
+  const name = String(label || "").trim();
+  if (!name) return extras;
+  return (extras || [])
+    .map((x) => {
+      const v = String(x.value || "");
+      if (v.slice(0, name.length).toLowerCase() !== name.toLowerCase()) return x;
+      const rest = v.slice(name.length);
+      // AND ONLY WHERE THE NAME IS FOLLOWED BY A SEPARATOR, or is the whole of
+      // it. "Exam time and expected report distribution date" begins with the
+      // name of the entry and then goes on being a sentence — taking the name
+      // off the front of that leaves "and expected report distribution date",
+      // which is worse than the repetition it was fixing.
+      if (rest.trim() && !/^\s*[:\-–—]/.test(rest)) return x;
+      const cut = rest.replace(/^\s*[:\-–—]\s*/, "").trim();
+      return cut ? { ...x, value: cut } : null;
+    })
+    .filter(Boolean);
+}
 
 async function handleCalendar(res, body) {
   const text = (body?.text || "").toString().trim();
@@ -1349,7 +1379,7 @@ async function handleCalendar(res, body) {
         // commitment on one day for ever.
         ...(date ? {} : { days }),
         ...(start ? { start, end } : {}),
-        extras: extrasOf(e.extras),
+        extras: notTheLabel(label, extrasOf(e.extras)),
         // What it MEANS is not asked and is not answered — see above.
         kind: "",
         line: label,

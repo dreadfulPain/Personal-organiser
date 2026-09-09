@@ -151,7 +151,11 @@
   function calShow(r, note) {
     // ANYTHING YOU HAVE ALREADY ANSWERED ONCE COMES BACK ANSWERED — and says
     // so on the row, so it can never be mistaken for the app having decided.
-    calRows = (r.rows || []).map((x) => {
+    // IN DATE ORDER, WHOEVER READ IT. The month headings group rows as they come,
+    // so a reading handed back in the order the document mentioned things drew
+    // November, October, December, October again. See inOrder.
+    const CP = window.OrganiserCalPlan;
+    calRows = (CP ? CP.inOrder(r.rows || []) : (r.rows || [])).map((x) => {
       const had = calSaid[saidKey(x.label)];
       if (!had || !had.kind) return x;
       return {
@@ -429,8 +433,15 @@
       "Say what each kind is and those days go in."));
     marks.forEach((m, i) => {
       const kind = calMarkKind.get(i) || "";
+      // NOTHING IS LIT UNTIL YOU HAVE SAID SOMETHING — the same fault as the
+      // dated rows had, in the other half of the same panel, and fixed there
+      // and not here. "" is the kind for "ignore" AND the kind a mark starts
+      // with, so every kind of marked day arrived with ignore filled in dark:
+      // the app had decided nothing and the screen said it had decided to throw
+      // your staff meetings away.
+      const said = calMarkKind.has(i);
       const n = m.dates.length;
-      const wrap = el("div", "cal-mark");
+      const wrap = el("div", "cal-mark" + (said ? "" : " cal-waiting"));
       const head = el("div", "cal-mark-head");
       head.appendChild(el("span", "cal-mark-name", m.name || `the “${m.symbol}” days`));
       head.appendChild(el("span", "muted", ` — ${n} days: ${markDays(m)}`));
@@ -438,7 +449,7 @@
 
       const opts = el("div", "cal-mark-opts");
       KINDS.forEach(([k, lab]) => {
-        const b = el("button", "p-opt cal-mark-kind" + (kind === k ? " on" : ""), lab);
+        const b = el("button", "p-opt cal-mark-kind" + (said && kind === k ? " on" : ""), lab);
         b.type = "button";
         b.addEventListener("click", () => { calMarkKind.set(i, k); renderCalMarks(); });
         opts.appendChild(b);

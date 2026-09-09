@@ -909,7 +909,10 @@ sec("And a marked day can be one too, which is how a calendar usually says it");
   paste.fire("input", { target: paste });
   await r.settle();
   const marks = () => [...(r.get("#calMarks").children || [])]
-    .filter((x) => String(x.className || "") === "cal-mark");
+    // BY ITS FIRST CLASS, not the whole attribute: a mark nobody has answered
+    // yet also carries cal-waiting, and matching the string exactly meant every
+    // one of these checks found nothing the moment that was added.
+    .filter((x) => String(x.className || "").split(" ")[0] === "cal-mark");
   const kidsOf = (node, cls) => (!node ? [] : (node.children || []).reduce((acc, c) =>
     acc.concat(String(c.className || "").includes(cls) ? [c] : kidsOf(c, cls)), []));
   const said = (n) => !n ? "" : String(n.textContent || "") +
@@ -2678,6 +2681,109 @@ sec("And the month says what a day is, including the one you are working");
   // 18 — AND WHAT IS ON A DAY IS NAMED WHERE THERE IS ROOM TO NAME IT.
   ok("an ordinary day says what is on it, not just how long",
      friday && /Staff meeting/.test(said(friday)), friday && said(friday));
+}
+
+sec("A real school calendar, read by the model, in the order a person reads one");
+{
+  const A = await import("./_dom.mjs");
+  // WHAT A MODEL ACTUALLY HANDS BACK. It reads a document top to bottom and
+  // gives its entries in the order it met them, which on a school calendar is
+  // nothing like date order — the exam window is described where exams are
+  // discussed, the holidays in a list of their own, the summer at the end. The
+  // page grouped rows by month as it came to them and drew November, October,
+  // December, October again, January, September. The grouping was right and the
+  // list was shuffled.
+  const SAID = [
+    ["Score Input & Report Confirm", "2026-11-17", "", "Score Input & Report Confirm: Midterm Nov. 17 16:00"],
+    ["Sports Week", "2026-10-16", "", "School Events: Sports Week"],
+    ["Art Festival", "2026-12-16", "2026-12-17", "Art Festival: Week 16 - Week 17"],
+    ["Mid-Autumn Festival", "2026-09-25", "", "Holidays: Mid-Autumn F: Sep. 25"],
+    ["National Day", "2026-10-01", "2026-10-07", "National Day: Oct. 1 - Oct. 7"],
+    ["Summer Vacation", "2027-06-30", "", "Summer Vacation: Jun. 30, 2027"],
+    ["Semester begins", "2026-09-01", "", "Semester begins: Grade 1 - 10 Opening Ceremonies"],
+  ];
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+    fetch: async (url) => (/api\/health/.test(String(url))
+      ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
+      : /api\/calendar/.test(String(url))
+        ? { ok: true, json: async () => ({ rows: SAID.map(([label, date, endsOn, line]) => ({
+            label, date, endsOn, kind: "", line, yearAssumed: false,
+            endFrom: endsOn ? "model" : "",
+            extras: [{ name: "as written", value: line }] })), unreadable: [] }) }
+        : { ok: false, json: async () => ({}) }),
+  });
+  r.get("#calBox").open = true;
+  const box = r.get("#calPaste");
+  box.value = "2026-27 School Calendar\nSemester begins\t1 September 2026";
+  box.fire("input", { target: box });
+  await r.settle();
+  const btn = r.get("#calSecond");
+  btn.fire("click", { target: btn });
+  await r.settle();
+
+  const heads = [...(r.get("#calRows").children || [])]
+    .filter((c) => String(c.className || "").includes("cal-month")).map((c) => String(c.textContent));
+  ok("every month is a heading once", heads.length === new Set(heads).size, JSON.stringify(heads));
+  ok("and they run forwards",
+     JSON.stringify(heads) === JSON.stringify([
+       "September 2026", "October 2026", "November 2026", "December 2026", "June 2027"]),
+     JSON.stringify(heads));
+  const dates = calRowsOf(r).map((x) => String((x.children[0] || {}).textContent || ""));
+  ok("and so do the rows under them",
+     /Sep 1/.test(dates[0]) && /Jun 30/.test(dates[dates.length - 1]), JSON.stringify(dates));
+
+  // AND THE NAME IS NOT PRINTED TWICE ON EVERY ROW. Asked for "anything else
+  // the line says", a model hands back the whole line — so a row called "National
+  // Day" sat above the words "National Day: Oct. 1 - Oct. 7".
+  const extras = A.deep(r.get("#calRows"))
+    .filter((c) => String(c.className || "").includes("su-textra")).map((c) => String(c.textContent));
+  ok("what it saw beside a line is still shown", extras.length > 0, JSON.stringify(extras));
+  // (What it says beside a line has the row's own name taken off the front of it
+  // by the server, so that one is checked over real HTTP — see e2e.)
+}
+
+sec("And a marked day is not pre-answered either");
+{
+  const A = await import("./_dom.mjs");
+  // THE SAME FAULT AS THE DATED ROWS HAD, in the other half of the same panel,
+  // and fixed there and not here: "" is the kind for "ignore" AND the kind a
+  // mark starts with, so every kind of marked day arrived with ignore filled in
+  // dark. The app had decided nothing and the screen said it had decided to
+  // throw your staff meetings away.
+  const WEEKS = [
+    "Wk", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "9/6", "7", "8", "9", "10", "11", "12 Makeup",
+    "2", "13", "14", "15", "16", "17", "18", "19 Makeup",
+    "3", "20", "21", "22", "23", "24", "25", "26",
+  ].join("\n");
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  r.get("#calBox").open = true;
+  const box = r.get("#calPaste");
+  box.value = WEEKS;
+  box.fire("input", { target: box });
+  await r.settle();
+  const marks = [...(r.get("#calMarks").children || [])]
+    .filter((c) => String(c.className || "").split(" ")[0] === "cal-mark");
+  if (!marks.length) {
+    ok("a term grid with symbols on it produces marks", false, "none were read, so this checks nothing");
+  } else {
+    const lit = marks.flatMap((m) => A.deep(m)
+      .filter((c) => / on\b/.test(String(c.className || ""))).map((c) => String(c.textContent)));
+    ok("no answer is filled in before you give one", lit.length === 0, JSON.stringify(lit));
+    ok("and a mark still waiting says so",
+       marks.every((m) => /cal-waiting/.test(String(m.className))),
+       marks.map((m) => m.className).join(" | "));
+    const pick = A.deep(marks[0]).find((c) => String(c.textContent) === "in my week");
+    pick.fire("click", { target: pick });
+    await r.settle();
+    const now = [...(r.get("#calMarks").children || [])]
+      .filter((c) => String(c.className || "").split(" ")[0] === "cal-mark");
+    ok("answering one lights that one",
+       A.deep(now[0]).some((c) => String(c.textContent) === "in my week" &&
+         / on\b/.test(String(c.className || ""))), now[0].className);
+    ok("and it stops looking like it is waiting",
+       !/cal-waiting/.test(String(now[0].className)), now[0].className);
+  }
 }
 
 sec("Seventeen things found by using the timetable panel rather than reading it");

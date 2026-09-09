@@ -1047,8 +1047,7 @@
       (r.date || "every " + (r.days || []).join(",")) + "|" +
       r.label.toLowerCase() + (r.label === "(no name)" ? "|" + r.line : ""), r));
     // Dated rows in date order, and the rules that have no date after them.
-    let out = [...byDate.values()].sort((a, b) =>
-      (a.date ? 0 : 1) - (b.date ? 0 : 1) || a.date.localeCompare(b.date));
+    let out = inOrder([...byDate.values()]);
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A
     // booklet that draws August as a grid and then writes "26th August" over its
     // detailed page gives that day twice: once as "All-Staff Orientation" and
@@ -1329,6 +1328,21 @@
   const MONTH_WORDS = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
 
+  // DATED ROWS IN DATE ORDER, AND THE RULES THAT HAVE NO DATE AFTER THEM.
+  //
+  // Exported because this reader is no longer the only one that produces rows.
+  // A model reads a document top to bottom and hands its entries back in the
+  // order it met them, which on a real school calendar is nothing like date
+  // order — the page then grouped them by month as it went and drew November,
+  // October, December, October again, January, September. The grouping was not
+  // wrong; it was being given a shuffled list. Sorted in the one place both
+  // readings pass through, so neither can be the one that forgets.
+  function inOrder(rows) {
+    return (Array.isArray(rows) ? rows : []).slice().sort((a, b) =>
+      ((a.date ? 0 : 1) - (b.date ? 0 : 1)) ||
+      String(a.date || "").localeCompare(String(b.date || "")));
+  }
+
   function words(r, chosen, day) {
     const d = typeof day === "function" ? day : (x) => x;
     // A GRID WITH NO MONTH ON IT IS A QUESTION, NOT A FAILURE. Said even when
@@ -1402,7 +1416,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, labelOf, docYear, docYears, atYear, read, plan, span, term, toBlocks, toTasks, words, addDays,
+    dateIn, labelOf, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
     weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };

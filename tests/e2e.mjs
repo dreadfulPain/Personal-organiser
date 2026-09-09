@@ -87,7 +87,7 @@ const ol = http.createServer((req, res) => {
         .filter((l) => l.trim() && !/^"{3}$/.test(l.trim()) &&
           !/^(The rest of this|Turn this calendar)/.test(l.trim()))
         .map((l) => {
-          const [label, date, endsOn, start, end, days] = l.split("\t");
+          const [label, date, endsOn, start, end, days, saidAs] = l.split("\t");
           return {
             label: label || "", date: date || "", endsOn: endsOn || "",
             start: start || "", end: end || "",
@@ -95,7 +95,16 @@ const ol = http.createServer((req, res) => {
             // AND SOMETHING IT WAS NEVER ASKED FOR. A model told to say what a
             // date means will say it; the server must not carry it through.
             kind: "off",
-            extras: [{ name: "as written", value: l.split("\t")[0] || "" }],
+            // THE LINE AS A DOCUMENT WRITES IT — "National Day: Oct. 1 - Oct.
+            // 7" — which is what a model hands back when it is asked for
+            // "anything else the line says": the name, then a colon, then the
+            // rest. The server takes the name off the front again; see
+            // notTheLabel.
+            // A seventh cell is the extra said verbatim, for the shapes that a
+            // join cannot produce — a name that runs on into a sentence rather
+            // than being followed by a colon.
+            extras: [{ name: "as written", value: saidAs ||
+              `${label}: ${[date, endsOn, start, end].filter(Boolean).join(" ")}`.trim() }],
           };
         });
       out = { entries };
@@ -452,6 +461,35 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   const anon = (bad.unreadable || []).find((u) => u.why === "no name");
   ok("a nameless line comes back with the day it was on", anon && anon.at === "2026-09-25",
      JSON.stringify(anon));
+}
+
+{
+  // WHAT IT SAID BESIDE THE LINE, WITHOUT THE LINE AGAIN.
+  //
+  // Asked for "anything else the line says", a model hands back the whole line
+  // — so a row called "National Day" sat above the words "National Day: Oct. 1
+  // - Oct. 7", on every row of a twenty-row calendar. The stand-in above echoes
+  // the row's first cell into an extra, which is exactly what one really did.
+  const said = await askCal({ year: 2026, text: [
+    "National Day\t2026-10-01\t2026-10-07",
+    ["Exam time", "2026-11-10", "", "", "", "",
+     "Exam time and expected report distribution date"].join("\t"),
+  ].join("\n") });
+  const nat = (said.rows || []).find((r) => r.label === "National Day");
+  ok("what it saw beside a line is kept", (nat.extras || []).length === 1,
+     JSON.stringify(nat.extras));
+  ok("with the row's own name taken off the front of it",
+     nat.extras[0].value === "2026-10-01 2026-10-07",
+     JSON.stringify(nat.extras));
+  // AND ONLY WHERE THE NAME IS FOLLOWED BY A SEPARATOR. "Exam time and expected
+  // report distribution date" begins with the name of the entry and then goes
+  // on being a sentence; taking the name off the front of that leaves "and
+  // expected report distribution date", which is worse than the repetition.
+  const exam = (said.rows || []).find((r) => r.label === "Exam time");
+  ok("a name that runs on into a sentence is left whole",
+     exam && (exam.extras || [])[0] &&
+     /^Exam time and expected/.test(exam.extras[0].value),
+     JSON.stringify(exam && exam.extras));
 }
 
 {

@@ -703,7 +703,10 @@ sec("And a marked day is asked what it is, not assumed to be a meeting");
   await r.settle();
 
   const marks = () => [...r.get("#calMarks").children]
-    .filter((x) => String(x.className || "") === "cal-mark");
+    // BY ITS FIRST CLASS, not the whole attribute: a mark nobody has answered
+    // yet also carries cal-waiting, and matching the string exactly meant every
+    // one of these checks found nothing the moment that was added.
+    .filter((x) => String(x.className || "").split(" ")[0] === "cal-mark");
   const markFor = (t) => marks().find((x) => new RegExp(t).test(said(x)));
   // The stub keeps no computed textContent, so what a block SAYS is what its
   // pieces say — gathered here rather than in five places below.

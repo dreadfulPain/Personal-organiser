@@ -854,6 +854,20 @@
         hint.textContent = `the line says ${DAY_WORDS[r.runsAsDay]}`;
         row.appendChild(hint);
       }
+      // AND A YEAR THE APP PUT ON RATHER THAN READ.
+      //
+      // "Midterm Nov. 17, Final Jan. 15" is this November and next January, and
+      // the year is nowhere on the line — so it is worked out from the fact
+      // that the line lists them in order, and then SAID, because a year the
+      // app decided and a year the document wrote must not look the same. This
+      // is the one thing on the row that can be quietly wrong by exactly twelve
+      // months.
+      if (r.yearRolled) {
+        const hint = document.createElement("span");
+        hint.className = "muted cal-hint";
+        hint.textContent = `read as ${r.date.slice(0, 4)} — the line puts it after a later date`;
+        row.appendChild(hint);
+      }
       // AND WHICH DAY IT RUNS AS. Only when that is the answer: against a
       // holiday the question means nothing, and a calendar is mostly holidays.
       if (r.kind === "runsAs") {

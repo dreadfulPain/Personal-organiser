@@ -308,7 +308,7 @@
   // NOT that weekday — fills in which day it stands in for, because that is
   // what "the 20th, Tuesday schedule" is saying and the app already has
   // somewhere to put it. The row still arrives undecided like every other one.
-  function alsoOn(line, taken, useYear, order) {
+  function alsoOn(line, taken, useYear, order, after) {
     const T = typeof window !== "undefined" && window.OrganiserTimetable;
     let rest = noDayNames(line);
     // THE FIRST OCCURRENCE, NOT EVERY ONE. Blanking "Oct. 1" everywhere also
@@ -320,11 +320,21 @@
     // this line already made where its own name stops — so the holiday came
     // back called "National Day: Oct." with the sentence cut mid-word.
     const gone = (n) => "•".repeat(n);
+    const CLOCK = /^\s*(\d{1,2}[:.]\d{2}\s*(?:[ap]\.?m\.?)?|\d{1,2}\s*[ap]\.?m\.?)/i;
+    // AND THE CLOCK THAT BELONGS TO IT. The row this line already made took its
+    // date; its FOUR O'CLOCK is still sitting there, between that date and the
+    // next one, and the next one's name is everything since the last date — so
+    // "Midterm Nov. 17 16:00 Final Jan. 15 16:00" gave the January deadline the
+    // name "16:00 Final": the first deadline's time in the second one's name.
     (taken || []).forEach((t) => {
       const at = t ? rest.indexOf(t) : -1;
-      if (at >= 0) rest = rest.slice(0, at) + gone(t.length) + rest.slice(at + t.length);
+      if (at < 0) return;
+      const after = CLOCK.exec(rest.slice(at + t.length));
+      const n = t.length + (after ? after[0].length : 0);
+      rest = rest.slice(0, at) + gone(n) + rest.slice(at + n);
     });
     const out = [];
+    let was = after || "";
     // Six is a line that is really a paragraph; past that the words around each
     // date stop being a name and the row stops being worth offering.
     for (let n = 0; n < 6; n++) {
@@ -333,14 +343,24 @@
       const found = ranged ? range : findDate(rest, useYear, order);
       const date = ranged ? range.from : found.iso;
       if (!date || !found.text) break;
+      // The date this line named last, so a jump backwards can be seen.
       const at = rest.indexOf(found.text);
+      // THE CLOCK THAT BELONGS TO THIS DATE GOES WITH IT.
+      //
+      // "Midterm Nov. 17 16:00 Final Jan. 15 16:00" — the first entry's four
+      // o'clock sits between the two, so the second one's name was read as
+      // everything since the last date and came out "16:00 Final": the first
+      // deadline's time, in the second deadline's name.
+      const ranAt = at + found.text.length;
+      const clock = CLOCK.exec(rest.slice(ranAt));
       // THE CLAUSE IT SITS IN is its name. A calendar separates these with a
       // semicolon or a bracket far more often than with a full stop, and where
       // it separates them with nothing the whole remainder is the honest
       // answer — the words are the document's, not this app's.
       const CUT = /[;()\[\]•]|\.\s/;
       const before = rest.slice(0, at).split(CUT).pop();
-      const after = rest.slice(at + found.text.length).split(CUT)[0];
+      const after = (clock ? clock[0] : "") +
+        rest.slice(ranAt + (clock ? clock[0].length : 0)).split(CUT)[0];
       const clause = `${before} ${after}`;
       const label = labelOf(clause, date, useYear, order) ||
         `${before} ${after}`.replace(/\s+/g, " ").trim();
@@ -358,9 +378,33 @@
         });
       }
       const t = timeOnLine(clause);
+      // A DATE LISTED AFTER A LATER ONE HAS CROSSED A NEW YEAR.
+      //
+      // "Midterm Nov. 17 16:00 Final Jan. 15 16:00" is this November and next
+      // January, and the January one came out 2026 — eleven months before the
+      // midterm it is the sequel to, on a line that plainly puts them in order.
+      // A first-semester calendar is full of these: the papers go in in
+      // November, the reports out in January.
+      //
+      // NOT MERELY EARLIER. "Oct. 1 - Oct. 7 (Sep. 20 …)" names a day eleven
+      // days before, and that is a make-up day, not next year. Only a jump
+      // BACKWARDS OF MONTHS is a New Year, and only where the line did not
+      // write the year itself.
+      const BACK = 150;
+      let fixed = date;
+      let rolled = false;
+      if (was && !hasYearOnIt(clause) && date < was &&
+          (new Date(was + "T12:00:00") - new Date(date + "T12:00:00")) / 86400000 > BACK) {
+        const up = atYear(date, Number(date.slice(0, 4)) + 1);
+        if (up) { fixed = up; rolled = true; }
+      }
+      was = fixed;
       out.push({
-        date,
-        endsOn: ranged ? range.to : "",
+        date: fixed,
+        // Said on the row, because a year the app worked out and a year the
+        // document wrote should not look the same.
+        ...(rolled ? { yearRolled: true } : {}),
+        endsOn: ranged && !rolled ? range.to : "",
         endFrom: ranged ? "line" : "",
         label: label || "(no name)",
         ...(t ? { start: t.start, end: t.end } : {}),
@@ -376,7 +420,8 @@
         clauseAt: Math.max(0, at - String(before).length),
 
       });
-      rest = rest.slice(0, at) + gone(found.text.length) + rest.slice(at + found.text.length);
+      const took = found.text.length + (clock ? clock[0].length : 0);
+      rest = rest.slice(0, at) + gone(took) + rest.slice(at + took);
     }
     return out;
   }
@@ -1066,7 +1111,10 @@
         const already = range && range.to > range.from
           ? range.text
           : findDate(noDayNames(line), useYear, order).text;
-        const more = alsoOn(line, [already], useYear, order);
+        // THE PARENT'S DATE AND THE ONE BEFORE IT, so a jump backwards across a
+        // New Year is seen from the first extra onwards rather than only
+        // between two extras.
+        const more = alsoOn(line, [already], useYear, order, d);
         if (more.length) {
           // AND THE ROW THIS LINE ALREADY MADE STOPS AT THE FIRST OF THEM. The
           // holiday was called "National Day: (Sep. 20 is a working day, even
@@ -1076,6 +1124,23 @@
           const head = noDayNames(line).slice(0, cut).replace(/[\s(;,:•-]+$/, "");
           const short = labelOf(head, d, useYear, order);
           if (short) rows[rows.length - 1].label = short;
+          // AND THE OTHERS CARRY WHAT THE LINE IS ABOUT.
+          //
+          // "Final" is a perfect name inside the line it came from and a
+          // useless one in a list of things to do a month later — which is
+          // exactly where a deadline ends up. What the two entries SHARE is the
+          // line's own subject, and a school calendar writes that in front of a
+          // colon: "Score Input & Report Confirm: Midterm … Final". So the part
+          // before the last colon is put back in front, and where there is no
+          // colon the whole head is, because "National Day — is a working day,
+          // even week Tuesday schedule" says which holiday that Sunday pays for.
+          const bits = String(short || "").split(":");
+          const stem = (bits.length > 1 ? bits.slice(0, -1).join(":") : short || "").trim();
+          more.forEach((x) => {
+            if (!stem || !x.label || x.label === "(no name)") return;
+            if (x.label.toLowerCase().indexOf(stem.toLowerCase()) === 0) return;
+            x.label = `${stem} — ${x.label}`.slice(0, 120);
+          });
           rows.push(...more);
         }
       });
@@ -1189,7 +1254,11 @@
         straddles(out.filter((r) => r.yearAssumed && !r.yearFromGrid)),
       // How many rows are leaning on a year that wasn't on their own line. Not
       // the grid's — those have a sentence of their own, about the month.
-      borrowed: out.filter((r) => r.yearAssumed && !r.fromGrid).length,
+      borrowed: out.filter((r) => r.yearAssumed && !r.fromGrid && !r.yearRolled).length,
+      // AND HOW MANY HAD A YEAR PUT ON THEM BECAUSE THE LINE PUT THEM AFTER A
+      // LATER DATE — see alsoOn. Counted apart from the rest, because "4 of
+      // them read as 2026" was being said over a list in which one was 2027.
+      rolled: out.filter((r) => r.yearRolled).length,
       // The grid, if there was one: how many squares it had, which months it
       // could be, which one was taken, and how many squares lost their number
       // on the way out of the PDF.
@@ -1497,6 +1566,12 @@
       ? `${r.borrowed} of them had no year on the line — read as ${r.year}. ` +
         (two || "Change the year if that's not right. ")
       : "";
+    // SAID APART FROM THE REST, because it is a different answer to the same
+    // question: those rows have no year on the line either, and they are not
+    // the document's year — they are the year after it.
+    if (mine && r.rolled)
+      y += `${r.rolled === 1 ? "One more is" : `${r.rolled} more are`} read as ${r.year + 1}, ` +
+        `because the line puts ${r.rolled === 1 ? "it" : "them"} after a later date. `;
     // A TERM DRAWN AS A GRID answers the year question by walking through it, so
     // it is said instead of the guessing above rather than as well as.
     if (r.term)

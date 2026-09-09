@@ -263,6 +263,20 @@
   // which year a date was in. Fixing the shared one changed nothing on screen,
   // because almost nothing was using it.
   const friendlyDate = (iso) => OrganiserDates.dayWords(iso);
+
+  // WHEN A THING IS, IN WORDS, ONCE.
+  //
+  // Two places said this and only one of them said the hour, so a deadline read
+  // off a school calendar — "papers in by 16:00" — showed as "due Mon, Nov 2"
+  // on the page you look at first and "Mon, Nov 2 · 4:00 PM" in the list below
+  // it. The four o'clock is the whole of what makes it a deadline rather than a
+  // day, and the panel that leads with "what matters today" was the one leaving
+  // it out.
+  function whenWords(it) {
+    const day = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
+    const at = fmtTime(it.time);
+    return at ? (day ? `${day} · ${at}` : at) : day;
+  }
   // An optional "undo" rides along on the status line. Rule 4: small reversible
   // things just happen, and the way back is one tap — never an "are you sure?"
   // asked before the fact.
@@ -710,10 +724,10 @@
   function checkbackSummary(it) {
     const parts = [];
     parts.push(typeLabel(it.type));
-    let when = it.date ? friendlyDate(it.date) : "";
-    const tl = fmtTime(it.time);
-    if (tl) when = when ? `${when} · ${tl}` : tl;
-    if (!when && it.whenText) when = capitalize(it.whenText);
+    // Same words as everywhere else — see whenWords. This wrote the same thing
+    // out again, and put whenText behind the time rather than in place of the
+    // date, so "Tuesday, 4pm" came out as "4:00 PM".
+    const when = whenWords(it);
     if (when) {
       const hard = it.deadlineType === "hard" && it.date;
       parts.push((hard ? "due " : "") + when);
@@ -1261,9 +1275,7 @@
     // dates were never typed by anyone. Calling those overdue tomorrow would
     // manufacture a pile of failures out of things you merely said.
     const overdue = it.date && it.date < todayISO() && it.deadlineType === "hard";
-    let label = it.date ? friendlyDate(it.date) : it.whenText ? capitalize(it.whenText) : "";
-    const tlabel = fmtTime(it.time);
-    if (tlabel) label = label ? `${label} · ${tlabel}` : tlabel;
+    const label = whenWords(it);
     const showDue = it.deadlineType === "hard" && it.date;
     const tags = Array.isArray(it.tags) ? it.tags : [];
     const impWord = imp === "high" ? "matters a lot" : imp === "low" ? "minor" : "";
@@ -1523,7 +1535,11 @@
   }
   function shortlistReason(it) {
     const r = OrganiserPriority.reason(it, priorityCtx());
-    return r || (it.date ? friendlyDate(it.date) : "");
+    // AND WHEN IT HAS NO OTHER REASON TO GIVE, THE SAME WORDS AS EVERYWHERE
+    // ELSE — see whenWords. This wrote its own and left the hour out, on the
+    // panel that leads the home page: a paper due at four in the afternoon read
+    // as "Mon, Nov 2", which is the day and not the deadline.
+    return r || whenWords(it);
   }
   function renderShortlist() {
     const listEl = $("#shortlistItems");
@@ -2042,7 +2058,11 @@
       }
       const row = document.createElement("div");
       row.className = "lp-row";
-      const due = it.date ? friendlyDate(it.date) : "";
+      // THE SAME ANSWER AS EVERY OTHER PLACE THAT SAYS WHEN — see whenWords.
+      // This one wrote its own and left the time out of it, so a paper due at
+      // four in the afternoon and one due at the end of the day looked
+      // identical on the page you check first.
+      const due = whenWords(it);
       const ping = fmtRemind(it);
       row.innerHTML = `
         <button class="tick" aria-label="Finished it" title="Finished it"></button>
@@ -2323,7 +2343,7 @@
       card.innerHTML = `
         <div class="od-main">
           <div class="od-title">${escapeHtml(it.title)}</div>
-          <div class="od-meta">was due ${escapeHtml(friendlyDate(it.date))} · past its deadline</div>
+          <div class="od-meta">was due ${escapeHtml(whenWords(it))} · past its deadline</div>
         </div>
         <div class="od-actions">
           <label class="od-redate">new date <input type="date" class="od-date" min="${today}" aria-label="Give it a new date" /></label>

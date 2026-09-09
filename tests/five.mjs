@@ -2858,6 +2858,98 @@ sec("And the days a holiday is paid for with come out of the brackets");
   }
 }
 
+sec("And a semester's deadlines reach the list of things to do");
+{
+  const A = await import("./_dom.mjs");
+  // THE WHOLE JOURNEY for the commonest line on a school calendar after a
+  // holiday: two deadlines on one line, one of them across a New Year, into the
+  // list of things to do with the day and the hour they are due by.
+  const DOC = [
+    "Test paper submission and score input deadlines: Paper Submission: Midterm Nov. 2 16:00 Final Dec. 31 16:00",
+    "Score Input & Report Confirm: Midterm Nov. 17 16:00 Final Jan. 15 16:00",
+  ].join("\n");
+  const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
+  r.get("#calBox").open = true;
+  const box = r.get("#calPaste");
+  box.value = DOC;
+  box.fire("input", { target: box });
+  await r.settle();
+  ok("one line each way makes four rows", calRowsOf(r).length === 4,
+     JSON.stringify(calRowsOf(r).map((x) => String((x.children[0] || {}).textContent || ""))));
+  // THE YEAR IT PUT ON IS ON THE ROW. A year the app decided and a year the
+  // document wrote must not look the same — it is the one thing here that can be
+  // quietly wrong by exactly twelve months.
+  const jan = calRowsOf(r).find((x) => /Jan 15, 2027/.test(String((x.children[0] || {}).textContent || "")));
+  ok("the January one is dated next year", !!jan,
+     JSON.stringify(calRowsOf(r).map((x) => String((x.children[0] || {}).textContent || ""))));
+  ok("and says why", A.within(jan, /read as 2027 — the line puts it after a later date/).length > 0,
+     A.deep(jan).map((c) => c.textContent).join(" | ").slice(0, 200));
+
+  // Say all four are deadlines and put them in.
+  for (let i = 0; i < 8; i++) {
+    const next = calRowsOf(r).find((x) => !A.deep(x).some((c) => / on\b/.test(String(c.className || ""))));
+    if (!next) break;
+    const b = A.within(next, "due that day")[0];
+    b.fire("click", { target: b });
+    await r.settle();
+  }
+  const add = r.get("#calAdd");
+  add.fire("click", { target: add });
+  await r.settle();
+  const items = r.state.items || [];
+  ok("all four become things to do", items.length === 4,
+     JSON.stringify(items.map((i) => `${i.date} ${i.title}`)));
+  ok("and none of them becomes an hour in the week", (r.state.schedule || []).length === 0,
+     JSON.stringify(r.state.schedule));
+  const by = (t) => items.find((i) => i.title === t);
+  ok("each is due on its own day at its own hour",
+     by("Score Input & Report Confirm — Final") &&
+     by("Score Input & Report Confirm — Final").date === "2027-01-15" &&
+     by("Score Input & Report Confirm — Final").time === "16:00",
+     JSON.stringify(by("Score Input & Report Confirm — Final")));
+  ok("as a hard deadline, because a calendar date is not a hope",
+     items.every((i) => i.deadlineType === "hard"),
+     JSON.stringify(items.map((i) => i.deadlineType)));
+  // AND EACH IS FINDABLE A MONTH LATER. "Final" on its own says nothing in a
+  // list of things to do, and that is exactly where a deadline ends up.
+  ok("and every one of them says what it is about",
+     items.every((i) => /Paper Submission|Score Input/.test(i.title)),
+     JSON.stringify(items.map((i) => i.title)));
+
+  // AND THE HOUR SURVIVES TO THE PAGE YOU LOOK AT FIRST.
+  //
+  // Four places said when a thing is and only three of them said the hour, so a
+  // paper due at four in the afternoon read as "Mon, Nov 2" at the top of the
+  // home page and "Mon, Nov 2 · 4:00 PM" in the list under it. The four
+  // o'clock is the whole of what makes it a deadline rather than a day.
+  const home = await open("index.html", { items, goals: [], schedule: [], config: {} });
+  // IN THE SHORTLIST ITSELF, not anywhere on the page. The list further down
+  // has always said the hour, so a check over the whole page passes whether or
+  // not the panel at the top of it does — which is the thing that was wrong.
+  //
+  // TEXT AND MARKUP BOTH: half this app writes a row as innerHTML, and the
+  // stand-in stores that rather than turning it into text.
+  const inside = (el) => {
+    const out = [];
+    const walk = (n) => { if (!n) return;
+      out.push(`${String(n.textContent || "")} ${String(n.innerHTML || "")}`);
+      (n.children || []).forEach(walk); };
+    walk(el);
+    return out.join(" | ");
+  };
+  const said = inside(home.get("#shortlistItems"));
+  ok("the shortlist says the hour a deadline is due by",
+     /Nov 2[^|]*4:00/.test(said) || /Nov 2[^|]*16:00/.test(said),
+     said.split(" | ").filter((t) => /Nov 2/.test(t)).slice(0, 4).join(" ~ ") ||
+     "the shortlist says nothing about Nov 2");
+  // AND NOBODY WRITES IT OUT THEIR OWN WAY. The recurring fault in this app is
+  // one question answered in several places, which then drift.
+  const appSrc = fs.readFileSync(path.join(PUB, "app.js"), "utf8");
+  ok("and there is one place that turns a thing's when into words",
+     (appSrc.match(/friendlyDate\(it\.date\)/g) || []).length === 1,
+     `${(appSrc.match(/friendlyDate\(it\.date\)/g) || []).length} places write it out themselves`);
+}
+
 sec("And a marked day is not pre-answered either");
 {
   const A = await import("./_dom.mjs");

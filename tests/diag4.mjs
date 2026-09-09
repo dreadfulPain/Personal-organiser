@@ -10,12 +10,26 @@ let pass = 0, fail = 0;
 const ok = (n, c, e) => { if (c) { pass++; console.log(`  ok  ${n}`); } else { fail++; console.log(`FAIL  ${n}${e ? "\n      " + String(e).slice(0,300) : ""}`); } };
 const REPO = REPO_ROOT;
 
+// A PORT EACH, AND WAITED FOR RATHER THAN SLEPT AT.
+//
+// This picked a random port out of a forty-wide range three times per run and
+// then slept for a fixed 2.2 seconds. Both halves are a coin toss: two suites
+// running at once can draw the same number, and a loaded machine takes longer
+// than the guess — and either way the failure is ECONNREFUSED in a check about
+// the diagnostic report, which points at nothing. The same fault was fixed in
+// diag2 and left here.
+let nextPort = 3781;
 async function diag() {
-  const port = 3770 + Math.floor(Math.random() * 40);
+  const port = nextPort++;
   const srv = spawn(process.execPath, ["server.js"], { cwd: REPO, env: { ...process.env, NO_OPEN: "1", PORT: String(port) }, stdio: "ignore" });
-  await sleep(2200);
-  const d = await (await fetch(`http://localhost:${port}/api/diagnose`)).json();
+  let d = null;
+  // Up to twelve seconds, asked twenty-five times — it is ready when it answers.
+  for (let i = 0; i < 60 && !d; i++) {
+    try { d = await (await fetch(`http://localhost:${port}/api/diagnose`)).json(); }
+    catch { await sleep(200); }
+  }
   srv.kill(); await sleep(200);
+  if (!d) throw new Error(`the server never answered on port ${port}`);
   return d.checks.find((c) => c.name === "Updates");
 }
 

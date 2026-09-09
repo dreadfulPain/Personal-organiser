@@ -659,6 +659,71 @@ sec("A line can name more than one date, and the second one is usually the impor
      JSON.stringify(half));
 }
 
+sec("A deadline in January is next January");
+{
+  const CP = sb.OrganiserCalPlan;
+  // FROM THE REAL CALENDAR. A first semester runs September to January, so its
+  // deadline lines run across a New Year and say so only by their order:
+  //
+  //   "Score Input & Report Confirm: Midterm Nov. 17 16:00 Final Jan. 15 16:00"
+  //
+  // The January one came out 2026 — eleven months BEFORE the midterm it is the
+  // sequel to, on a line that plainly puts them in order, and looking exactly
+  // as reasonable as the rest.
+  const DOC = [
+    "Test paper submission and score input deadlines: Paper Submission: Midterm Nov. 2 16:00 Final Dec. 31 16:00",
+    "Score Input & Report Confirm: Midterm Nov. 17 16:00 Final Jan. 15 16:00",
+  ].join("\n");
+  const r = CP.read(DOC, { year: 2026 });
+  const at = (d) => r.rows.find((x) => x.date === d);
+  ok("the January deadline is next January", !!at("2027-01-15"),
+     JSON.stringify(r.rows.map((x) => x.date)));
+  ok("and says the year was worked out rather than read",
+     at("2027-01-15") && at("2027-01-15").yearRolled === true, JSON.stringify(at("2027-01-15")));
+  // AND DECEMBER IS NOT. "Midterm Nov. 2, Final Dec. 31" runs forwards; adding a
+  // year to that would move a deadline out of the term it belongs to.
+  ok("a December one after a November one is left alone", !!at("2026-12-31"),
+     JSON.stringify(r.rows.map((x) => x.date)));
+  ok("and is not marked as worked out either",
+     at("2026-12-31") && at("2026-12-31").yearRolled === undefined,
+     JSON.stringify(at("2026-12-31")));
+  // AND A DAY ELEVEN DAYS EARLIER IS NOT NEXT YEAR. "Oct. 1 - Oct. 7 (Sep. 20 is
+  // a working day…)" names a make-up day BEFORE the holiday it pays for; a jump
+  // of days backwards is an ordinary calendar, a jump of months is a New Year.
+  const back = CP.read("National Day: Oct. 1 - Oct. 7 (Sep. 20 is a working day, even " +
+    "week Tuesday schedule)", { year: 2026 }).rows;
+  ok("a make-up day before its holiday stays in the same year",
+     back.some((x) => x.date === "2026-09-20"), JSON.stringify(back.map((x) => x.date)));
+
+  // AND IT IS SAID ON THE PANEL, apart from the rows that merely borrowed the
+  // document's year — those are a different answer to the same question.
+  const said = CP.words(r, r.rows, (d) => d);
+  ok("the page says how many were read as the next year", /read as 2027/.test(said), said);
+  ok("and does not count them among the ones read as this one",
+     /3 of them had no year/.test(said), said);
+
+  // A NAME THAT MEANS SOMETHING ON ITS OWN.
+  //
+  // "Final" is a perfect name inside the line it came from and a useless one in
+  // a list of things to do a month later — which is exactly where a deadline
+  // ends up. What the two entries share is the line's subject.
+  ok("the second deadline carries what the line is about",
+     at("2027-01-15").label === "Score Input & Report Confirm — Final",
+     at("2027-01-15").label);
+  ok("and the first is still called what it is called",
+     at("2026-11-17").label === "Score Input & Report Confirm: Midterm",
+     at("2026-11-17").label);
+  // AND THE TIME BELONGS TO THE ENTRY IT WAS WRITTEN AFTER. The midterm's four
+  // o'clock sat between the two dates, so the second one's name was read as
+  // everything since the last date and came out "16:00 Final".
+  ok("each deadline keeps its own time", at("2027-01-15").start === "16:00" &&
+     at("2026-11-17").start === "16:00",
+     JSON.stringify([at("2026-11-17").start, at("2027-01-15").start]));
+  ok("and neither has the other's time in its name",
+     !/\d{2}:\d{2}/.test(at("2027-01-15").label) && !/\d{2}:\d{2}/.test(at("2026-11-17").label),
+     JSON.stringify([at("2026-11-17").label, at("2027-01-15").label]));
+}
+
 sec("Every line a school calendar actually has on it");
 {
   // A CORPUS, not a handful of phrases. Calendars were being read one shape at

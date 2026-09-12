@@ -10,3 +10,6 @@ data/
 
 # design tracker is kept by you (uploaded each session), not committed here
 Organiser_App_Tracker.md
+
+# A real school's documents are never committed — see tests/fixtures/README.md.
+tests/fixtures/*.pdf

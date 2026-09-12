@@ -1594,6 +1594,13 @@
     // grid on it and thirty dated lines below said only "pick a month" and
     // never that the thirty had been read.
     y = ask + y;
+    // SORTED INTO PILES ON THE PAGE, which says the count and what is to be
+    // done with it in one sentence — so this one stops at what it alone knows,
+    // which is where the years came from and when the lessons run.
+    if (r.triaged) {
+      const t0 = term(list);
+      return (y + (t0 ? `Lessons run from ${d(t0.from)}${t0.to ? ` to ${d(t0.to)}` : " onwards"}.` : "")).trim();
+    }
     if (!decided)
       return y + `${r.rows.length} date${r.rows.length === 1 ? "" : "s"} read. Say what each one is and they'll go in.`;
     const p = plan(list);

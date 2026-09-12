@@ -1263,9 +1263,27 @@ RULES
 - NEVER WORK OUT A DATE THAT IS NOT WRITTEN. If a line does not give one, leave "date" empty rather than choosing a likely day.
 - Never invent an entry that is not in the text. An empty list is a fine answer.
 
-DO NOT SAY WHAT A DATE MEANS. Do not decide that something is a holiday, a day off, a working day, a training day or the start of term, and do not leave one out because you think it is not important. The person reading this will say what each entry is. Your job is what the document says and when.
+- "said": the line of the document this entry came from, COPIED EXACTLY. Not tidied, not shortened. It is checked against the document, so an entry whose "said" is not in the text is thrown away.
 
 - "extras": anything else the line says that none of the fields above can hold — a room, a year group, who it is for, a note — as {"name","value"} pairs, named however the document names it. If the document says it, it can go in.
+
+WHAT IT MEANS FOR THE PERSON READING THIS
+You are asked for this so that they do not have to answer the same question thirty times. You are NOT the last word on it: whatever you say here is shown to them in plain English and they change it if it is wrong.
+
+- "means" is what the entry does to their working week. Exactly one of:
+    "off"       — they are not working: a holiday, a public holiday, a break.
+    "noLessons" — a working day with no teaching: a training day, a staff-only day, an exam day with no classes.
+    "week"      — something that happens AT A TIME on a working day they should turn up to: a meeting, a parents' evening, a ceremony.
+    "runsAs"    — a working day that follows a DIFFERENT day's timetable, which is how a school pays for a holiday. Put the weekday it follows in "runsAsDay" (0=Sunday … 6=Saturday).
+    "due"       — something has to be finished by then: papers in, marks in, reports out.
+    "lessons"   — the day teaching starts for students.
+    ""          — you cannot tell. Say nothing rather than guess; they will be asked.
+
+- "sure" is how confident you are of "means", 0 to 1. Be honest. A line you had to reason about is not a 0.9.
+
+- "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document lists this under Holidays". It is shown to them, so write it to be read by a person and not by a machine.
+
+- "mine" is whether this looks like it applies to THEM, given what they say they do. "yes" if it is for the whole school, their own year group, all staff, or anyone teaching. "no" only when the line is plainly limited to a group they have nothing to do with. "" if you cannot tell — which is the right answer far more often than "no".
 
 Return only the JSON object.`;
 
@@ -1283,9 +1301,16 @@ const CALENDAR_SCHEMA = {
           start: { type: "string" },
           end: { type: "string" },
           days: { type: "array", items: { type: "integer" } },
+          said: { type: "string" },
+          means: { type: "string", enum: ["off", "noLessons", "week", "runsAs", "due", "lessons", ""] },
+          runsAsDay: { type: "integer" },
+          sure: { type: "number" },
+          why: { type: "string" },
+          mine: { type: "string", enum: ["yes", "no", ""] },
           extras: EXTRAS_SCHEMA,
         },
-        required: ["label", "date", "endsOn", "start", "end", "days", "extras"],
+        required: ["label", "date", "endsOn", "start", "end", "days", "said",
+                   "means", "runsAsDay", "sure", "why", "mine", "extras"],
         additionalProperties: false,
       },
     },
@@ -1321,12 +1346,69 @@ function notTheLabel(label, extras) {
     .filter(Boolean);
 }
 
+const MEANS = ["off", "noLessons", "week", "runsAs", "due", "lessons"];
+
+// WHAT THE APP CAN CHECK FOR ITSELF, WHICH IS NOT WHAT THE MODEL SAYS IT IS
+// SURE OF.
+//
+// Asked "how confident are you, nought to one", a model gives a plausible
+// number that does not track being right — it is as fluent about an invented
+// date as a copied one. This calendar produced "Professional Development Days
+// for Teachers: Oct. 16, Nov. 13" as ONE entry dated the 13th of October, which
+// is in neither half of it, and would have said 0.9 about it.
+//
+// So the thing that decides whether an entry is ticked without being asked
+// about is what can be VERIFIED against the document:
+//
+//   "said"  — the line it claims to come from is really in the text.
+//   "date"  — the day it landed on is really written on that line.
+//
+// Both are cheap, neither can be talked round, and the second is exactly the
+// check the invented October 13th fails.
+function checked(text, said, date, endsOn) {
+  const flat = (x) => String(x || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const hay = flat(text);
+  if (!said || hay.indexOf(flat(said)) < 0) return "line not in the document";
+  // A repeating rule has no date to look for.
+  if (!date) return "";
+  const has = (iso) => !iso || onTheLine(said, iso);
+  if (!has(date)) return "that day isn't written on that line";
+  if (!has(endsOn)) return "the day it ends isn't written on that line";
+  return "";
+}
+
+// IS THIS DAY WRITTEN ON THIS LINE — in any of the ways a calendar writes one.
+// Deliberately generous: the question is "did it come from here", not "is it
+// formatted the way I like".
+const MONTHS_SHORT = ["jan", "feb", "mar", "apr", "may", "jun",
+                      "jul", "aug", "sep", "oct", "nov", "dec"];
+function onTheLine(said, iso) {
+  const s = String(said || "").toLowerCase();
+  const y = iso.slice(0, 4), m = Number(iso.slice(5, 7)), d = Number(iso.slice(8, 10));
+  if (s.indexOf(iso) >= 0) return true;
+  const mon = MONTHS_SHORT[m - 1];
+  // "Oct. 16", "16 October", "October 16"
+  const near = new RegExp(`${mon}[a-z]*\\.?\\s*,?\\s*0?${d}(?!\\d)|\\b0?${d}(?:st|nd|rd|th)?\\s*,?\\s*(?:of\\s+)?${mon}`, "i");
+  if (near.test(s)) return true;
+  // 16/10, 16-10-2026, 2026/10/16 and the other way round
+  const n = `0?${d}`, o = `0?${m}`;
+  const slash = new RegExp(`\\b(?:${n}[-/.]${o}|${o}[-/.]${n}|${y}[-/.]${o}[-/.]${n})(?![\\d])`);
+  return slash.test(s);
+}
+
 async function handleCalendar(res, body) {
   const text = (body?.text || "").toString().trim();
   if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to read." });
   const cfg = aiConfig();
   if (!cfg) return sendJson(res, 503, { error: "no_engine", message: "AI sorting isn't switched on yet." });
   const year = Number(body?.year) || new Date().getFullYear();
+  // WHAT THEY DO, IN THEIR OWN WORDS, FROM THEIR OWN SETTINGS.
+  //
+  // Nothing about any school is written into this app and nothing ever will be
+  // — see §0.2. But "a meeting for years nine to twelve is not mine" is a fact
+  // about the person, not about schools, and it is a fact they can type. Left
+  // out, the same six lines get set aside by hand every term.
+  const about = (body?.about || "").toString().trim().slice(0, 400);
   // HOW MUCH OF IT ACTUALLY WENT, AND WHETHER THAT WAS ALL OF IT.
   //
   // A whole-year calendar goes over this, and going over it meant the rest was
@@ -1338,7 +1420,9 @@ async function handleCalendar(res, body) {
   try {
     const parsed = await runEngine(
       cfg, CALENDAR_PROMPT,
-      `The rest of this document is about the year ${year}.\n\nTurn this calendar into entries:\n"""\n${sent}\n"""`,
+      `The rest of this document is about the year ${year}.\n` +
+      (about ? `\nThe person reading this says of themselves: ${about}\n` : "") +
+      `\nTurn this calendar into entries:\n"""\n${sent}\n"""`,
       CALENDAR_SCHEMA, "calendar");
     const rows = [];
     // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
@@ -1354,6 +1438,7 @@ async function handleCalendar(res, body) {
         .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
       const start = tidyHM(e.start);
       const end = tidyHM(e.end);
+      const said = (e.said || "").toString().trim().slice(0, 300);
       const why = !label
         ? "no name"
         : !date && !days.length
@@ -1380,9 +1465,28 @@ async function handleCalendar(res, body) {
         ...(date ? {} : { days }),
         ...(start ? { start, end } : {}),
         extras: notTheLabel(label, extrasOf(e.extras)),
-        // What it MEANS is not asked and is not answered — see above.
+        // WHAT IT THINKS IT MEANS, AND WHETHER THAT IS WORTH ACTING ON.
+        //
+        // `kind` is still the person's answer. This is a PROPOSAL: shown in
+        // plain English, ticked where it can be trusted, and changed with one
+        // press. What is not done is asking the model how sure it is and
+        // believing the number — see checked().
+        means: MEANS.indexOf(e.means) >= 0 ? e.means : "",
+        runsAsFrom: Number.isInteger(Number(e.runsAsDay)) &&
+          Number(e.runsAsDay) >= 0 && Number(e.runsAsDay) <= 6 ? Number(e.runsAsDay) : undefined,
+        why: (e.why || "").toString().trim().slice(0, 160),
+        // Its own confidence, kept only so it can ask for help — never so it
+        // can wave something through. See pile() on the page.
+        sure: Number.isFinite(Number(e.sure)) ? Math.max(0, Math.min(1, Number(e.sure))) : 1,
+        mine: e.mine === "yes" || e.mine === "no" ? e.mine : "",
+        // THE LINE IT SAYS THIS CAME FROM, AND WHETHER THE DOCUMENT AGREES.
+        // Not called "said": a row already uses that for whether YOU have
+        // answered it, and one word meaning two things is how a row comes back
+        // looking answered because a model quoted a document.
+        fromLine: said,
+        checked: checked(text, said, date, endsOn),
         kind: "",
-        line: label,
+        line: said || label,
         yearAssumed: false,
         endFrom: endsOn ? "model" : "",
       });

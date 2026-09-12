@@ -99,6 +99,27 @@
   // that line every time you answer a question about a row, and a message
   // written after it disappears at the first click.
   let calNote = "";
+  // WHICH READY ROWS YOU HAVE OPENED UP TO ARGUE WITH. A row the reader got
+  // right is one line; pressing "change" on it turns that one back into the
+  // full set of choices, and it stays open while you decide.
+  let calOpen = new Set();
+
+  // WHETHER A READER'S PROPOSAL IS TAKEN AS THE ANSWER — asked in ONE place.
+  //
+  // It was asked in two: once where the rows are built, and again where they
+  // are sorted into piles. They disagreed about a reading the reader itself had
+  // called a guess — so the row sat under "your say on these" with an answer
+  // already on it, and went in when you pressed the button without your ever
+  // having said anything about it. That is the worst shape this bug can take:
+  // it looks like it asked.
+  //
+  // THE APP'S OWN CHECK BEATS THE MODEL'S OWN CONFIDENCE. A number a model
+  // gives for how sure it is does not track being right — it is as fluent about
+  // an invented date as a copied one. Whether the day is actually written on
+  // the line it claims to come from is a fact. The number is allowed to make it
+  // ASK, never to wave anything through.
+  const trusted = (r) =>
+    !!r && !!r.means && !r.checked && !(typeof r.sure === "number" && r.sure < 0.65);
   // WHAT YOU SAID A LINE MEANT, LAST TIME YOU SAW IT. Keyed by the words on the
   // line, because that is all a calendar gives you and it is the same words
   // next term. See the store: this is recall of your own answer, not the app
@@ -180,11 +201,23 @@
     };
     calRows = (CP ? CP.inOrder(spread(r.rows || [])) : (r.rows || [])).map((x) => {
       const had = calSaid[saidKey(x.label)];
-      if (!had || !had.kind) return x;
-      return {
-        ...x, kind: had.kind, said: true, saidBefore: true,
-        ...(had.kind === "runsAs" && had.runsAs !== undefined ? { runsAsDay: had.runsAs } : {}),
-      };
+      if (had && had.kind)
+        return {
+          ...x, kind: had.kind, said: true, saidBefore: true, keep: true,
+          ...(had.kind === "runsAs" && had.runsAs !== undefined ? { runsAsDay: had.runsAs } : {}),
+        };
+      // WHAT THE READER THINKS IT IS, TAKEN AS THE ANSWER UNTIL YOU SAY
+      // OTHERWISE. Shown in words, ticked, and one press from being changed —
+      // see drawReady. Anything it could not tell, or that this app could not
+      // find in the document, stays unanswered and is asked about instead.
+      if (trusted(x))
+        return {
+          ...x, kind: x.means, said: true, keep: x.mine !== "no",
+          ...(x.means === "runsAs" && x.runsAsFrom !== undefined && x.runsAsDay === undefined
+            ? { runsAsDay: x.runsAsFrom }
+            : {}),
+        };
+      return x;
     });
     calMeta = { ...r, rows: calRows };
     calNote = note || "";
@@ -254,7 +287,10 @@
       // The year the plain reader found in the document, so the model dates the
       // lines that don't say one the same way this app would. Worked out in one
       // place and used by both, rather than each having a guess.
-      { text, year: (already && already.r && already.r.year) || 0 }, renderCal);
+      { text, year: (already && already.r && already.r.year) || 0,
+        // AND WHAT YOU SAY YOU DO, so it can set aside what is plainly not
+        // yours rather than asking you about it every term.
+        about: S().normaliseConfig(cfg).about || "" }, renderCal);
     const modelMs = msNow() - t0;
     // A REPLACED REQUEST IS NOT AN ANSWER. You pressed again, so the answer you
     // are waiting for is the second one; this is the first one arriving late.
@@ -644,8 +680,20 @@
     const words = $("#calWords");
     const btn = $("#calAdd");
     if (!C || !box) return;
-    if (words) words.textContent = calNote + C.words({ ...calMeta, rows: calRows }, calRows, calDay);
-    if (btn) btn.hidden = !calRows.some((r) => r.kind);
+    // ONE SUMMARY, NOT TWO. Where the reading is sorted into piles, the piles
+    // line below says what it came to; words() counting it again over the top
+    // is the same fact twice, and the second one is the less useful of them.
+    const triaged = calRows.some((x) => x && x.means);
+    if (words)
+      words.textContent = calNote + C.words({ ...calMeta, rows: calRows, triaged }, calRows, calDay);
+    // AND THE BUTTON SAYS HOW MANY, because "Put these in" over a list where
+    // most are ticked and some are not is a button you have to count before
+    // you press.
+    const going = calRows.filter((r) => r.kind && r.keep !== false).length;
+    if (btn) {
+      btn.hidden = !going;
+      btn.textContent = going === 1 ? "Put this one in" : `Put these ${going} in`;
+    }
     // OFFERED, NOT TAKEN. A reading that found forty dates may still have the
     // wrong forty, and a reading that found none may be a perfectly good answer
     // to a page with no dates on it — neither is a thing this app can tell from
@@ -653,7 +701,6 @@
     // whenever there is a document to read.
     // How to answer them, shown when there are some.
     const how = $("#calHow");
-    if (how) how.hidden = !calRows.length;
     const more = $("#calSecondRow");
     const btn2 = $("#calSecond");
     const why = $("#calSecondWhy");
@@ -673,6 +720,176 @@
       if (p.endRow) marks.set(p.endRow, { endOf: p });
     });
     box.innerHTML = "";
+    // ---- THREE PILES, NOT THIRTY CARDS -------------------------------------
+    //
+    // What this panel was: a reader read the calendar, and then you classified
+    // every single thing it read, out of seven buttons, thirty times. Which is
+    // the work done twice — once by the reader and once by you — and the second
+    // time is the tiring one.
+    //
+    // The old refusal was principled and it was aimed at the wrong thing. The
+    // APP must not have a vocabulary: "break means a day off" written into this
+    // code would be this app deciding somebody's term from a noun, and that
+    // stays forbidden. But a READER saying what it thinks and being corrected is
+    // not a vocabulary, any more than the plain reader finding the dates is.
+    //
+    // So the model is asked what each entry means, and what it says is:
+    //   · checked against the document where that is possible at all,
+    //   · shown in plain English,
+    //   · changed with one press,
+    //   · and saved only when you press the button at the bottom.
+    //
+    // With no model there is nothing to propose and every row lands in "needs
+    // you", which is exactly the panel as it was. §0.1 holds.
+    // ANSWERED OR NOT — where "answered" means either you said so or a proposal
+    // was trusted enough to stand in for you saying so. That one question is
+    // decided in one place: see trusted.
+    //
+    // AND UNTICKING ONE IS NOT THE SAME AS IT NOT BEING YOURS. A row you took
+    // the tick off dropped into the folded-away pile and out of sight, which
+    // reads as the app having agreed with you about something you never said.
+    // It stays where it is, unticked, so you can put it back.
+    const pile = (r) => {
+      if (!r.said || !r.kind) return "ask";
+      if (r.mine === "no") return "not";
+      return "ready";
+    };
+    // AND ONLY WHERE THERE IS SOMETHING TO SORT.
+    //
+    // With no reader proposing anything, every row is a question and the piles
+    // are one pile — except that answering a row would then move it into
+    // "ready" and the list would reshuffle itself under you as you worked down
+    // it, which is worse than the flat list it replaced. Nothing proposed,
+    // nothing sorted: the panel is exactly as it was. §0.1.
+    const piles = { ready: [], ask: [], not: [] };
+    calRows.forEach((r, i) => piles[triaged ? pile(r) : "ask"].push([r, i]));
+    const some = triaged && piles.ready.length + piles.not.length > 0;
+    // HOW TO ANSWER THEM, ONLY WHERE ANSWERING THEM IS THE JOB. With most of
+    // the reading already proposed, a paragraph about which row to mark as
+    // "lessons start" is instructions for work somebody else has done.
+    if (how) how.hidden = !calRows.length || some;
+    if (some) {
+      const head = document.createElement("p");
+      head.className = "muted cal-piles";
+      head.textContent =
+        `${piles.ready.length} ready to go in` +
+        (piles.ask.length ? `, ${piles.ask.length} for you to say` : "") +
+        (piles.not.length ? `, ${piles.not.length} that don't look like yours` : "") + ".";
+      box.appendChild(head);
+    }
+    if (piles.ask.length && some) {
+      const h = document.createElement("p");
+      h.className = "cal-pilehead";
+      h.textContent = "Your say on these";
+      box.appendChild(h);
+    }
+    // WITH NOTHING PROPOSED, THIS IS THE WHOLE PANEL — the no-model case — and
+    // then a term sheet wants its months back. Inside a short pile of questions
+    // a heading over one row is another line to read.
+    if (some) piles.ask.forEach(([r, i]) => drawCalRow(r, i, marks, box));
+    else drawCalRowsGrouped(piles.ask, marks, box);
+    if (piles.ready.length) {
+      if (some) {
+        const h = document.createElement("p");
+        h.className = "cal-pilehead";
+        h.textContent = "Ready to go in — untick anything that's wrong";
+        box.appendChild(h);
+      }
+      drawReady(piles.ready, marks, box);
+    }
+    if (piles.not.length) drawNotMine(piles.not, marks, box);
+    renderCalTerm();
+  }
+
+  // THE ONES THAT ARE READY: one line each, and the line says what it is.
+  //
+  // A row you agree with does not need seven buttons under it. It needs to be
+  // readable at a glance and to be arguable with in one press — so it is a
+  // tick, the day, the name, and what the reader concluded said as a sentence,
+  // with the seven choices a press away for the one row in twenty that is wrong.
+  function drawReady(list, marks, box) {
+    list.forEach(([r, i]) => {
+      if (calOpen.has(i)) { drawCalRow(r, i, marks, box); return; }
+      const row = document.createElement("div");
+      row.className = "cal-row cal-ready";
+      const tick = document.createElement("button");
+      tick.type = "button";
+      tick.className = "p-opt cal-tick" + (r.keep === false ? "" : " on");
+      tick.textContent = r.keep === false ? "" : "✓";
+      tick.setAttribute("aria-label", r.keep === false ? "Put this one in" : "Leave this one out");
+      tick.addEventListener("click", () => {
+        calRows[i] = { ...r, keep: r.keep === false };
+        renderCal();
+      });
+      row.appendChild(tick);
+      const name = document.createElement("span");
+      name.className = "cal-name";
+      name.textContent = r.date
+        ? `${calDay(r.date)}${r.endsOn && r.endsOn > r.date ? ` to ${calDay(r.endsOn)}` : ""} — ${r.label}`
+        : `${everyWords(r.days)} — ${r.label}`;
+      row.appendChild(name);
+      const means = document.createElement("span");
+      means.className = "cal-means";
+      means.textContent = meansWords(r);
+      row.appendChild(means);
+      // AND WHY IT THINKS SO, in the reader's own plain sentence. Shown because
+      // a conclusion you cannot see the reason for is one you can only accept
+      // or reject, and this panel is meant to be argued with.
+      if (r.why) {
+        const w = document.createElement("span");
+        w.className = "muted cal-hint";
+        w.textContent = r.why;
+        row.appendChild(w);
+      }
+      const change = document.createElement("button");
+      change.type = "button";
+      change.className = "link cal-change";
+      change.textContent = "change";
+      change.addEventListener("click", () => { calOpen.add(i); renderCal(); });
+      row.appendChild(change);
+      box.appendChild(row);
+    });
+  }
+
+  // AND THE ONES THAT DON'T LOOK LIKE YOURS, folded away rather than thrown
+  // away. A meeting for years nine to twelve is not a mistake in the document
+  // and it is not your business either; putting it in front of you thirty times
+  // a year is. Open it and it is an ordinary row again.
+  function drawNotMine(list, marks, box) {
+    const wrap = document.createElement("details");
+    wrap.className = "p-setup cal-notmine";
+    const sum = document.createElement("summary");
+    sum.textContent = `${list.length} that don't look like yours — ` +
+      list.slice(0, 3).map(([r]) => r.label).join("; ") +
+      (list.length > 3 ? `; and ${list.length - 3} more` : "");
+    wrap.appendChild(sum);
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = "Set aside because of what you said you do — see the box above the paste area. " +
+      "Say what any of them is and it goes in like the rest.";
+    wrap.appendChild(p);
+    list.forEach(([r, i]) => drawCalRow(r, i, marks, wrap));
+    box.appendChild(wrap);
+  }
+
+  // WHAT A ROW WILL DO, IN WORDS. The app's own names for its six answers,
+  // written the way somebody would say them — because this is the sentence that
+  // has to be read at a glance for twenty rows.
+  function meansWords(r) {
+    const day = r.runsAsDay === undefined ? "" : DAY_WORDS[r.runsAsDay];
+    return {
+      off: "day off",
+      noLessons: "in, but no lessons",
+      week: r.start ? `in your week at ${r.start}` : "in your week",
+      runsAs: day ? `runs ${day}'s timetable` : "runs another day's timetable",
+      due: r.start ? `due by ${r.start}` : "due that day",
+      lessons: "lessons start",
+    }[r.kind] || "";
+  }
+
+  // `list` is [row, its index in calRows] pairs — the index must be the real
+  // one, because pressing a button writes back to calRows[i].
+  function drawCalRowsGrouped(list, marks, box) {
     // GROUPED, BECAUSE A TERM SHEET IS NOT A LIST.
     //
     // Twenty rows arrived as one flat run — September, October, the weekly
@@ -684,7 +901,7 @@
     // the page is just another line to read.
     const monthOf = (r) => (r.date ? r.date.slice(0, 7) : "every week");
     const groups = [];
-    calRows.forEach((r, i) => {
+    list.forEach(([r, i]) => {
       const key = monthOf(r);
       const last = groups[groups.length - 1];
       if (last && last.key === key) last.rows.push([r, i]);
@@ -702,7 +919,6 @@
       }
       g.rows.forEach(([r, i]) => drawCalRow(r, i, marks, box));
     });
-    renderCalTerm();
   }
 
   const MONTH_WORDS = ["January", "February", "March", "April", "May", "June",
@@ -792,6 +1008,9 @@
             ...r,
             kind: k,
             said: true,
+            // ANSWERING ONE IS WANTING IT. A row folded away as somebody
+            // else's, that you then say what it is, is one you have claimed.
+            keep: !!k,
             // Pressing anything makes it your answer now rather than a
             // recollection of one, so the note beside it goes.
             saidBefore: false,
@@ -841,6 +1060,20 @@
           renderCal();
         });
         row.appendChild(sw);
+      }
+      // AND WHY IT IS BEING ASKED ABOUT AT ALL.
+      //
+      // A row in the pile of questions when the rest went through without one
+      // is owed an explanation, and the explanation is usually the useful part:
+      // "that day isn't written on that line" is the app saying it thinks the
+      // reader made the date up, which is worth knowing before you answer.
+      if (r.checked || (typeof r.sure === "number" && r.sure < 0.65 && r.why)) {
+        const asked = document.createElement("span");
+        asked.className = "muted cal-hint cal-asked";
+        asked.textContent = r.checked
+          ? `asking because ${r.checked}`
+          : `the reader wasn't sure — it thought: ${r.why}`;
+        row.appendChild(asked);
       }
       // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
       //
@@ -1033,12 +1266,17 @@
   function calApply() {
     const C = window.OrganiserCalPlan;
     if (!C) return;
-    const made = C.toBlocks(calRows).map((b) => ({ ...b, id: uid() }));
+    // ONLY WHAT IS TICKED. A row set aside because it does not look like yours,
+    // or unticked because the reader got it wrong, is not a row you are keeping
+    // — and it still has a kind on it, because that is what it was set aside
+    // FROM.
+    const keeping = calRows.filter((r) => r && r.keep !== false);
+    const made = C.toBlocks(keeping).map((b) => ({ ...b, id: uid() }));
     // AND ANYTHING DUE, WHICH IS A TASK AND NOT A DAY. Deduped the same way the
     // days are: reading one calendar in twice must not leave you with the
     // reports due twice.
     const haveDue = new Set(items.filter((i) => i && i.date).map((i) => i.date + "|" + (i.title || "")));
-    const due = C.toTasks(calRows)
+    const due = C.toTasks(keeping)
       .filter((t) => !haveDue.has(t.date + "|" + t.title))
       .map((t) => ({
         id: uid(), title: t.title, type: "task", date: t.date, time: t.time, tags: [],
@@ -1062,7 +1300,7 @@
     const fresh = made.filter((b) => !have.has(key(b)));
     // The term dates are a separate thing that can arrive on its own — a
     // calendar saying only "students return" still has something to tell you.
-    const t = C.term(calRows);
+    const t = C.term(keeping);
     const picked = t && calTermPick ? [...calTermPick] : [];
     if (!fresh.length && !picked.length && !due.length) return;
     if (picked.length)
@@ -3737,6 +3975,14 @@
     // AND WHO GOES FIRST, WHERE THE READING HAPPENS. The switch existed and
     // lived in the timetable's setup panel, labelled for a timetable — so it
     // governed this panel too and there was nothing here that said so.
+    const calAbout = $("#calAbout");
+    if (calAbout) {
+      calAbout.value = S().normaliseConfig(cfg).about || "";
+      calAbout.addEventListener("change", (e) => {
+        cfg = { ...S().normaliseConfig(cfg), about: String(e.target.value || "").slice(0, 200) };
+        persist();
+      });
+    }
     const calFirst = $("#calFirst");
     if (calFirst) {
       calFirst.checked = !!S().normaliseConfig(cfg).modelFirst;

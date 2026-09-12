@@ -99,6 +99,10 @@
     // with nothing installed — not because it is the better answer, which is a
     // measurement and belongs to whoever is sitting in front of it.
     modelFirst: false,
+    // WHAT YOU TEACH, IN YOUR OWN WORDS — see the calendar panel. Used only to
+    // let a reader set aside what is plainly somebody else's; empty means
+    // nothing is set aside.
+    about: "",
     // Work owed to a block: how far ahead tasks are made, when they ping, and
     // what they're called. A week out, not a term out — a repeating lesson
     // would otherwise make 180 identical tasks. All three are yours to change;
@@ -143,6 +147,7 @@
   function normaliseConfig(c) {
     const out = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     if (!c || typeof c !== "object") return out;
+    if (typeof c.about === "string") out.about = c.about.slice(0, 200);
     if (toMin(c.dayStart) !== null) out.dayStart = c.dayStart;
     if (toMin(c.dayEnd) !== null) out.dayEnd = c.dayEnd;
     if (c.effortMinutes && typeof c.effortMinutes === "object") {

@@ -87,7 +87,7 @@ const ol = http.createServer((req, res) => {
         .filter((l) => l.trim() && !/^"{3}$/.test(l.trim()) &&
           !/^(The rest of this|Turn this calendar)/.test(l.trim()))
         .map((l) => {
-          const [label, date, endsOn, start, end, days, saidAs] = l.split("\t");
+          const [label, date, endsOn, start, end, days, saidAs, quote] = l.split("\t");
           return {
             label: label || "", date: date || "", endsOn: endsOn || "",
             start: start || "", end: end || "",
@@ -105,6 +105,18 @@ const ol = http.createServer((req, res) => {
             // than being followed by a colon.
             extras: [{ name: "as written", value: saidAs ||
               `${label}: ${[date, endsOn, start, end].filter(Boolean).join(" ")}`.trim() }],
+            // AND WHAT IT THINKS IT MEANS. The line it says it came from is the
+            // document's own line; the server checks the date against it.
+            //
+            // A seventh cell stands in for that line, so a test can give a
+            // document line that does NOT contain the date the model landed on
+            // — which is the invented-date case, and the whole point of the
+            // check. An eighth cell saying NOWHERE makes it quote something the
+            // stand-in owns and the document therefore cannot contain.
+            said: quote === "NOWHERE"
+              ? "a line the stand-in made up, which is in no document"
+              : (saidAs || l.replace(/\t/g, " ").trim()),
+            means: "off", runsAsDay: 0, sure: 0.9, why: "it looks like a holiday", mine: "yes",
           };
         });
       out = { entries };
@@ -461,6 +473,42 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   const anon = (bad.unreadable || []).find((u) => u.why === "no name");
   ok("a nameless line comes back with the day it was on", anon && anon.at === "2026-09-25",
      JSON.stringify(anon));
+}
+
+{
+  // WHAT THE APP CAN CHECK FOR ITSELF, WHICH IS NOT WHAT THE MODEL SAYS IT IS
+  // SURE OF.
+  //
+  // The real calendar has "Professional Development (PD) Days for Teachers:
+  // Oct. 16, Nov. 13" on it, and a model turned that into ONE entry dated the
+  // 13th of October — a day in neither half of it — and would have said 0.9
+  // about it. Asked how confident it is, a model is as fluent about an invented
+  // date as a copied one. Whether the day is actually written on the line it
+  // claims to come from is a fact, and it is cheap.
+  const seen = await askCal({ year: 2026, text: [
+    // The stand-in echoes the line it was given as "said", so a date in the
+    // first cell that is not in the line is exactly the invented case.
+    ["Mid-Autumn Festival", "2026-09-25"].join("\t"),
+    ["PD Days", "2026-10-13", "", "", "", "", "PD Days for Teachers: Oct. 16, Nov. 13"].join("\t"),
+  ].join("\n") });
+  const by = (n) => (seen.rows || []).find((r) => r.label === n);
+  ok("a date written on its own line goes through unquestioned",
+     by("Mid-Autumn Festival") && by("Mid-Autumn Festival").checked === "",
+     JSON.stringify(by("Mid-Autumn Festival")));
+  ok("and one the document does not contain is sent back as a question",
+     by("PD Days") && /isn't written on that line/.test(by("PD Days").checked || ""),
+     JSON.stringify(by("PD Days")));
+  ok("with what it thought, so the page can say what it is asking about",
+     by("PD Days") && by("PD Days").means === "off" && by("PD Days").why,
+     JSON.stringify(by("PD Days")));
+  // AND A LINE THAT IS NOT IN THE DOCUMENT AT ALL. A reader that quotes
+  // something the text does not say has not read the text.
+  const made = await askCal({ year: 2026, text: [
+    ["Invented", "2026-09-25", "", "", "", "", "", "NOWHERE"].join("\t"),
+  ].join("\n") });
+  ok("a line the document doesn't have is a question too",
+     (made.rows || [])[0] && /not in the document/.test(made.rows[0].checked || ""),
+     JSON.stringify(made.rows));
 }
 
 {

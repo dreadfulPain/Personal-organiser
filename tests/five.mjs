@@ -2742,6 +2742,148 @@ sec("A real school calendar, read by the model, in the order a person reads one"
   // by the server, so that one is checked over real HTTP — see e2e.)
 }
 
+sec("A calendar you check three things on, not thirty");
+{
+  const A = await import("./_dom.mjs");
+  // WHAT THIS PANEL WAS: a reader read the calendar, and then you classified
+  // every single thing it read, out of seven buttons, thirty times. The work
+  // done twice — once by the reader and once by you — and the second time is
+  // the tiring one.
+  //
+  // The old refusal was principled and aimed at the wrong thing. The APP must
+  // not have a vocabulary; a READER saying what it thinks and being corrected
+  // is not one. So it says, the app checks what it can check, and you see the
+  // exceptions.
+  const L = {
+    start: "Semester begins: Sept. 1 — Grade 1 - 10 Opening Ceremonies",
+    holiday: "Holidays: Mid-Autumn Festival: Sep. 25",
+    pd: "Professional Development (PD) Days for Teachers: Oct. 16, Nov. 13",
+    theirs: "Grade 11 - 12 Director Meeting: Sept. 8",
+    sports: "School Events & PD Days: Sports Week: Tentatively Week 7",
+  };
+  const DOC = Object.values(L).join("\n");
+  // A PLAUSIBLE READING: mostly right, one date invented, one week number read
+  // as a day of the month, one plainly somebody else's.
+  const ROWS = [
+    { label: "Semester begins", date: "2026-09-01", endsOn: "", kind: "", extras: [],
+      fromLine: L.start, means: "lessons", sure: 0.93, mine: "yes", checked: "",
+      why: "the document calls it the start of the semester" },
+    { label: "Mid-Autumn Festival", date: "2026-09-25", endsOn: "", kind: "", extras: [],
+      fromLine: L.holiday, means: "off", sure: 0.96, mine: "yes", checked: "",
+      why: "listed under Holidays" },
+    { label: "Professional Development (PD) Days for Teachers", date: "2026-10-13",
+      endsOn: "", kind: "", extras: [], fromLine: L.pd, means: "noLessons", sure: 0.9,
+      mine: "yes", checked: "that day isn't written on that line", why: "a teacher training day" },
+    { label: "Grade 11 - 12 Director Meeting", date: "2026-09-08", endsOn: "", kind: "",
+      extras: [], fromLine: L.theirs, means: "week", sure: 0.88, mine: "no", checked: "",
+      why: "a meeting for years 11 and 12" },
+    { label: "Sports Week", date: "2026-10-07", endsOn: "", kind: "", extras: [],
+      fromLine: L.sports, means: "noLessons", sure: 0.55, mine: "yes", checked: "",
+      why: "it says week 7 and I guessed the date" },
+  ];
+  const openCal = async () => {
+    const r = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Grade 1 homeroom, primary school" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
+        : /api\/calendar/.test(String(url))
+          ? (asked.push(JSON.parse((init && init.body) || "{}")),
+             { ok: true, json: async () => ({ rows: ROWS, unreadable: [] }) })
+          : { ok: false, json: async () => ({}) }),
+    });
+    r.get("#calBox").open = true;
+    const box = r.get("#calPaste");
+    box.value = DOC;
+    box.fire("input", { target: box });
+    await r.settle();
+    const b = r.get("#calSecond");
+    b.fire("click", { target: b });
+    await r.settle();
+    return r;
+  };
+  const asked = [];
+  const kids = (r) => [...(r.get("#calRows").children || [])];
+  const headOf = (n) => String(n.textContent || "") ||
+    String(((n.children || [])[0] || {}).textContent || "");
+  const rowSaying = (r, t) => kids(r).concat(kids(r).flatMap((n) => [...(n.children || [])]))
+    .find((n) => String(n.className || "").includes("cal-row") &&
+      new RegExp(t).test(A.deep(n).map((c) => c.textContent).join(" ")));
+
+  const r = await openCal();
+  // WHAT YOU SAY YOU DO GOES WITH THE DOCUMENT. Nothing about any school is in
+  // this app; this is a box you fill in, and it is the difference between a
+  // calendar that sets aside other years' meetings and one that asks every term.
+  ok("what you teach is sent with it",
+     asked[0] && asked[0].about === "Grade 1 homeroom, primary school",
+     JSON.stringify(asked[0] && asked[0].about));
+
+  const piles = kids(r).find((n) => String(n.className || "").includes("cal-piles"));
+  ok("it says what it came to before anything else",
+     piles && /2 ready to go in, 2 for you to say, 1 that don't look like yours/.test(
+       String(piles.textContent)), piles && String(piles.textContent));
+
+  // THE ONES IT GOT RIGHT ARE ONE LINE EACH, ticked, saying what they will do.
+  const ready = kids(r).filter((n) => String(n.className || "").includes("cal-ready"));
+  ok("what it is sure of is one line each", ready.length === 2, String(ready.length));
+  ok("ticked, so the button below is the only press left",
+     ready.every((n) => A.deep(n).some((c) => / on\b/.test(String(c.className || "")) &&
+       String(c.className).includes("cal-tick"))),
+     ready.map((n) => A.deep(n).map((c) => c.className).join(",")).join(" | "));
+  ok("saying what each will do to the week",
+     A.deep(ready[1]).some((c) => String(c.textContent) === "day off"),
+     A.deep(ready[1]).map((c) => c.textContent).join(" | "));
+  ok("and why it thinks so, in the reader's own words",
+     A.deep(ready[1]).some((c) => /listed under Holidays/.test(String(c.textContent))),
+     A.deep(ready[1]).map((c) => c.textContent).join(" | "));
+  ok("with no row of seven buttons under it",
+     !A.deep(ready[1]).some((c) => String(c.className || "").includes("cal-pick")),
+     "the seven choices are still under every ready row");
+
+  // AND THE APP'S OWN CHECK BEATS THE MODEL'S OWN CONFIDENCE.
+  //
+  // "Professional Development Days for Teachers: Oct. 16, Nov. 13" came back as
+  // ONE entry dated the 13th of October, which is in neither half of it — and
+  // the reader said 0.9 about it. A number a model gives for its own confidence
+  // is not evidence that it is right. Whether the day it landed on is actually
+  // written on the line it claims to come from is.
+  const pd = rowSaying(r, "Professional Development");
+  ok("a date the document doesn't contain is asked about, whatever it says",
+     !!pd && A.deep(pd).some((c) => String(c.className || "").includes("cal-pick")),
+     "it went through on the reader's say-so");
+  ok("and the row says that is why",
+     pd && A.within(pd, /that day isn't written on that line/).length > 0,
+     pd && A.deep(pd).map((c) => c.textContent).join(" | ").slice(0, 200));
+  // A READER THAT SAYS IT IS UNSURE IS TAKEN AT ITS WORD — in that direction
+  // only. It may ask for help; it may never wave anything through.
+  const sports = rowSaying(r, "Sports Week");
+  ok("and one the reader itself doubted is asked about too",
+     !!sports && A.deep(sports).some((c) => String(c.className || "").includes("cal-pick")),
+     "a reading it called a guess went through unasked");
+
+  // AND WHAT IS PLAINLY SOMEBODY ELSE'S IS FOLDED AWAY, NOT THROWN AWAY.
+  const fold = kids(r).find((n) => String(n.className || "").includes("cal-notmine"));
+  ok("what isn't yours is folded away", !!fold, "it is still in the list");
+  ok("with what it is, so you can disagree",
+     fold && /Grade 11 - 12 Director Meeting/.test(A.deep(fold).map((c) => c.textContent).join(" ")),
+     fold && String(fold.textContent));
+
+  // ONE BUTTON, AND IT SAYS HOW MANY.
+  ok("one button, counting what it will do", /Put these 2 in/.test(String(r.get("#calAdd").textContent)),
+     String(r.get("#calAdd").textContent));
+  const add = r.get("#calAdd");
+  add.fire("click", { target: add });
+  await r.settle();
+  const kept = r.state.schedule || [];
+  ok("and pressing it puts in what was ticked",
+     kept.length === 1 && kept[0].label === "Mid-Autumn Festival", JSON.stringify(kept));
+  ok("not the ones it was unsure of", !kept.some((b) => /Sports|Professional/.test(b.label)),
+     JSON.stringify(kept.map((b) => b.label)));
+  ok("nor the ones that aren't yours", !kept.some((b) => /Director/.test(b.label)),
+     JSON.stringify(kept.map((b) => b.label)));
+}
+
 sec("And the days a holiday is paid for with come out of the brackets");
 {
   const A = await import("./_dom.mjs");

@@ -4075,6 +4075,20 @@ a.btn {
 /* A weekday the line named that this date is not — see alsoOn. What was read,
    not what it means; the row is still undecided. */
 .cal-hint { font-size: 0.75rem; }
+/* THREE PILES, NOT THIRTY CARDS. What the reader is sure of, folded to one line
+   each; what it isn't, asked about; what doesn't look like yours, folded away. */
+.cal-piles { margin: 6px 0 2px; font-size: 0.85rem; }
+.cal-pilehead { margin: 14px 0 2px; font-size: 0.8rem; font-weight: 600;
+  color: var(--ink-soft); letter-spacing: 0.02em; }
+.cal-row.cal-ready { align-items: baseline; padding: 3px 0; }
+.cal-tick { min-width: 1.7rem; text-align: center; font-size: 0.78rem; }
+.cal-means { font-size: 0.78rem; color: var(--ink-soft); font-weight: 600; }
+.cal-change { font-size: 0.75rem; }
+.cal-notmine { margin-top: 12px; }
+.cal-notmine > summary { font-size: 0.82rem; }
+/* WHY THIS ONE IS BEING ASKED ABOUT when the rest went through. Usually the
+   useful half: the app saying it thinks the reader made the date up. */
+.cal-asked { flex: 1 1 100%; }
 /* WHICH DAY A MAKE-UP DAY STANDS IN FOR. It had no size of its own, so it came
    out at the row's heading size — the largest thing in the panel, on the one
    control that is a detail. */

@@ -308,6 +308,45 @@
   // NOT that weekday — fills in which day it stands in for, because that is
   // what "the 20th, Tuesday schedule" is saying and the app already has
   // somewhere to put it. The row still arrives undecided like every other one.
+  // AND WHAT THE EXTRA DATES ON A LINE ARE CALLED.
+  //
+  // "Final" is a perfect name inside the line it came from and a useless one in
+  // a list of things to do a month later — which is exactly where a deadline
+  // ends up. What the entries on one line SHARE is its subject, so the subject
+  // goes back in front: "Score Input & Report Confirm — Final", "National Day —
+  // is a working day, even week Tuesday schedule", which says which holiday
+  // that Sunday is paying for.
+  //
+  // ONE RULE, TWO READERS. This reader takes the subject off the head of the
+  // line; the model hands back a row whose label IS the subject. Both then name
+  // the extra days the same way, because they call the same thing — and when
+  // this lived inside read() only, the model's path produced rows called "is a
+  // working day, even week Tuesday schedule" with no notion of what for.
+  function underStem(stem, rows) {
+    if (!stem) return rows || [];
+    (rows || []).forEach((x) => {
+      // A CLAUSE THAT IS NOTHING BUT A DATE TAKES THE SUBJECT WHOLE.
+      //
+      // "Professional Development (PD) Days for Teachers: Oct. 16, Nov. 13" is
+      // two training days, and the second came out called "(no name)" — the one
+      // row on the page with nothing at all to recognise it by was the one this
+      // skipped, for want of a name of its own to put the subject in front of.
+      // It does not need one: the subject IS its name.
+      if (!x.label || x.label === "(no name)") { x.label = stem; return; }
+      if (x.label.toLowerCase().indexOf(stem.toLowerCase()) === 0) return;
+      x.label = `${stem} — ${x.label}`.slice(0, 120);
+    });
+    return rows || [];
+  }
+
+  // A school calendar writes the subject in front of a colon — "Score Input &
+  // Report Confirm: Midterm … Final" — so that is what comes off the head of a
+  // line. Where there is no colon, the head is the subject.
+  function subjectOf(head) {
+    const bits = String(head || "").split(":");
+    return (bits.length > 1 ? bits.slice(0, -1).join(":") : String(head || "")).trim();
+  }
+
   function alsoOn(line, taken, useYear, order, after) {
     const T = typeof window !== "undefined" && window.OrganiserTimetable;
     let rest = noDayNames(line);
@@ -1124,23 +1163,7 @@
           const head = noDayNames(line).slice(0, cut).replace(/[\s(;,:•-]+$/, "");
           const short = labelOf(head, d, useYear, order);
           if (short) rows[rows.length - 1].label = short;
-          // AND THE OTHERS CARRY WHAT THE LINE IS ABOUT.
-          //
-          // "Final" is a perfect name inside the line it came from and a
-          // useless one in a list of things to do a month later — which is
-          // exactly where a deadline ends up. What the two entries SHARE is the
-          // line's own subject, and a school calendar writes that in front of a
-          // colon: "Score Input & Report Confirm: Midterm … Final". So the part
-          // before the last colon is put back in front, and where there is no
-          // colon the whole head is, because "National Day — is a working day,
-          // even week Tuesday schedule" says which holiday that Sunday pays for.
-          const bits = String(short || "").split(":");
-          const stem = (bits.length > 1 ? bits.slice(0, -1).join(":") : short || "").trim();
-          more.forEach((x) => {
-            if (!stem || !x.label || x.label === "(no name)") return;
-            if (x.label.toLowerCase().indexOf(stem.toLowerCase()) === 0) return;
-            x.label = `${stem} — ${x.label}`.slice(0, 120);
-          });
+          underStem(subjectOf(short), more);
           rows.push(...more);
         }
       });
@@ -1613,7 +1636,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, labelOf, alsoOn, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
+    dateIn, labelOf, alsoOn, underStem, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
     weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };

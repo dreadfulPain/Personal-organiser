@@ -4089,6 +4089,9 @@ a.btn {
 /* WHY THIS ONE IS BEING ASKED ABOUT when the rest went through. Usually the
    useful half: the app saying it thinks the reader made the date up. */
 .cal-asked { flex: 1 1 100%; }
+/* AND THE DOCUMENT'S OWN WORDS UNDER IT. A whole line to itself, quieter than
+   the row, because it is what you check the row against and never the row. */
+.cal-source { flex: 1 1 100%; font-style: italic; }
 /* WHICH DAY A MAKE-UP DAY STANDS IN FOR. It had no size of its own, so it came
    out at the row's heading size — the largest thing in the panel, on the one
    control that is a detail. */

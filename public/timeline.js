@@ -120,6 +120,11 @@
   // ASK, never to wave anything through.
   const trusted = (r) =>
     !!r && !!r.means && !r.checked && !(typeof r.sure === "number" && r.sure < 0.65);
+  // WHETHER A READER PROPOSED ANYTHING AT ALL, and which of three piles a row
+  // landed in. Both are asked in more than one place, so both are answered in
+  // one: see calShow, where a row is put in its pile once and stays there.
+  const triagedRows = (rows) => (rows || []).some((x) => x && x.means);
+  const pileOf = (r) => (!r.said || !r.kind ? "ask" : r.mine === "no" ? "not" : "ready");
   // WHAT YOU SAID A LINE MEANT, LAST TIME YOU SAW IT. Keyed by the words on the
   // line, because that is all a calendar gives you and it is the same words
   // next term. See the store: this is recall of your own answer, not the app
@@ -190,11 +195,16 @@
         out.push(row);
         if (!row.date) return;
         (row.extras || []).forEach((x) => {
-          CP.alsoOn(String(x.value || ""), [], Number(String(row.date).slice(0, 4)) || 0, "")
+          const kids = CP.alsoOn(String(x.value || ""), [], Number(String(row.date).slice(0, 4)) || 0, "")
             // NOT THE ROW'S OWN DAY AGAIN. The extra usually repeats the line,
             // and the line begins with the date this row already is.
-            .filter((more) => more.date !== row.date && more.date !== row.endsOn)
-            .forEach((more) => out.push(more));
+            .filter((more) => more.date !== row.date && more.date !== row.endsOn);
+          // AND NAMED BY WHAT THEY BELONG TO, the same way this reader's own
+          // are. Without it the Sunday you are working came up called "is a
+          // working day, even week Tuesday schedule" — a row on your calendar
+          // with no notion of what for. The model's row is already the subject,
+          // so it is the subject; see underStem.
+          CP.underStem(String(row.label || ""), kids).forEach((more) => out.push(more));
         });
       });
       return out;
@@ -219,6 +229,19 @@
         };
       return x;
     });
+    // AND WHICH PILE EACH ONE IS IN, DECIDED ONCE, HERE.
+    //
+    // It was worked out afresh on every redraw, so answering a question moved
+    // that row out of the questions and into "ready" — the row you had just
+    // finished with vanished from under the cursor and everything below it
+    // jumped up a line. Do that three times in a list of twenty and you have
+    // lost your place and stopped trusting the list.
+    //
+    // The piles say what the READER made of it, which does not change while you
+    // work. What YOU made of it shows on the row, and in the button at the
+    // bottom, which counts live and is the thing that says what will happen.
+    const sorted = triagedRows(calRows);
+    calRows = calRows.map((x) => ({ ...x, pile: sorted ? pileOf(x) : "ask" }));
     calMeta = { ...r, rows: calRows };
     calNote = note || "";
     // A NEW DOCUMENT IS A NEW SET OF QUESTIONS. Kept choices would sit against
@@ -683,7 +706,7 @@
     // ONE SUMMARY, NOT TWO. Where the reading is sorted into piles, the piles
     // line below says what it came to; words() counting it again over the top
     // is the same fact twice, and the second one is the less useful of them.
-    const triaged = calRows.some((x) => x && x.means);
+    const triaged = triagedRows(calRows);
     if (words)
       words.textContent = calNote + C.words({ ...calMeta, rows: calRows, triaged }, calRows, calDay);
     // AND THE BUTTON SAYS HOW MANY, because "Put these in" over a list where
@@ -749,20 +772,13 @@
     // the tick off dropped into the folded-away pile and out of sight, which
     // reads as the app having agreed with you about something you never said.
     // It stays where it is, unticked, so you can put it back.
-    const pile = (r) => {
-      if (!r.said || !r.kind) return "ask";
-      if (r.mine === "no") return "not";
-      return "ready";
-    };
-    // AND ONLY WHERE THERE IS SOMETHING TO SORT.
     //
-    // With no reader proposing anything, every row is a question and the piles
-    // are one pile — except that answering a row would then move it into
-    // "ready" and the list would reshuffle itself under you as you worked down
-    // it, which is worse than the flat list it replaced. Nothing proposed,
-    // nothing sorted: the panel is exactly as it was. §0.1.
+    // WHICH PILE, THOUGH, IS NOT DECIDED HERE — it is on the row, put there
+    // when the reading arrived, so that nothing moves while you are working
+    // down it. See calShow. With no reader proposing anything there is nothing
+    // to sort and every row is a question, which is the panel as it was: §0.1.
     const piles = { ready: [], ask: [], not: [] };
-    calRows.forEach((r, i) => piles[triaged ? pile(r) : "ask"].push([r, i]));
+    calRows.forEach((r, i) => piles[(triaged && r.pile) || "ask"].push([r, i]));
     const some = triaged && piles.ready.length + piles.not.length > 0;
     // HOW TO ANSWER THEM, ONLY WHERE ANSWERING THEM IS THE JOB. With most of
     // the reading already proposed, a paragraph about which row to mark as
@@ -1074,6 +1090,21 @@
           ? `asking because ${r.checked}`
           : `the reader wasn't sure — it thought: ${r.why}`;
         row.appendChild(asked);
+      }
+      // AND THE WORDS IT IS ALL RESTING ON.
+      //
+      // "asking because that day isn't written near that line" is a claim about
+      // a document, and you cannot check a claim about a document against a
+      // memory of it — so answering meant going back to the PDF, finding the
+      // line, and coming back. The span the check was actually made against
+      // goes on the row instead. It is also the school's own wording, which is
+      // the thing a row's tidy name loses, kept one level down where it is
+      // there when you want it and not in the way when you don't.
+      if (r.source) {
+        const src = document.createElement("span");
+        src.className = "muted cal-hint cal-source";
+        src.textContent = `the document says: ${r.source}`;
+        row.appendChild(src);
       }
       // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
       //

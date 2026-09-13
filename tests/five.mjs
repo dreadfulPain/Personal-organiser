@@ -2032,14 +2032,22 @@ sec("One way of writing a date down");
   ok("today is Today", DT.dayWords(iso(0)) === "Today", DT.dayWords(iso(0)));
   ok("tomorrow is Tomorrow", DT.dayWords(iso(1)) === "Tomorrow", DT.dayWords(iso(1)));
   ok("yesterday is Yesterday", DT.dayWords(iso(-1)) === "Yesterday", DT.dayWords(iso(-1)));
+  // A DAY FAR ENOUGH OFF TO BE NONE OF THOSE THREE, WORKED OUT FROM TODAY.
+  //
+  // This was a date typed into the test — "some other date", which it was on the
+  // afternoon it was written and was not the morning it became tomorrow. Three
+  // checks then failed saying "Tomorrow", which is the app being exactly right,
+  // and a test that fails on two days in every three hundred is a test nobody
+  // can read a run of.
+  const FAR = iso(40);
   ok("anything else is written out, never left as digits",
-     !/^\d{4}-/.test(DT.dayWords("2026-09-14")) && /Sep/.test(DT.dayWords("2026-09-14")),
-     DT.dayWords("2026-09-14"));
+     !/^\d{4}-/.test(DT.dayWords(FAR)) && /\b[A-Z][a-z]{2}\b/.test(DT.dayWords(FAR)),
+     DT.dayWords(FAR));
   ok("with the day name, because knowing it's a Tuesday is half the information",
-     /Mon|Tue|Wed|Thu|Fri|Sat|Sun/.test(DT.dayWords("2026-09-14")), DT.dayWords("2026-09-14"));
+     /Mon|Tue|Wed|Thu|Fri|Sat|Sun/.test(DT.dayWords(FAR)), DT.dayWords(FAR));
   ok("and the year when it's something you'll read out of context",
-     /2026/.test(DT.dayWords("2026-09-14", { year: true, relative: false })),
-     DT.dayWords("2026-09-14", { year: true, relative: false }));
+     new RegExp(FAR.slice(0, 4)).test(DT.dayWords(FAR, { year: true, relative: false })),
+     DT.dayWords(FAR, { year: true, relative: false }));
   ok("nonsense gets nothing rather than a wrong date",
      DT.dayWords("") === "" && DT.dayWords("not a date") === "");
 
@@ -2049,7 +2057,7 @@ sec("One way of writing a date down");
      DT.daysWords(["2026-09-14", "2026-09-21", "2026-09-28"]) === "14, 21 and 28 Sep",
      DT.daysWords(["2026-09-14", "2026-09-21", "2026-09-28"]));
   ok("one date on its own is just that date",
-     /Sep/.test(DT.daysWords(["2026-09-14"])), DT.daysWords(["2026-09-14"]));
+     /\b[A-Z][a-z]{2}\b/.test(DT.daysWords([FAR])), DT.daysWords([FAR]));
   ok("across two months each one says which",
      (DT.daysWords(["2026-09-28", "2026-10-05"]).match(/Sep|Oct/g) || []).length === 2,
      DT.daysWords(["2026-09-28", "2026-10-05"]));
@@ -2773,7 +2781,8 @@ sec("A calendar you check three things on, not thirty");
       why: "listed under Holidays" },
     { label: "Professional Development (PD) Days for Teachers", date: "2026-10-13",
       endsOn: "", kind: "", extras: [], fromLine: L.pd, means: "noLessons", sure: 0.9,
-      mine: "yes", checked: "that day isn't written on that line", why: "a teacher training day" },
+      mine: "yes", checked: "that day isn't written near that line", why: "a teacher training day",
+      source: L.pd },
     { label: "Grade 11 - 12 Director Meeting", date: "2026-09-08", endsOn: "", kind: "",
       extras: [], fromLine: L.theirs, means: "week", sure: 0.88, mine: "no", checked: "",
       why: "a meeting for years 11 and 12" },
@@ -2853,8 +2862,17 @@ sec("A calendar you check three things on, not thirty");
      !!pd && A.deep(pd).some((c) => String(c.className || "").includes("cal-pick")),
      "it went through on the reader's say-so");
   ok("and the row says that is why",
-     pd && A.within(pd, /that day isn't written on that line/).length > 0,
+     pd && A.within(pd, /that day isn't written near that line/).length > 0,
      pd && A.deep(pd).map((c) => c.textContent).join(" | ").slice(0, 200));
+  // AND SHOWS YOU THE WORDS IT IS TALKING ABOUT.
+  //
+  // "that day isn't written near that line" is a claim about a document, and
+  // answering it meant going back to the PDF, finding the line and coming back
+  // — for each one. The span the check was made against goes on the row, which
+  // is also the school's own wording rather than the tidy name in front of it.
+  ok("with the document's own words under it, so you can settle it there",
+     pd && A.within(pd, /Oct\. 16, Nov\. 13/).length > 0,
+     pd && A.deep(pd).map((c) => c.textContent).join(" | ").slice(0, 300));
   // A READER THAT SAYS IT IS UNSURE IS TAKEN AT ITS WORD — in that direction
   // only. It may ask for help; it may never wave anything through.
   const sports = rowSaying(r, "Sports Week");
@@ -2872,6 +2890,7 @@ sec("A calendar you check three things on, not thirty");
   // ONE BUTTON, AND IT SAYS HOW MANY.
   ok("one button, counting what it will do", /Put these 2 in/.test(String(r.get("#calAdd").textContent)),
      String(r.get("#calAdd").textContent));
+
   const add = r.get("#calAdd");
   add.fire("click", { target: add });
   await r.settle();
@@ -2882,6 +2901,51 @@ sec("A calendar you check three things on, not thirty");
      JSON.stringify(kept.map((b) => b.label)));
   ok("nor the ones that aren't yours", !kept.some((b) => /Director/.test(b.label)),
      JSON.stringify(kept.map((b) => b.label)));
+
+  // AND ANSWERING ONE DOES NOT REARRANGE THE OTHERS UNDER YOU.
+  //
+  // The piles were worked out afresh on every redraw, so the moment you
+  // answered a question that row left the questions and reappeared in "ready"
+  // further down the page — the row you had just finished with vanished from
+  // under the cursor and everything below it jumped up a line. Twice down a
+  // list of twenty and you have lost your place; three times and you stop
+  // believing the list. What the READER made of it does not change while you
+  // work. What YOU made of it is on the row, and in the button.
+  {
+    const r2 = await openCal();
+    const order = () => calRowsOf(r2).map((n) => String((n.children[0] || {}).textContent || ""));
+    const before = order();
+    const pdRow = rowSaying(r2, "Professional Development");
+    const pick = A.deep(pdRow).find((c) => String(c.className || "").includes("cal-pick") &&
+      String(c.textContent) === "no lessons");
+    ok("the row being asked about offers an answer", !!pick,
+       A.deep(pdRow).map((c) => c.textContent).join(" | ").slice(0, 200));
+    if (pick) pick.fire("click", { target: pick });
+    await r2.settle();
+    ok("answering one leaves every row exactly where it was",
+       JSON.stringify(order()) === JSON.stringify(before),
+       `${JSON.stringify(before)}\n   became ${JSON.stringify(order())}`);
+    const after = rowSaying(r2, "Professional Development");
+    ok("and it is still where you answered it, with your answer on it",
+       !!after && A.deep(after).some((c) => /cal-pick/.test(String(c.className || "")) &&
+         / on\b/.test(String(c.className || "")) && String(c.textContent) === "no lessons"),
+       "the row moved, or lost the answer");
+    // THE COUNT IS WHERE THE CHANGE SHOWS. One thing does move when you answer
+    // something, and it is the button that says what is going to happen.
+    ok("and the button below has counted it",
+       /Put these 3 in/.test(String(r2.get("#calAdd").textContent)),
+       String(r2.get("#calAdd").textContent));
+    // AND THE ONE STILL WAITING ON YOU IS NOT IN THAT NUMBER, and cannot be
+    // carried in by the press that takes the rest.
+    const go = r2.get("#calAdd");
+    go.fire("click", { target: go });
+    await r2.settle();
+    const in2 = (r2.state.schedule || []).map((b) => b.label);
+    ok("while the one still waiting on you stays out of it",
+       !in2.some((l) => /Sports/.test(String(l))), JSON.stringify(in2));
+    ok("and the one you answered goes in", in2.some((l) => /Professional/.test(String(l))),
+       JSON.stringify(in2));
+  }
 }
 
 sec("And the days a holiday is paid for with come out of the brackets");
@@ -2941,6 +3005,14 @@ sec("And the days a holiday is paid for with come out of the brackets");
     ok(`${how}: while still asking what it is`,
        A.within(sun, /./).filter((c) => / on\b/.test(String(c.className || ""))).length === 0,
        "it arrived already answered");
+    // AND SAYS WHAT IT BELONGS TO.
+    //
+    // Read here, the Sunday is called "National Day — is a working day, even
+    // week Tuesday schedule". Read by the model it was called "is a working
+    // day, even week Tuesday schedule" — a day on your calendar with no notion
+    // of what for — because naming these lived inside one of the two readers.
+    ok(`${how}: and says which holiday it is paying for`,
+       /National Day/.test(headOf(sun)), headOf(sun));
   }
 
   // AND PRESSING "runs another day" FINDS THE WEEKDAY ALREADY THERE, all the

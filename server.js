@@ -1263,7 +1263,7 @@ RULES
 - NEVER WORK OUT A DATE THAT IS NOT WRITTEN. If a line does not give one, leave "date" empty rather than choosing a likely day.
 - Never invent an entry that is not in the text. An empty list is a fine answer.
 
-- "said": the line of the document this entry came from, COPIED EXACTLY. Not tidied, not shortened. It is checked against the document, so an entry whose "said" is not in the text is thrown away.
+- "said": the words of the document this entry came from, COPIED EXACTLY. Not tidied, not shortened. It is looked for in the document, so an entry whose "said" is not in the text is thrown away — and the date you gave is looked for beside it, so quote enough of the document to take the date in.
 
 - "extras": anything else the line says that none of the fields above can hold — a room, a year group, who it is for, a note — as {"name","value"} pairs, named however the document names it. If the document says it, it can go in.
 
@@ -1361,28 +1361,122 @@ const MEANS = ["off", "noLessons", "week", "runsAs", "due", "lessons"];
 // about is what can be VERIFIED against the document:
 //
 //   "said"  — the line it claims to come from is really in the text.
-//   "date"  — the day it landed on is really written on that line.
+//   "date"  — the day it landed on is really written where that line is.
 //
 // Both are cheap, neither can be talked round, and the second is exactly the
 // check the invented October 13th fails.
-function checked(text, said, date, endsOn) {
-  const flat = (x) => String(x || "").replace(/\s+/g, " ").trim().toLowerCase();
-  const hay = flat(text);
-  if (!said || hay.indexOf(flat(said)) < 0) return "line not in the document";
+//
+// NOT "ON THAT LINE", THOUGH — see evidence(). A PDF has no lines.
+function verify(doc, said, date, endsOn) {
+  const span = evidence(doc, said);
+  if (span === null) return { checked: "line not in the document", source: "" };
   // A repeating rule has no date to look for.
-  if (!date) return "";
-  const has = (iso) => !iso || onTheLine(said, iso);
-  if (!has(date)) return "that day isn't written on that line";
-  if (!has(endsOn)) return "the day it ends isn't written on that line";
-  return "";
+  if (!date) return { checked: "", source: span };
+  const has = (iso) => !iso || writtenIn(span, iso);
+  if (!has(date)) return { checked: "that day isn't written near that line", source: span };
+  if (!has(endsOn))
+    return { checked: "the day it ends isn't written near that line", source: span };
+  return { checked: "", source: span };
 }
 
-// IS THIS DAY WRITTEN ON THIS LINE — in any of the ways a calendar writes one.
+// WHERE IN THE DOCUMENT THIS CAME FROM — as a SPAN, not a line.
+//
+// "Is the date written on the line it quoted" was the right question asked a
+// shade too literally. A PDF does not have lines; it has runs of text, laid out
+// by position, and whatever puts them back into a string is guessing. So an
+// extractor will happily hand back
+//
+//     PD Days for Teachers
+//     Oct. 16, Nov. 13
+//
+// for one visual row, or put a table's date in the cell above its name. The day
+// IS written where the entry is — it is just not inside the sentence the reader
+// quoted, and a line-by-line check sends a perfectly good reading back as a
+// question every time.
+//
+// So the evidence is the quote PLUS a neighbour that could not be an entry of
+// its own: a fragment carrying dates and no words. That is the shape a split
+// makes, and it is not the shape a different entry makes — "Art Festival Oct.
+// 13" on the next line has a name of its own and is never borrowed from, which
+// is what keeps the invented 13th of October caught.
+//
+// One neighbour each way, never more, so this stays a bounded span and not a
+// slow slide into "somewhere in the document".
+const SPAN_CAP = 400;
+function evidence(doc, said) {
+  const { text, flat, map, starts } = doc;
+  const q = String(said || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!q) return null;
+  const at = flat.indexOf(q);
+  if (at < 0) return null;
+  const a = map[at], b = map[at + q.length - 1] + 1;
+  const lineAt = (i) => { let n = 0; while (n + 1 < starts.length && starts[n + 1] <= i) n++; return n; };
+  const endsAt = (n) => (n + 1 < starts.length ? starts[n + 1] - 1 : text.length);
+  const first = lineAt(a), last = lineAt(b - 1);
+  // Nothing but spacing and punctuation between the quote and the edge of its
+  // line: anything else and the quote is in the middle of something, so the
+  // next line is a different something.
+  const spare = /^[\s\p{P}]*$/u;
+  let from = a, to = b;
+  if (last + 1 < starts.length && spare.test(text.slice(b, endsAt(last)))) {
+    const s = starts[last + 1], e = endsAt(last + 1);
+    if (datesOnly(text.slice(s, e))) to = e;
+  }
+  if (first > 0 && spare.test(text.slice(starts[first], a))) {
+    const s = starts[first - 1], e = endsAt(first - 1);
+    if (datesOnly(text.slice(s, e))) from = s;
+  }
+  return text.slice(from, to).replace(/\s+/g, " ").trim().slice(0, SPAN_CAP);
+}
+
+// THE DOCUMENT, READ THROUGH ONCE FOR ALL OF THEM.
+//
+// Every run of spacing squeezed to one space, so a quote can be found however
+// the reader and the document disagree about whitespace; a map back to where
+// each character really was, so the span can be handed back in the document's
+// own words; and where the lines begin. Three hundred entries against a
+// twenty-thousand-character calendar is three hundred passes over it if this is
+// done per row, which is half a second of nothing.
+function prepare(text) {
+  const s = String(text || "");
+  const out = [], map = [], starts = [0];
+  let gap = false;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\n") starts.push(i + 1);
+    if (/\s/.test(s[i])) { gap = true; continue; }
+    if (gap && out.length) { out.push(" "); map.push(i); }
+    gap = false;
+    out.push(s[i].toLowerCase()); map.push(i);
+  }
+  return { text: s, flat: out.join(""), map, starts };
+}
+
+// A FRAGMENT THAT CANNOT BE AN ENTRY: dates, times, weekdays and joining words,
+// and no name of its own. Something has to own it, and the only candidate is
+// what it is sitting against.
+function datesOnly(s) {
+  const t = String(s || "");
+  if (!/\d/.test(t)) return false;
+  const left = t
+    .replace(/\d{4}-\d{2}-\d{2}/g, " ")
+    .replace(/\b\d{1,2}:\d{2}\b/g, " ")
+    .replace(/\b\d{1,4}(?:[-/.]\d{1,4}){1,2}\b/g, " ")
+    .replace(new RegExp(`\\b(?:${MONTHS_SHORT.join("|")})[a-z]*\\.?`, "gi"), " ")
+    .replace(new RegExp(`\\b(?:${DAYS_SHORT.join("|")})[a-z]*\\.?`, "gi"), " ")
+    .replace(/\b\d{1,4}(?:st|nd|rd|th)?\b/gi, " ")
+    .replace(/\b(?:to|and|of|until|till|from)\b/gi, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+  return left === "";
+}
+
+// IS THIS DAY WRITTEN HERE — in any of the ways a calendar writes one.
 // Deliberately generous: the question is "did it come from here", not "is it
 // formatted the way I like".
 const MONTHS_SHORT = ["jan", "feb", "mar", "apr", "may", "jun",
                       "jul", "aug", "sep", "oct", "nov", "dec"];
-function onTheLine(said, iso) {
+const DAYS_SHORT = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+function writtenIn(said, iso) {
   const s = String(said || "").toLowerCase();
   const y = iso.slice(0, 4), m = Number(iso.slice(5, 7)), d = Number(iso.slice(8, 10));
   if (s.indexOf(iso) >= 0) return true;
@@ -1425,6 +1519,8 @@ async function handleCalendar(res, body) {
       `\nTurn this calendar into entries:\n"""\n${sent}\n"""`,
       CALENDAR_SCHEMA, "calendar");
     const rows = [];
+    // Read through once, for every row that is about to be checked against it.
+    const doc = prepare(text);
     // A ROW THAT VANISHED IS INVISIBLE; A ROW MARKED "couldn't read this" IS
     // FIXABLE. You can check a list for what is wrong on it and never for what
     // is not on it at all.
@@ -1457,6 +1553,10 @@ async function handleCalendar(res, body) {
         unreadable.push({ label, at: (e.date || "").toString().slice(0, 40), why });
         return;
       }
+      // WHAT THE DOCUMENT ITSELF SAYS ABOUT THIS ENTRY, found once and used for
+      // both the question and the showing of it. Asked twice it would be two
+      // answers to drift apart.
+      const seen = verify(doc, said, date, endsOn);
       rows.push({
         label, date, endsOn,
         // A REPEAT AND A DATE ARE DIFFERENT ANSWERS. Something on a date does
@@ -1470,7 +1570,7 @@ async function handleCalendar(res, body) {
         // `kind` is still the person's answer. This is a PROPOSAL: shown in
         // plain English, ticked where it can be trusted, and changed with one
         // press. What is not done is asking the model how sure it is and
-        // believing the number — see checked().
+        // believing the number — see verify().
         means: MEANS.indexOf(e.means) >= 0 ? e.means : "",
         runsAsFrom: Number.isInteger(Number(e.runsAsDay)) &&
           Number(e.runsAsDay) >= 0 && Number(e.runsAsDay) <= 6 ? Number(e.runsAsDay) : undefined,
@@ -1484,7 +1584,12 @@ async function handleCalendar(res, body) {
         // answered it, and one word meaning two things is how a row comes back
         // looking answered because a model quoted a document.
         fromLine: said,
-        checked: checked(text, said, date, endsOn),
+        checked: seen.checked,
+        // THE DOCUMENT'S OWN WORDS THAT BACK IT — the span the check was made
+        // against, not the reader's quote of it. Kept so the page can show what
+        // a reading actually rests on: a conclusion you cannot see the grounds
+        // for is one you can only take or leave.
+        source: seen.source,
         kind: "",
         line: said || label,
         yearAssumed: false,

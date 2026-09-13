@@ -496,7 +496,13 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
      by("Mid-Autumn Festival") && by("Mid-Autumn Festival").checked === "",
      JSON.stringify(by("Mid-Autumn Festival")));
   ok("and one the document does not contain is sent back as a question",
-     by("PD Days") && /isn't written on that line/.test(by("PD Days").checked || ""),
+     by("PD Days") && /isn't written near that line/.test(by("PD Days").checked || ""),
+     JSON.stringify(by("PD Days")));
+  // THE 16th AND THE 13th OF NOVEMBER, AND NEVER THE 13th OF OCTOBER. The exact
+  // reading that started all of this, kept as a check so it cannot come back:
+  // the day the entry landed on must be one of the two days written beside it.
+  ok("the invented day is the one that is refused, by name",
+     by("PD Days") && by("PD Days").date === "2026-10-13" && by("PD Days").checked,
      JSON.stringify(by("PD Days")));
   ok("with what it thought, so the page can say what it is asking about",
      by("PD Days") && by("PD Days").means === "off" && by("PD Days").why,
@@ -509,6 +515,67 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   ok("a line the document doesn't have is a question too",
      (made.rows || [])[0] && /not in the document/.test(made.rows[0].checked || ""),
      JSON.stringify(made.rows));
+}
+
+{
+  // A PDF HAS NO LINES, so "is the date on that line" was the right question
+  // asked a shade too literally.
+  //
+  // Text comes out of a PDF as runs placed by position, and whatever puts them
+  // back into a string is guessing. One visual row of a table arrives as
+  //
+  //     Professional Development Days for Teachers
+  //     Oct. 16, Nov. 13
+  //
+  // and a reader that quotes the name and dates it correctly from the fragment
+  // underneath was being sent back as a question every single time — the check
+  // punishing the extractor's line breaks rather than the reader's invention.
+  //
+  // So the evidence is a bounded SPAN: the quote, plus one neighbour that could
+  // not be an entry of its own — dates and no name. See evidence().
+  const split = (date) => askCal({ year: 2026, text: [
+    ["PD Days", date, "", "", "", "", "Professional Development Days for Teachers"].join("\t"),
+    "Oct. 16, Nov. 13",
+  ].join("\n") });
+  const right = (await split("2026-10-16")).rows.find((r) => r.label === "PD Days");
+  ok("a date the extractor put on the next run still counts as written",
+     right && right.checked === "", JSON.stringify(right));
+  // AND THE SPAN IS WHAT IT SAYS IT IS, so the page can show the grounds rather
+  // than assert them.
+  ok("and the row carries the document's own words that say so",
+     right && /Professional Development Days for Teachers Oct\. 16, Nov\. 13/.test(right.source || ""),
+     JSON.stringify(right && right.source));
+  const wrong = (await split("2026-10-13")).rows.find((r) => r.label === "PD Days");
+  ok("while the invented day is still refused across the break",
+     wrong && /isn't written near that line/.test(wrong.checked || ""), JSON.stringify(wrong));
+  // AND THE LINE NEXT DOOR IS NOT BORROWED FROM WHEN IT IS SOMEBODY ELSE'S.
+  //
+  // This is the whole safety of the widening: a fragment with a name of its own
+  // is an entry, and an entry's dates belong to it. Without this the 13th of
+  // October would be "written nearby" on any calendar that happens to have
+  // something else on the 13th — which is most of them.
+  const near = await askCal({ year: 2026, text: [
+    ["PD Days", "2026-10-13", "", "", "", "", "Professional Development Days for Teachers"].join("\t"),
+    "Art Festival Oct. 13",
+  ].join("\n") });
+  const borrowed = (near.rows || []).find((r) => r.label === "PD Days");
+  ok("a date on a line that has its own name is not borrowed",
+     borrowed && /isn't written near that line/.test(borrowed.checked || ""),
+     JSON.stringify(borrowed));
+
+  // AND A WEEK NUMBER IS NOT A DAY OF THE MONTH.
+  //
+  // "Art Festival: Week 16 - Week 17" came back as the 16th and 17th of
+  // December — a fortnight out, and reading exactly like an answer. The prompt
+  // says not to; the check is what makes it not matter whether it listened,
+  // because 16 next to the word Week is not December written down.
+  const weeks = await askCal({ year: 2026, text: [
+    ["Art Festival", "2026-12-16", "2026-12-17", "", "", "",
+     "Art Festival: Week 16 - Week 17"].join("\t"),
+  ].join("\n") });
+  const art = (weeks.rows || [])[0];
+  ok("a week number read as a day of the month is sent back to be asked about",
+     art && /isn't written near that line/.test(art.checked || ""), JSON.stringify(art));
 }
 
 {

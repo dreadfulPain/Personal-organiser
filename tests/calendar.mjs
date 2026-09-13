@@ -19,7 +19,11 @@ import zlib from "node:zlib";
 
 const REPO = REPO_ROOT;
 const PUB = path.join(REPO, "public");
-const SCRATCH = "/tmp/claude-0/-home-user-Personal-organiser/2a3fbe32-10e5-5444-988f-643a421d1a40/scratchpad";
+// WHERE A REAL SCHOOL CALENDAR GOES IF YOU HAVE ONE. Never committed — see
+// tests/fixtures/README.md — and named in one place, because this was pointed
+// at a scratch folder belonging to one machine on one afternoon, which meant
+// the check below could not run for anybody and said so to nobody.
+const FIXTURES = path.join(REPO, "tests", "fixtures");
 let pass = 0, fail = 0;
 const gaps = [];
 const ok = (n, c, e) => {
@@ -288,9 +292,9 @@ sec("The year, when the line doesn't carry one");
 
 sec("The real document the school actually sent");
 {
-  const f = path.join(SCRATCH, "school.pdf");
+  const f = path.join(FIXTURES, "school.pdf");
   if (!fs.existsSync(f)) {
-    gap("school.pdf isn't here — the real-document check was skipped (it is never committed)");
+    gap("tests/fixtures/school.pdf isn't here — the real-document check was skipped (it is never committed)");
   } else {
     const buf = fs.readFileSync(f);
     const got = await PDF.read(new Uint8Array(buf).buffer);
@@ -657,6 +661,59 @@ sec("A line can name more than one date, and the second one is usually the impor
   ok("a plain range is one row with two ends", half.length === 1 &&
      half[0].date === "2026-10-25" && half[0].endsOn === "2026-10-29",
      JSON.stringify(half));
+}
+
+sec("The lines off the real calendar that were read wrong, kept as checks");
+{
+  const CP = sb.OrganiserCalPlan;
+  // THREE READINGS FROM ONE AFTERNOON'S USE OF THIS PANEL. Every one of them
+  // looked perfectly reasonable on screen, which is what makes them worth
+  // nailing down: a wrong date on a calendar does not announce itself, it just
+  // quietly moves a training day or books a festival in the wrong month.
+  //
+  // ONE: two days on one line, and never the day between them.
+  const pd = CP.read("Professional Development (PD) Days for Teachers: Oct. 16, Nov. 13",
+    { year: 2026 }).rows;
+  ok("two training days on one line are two days",
+     pd.map((r) => r.date).join(",") === "2026-10-16,2026-11-13",
+     JSON.stringify(pd.map((r) => `${r.date} ${r.label}`)));
+  // THE ONE A MODEL ACTUALLY PRODUCED: one entry, dated the 13th of October — a
+  // day that is in neither half of that line. Nothing in this app may reach it.
+  ok("and the 13th of October, which is in neither half of it, is nowhere",
+     !pd.some((r) => r.date === "2026-10-13"), JSON.stringify(pd.map((r) => r.date)));
+  // AND BOTH SAY WHAT THEY ARE. The second had nothing but a date in its clause,
+  // so it came out called "(no name)" — the one row on the page you could not
+  // recognise was the row you most needed to.
+  ok("and both of them are called something",
+     pd.every((r) => /Professional Development/.test(r.label)),
+     JSON.stringify(pd.map((r) => r.label)));
+
+  // TWO: a week number is where in the term something falls, not what date it
+  // is. "Week 16 - Week 17" came back as the 16th and 17th of December — which
+  // is a fortnight out and looks exactly like a real answer.
+  const art = CP.read("Art Festival: Week 16 - Week 17", { year: 2026 }).rows;
+  ok("a week number is not a day of the month", art.length === 0,
+     JSON.stringify(art.map((r) => `${r.date} ${r.label}`)));
+  const sports = CP.read("School Events & PD Days: Sports Week: Tentatively Week 7",
+    { year: 2026 }).rows;
+  ok("and neither is a tentative one", sports.length === 0,
+     JSON.stringify(sports.map((r) => `${r.date} ${r.label}`)));
+
+  // THREE: the holiday, and the two weekend days you work to pay for it. Read
+  // above as well — this is the whole line, in one piece, the way it arrives.
+  const nat = CP.read("National Day: Oct. 1 - Oct. 7 (Sep. 20 is a working day, even " +
+    "week Tuesday schedule; Oct. 10 is a working day, even week Wednesday schedule)",
+    { year: 2026 }).rows;
+  const on = (d) => nat.find((r) => r.date === d);
+  ok("the week off and the two days that pay for it are three rows",
+     nat.length === 3 && on("2026-10-01").endsOn === "2026-10-07",
+     JSON.stringify(nat.map((r) => `${r.date}→${r.endsOn}`)));
+  ok("with the Sunday running a Tuesday and the Saturday a Wednesday",
+     on("2026-09-20") && on("2026-09-20").runsAsDay === 2 &&
+     on("2026-10-10") && on("2026-10-10").runsAsDay === 3,
+     JSON.stringify(nat.map((r) => `${r.date}:${r.runsAsDay}`)));
+  ok("and not one of the three decided for you",
+     nat.every((r) => !r.kind), JSON.stringify(nat.map((r) => r.kind)));
 }
 
 sec("A deadline in January is next January");

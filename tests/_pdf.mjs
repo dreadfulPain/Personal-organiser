@@ -200,3 +200,72 @@ export function nomapPdf() {
     "<< /Type /Font /Subtype /TrueType /BaseFont /AAAAAA+Sample /FirstChar 1 /LastChar 8 >>",
   ]);
 }
+
+// 5. A TJ ARRAY WITH A BRACKET INSIDE ONE OF ITS STRINGS.
+//
+// A PDF's fonts are subsets, and a subset can map any byte to any character —
+// so a font that draws "~" with the code 0x5b puts a literal "[" in the content
+// stream, inside a string, in the middle of a TJ array. Matching the array as
+// "[ anything but a bracket ]" then fails, the scan moves on, finds the NEXT
+// "]" and matches from the bracket INSIDE the string: everything before it is
+// dropped, silently.
+//
+// On a real school calendar that deleted the front of five lines — "• First
+// Semester: Sep. 1, 2026 ~ Jan. 22, 2027" arrived as "Jan. 22, 2027" — so four
+// dates reached the page with no name on them, and nothing said a word had
+// gone missing. This is that line, in miniature: the front of it is the part
+// that must survive.
+export function bracketPdf() {
+  // THE BYTE IN THE FILE IS A BRACKET. That is the whole fixture: the font's
+  // map below says the character is a tilde, and the reader must believe the
+  // map rather than the byte — while still finding the end of the array.
+  const content =
+    "BT /F1 11 Tf 60 700 Td [ (First Semester: Sep. 1) -2 ([) -2 ( Jan. 22) ] TJ ET";
+  return pdf([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(content),
+    // The map that makes "[" mean "~" — which is the whole point: the byte in
+    // the file is a bracket, and the reader must not read it as one.
+    "<< /Type /Font /Subtype /TrueType /BaseFont /AAAAAB+Sample /FirstChar 32 " +
+      "/LastChar 126 /ToUnicode 6 0 R >>",
+    // Identity either side of the bracket, and the bracket itself mapped to a
+    // tilde. Overlapping ranges would make this a test of which block the reader
+    // happens to apply last; these do not overlap, so it is a test of the one
+    // thing it is for.
+    stream("/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n" +
+      "1 begincodespacerange <00><FF> endcodespacerange\n" +
+      "3 beginbfrange\n<20><5a><0020>\n<5b><5b><007e>\n<5c><7e><005c>\n" +
+      "endbfrange\nendcmap end end"),
+  ]);
+}
+
+// 6. ONE LINE DRAWN AS FOUR TEXT OBJECTS.
+//
+// A PDF does not have lines: it has marks at positions. A typesetter that
+// switches font mid-number — which is what a subset font does at a digit it has
+// not got — draws one visual line as several text objects, each with its own
+// position, each ending in ET. So "Christmas Holiday: Dec. 22-Dec. 25" arrives
+// as four, and read as written the twenty-second of December is the second:
+// three weeks of holiday in the wrong place, with nothing on the screen to say
+// so.
+//
+// The reader mends this. It mended it in the TEXT and not in the ROWS — and the
+// rows are what anything wanting the document's columns reads, which on a
+// school calendar is everything, because of the term grid at the top. So the
+// same file out of the same function said two different things. This fixture is
+// here to make them go on saying one.
+export function cutPdf() {
+  const at = (x, text) =>
+    `q BT 42 0 0 42 ${x} -100 Tm /F1 1 Tf (${text}) Tj ET Q `;
+  const content =
+    at(100, "Christmas Holiday: Dec. 2") + at(560, "2") + at(590, "-") + at(615, "Dec. 25");
+  return pdf([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(content),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ]);
+}

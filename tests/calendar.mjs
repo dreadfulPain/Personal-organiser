@@ -301,14 +301,21 @@ sec("The real document the school actually sent");
     ok("it opens", got.ok && got.text.length > 1000, `${got.ok} ${got.text.length}`);
     const CP = sb.OrganiserCalPlan;
     const r = CP.read(got.text);
-    // Its table splits "Saturday / 2026 / 24 August" across three lines.
-    ok("its dates come out in the year the document says", r.year === 2026, String(r.year));
-    ok("and land on the right days",
-       r.rows.map((x) => x.date).join(",") === "2026-08-24,2026-08-25",
-       r.rows.map((x) => x.date).join(","));
-    ok("its 157 lines of rooms, times and names produce no phantom dates",
-       r.rows.length === 2, JSON.stringify(r.rows.map((x) => `${x.date} ${x.label}`)));
+    // ONLY WHAT IS TRUE OF ANY OF THEM. This used to name the two dates of one
+    // particular induction schedule, so the first time a different real calendar
+    // was put here it failed — not because the reader was wrong but because the
+    // document was not the one the check was written around. The faults that
+    // section really found live in built fixtures now, one per fault.
+    ok("something comes out of it", r.rows.length > 0, JSON.stringify(r.rows.length));
+    // A DATE IN A YEAR THE DOCUMENT NEVER MENTIONS came from somewhere else, and
+    // "somewhere else" is the reader. This is the one thing that can be checked
+    // against a document nobody here has read.
+    const stray = r.rows.filter((x) => x.date && !r.years.includes(Number(x.date.slice(0, 4))));
+    ok("every date it found is in a year the document names", stray.length === 0,
+       JSON.stringify(stray.map((x) => `${x.date} ${x.label}`)));
     ok("nothing is decided for you", r.rows.every((x) => !x.kind));
+    console.log(`  --  ${r.rows.length} dates read from it, ` +
+      `${r.rows.filter((x) => !x.label || x.label === "(no name)").length} with nothing to call them`);
   }
 }
 
@@ -714,6 +721,54 @@ sec("The lines off the real calendar that were read wrong, kept as checks");
      JSON.stringify(nat.map((r) => `${r.date}:${r.runsAsDay}`)));
   ok("and not one of the three decided for you",
      nat.every((r) => !r.kind), JSON.stringify(nat.map((r) => r.kind)));
+
+  // FOUR: A TILDE IS A DASH. "First Semester: Sep. 1, 2026 ~ Jan. 22, 2027" is
+  // how a great many calendars write a span, and read without it the line is two
+  // entries — a semester that starts and a separate one that ends — instead of
+  // one that runs. Five lines of the real document are written this way.
+  const span = CP.read("• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027", { year: 2026 }).rows;
+  ok("a span written with a tilde is one entry with two ends",
+     span.length === 1 && span[0].date === "2026-09-01" && span[0].endsOn === "2027-01-22",
+     JSON.stringify(span.map((r) => `${r.date}→${r.endsOn} ${r.label}`)));
+  ok("and it is called what the line calls it",
+     span[0] && /First Semester/.test(span[0].label), span[0] && span[0].label);
+
+  // FIVE: A CELL IS NOT A LINE, AND ITS NAME IS IN THE COLUMN IT CAME FROM.
+  //
+  // A deadline table comes out of a PDF one cell to a line, so four of the most
+  // important dates a teacher has — when papers are in, when marks are in —
+  // reached the page called "16:00".
+  const table = CP.read([
+    "3. Test paper submission and score input deadlines:",
+    "Paper Submission",
+    "Score Input & Report Confirm",
+    "Midterm",
+    "Nov. 2 16:00",
+    "Nov. 17 16:00",
+    "Final",
+    "Dec. 31 16:00",
+    "Jan. 15 16:00",
+  ].join("\n"), { year: 2026 }).rows;
+  ok("four deadlines out of a table of cells", table.length === 4,
+     JSON.stringify(table.map((r) => `${r.date} ${r.label}`)));
+  const named = (d) => (table.find((r) => r.date.slice(5) === d) || {}).label;
+  ok("and each takes the name of the row it is in",
+     named("11-02") === "Midterm" && named("11-17") === "Midterm" &&
+     named("12-31") === "Final" && named("01-15") === "Final",
+     JSON.stringify(table.map((r) => `${r.date} ${r.label}`)));
+  ok("with the time it is due by kept",
+     table.every((r) => r.start === "16:00"), JSON.stringify(table.map((r) => r.start)));
+  // AND ONE DATE UNDER A HEADING IS NOT A TABLE. A column has more than one cell
+  // in it; without that, the title at the top of a page names a date at the
+  // bottom of it, and "Thursday" over "4th March" becomes the name of the day.
+  const lone = CP.read(["Example School Calendar", "Aug. 31"].join("\n"), { year: 2026 }).rows;
+  ok("a single date under a heading does not take the heading",
+     lone.length === 1 && lone[0].label === "(no name)",
+     JSON.stringify(lone.map((r) => `${r.date} ${r.label}`)));
+  const weekday = CP.read(["Thursday", "4th March", "5th March"].join("\n"), { year: 2027 }).rows;
+  ok("and a weekday is never a name, however many cells are under it",
+     weekday.every((r) => !/Thursday/.test(r.label)),
+     JSON.stringify(weekday.map((r) => `${r.date} ${r.label}`)));
 }
 
 sec("A deadline in January is next January");

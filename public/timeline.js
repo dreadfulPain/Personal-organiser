@@ -99,6 +99,9 @@
   // that line every time you answer a question about a row, and a message
   // written after it disappears at the first click.
   let calNote = "";
+  // WHETHER THE LAST ASKING CAME TO NOTHING — so the offer can say "again"
+  // rather than pretending this is the first time. Cleared by a reading landing.
+  let calFailed = false;
   // WHICH READY ROWS YOU HAVE OPENED UP TO ARGUE WITH. A row the reader got
   // right is one line; pressing "change" on it turns that one back into the
   // full set of choices, and it stays open while you decide.
@@ -242,6 +245,7 @@
     // bottom, which counts live and is the thing that says what will happen.
     const sorted = triagedRows(calRows);
     calRows = calRows.map((x) => ({ ...x, pile: sorted ? pileOf(x) : "ask" }));
+    calFailed = false;
     calMeta = { ...r, rows: calRows };
     calNote = note || "";
     // A NEW DOCUMENT IS A NEW SET OF QUESTIONS. Kept choices would sit against
@@ -385,6 +389,14 @@
   function calFallBack(why, whole) {
     // `whole` says the message is already a finished sentence and needs no
     // "so:" welded onto the end of it.
+    //
+    // AND THE WAY BACK IS ON THE SCREEN. Every one of these means the same thing
+    // to the person reading it: the model did not give you a reading, so here is
+    // the plain one and here are the questions. What none of them said was that
+    // it could be asked again — the offer beside it went on reading "let the
+    // model read it too", which is an invitation to do a thing that has just
+    // failed, so the whole panel read as if this were simply how it works.
+    calFailed = true;
     calNote = whole ? why + " What was read here is still below. " : why + " ";
     renderCal();
   }
@@ -730,7 +742,10 @@
     // OFFERED ONLY WHERE THERE IS SOMETHING TO ASK, and while a question is out
     // it is the way to stop waiting rather than a second way to ask.
     if (more) more.hidden = !calText.trim() || !(aiHere || asking);
-    if (btn2) btn2.textContent = asking ? "stop waiting" : "let the model read it too";
+    if (btn2)
+      btn2.textContent = asking
+        ? "stop waiting"
+        : calFailed ? "try the model again" : "let the model read it too";
     if (why)
       why.textContent = asking
         ? "It gets two minutes, then it gives up on its own and what was read here stays."

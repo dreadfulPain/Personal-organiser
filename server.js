@@ -633,12 +633,32 @@ async function callAnthropic(cfg, system, user, schema) {
 // stops working, and it used to surface as "I can't reach the app" — which
 // points at the wrong thing entirely. The app was fine; Ollama was off. So:
 // name the real cause, and say what to do about it.
+// WHY IT DIDN'T WORK, IN WORDS, EVERY TIME.
+//
+// This answered only when the failure looked like a connection being refused,
+// and said nothing at all otherwise — so a model that timed out, or answered
+// with something that was not JSON, or handed back an error, all came out as
+// "Couldn't read that just now". On a real calendar that is the difference
+// between "start Ollama" and "it is running and this document is too big for
+// it", and the person is left with neither, in front of a page of manual work
+// they were told they would not have to do.
+//
+// Each of these is a thing that has actually happened. The last line is the
+// honest fallback: whatever it said, said plainly, rather than nothing.
 function offlineReason(cfg, e) {
   const m = (e && e.message) || "";
-  const looksOffline = /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|timed? out/i.test(m);
-  if (!looksOffline || !cfg || !cfg.baseUrl) return "";
-  const name = cfg.engine === "ollama" ? "Ollama" : "your local AI";
-  return `${name} isn't answering at ${cfg.baseUrl} — is it running?`;
+  const name = cfg && cfg.engine === "ollama" ? "Ollama" : "your local AI";
+  const where = cfg && cfg.baseUrl ? ` at ${cfg.baseUrl}` : "";
+  if (/fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network/i.test(m))
+    return `${name} isn't answering${where} — is it running?`;
+  if (/abort|timed? ?out|ETIMEDOUT/i.test(m))
+    return `${name} took longer than it was given and was stopped — a long document and a big model is usually why.`;
+  if (/JSON|parse|unexpected token|schema/i.test(m))
+    return `${name} answered with something this app couldn't read.`;
+  const status = /status (\d{3})/i.exec(m);
+  if (status)
+    return `${name} answered with an error (${status[1]})${status[1] === "404" ? " — that usually means the model isn't pulled" : ""}.`;
+  return m ? `${name} couldn't do it: ${m.slice(0, 120)}` : "";
 }
 
 // Ask the engine whether it's actually there. Cached briefly: every page load

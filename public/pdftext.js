@@ -215,18 +215,38 @@
       cellStart = line.length;
       cellX = nextX;
     };
+    // THE LINE AND ITS CELLS ARE THE SAME LINE, so they are kept or dropped
+    // together. Two conditions that happen to agree today are two that can stop
+    // agreeing, and everything below walks the two lists in step.
     const br = () => {
       closeCell(x);
-      if (rowCells.length) rows.push({ y, cells: rowCells });
+      const whole = line.trim();
+      if (rowCells.length && whole) { rows.push({ y, cells: rowCells }); lines.push(whole); }
       rowCells = [];
-      if (line.trim()) lines.push(line.trim());
       line = "";
       cellStart = 0;
       cellX = x;
     };
 
+    // A TJ ARRAY'S STRINGS MAY CONTAIN BRACKETS, AND ONE DID.
+    //
+    // The array was matched as "[ anything but a bracket ]", so a document whose
+    // font draws "~" with the code 0x5b — a literal "[" in the content stream —
+    // ended the array early. The regex then failed, the scan moved on, found the
+    // NEXT "]" and matched from the bracket INSIDE the string: everything before
+    // it was dropped without a word. On a real school calendar that quietly
+    // deleted the front of five lines —
+    //
+    //     • First Semester: Sep. 1, 2026 ~ Jan. 22, 2027
+    //
+    // arrived as "Jan. 22, 2027", so four dates turned up on the page with no
+    // name on them and nothing anywhere said a word had gone missing. The model
+    // was being handed a document with holes in it and asked to explain them.
+    //
+    // So the body of an array is a sequence of THINGS — a string, a hex string,
+    // or a number — and a bracket inside a string is inside a string.
     const re =
-      /\/([\w.]+)\s+([\d.]+)\s+Tf|(-?[\d.]+)\s+(-?[\d.]+)\s+(?:Td|TD)\b|([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+Tm\b|T\*|\[((?:[^\[\]\\]|\\.)*)\]\s*TJ|\(((?:[^()\\]|\\.)*)\)\s*(?:Tj|'|")|<([0-9A-Fa-f\s]+)>\s*Tj|\bET\b/g;
+      /\/([\w.]+)\s+([\d.]+)\s+Tf|(-?[\d.]+)\s+(-?[\d.]+)\s+(?:Td|TD)\b|([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+Tm\b|T\*|\[((?:\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f\s]*>|[^\[\]()<>])*)\]\s*TJ|\(((?:[^()\\]|\\.)*)\)\s*(?:Tj|'|")|<([0-9A-Fa-f\s]+)>\s*Tj|\bET\b/g;
     let m;
     while ((m = re.exec(content))) {
       if (m[1] !== undefined) { font = fonts.get(m[1]) || null; size = Number(m[2]) || size; continue; }
@@ -282,29 +302,58 @@
     // that inference is caught being wrong: a line of one or two characters,
     // followed immediately by one starting with punctuation nothing ever starts
     // with, was a single word cut in half. "8" and ":00-9:30" are one cell.
+    // AND PUT BACK TOGETHER IN BOTH OF THIS READER'S ANSWERS, NOT ONE.
+    //
+    // All of this mending was done to the TEXT and none of it to the rows, and
+    // the rows are what anything wanting the document's columns reads. So the
+    // same PDF, out of the same function, said two different things: the text
+    // said "• Christmas Holiday: Dec. 22-Dec. 25" and the columns said "Dec. 2",
+    // "2", "-", "Dec. 25". The calendar panel reads the columns when a document
+    // has any — and a school calendar always does, because of the term grid at
+    // the top — so what a person actually saw was the twenty-second of December
+    // read as the second, three weeks of holiday in the wrong place, while the
+    // reader's other answer had it right all along.
+    //
+    // One decision, both answers. Where a line is joined to the one above it,
+    // its cells join that line's cells too.
     const out = [];
-    const clean = lines.map((l) => l.replace(/[ \t]+/g, " ").trim()).filter(Boolean);
+    const outRows = [];
+    const clean = lines.map((l) => l.replace(/[ \t]+/g, " ").trim());
+    const keep = (l, at) => {
+      out.push(l);
+      outRows.push({ y: rows[at].y, cells: rows[at].cells.slice() });
+    };
+    const join = (whole, at, glue) => {
+      out[out.length - 1] = whole;
+      const into = outRows[outRows.length - 1];
+      const add = rows[at].cells;
+      if (!into || !add.length) return;
+      if (!into.cells.length) { into.cells = add.slice(); return; }
+      const last = into.cells[into.cells.length - 1];
+      into.cells[into.cells.length - 1] = { ...last, text: last.text + glue + add[0].text };
+      into.cells = into.cells.concat(add.slice(1));
+    };
     clean
       .forEach((l, at) => {
         const prev = out[out.length - 1];
         // What comes NEXT is sometimes the only thing that says what this line
         // is: see the split number below.
         const next = clean[at + 1] || "";
-        if (prev === undefined) { out.push(l); return; }
-        if (prev.length <= 2 && /^[:.,;)\]\-–]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        if (prev === undefined) { keep(l, at); return; }
+        if (prev.length <= 2 && /^[:.,;)\]\-–]/.test(l)) { join(prev + l, at, ""); return; }
         // A DROPPED CAPITAL. Documents built in a slide editor draw the first
         // letter of a cell as its own run, a hair away from the rest, and out
         // comes "A" and then "ll primary and middle school teachers". A single
         // letter followed by a line that starts in lower case is one word that
         // was cut after its first character — nothing else in English looks
         // like that.
-        if (prev.length === 1 && /^[a-zà-ÿ]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        if (prev.length === 1 && /^[a-zà-ÿ]/.test(l)) { join(prev + l, at, ""); return; }
         // AND A WORD WRAPPED IN A NARROW COLUMN. An address in a table cell an
         // inch wide comes out as "a.sample123@example.co" and then "m". The tell
         // is that the line above has no spaces in it at all — it is one token,
         // and a token does not have a two-letter sentence after it.
         if (!/\s/.test(prev) && prev.length >= 6 && /^[a-zà-ÿ]{1,3}$/.test(l)) {
-          out[out.length - 1] = prev + l;
+          join(prev + l, at, "");
           return;
         }
         // A SENTENCE WRAPPED IN A NARROW COLUMN. Same thing a line further out:
@@ -318,13 +367,13 @@
         // line itself must be prose — lower case AND more than one word. Without
         // that last part a table of names and email addresses joins every
         // address onto the person above it.
-        if (/^[,;]/.test(l)) { out[out.length - 1] = prev + l; return; }
+        if (/^[,;]/.test(l)) { join(prev + l, at, ""); return; }
         // A NUMBER THAT LOST ITS OTHER HALF. "Dec. 2" / "2-" / "Dec. 25" is the
         // twenty-second of December cut in two where the column ran out, and
         // read as written it is the second — three weeks of holiday in the
         // wrong place, and nothing on the screen to say so. Digits and a dash
         // and nothing else is never a line of its own.
-        if (/^\d{1,2}[-–—]$/.test(l)) { out[out.length - 1] = prev + l; return; }
+        if (/^\d{1,2}[-–—]$/.test(l)) { join(prev + l, at, ""); return; }
         // AND THE SAME BREAK ONE CHARACTER EARLIER, where the dash came out on
         // a line of its own too: "Dec. 2" / "2" / "-" / "Dec. 25".
         //
@@ -333,7 +382,7 @@
         // it: the line above ends mid-number, this one is only digits, and the
         // one below is the dash that says the number was reaching for something.
         if (/\d$/.test(prev) && /^\d{1,2}$/.test(l) && /^[-–—]$/.test(next)) {
-          out[out.length - 1] = prev + l;
+          join(prev + l, at, "");
           return;
         }
         // A HYPHEN ON A LINE OF ITS OWN IS THE MIDDLE OF A WORD, or of a range.
@@ -342,20 +391,20 @@
         // pieces, so the holiday was called "Autumn Festival" and the range was
         // two unrelated days. A bullet is "- " with something after it; this is
         // a dash and nothing else, which is never a bullet.
-        if (/^[-–—]$/.test(l)) { out[out.length - 1] = prev + "-"; return; }
+        if (/^[-–—]$/.test(l)) { join(prev + "-", at, ""); return; }
         // AND THE OTHER HALF OF THE SAME BREAK. Once a line ends in a hyphen it
         // is unfinished, whether the document wrote it that way ("Feb. 18-") or
         // the line above just handed it one. "Dec. 2" / "2-" / "Dec. 25" is the
         // twenty-second of December in three pieces, and read as written it is
         // the second — three weeks of holiday in the wrong place.
-        if (/[-–—]$/.test(prev)) { out[out.length - 1] = prev + l; return; }
+        if (/[-–—]$/.test(prev)) { join(prev + l, at, ""); return; }
         if (prev.length >= 25 && /^[a-zà-ÿ]/.test(l) && /\s/.test(l)) {
-          out[out.length - 1] = prev + " " + l;
+          join(prev + " " + l, at, " ");
           return;
         }
-        out.push(l);
+        keep(l, at);
       });
-    return { text: out.join("\n"), rows };
+    return { text: out.join("\n"), rows: outRows };
   }
 
   // ---- what is on the page that isn't words --------------------------------

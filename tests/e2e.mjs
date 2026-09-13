@@ -121,6 +121,14 @@ const ol = http.createServer((req, res) => {
         });
       out = { entries };
     }
+    // AND A MODEL THAT ANSWERS WITH SOMETHING THAT IS NOT A CALENDAR. Local
+    // models do this — they apologise, or think out loud, or hand back prose —
+    // and every one of those came out of the app as "Couldn't read that just
+    // now", which is the one thing it is not useful to be told.
+    if (/BROKENJSON/.test(b)) {
+      res.writeHead(200, {"Content-Type":"application/json"});
+      return res.end(JSON.stringify({ message: { content: "I'm sorry, I can't help with that." } }));
+    }
     res.writeHead(200, {"Content-Type":"application/json"});
     res.end(JSON.stringify({ message: { content: JSON.stringify(out) } }));
   });
@@ -622,6 +630,30 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   const small = await askCal({ year: 2026, text: "Sports Day\t2026-06-12" });
   ok("while a short one says nothing about being cut", !("cut" in small),
      JSON.stringify(small).slice(0, 160));
+}
+
+{
+  // AND WHEN IT GOES WRONG, WHAT WENT WRONG.
+  //
+  // "Couldn't read that just now — you can still type the dates in by hand" was
+  // the answer to every failure there is: a model that isn't running, one that
+  // timed out, one that apologised in prose instead of answering. The person is
+  // then in front of the twenty-five manual decisions this whole panel exists to
+  // save them from, with nothing to act on. A local model answering with
+  // anything but JSON is the commonest of the three and it looked exactly like
+  // the other two.
+  const broke = await fetch(B + "/api/calendar", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "BROKENJSON\tterm dates", year: 2026 }) });
+  const why = await broke.json();
+  ok("a model that answers with prose is a failure, not an empty calendar",
+     broke.status === 502, String(broke.status));
+  ok("and the message says what actually happened",
+     /couldn't read|isn't answering|took longer|error \(/i.test(why.message || "") &&
+     !/^Couldn't read that just now/.test(why.message || ""),
+     JSON.stringify(why.message));
+  ok("while still saying what you can do instead",
+     /type the dates in by hand/.test(why.message || ""), JSON.stringify(why.message));
 }
 
 {

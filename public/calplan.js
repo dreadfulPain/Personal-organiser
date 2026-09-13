@@ -181,7 +181,12 @@
   //
   // A month name has to be in it. That is what separates "1-7 October" from
   // "exercise 4-6", which is a page reference and not three days off.
-  const DASH = "[-–—]|\\bto\\b|\\buntil\\b";
+  // A TILDE IS A DASH. "First Semester: Sep. 1, 2026 ~ Jan. 22, 2027" is how a
+  // great many calendars write a span, and read without it the line becomes two
+  // entries — a semester that starts and a separate one that ends — instead of
+  // one that runs. It is punctuation, not vocabulary: no word of any language is
+  // being recognised here, only the mark between two dates.
+  const DASH = "[-–—~〜～]|\\bto\\b|\\buntil\\b";
   // A WEEKDAY NAME IN FRONT OF A DATE IS DECORATION. "Monday 25 October 2027 -
   // Friday 29 October 2027" is the commonest way a half term is written down,
   // and every pattern below expects a number after the dash — so it found the
@@ -1053,6 +1058,54 @@
     });
   }
 
+  // A CELL IS NOT A LINE, AND ITS NAME IS IN THE COLUMN IT CAME FROM.
+  //
+  // A deadline table —
+  //
+  //     Paper Submission   Score Input & Report Confirm
+  //     Midterm            Nov. 2 16:00    Nov. 17 16:00
+  //     Final              Dec. 31 16:00   Jan. 15 16:00
+  //
+  // comes out of a PDF one cell to a line, so four of the most important dates a
+  // teacher has — when papers are in, when marks are in — reached the page
+  // called "16:00". The name was not missing from the document. It is a line or
+  // two up, where a person reads it without noticing they have, and where this
+  // reader was not looking.
+  //
+  // A COLUMN HAS MORE THAN ONE CELL IN IT, and that is the whole of what says
+  // this is a table. Two dates one under another with a name above them is a row
+  // of one; ONE date under a line of words is a date under a heading — and
+  // taking the heading is how "4th March" comes to be called "Thursday", and a
+  // date at the foot of a page comes to be called after the title at the top.
+  //
+  // So the run of dated lines this one belongs to is found first, and only where
+  // there is more than one of them is the line above the run looked at. Nothing
+  // further is reached, and a date with nothing to call it stays honestly
+  // nameless.
+  function nameAbove(lines, at, useYear, order) {
+    const tidy = (i) => String(lines[i] || "").replace(/\u00a0/g, " ").trim();
+    const dated = (i) => { const t = tidy(i); return !!t && !!dateIn(t, useYear, order); };
+    // THE RUN OF CELLS THIS ONE IS IN, up and down.
+    let lo = at, hi = at;
+    while (lo - 1 >= 0 && dated(lo - 1)) lo--;
+    while (hi + 1 < lines.length && dated(hi + 1)) hi++;
+    if (hi === lo || lo === 0) return "";
+    const prev = tidy(lo - 1);
+    if (!prev || !hasWords(prev)) return "";
+    // AND A WEEKDAY IS NOT A NAME. "Thursday" written over "4th March" is the
+    // document saying which day of the week it is — which this app works out for
+    // itself and prints on every row anyway. Asked of the whole line, not of the
+    // words inside it: "Thursday Assembly" is a name and "Thursday" is not.
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (T && T.dayOf && T.dayOf(prev.replace(/[^A-Za-z]+/g, "")) >= 0) return "";
+    return labelOf(prev, "", useYear, order);
+  }
+  // Letters, in any of the alphabets a school calendar is written in. A clock, a
+  // bullet and a number are not a name, however much room they take up.
+  const hasWords = (s) =>
+    /[A-Za-zЀ-ӿ一-鿿぀-ヿ]/
+      .test(String(s || "").replace(/\b\d{1,2}:\d{2}\b/g, " "));
+
   // EVERY LINE WITH A DATE IN IT. Lines without one are headings, page numbers
   // or notes, and are left alone rather than guessed at.
   function read(text, opts) {
@@ -1075,9 +1128,9 @@
     // isn't one, and then nothing below changes.
     const gridMonthYear = wg ? weekGridMonths(wg, useYear) : new Map();
     const rows = [];
-    all
-      .split(LINE_BREAKS)
-      .forEach((raw) => {
+    const lines = all.split(LINE_BREAKS);
+    lines
+      .forEach((raw, at) => {
         const line = raw.replace(/\u00a0/g, " ").trim();
         if (!line) return;
         const range = rangeIn(line, useYear, order);
@@ -1125,7 +1178,19 @@
           // look the same — and "as written" was the only one of the two the
           // page could say until the grid started answering as well.
           endFrom: range && range.to > range.from ? "line" : "",
-          label: labelOf(line, d, useYear, order) || "(no name)",
+          // WHAT THE LINE CALLS IT, or — where the line is a table cell with
+          // nothing on it but a date and a clock — what the column it came out
+          // of calls it. See nameAbove.
+          ...(function () {
+            const own = labelOf(line, d, useYear, order);
+            if (hasWords(own)) return { label: own };
+            const above = nameAbove(lines, at, useYear, order);
+            // AND WHERE IT CAME FROM. A name the line did not carry is not the
+            // row's own identity: two cells of one column can be the same day
+            // written twice, and telling them apart is what the line they came
+            // off is for. Same reasoning as a row with no name at all.
+            return above ? { label: above, nameFrom: "column" } : { label: own || "(no name)" };
+          })(),
           // When the line said one. Empty means all day, which is what a
           // holiday is and what every row used to be.
           ...(function () {
@@ -1248,7 +1313,8 @@
       // days it runs on — two lines both saying "every Friday assembly" are one
       // rule said twice, and "every Friday" and "every Monday" are not.
       (r.date || "every " + (r.days || []).join(",")) + "|" +
-      r.label.toLowerCase() + (r.label === "(no name)" ? "|" + r.line : ""), r));
+      r.label.toLowerCase() +
+      (r.label === "(no name)" || r.nameFrom === "column" ? "|" + r.line : ""), r));
     // Dated rows in date order, and the rules that have no date after them.
     let out = inOrder([...byDate.values()]);
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A

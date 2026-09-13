@@ -2293,6 +2293,32 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     ok("and it says so rather than going quiet",
        /couldn't be reached/.test(said(r)), said(r));
     ok("with what was read still said underneath", /1 date read/.test(said(r)), said(r));
+    // AND THE WAY BACK IS ON THE SCREEN.
+    //
+    // The offer beside it went on saying "let the model read it too" — an
+    // invitation to do the thing that had just failed — so a panel that had
+    // dropped you into twenty-five manual decisions read as though that were
+    // simply how it works, with nothing anywhere suggesting it could be asked
+    // again. A calendar arrives once a term and this is the moment it matters.
+    ok("and the offer beside it says to try again, not to try",
+       /try the model again/.test(String(r.get("#calSecond").textContent || "")),
+       String(r.get("#calSecond").textContent));
+  }
+
+  // AND A READING THAT LANDS CLEARS IT AGAIN. "Try again" left standing over a
+  // reading that worked is the panel remembering a failure the screen has no
+  // sign of.
+  {
+    const r = await openCal({ modelFirst: true, answer: "down",
+      handed: "Staff return\t24 August 2026" });
+    ok("it is offering to try again", /try the model again/.test(String(r.get("#calSecond").textContent || "")));
+    const box = r.get("#calPaste");
+    box.value = "Students return\t1 September 2026";
+    box.fire("input", { target: box });
+    await r.settle();
+    ok("and a document that reads puts the plain offer back",
+       /let the model read it too/.test(String(r.get("#calSecond").textContent || "")),
+       String(r.get("#calSecond").textContent));
   }
 
   // AND A ROW IT COULDN'T PLACE IS SAID, NOT DROPPED. You can check a list for
@@ -2630,8 +2656,11 @@ sec("And asking the model can be got out of, and cannot be won by the slower ans
   ok("stopping says so", /Stopped waiting/.test(String(r.get("#calWords").textContent || "")),
      String(r.get("#calWords").textContent));
   ok("and keeps what was read here", calRowsOf(r).length === 1, String(calRowsOf(r).length));
+  // AND THE BUTTON STOPS BEING THE STOP BUTTON — and says "again", because you
+  // stopped a reading that never landed and asking once more is exactly what it
+  // is now for.
   ok("and the button goes back to asking",
-     String(btn.textContent) === "let the model read it too", String(btn.textContent));
+     String(btn.textContent) === "try the model again", String(btn.textContent));
 
   // AND THE SLOWER ANSWER NEVER WINS. Two requests went out and whichever came
   // BACK last landed on the screen, so a stale answer overwrote a fresh one —

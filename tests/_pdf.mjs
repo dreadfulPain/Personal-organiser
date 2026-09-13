@@ -269,3 +269,25 @@ export function cutPdf() {
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ]);
 }
+
+// 7. A MONTH THAT LOST ITS DAY.
+//
+// The right-hand end of a line drawn as its own text object, far enough across
+// that nothing joins it back: "Winter Vacation: Jan. 23, 2027 ~ Feb." on one
+// line and "17, 2027" on the next. What survives is a holiday whose end fell
+// off, and the row then stands there looking like a single day — or, once the
+// shape gates were in, like a row that cannot be trusted at all. The document
+// says both ends; only the reader lost one.
+export function monthPdf() {
+  const at = (x, y, text) => `q BT 42 0 0 42 ${x} ${y} Tm /F1 1 Tf (${text}) Tj ET Q `;
+  const content =
+    at(100, -100, "Winter Vacation: Jan. 23, 2027 ~ Feb.") + at(900, -100, "17, 2027") +
+    at(100, -160, "Second Semester: Feb. 22, 2027");
+  return pdf([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(content),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ]);
+}

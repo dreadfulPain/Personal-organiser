@@ -3105,6 +3105,88 @@ sec("A calendar you check three things on, not thirty");
   }
 }
 
+sec("And the things marked on the grid are asked about too");
+{
+  const A = await import("./_dom.mjs");
+  // THE LAST PLACE IN THIS FLOW STILL ASKING YOU TO CLASSIFY SOMETHING WITH
+  // NOTHING PROPOSED. A term grid carries a symbol against some days and a
+  // legend saying what the symbol is — the staff meetings, the year-group
+  // meetings — and they appear nowhere else in the document, so they are their
+  // own little panel underneath. Everything above it stopped making you do that,
+  // and this did not, which read as unfinished because it was.
+  const GRID = [
+    "Wk", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+    "1", "9/6", "7", "8", "9", "10", "11", "*", "12",
+    "2", "13", "#", "14", "15", "16", "17", "*", "18", "19",
+    "3", "20", "#", "21", "22", "23", "24", "*", "25", "26",
+    "*", "Staff Meeting",
+    "#", "Grade 11-12 Director Meeting",
+  ].join("\n");
+  const asked = [];
+  const r = await open("timeline.html", {
+    schedule: [], scheduleConfig: { about: "Grade 1 homeroom" }, config: {}, items: [], goals: [],
+  }, {
+    fetch: async (url, init) => {
+      if (/api\/health/.test(String(url)))
+        return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+      if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+      const sent = JSON.parse((init && init.body) || "{}");
+      asked.push(sent);
+      const answers = (sent.candidates || []).map((c) => ({
+        n: c.n,
+        means: /Director/.test(c.label) ? "week" : /Staff/.test(c.label) ? "week" : "off",
+        why: /Director/.test(c.label) ? "a meeting for years 11 and 12" : "all staff",
+        sure: 0.9, mine: /Director/.test(c.label) ? "no" : "yes",
+        fromLine: c.line, checked: "", source: c.line,
+      }));
+      return { ok: true, json: async () => ({ answers, missed: [] }) };
+    },
+  });
+  r.get("#calBox").open = true;
+  const paste = r.get("#calPaste");
+  paste.value = GRID;
+  paste.fire("input", { target: paste });
+  await r.settle();
+  const marks = () => [...(r.get("#calMarks").children || [])]
+    .filter((x) => String(x.className || "").split(" ")[0] === "cal-mark");
+  ok("the grid's own marks are read", marks().length === 2, String(marks().length));
+  const before = marks().map((m) => A.deep(m).filter((c) =>
+    / on\b/.test(String(c.className || ""))).length);
+  ok("and nothing is lit on them until something says so",
+     before.every((n) => n === 0), JSON.stringify(before));
+
+  const btn = r.get("#calSecond");
+  btn.fire("click", { target: btn });
+  await r.settle();
+  // THEY GO OUT IN THE SAME LIST, numbered after the dated rows.
+  const sentMarks = asked.flatMap((x) => x.candidates || [])
+    .filter((c) => /Staff Meeting|Director Meeting/.test(c.label));
+  ok("they are asked about with everything else", sentMarks.length === 2,
+     JSON.stringify(asked.flatMap((x) => (x.candidates || []).map((c) => c.label))));
+  ok("with no date on them, because a kind of day is not a day",
+     sentMarks.every((c) => !c.date), JSON.stringify(sentMarks));
+
+  const said = marks().map((m) => ({
+    name: String((A.deep(m).find((c) => String(c.className || "").includes("cal-mark-name")) || {}).textContent || ""),
+    on: A.deep(m).filter((c) => / on\b/.test(String(c.className || "")))
+      .map((c) => String(c.textContent)),
+    why: String((A.deep(m).find((c) => String(c.className || "").includes("cal-mark-why")) || {}).textContent || ""),
+  }));
+  const staff = said.find((x) => /Staff/.test(x.name));
+  const theirs = said.find((x) => /Director/.test(x.name));
+  ok("what the reader made of the staff meetings is filled in",
+     staff && staff.on.includes("in my week"), JSON.stringify(said));
+  ok("and says so, so it can never look like the app deciding",
+     staff && /the reader thought/.test(staff.why), JSON.stringify(staff));
+  ok("while another year group's is set aside",
+     theirs && theirs.on.includes("ignore"), JSON.stringify(theirs));
+  ok("and says that is why", theirs && /isn't yours/.test(theirs.why), JSON.stringify(theirs));
+  // AND IT IS STILL A QUESTION YOU CAN ANSWER DIFFERENTLY, in one press.
+  const pick = A.deep(marks()[1] || {}).find((c) =>
+    String(c.className || "").includes("cal-mark-kind") && String(c.textContent) === "day off");
+  ok("with every choice still there to change it", !!pick, JSON.stringify(said[1]));
+}
+
 sec("And the days a holiday is paid for with come out of the brackets");
 {
   const A = await import("./_dom.mjs");

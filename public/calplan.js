@@ -1083,23 +1083,105 @@
   // further is reached, and a date with nothing to call it stays honestly
   // nameless.
   function nameAbove(lines, at, useYear, order) {
-    const tidy = (i) => String(lines[i] || "").replace(/\u00a0/g, " ").trim();
-    const dated = (i) => { const t = tidy(i); return !!t && !!dateIn(t, useYear, order); };
-    // THE RUN OF CELLS THIS ONE IS IN, up and down.
-    let lo = at, hi = at;
-    while (lo - 1 >= 0 && dated(lo - 1)) lo--;
-    while (hi + 1 < lines.length && dated(hi + 1)) hi++;
-    if (hi === lo || lo === 0) return "";
-    const prev = tidy(lo - 1);
-    if (!prev || !hasWords(prev)) return "";
+    const none = { name: "", headed: false };
+    const cells = cellRun(lines, at, useYear, order);
+    if (!cells) return none;
+    const prev = tidyLine(lines, cells.lo - 1);
+    if (!prev || !hasWords(prev)) return none;
     // AND A WEEKDAY IS NOT A NAME. "Thursday" written over "4th March" is the
     // document saying which day of the week it is — which this app works out for
     // itself and prints on every row anyway. Asked of the whole line, not of the
     // words inside it: "Thursday Assembly" is a name and "Thursday" is not.
     const T = typeof window !== "undefined" && window.OrganiserTimetable;
-    if (T && T.dayOf && T.dayOf(prev.replace(/[^A-Za-z]+/g, "")) >= 0) return "";
-    return labelOf(prev, "", useYear, order);
+    if (T && T.dayOf && T.dayOf(prev.replace(/[^A-Za-z]+/g, "")) >= 0) return none;
+    const row = labelOf(prev, "", useYear, order);
+    // AND THE COLUMN IT IS IN, WHERE THE TABLE HAS HEADINGS.
+    //
+    // "Midterm" twice and "Final" twice is better than "16:00" four times and
+    // it is still the same name on two different days. The document does say
+    // which is which — "Paper Submission" and "Score Input & Report Confirm"
+    // are written across the top of the table, one to a line, in the order the
+    // cells come in. See headingsOver.
+    const heads = headingsOver(lines, cells, useYear, order);
+    const j = at - cells.lo;
+    // A NAME OFF THE TABLE BEATS THE CELL'S OWN WORDS. "Tentatively Nov. 10-12"
+    // put "Tentatively" on the page as the name of a week of exams, and the
+    // document says what it is one line further up: this is the Exam Time column
+    // of the Midterm row. Only where the headings were actually found — see
+    // headingsOver, which returns nothing unless the shape is really a table.
+    if (heads && heads[j]) return { name: `${row} — ${heads[j]}`.slice(0, 120), headed: true };
+    return { name: row, headed: false };
   }
+
+  const tidyLine = (lines, i) =>
+    i < 0 || i >= lines.length ? "" : String(lines[i] || "").replace(/\u00a0/g, " ").trim();
+
+  // THE RUN OF CELLS A DATED LINE IS IN, and nothing if it is on its own.
+  //
+  // A column has more than one cell in it, and that is the whole of what says
+  // this is a table. Two dates one under another with a name above them is a row
+  // of one; ONE date under a line of words is a date under a heading — and
+  // taking the heading is how "4th March" comes to be called "Thursday", and a
+  // date at the foot of a page comes to be called after the title at the top.
+  function cellRun(lines, at, useYear, order) {
+    const dated = (i) => { const t = tidyLine(lines, i); return !!t && !!dateIn(t, useYear, order); };
+    let lo = at, hi = at;
+    while (lo - 1 >= 0 && dated(lo - 1)) lo--;
+    while (hi + 1 < lines.length && dated(hi + 1)) hi++;
+    if (hi === lo || lo === 0) return null;
+    // AND A LINE THAT NAMES ITSELF IS NOT A CELL.
+    //
+    // Two bulleted entries that happen to sit next to each other are two
+    // entries, not a row of a table — and read as one, "Parents' Meeting
+    // (Tentative): Jan. 20" came back called "Art Festival: Week 16-Week 17 —
+    // Sports Week: Tentatively Week 7", which is three unrelated things in one
+    // name. What separates them is on the line: a cell of a table is a date and
+    // perhaps a word; an entry writes its own name and then a colon.
+    for (let i = lo; i <= hi; i++) if (namesItself(tidyLine(lines, i))) return null;
+    return { lo, hi, size: hi - lo + 1 };
+  }
+  // Words, and then a colon. "Sports Week: Tentatively Week 7" names itself;
+  // "Nov. 2 16:00" and "Tentatively Nov. 10-12" do not — the only colon in the
+  // first of those is inside a clock, which is why the clocks come out before
+  // the question is asked at all.
+  const namesItself = (t) =>
+    /^[^:]*[A-Za-z]{2}[^:]*:/.test(String(t || "").replace(/\b\d{1,2}:\d{2}\b/g, " "));
+
+  // THE HEADING ROW OVER A TABLE, where there is one.
+  //
+  // Walking up from the row's own label: lines with dates on them are other
+  // rows' cells and are stepped over; a run of lines with words and no dates is
+  // either the heading row or an earlier row's label. The tell is what follows
+  // it — a row label is followed by cells, a heading is followed by another
+  // name — so the last line of the run is dropped when it is a row label, and
+  // what is left, taken from the bottom, is as many headings as this row has
+  // cells. Nothing is returned unless there are exactly that many, which is what
+  // keeps an ordinary list of holidays under a paragraph from being read as a
+  // table.
+  function headingsOver(lines, cells, useYear, order) {
+    if (cells.size < 2) return null;
+    const dated = (i) => { const t = tidyLine(lines, i); return !!t && !!dateIn(t, useYear, order); };
+    const run = [];
+    let i = cells.lo - 2;
+    // Step over the cells of the row above, if there is one.
+    while (i >= 0 && dated(i)) i--;
+    while (i >= 0) {
+      const t = tidyLine(lines, i);
+      if (!t || dated(t ? i : i) || !hasWords(t)) break;
+      run.unshift(t);
+      i--;
+    }
+    if (!run.length) return null;
+    // The last of them is another row's label when a date follows it.
+    const after = cells.lo - 2 - (run.length - 1) + run.length;
+    if (run.length && dated(cells.lo - 2) ) { /* handled by the skip above */ }
+    const labelLike = run.length > 1 && dated(cells.lo - 2);
+    const heads = (labelLike ? run.slice(0, -1) : run).slice(-cells.size);
+    void after;
+    if (heads.length !== cells.size) return null;
+    return heads.map((h) => labelOf(h, "", useYear, order) || h);
+  }
+
   // Letters, in any of the alphabets a school calendar is written in. A clock, a
   // bullet and a number are not a name, however much room they take up.
   const hasWords = (s) =>
@@ -1183,13 +1265,16 @@
           // of calls it. See nameAbove.
           ...(function () {
             const own = labelOf(line, d, useYear, order);
-            if (hasWords(own)) return { label: own };
             const above = nameAbove(lines, at, useYear, order);
             // AND WHERE IT CAME FROM. A name the line did not carry is not the
             // row's own identity: two cells of one column can be the same day
             // written twice, and telling them apart is what the line they came
             // off is for. Same reasoning as a row with no name at all.
-            return above ? { label: above, nameFrom: "column" } : { label: own || "(no name)" };
+            if (above.headed) return { label: above.name, nameFrom: "column" };
+            if (hasWords(own)) return { label: own };
+            return above.name
+              ? { label: above.name, nameFrom: "column" }
+              : { label: own || "(no name)" };
           })(),
           // When the line said one. Empty means all day, which is what a
           // holiday is and what every row used to be.

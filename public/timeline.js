@@ -157,6 +157,10 @@
   const DAY_WORDS = OrganiserDates.DAY_NAMES;
 
   let calMarkKind = new Map();
+  // AND WHY, where a reader proposed it — so a filled-in answer can never be
+  // mistaken for the app having decided, which is the rule the dated rows follow
+  // and this panel did not have to until it started being answered for you.
+  let calMarkWhy = new Map();
   // And which weekday a kind of marked day stands in for, when it is a make-up
   // day — see runsAs.
   let calMarkRuns = new Map();
@@ -259,6 +263,7 @@
     // whatever mark landed at the same position in the next calendar, which is
     // an answer to a question nobody was asked.
     calMarkKind = new Map();
+    calMarkWhy = new Map();
     const box = $("#calYear");
     // Filled in from the document, and yours to correct.
     if (box && !box.value) box.value = String(r.year || "");
@@ -318,7 +323,8 @@
     // IT. See calMark. Reading it from scratch is for the document this reader
     // could make nothing of, which is the case the model was added for.
     const mine = (already && already.r && already.r.rows) || [];
-    if (mine.length) return calMark(already, saying);
+    const grid = (already && already.r && already.r.term && already.r.term.marks) || [];
+    if (mine.length || grid.length) return calMark(already, saying);
     calNote = (saying || "Asking the model… ") + "this one's allowed to take a moment. ";
     renderCal();
     const t0 = msNow();
@@ -402,13 +408,29 @@
     const t0 = msNow();
     const got = new Map();
     let stopped = false, worst = null, sawText = "", short = false, cutAt = 0, refused = "";
+    // AND THE THINGS MARKED ON THE GRID ITSELF, in the same breath.
+    //
+    // A term grid carries a symbol against some days and a legend saying what
+    // the symbol is — the staff meetings, the year-group meetings — and they
+    // appeared nowhere else in the document, so they are their own little panel
+    // underneath. That panel was the last place in this flow still asking you to
+    // classify something out of a row of buttons with nothing proposed, which
+    // read as unfinished the moment everything above it stopped doing that.
+    // They go in the same list, get answered the same way, and what comes back
+    // fills the panel in instead of leaving it blank.
+    const marks = (already && already.r && already.r.term && already.r.term.marks) || [];
     const lots = [];
-    for (let i = 0; i < rows.length; i += BATCH) lots.push(rows.slice(i, i + BATCH));
-    // Which batch each row is in, so a failed batch can be asked again alone.
+    const all = rows.length + marks.length;
+    for (let i = 0; i < all; i += BATCH) lots.push({ from: i, size: Math.min(BATCH, all - i) });
     const numbered = rows.map((r, i) => ({
       n: i + 1, date: r.date || "", endsOn: r.endsOn || "",
       label: r.label || "", line: r.line || "",
-    }));
+    })).concat(marks.map((m, j) => ({
+      // NO DATE ON IT. A mark is a kind of day, not a day — it is the legend
+      // that says what it is, and the legend is what the model must quote.
+      n: rows.length + j + 1, date: "", endsOn: "",
+      label: m.name || `the "${m.symbol}" days`, line: m.name || "",
+    })));
     const askLot = async (from, count) => {
       const candidates = numbered.slice(from, from + count);
       const answer = await askModel("/api/calendar",
@@ -436,10 +458,10 @@
       return "ok";
     };
     for (let i = 0; i < lots.length; i++) {
-      calNote = `${saying || "Asking the model… "}${rows.length > BATCH
-        ? `${Math.min(i * BATCH, rows.length)} of ${rows.length} so far. ` : ""}`;
+      calNote = `${saying || "Asking the model… "}${all > BATCH
+        ? `${lots[i].from} of ${all} so far. ` : ""}`;
       renderCal();
-      const how = await askLot(i * BATCH, lots[i].length);
+      const how = await askLot(lots[i].from, lots[i].size);
       if (how === "stale") return;
       if (how === "stopped") break;
     }
@@ -449,9 +471,10 @@
     // costs six entries' worth of waiting, not the whole calendar's.
     if (!stopped)
       for (let i = 0; i < lots.length; i++) {
-        const none = lots[i].every((_, j) => !got.has(i * BATCH + j + 1));
+        let none = true;
+        for (let j = 0; j < lots[i].size; j++) if (got.has(lots[i].from + j + 1)) none = false;
         if (!none) continue;
-        const how = await askLot(i * BATCH, lots[i].length);
+        const how = await askLot(lots[i].from, lots[i].size);
         if (how === "stale") return;
         if (how === "stopped") break;
       }
@@ -474,6 +497,17 @@
         source: a.source || "",
       };
     });
+    // AND THE MARKS, WHICH ARE THEIR OWN PANEL AND THE SAME QUESTION.
+    const markSaid = new Map();
+    marks.forEach((m, j) => {
+      const a = got.get(rows.length + j + 1);
+      if (!a) return;
+      const as = { ...m, means: a.means, sure: a.sure, mine: a.mine, checked: a.checked,
+        why: a.why, source: a.source };
+      // ONE TEST, THE SAME ONE. A mark is trusted on exactly the terms a row is:
+      // see trusted.
+      if (trusted(as)) markSaid.set(j, as);
+    });
     const answered = got.size;
     if (!answered && worst) {
       const why = { slow: `The model still hadn't answered after ${took(MODEL_WAIT)}, so:`,
@@ -484,13 +518,19 @@
     if (stopped && !answered) return calFallBack("Stopped waiting, so:");
     calShow({ ...already.r, rows: marked, from: "model" },
       `Read by the model in ${took(msNow() - t0)}. ` +
-      calCut(cutAt) + calShort(short) + calLeftOver(rows.length - answered, rows.length, stopped));
+      calCut(cutAt) + calShort(short) + calLeftOver(all - answered, all, stopped));
     // A READING THAT CAME BACK IN PIECES IS STILL ONE TO OFFER AGAIN, and what
     // the model said about the pieces that failed is still worth being able to
     // look at. Set after calShow, which clears both for a reading that landed
     // whole.
+    // SET AFTER calShow, which clears what a new reading is entitled to clear.
+    markSaid.forEach((as, j) => {
+      calMarkKind.set(j, as.mine === "no" ? "" : as.means);
+      calMarkWhy.set(j, as);
+    });
+    if (markSaid.size) renderCalMarks();
     calSawText = sawText;
-    calFailed = !!worst || (stopped && answered < rows.length);
+    calFailed = !!worst || (stopped && answered < all);
     if (calSawText || calFailed) renderCal();
   }
 
@@ -709,6 +749,18 @@
         opts.appendChild(b);
       });
       wrap.appendChild(opts);
+      // AND WHAT THE READER MADE OF IT, WHERE IT SAID SOMETHING. Filled in, the
+      // same way a dated row is, and never without saying who filled it in: an
+      // answer you did not give that does not say where it came from is the app
+      // deciding, which is the one thing this panel promises it never does.
+      const said0 = calMarkWhy.get(i);
+      if (said0) {
+        const w = el("span", "muted cal-hint cal-mark-why",
+          (said0.mine === "no"
+            ? "set aside — the reader thought this isn't yours: "
+            : "the reader thought: ") + (said0.why || "no reason given"));
+        wrap.appendChild(w);
+      }
 
       // ONLY THE ONE THAT NEEDS IT ASKS. A time and "somewhere you have to be"
       // are questions about a block in your week; against a holiday they were

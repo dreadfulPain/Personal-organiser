@@ -99,6 +99,8 @@ const ol = http.createServer((req, res) => {
         answers = answers.concat([{ ...answers[0], means: "lessons", why: "changed my mind" }]);
       // A QUOTE THE DOCUMENT DOES NOT HAVE: the evidence gate must still bite.
       if (how === "nowhere") answers = answers.map((a) => ({ ...a, said: "a line from nowhere" }));
+      // AND A MEANING THAT CONTRADICTS THE SHAPE OF THE ROW.
+      if (how === "due") answers = answers.map((a) => ({ ...a, means: "due" }));
       out = { answers };
     }
     // THE CALENDAR JOB. There is no real model here and there cannot be, so
@@ -762,6 +764,50 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
      (twice.answers || []).filter((a) => a.n === 1).length === 1 &&
      (twice.answers || []).find((a) => a.n === 1).means === "off",
      JSON.stringify((twice.answers || []).filter((a) => a.n === 1)));
+
+  // ---- AND WHETHER THE MEANING FITS THE ROW ------------------------------
+  //
+  // EVIDENCE THAT AN ENTRY EXISTS IS NOT EVIDENCE THAT THE ANSWER ABOUT IT IS
+  // RIGHT. Every check above proves the row came out of the document and says
+  // nothing about whether what the model made of it holds together — so "First
+  // Semester: Sep. 1, 2026 ~ Jan. 22, 2027", a hundred and forty-four days,
+  // arrived ticked and ready as DUE THAT DAY.
+  //
+  // These are not beliefs about schools. They are the three ways an answer can
+  // contradict the shape of the row it is on, which is arithmetic.
+  const shaped = async (c, how) => (await askCal({ year: 2026, candidates: [c],
+    text: `${how ? `MARKS:${how}\n` : ""}• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027\n` +
+      "• Winter Vacation: Jan. 23, 2027 ~ Feb.\nAug. 31" }));
+  const term = await shaped({ n: 1, date: "2026-09-01", endsOn: "2027-01-22",
+    label: "First Semester", line: "• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027" }, "due");
+  ok("a stretch of days is not due on one of them",
+     /isn't due on one of them/.test(((term.answers || [])[0] || {}).checked || ""),
+     JSON.stringify((term.answers || [])[0]));
+  // AND THE SAME ROW WITH A MEANING THAT FITS IT GOES THROUGH.
+  ok("while the same row with a meaning that fits it goes through",
+     ((await shaped({ n: 1, date: "2026-09-01", endsOn: "",
+       label: "First Semester", line: "• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027" }, "due"))
+       .answers[0] || {}).checked === "", "a one-day due date was refused too");
+  const cut = await shaped({ n: 1, date: "2027-01-23", endsOn: "",
+    label: "Winter Vacation", line: "• Winter Vacation: Jan. 23, 2027 ~ Feb." });
+  ok("a line that runs on past its end can't be ready",
+     /the end isn't on it/.test(((cut.answers || [])[0] || {}).checked || ""),
+     JSON.stringify((cut.answers || [])[0]));
+  const anon = await shaped({ n: 1, date: "2026-08-31", endsOn: "", label: "(no name)", line: "Aug. 31" });
+  ok("and a row nobody could name can't be ready either",
+     /nothing on that line to call it/.test(((anon.answers || [])[0] || {}).checked || ""),
+     JSON.stringify((anon.answers || [])[0]));
+
+  // AND A RANGE INSIDE ONE MONTH SAYS THE MONTH ONCE. "Tentatively Nov. 10-12"
+  // has the twelfth of November written on it as plainly as anything else on the
+  // page, and asking for "Nov 12" found nothing — so two exam windows came back
+  // with "the day it ends isn't written near that line" printed directly above
+  // the line that ends on it.
+  const short2 = await askCal({ year: 2026, text: "Tentatively Nov. 10-12",
+    candidates: [{ n: 1, date: "2026-11-10", endsOn: "2026-11-12",
+      label: "Midterm exams", line: "Tentatively Nov. 10-12" }] });
+  ok("a range written once inside a month is read as evidence for both ends",
+     ((short2.answers || [])[0] || {}).checked === "", JSON.stringify((short2.answers || [])[0]));
 
   // AND THE JOB IT IS ACTUALLY ASKED TO DO IS THE OTHER ONE.
   const used = chats.filter((c) => /numbered list of entries already found/i.test(c.sys));

@@ -752,10 +752,34 @@ sec("The lines off the real calendar that were read wrong, kept as checks");
   ok("four deadlines out of a table of cells", table.length === 4,
      JSON.stringify(table.map((r) => `${r.date} ${r.label}`)));
   const named = (d) => (table.find((r) => r.date.slice(5) === d) || {}).label;
+  // THE ROW IT IS IN AND THE COLUMN IT IS UNDER. "Midterm" twice and "Final"
+  // twice is better than "16:00" four times and it is still the same name on two
+  // different days — and the document says which is which, written across the
+  // top of the table one heading to a line.
   ok("and each takes the name of the row it is in",
-     named("11-02") === "Midterm" && named("11-17") === "Midterm" &&
-     named("12-31") === "Final" && named("01-15") === "Final",
+     named("11-02") === "Midterm — Paper Submission" &&
+     named("11-17") === "Midterm — Score Input & Report Confirm" &&
+     named("12-31") === "Final — Paper Submission" &&
+     named("01-15") === "Final — Score Input & Report Confirm",
      JSON.stringify(table.map((r) => `${r.date} ${r.label}`)));
+  // AND A LINE THAT NAMES ITSELF IS NOT A CELL. Two bulleted entries that happen
+  // to sit next to each other are two entries, not a row of a table — read as
+  // one, "Parents' Meeting (Tentative): Jan. 20" came back called "Art Festival:
+  // Week 16-Week 17 — Sports Week: Tentatively Week 7".
+  const bullets = CP.read([
+    "5. School Events & PD Days:",
+    "Sports Week: Tentatively Week 7",
+    "Art Festival: Week 16-Week 17",
+    "Professional Development (PD) Days for Teachers: Oct. 16, Nov. 13",
+    "Parents' Meeting (Tentative): Jan. 20 (Morning: Grade 1-8)",
+  ].join("\n"), { year: 2026 }).rows;
+  const meeting = bullets.find((r) => /-01-20$/.test(r.date));
+  ok("an entry that writes its own name keeps it",
+     meeting && /^Parents' Meeting/.test(meeting.label),
+     JSON.stringify(bullets.map((r) => `${r.date} ${r.label}`)));
+  ok("and is not named after the two entries above it",
+     meeting && !/Art Festival|Sports Week/.test(meeting.label),
+     meeting && meeting.label);
   ok("with the time it is due by kept",
      table.every((r) => r.start === "16:00"), JSON.stringify(table.map((r) => r.start)));
   // AND ONE DATE UNDER A HEADING IS NOT A TABLE. A column has more than one cell

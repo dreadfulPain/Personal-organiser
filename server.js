@@ -1445,6 +1445,8 @@ You are asked for this so that they do not have to answer the same question thir
 
 - "sure" is how confident you are of "means", 0 to 1. Be honest. A line you had to reason about is not a 0.9.
 
+- AND "means" IS ABOUT TEACHING. It says what happens to their lessons that day. If the words you quote do not say what happens to lessons, you are inferring it, and "sure" must say so — a line naming who a day is for is not a line saying whether classes run. "Training day for teachers" tells you who it is for and nothing about the students; be honest that you are guessing and let them decide.
+
 - "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document lists this under Holidays". It is shown to them, so write it to be read by a person and not by a machine.
 
 - "mine" is whether this looks like it applies to THEM, given what they say they do. "yes" if it is for the whole school, their own year group, all staff, or anyone teaching. "no" only when the line is plainly limited to a group they have nothing to do with. "" if you cannot tell — which is the right answer far more often than "no".
@@ -1491,6 +1493,8 @@ For each number:
     ""          — you cannot tell. Say nothing rather than guess; they will be asked.
 
 - "sure" is how confident you are of "means", 0 to 1. Be honest. A line you had to reason about is not a 0.9.
+
+- AND "means" IS ABOUT TEACHING. It says what happens to their lessons that day. If the words you quote do not say what happens to lessons, you are inferring it, and "sure" must say so — a line naming who a day is for is not a line saying whether classes run. "Training day for teachers" tells you who it is for and nothing about the students; be honest that you are guessing and let them decide.
 
 - "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document lists this under Holidays". It is shown to them, so write it to be read by a person.
 
@@ -1617,6 +1621,38 @@ function verify(doc, said, date, endsOn) {
   return { checked: "", source: span };
 }
 
+// AND WHETHER THE MEANING FITS THE ROW IT WAS PUT ON.
+//
+// EVIDENCE THAT AN ENTRY EXISTS IS NOT EVIDENCE THAT THE ANSWER ABOUT IT IS
+// RIGHT. The checks above prove the row came out of the document. They say
+// nothing about whether what the model made of it holds together — so "First
+// Semester: Sep. 1, 2026 ~ Jan. 22, 2027", a hundred and forty-four days,
+// arrived ticked and ready as DUE THAT DAY, which is not a thing a term can be.
+//
+// These are not beliefs about schools. Nothing here knows what a semester is, or
+// a holiday, or a training day: §0.2 stands. They are the three ways an answer
+// can contradict the shape of the row it is about, which is arithmetic —
+//
+//   a stretch of days cannot be due on a day,
+//   a row nobody could name cannot be one you would tick unread,
+//   and a span whose end is missing from the line is not a span yet.
+//
+// Each sends the row to be asked about, with the reason on it. None of them
+// decides anything.
+function disagrees(means, row) {
+  const label = String(row.label || "").trim();
+  if (!label || label === "(no name)")
+    return "there's nothing on that line to call it";
+  // A RANGE SEPARATOR AND THEN A MONTH AND NOTHING ELSE. "Winter Vacation: Jan.
+  // 23, 2027 ~ Feb." is a holiday whose end fell off the line, and the row
+  // stands there looking like a single day.
+  if (/[-–—~]\s*(?:[A-Za-z]{3,9}\.?)\s*$/.test(String(row.line || "")))
+    return "the line runs on past its end, and the end isn't on it";
+  if (means === "due" && row.endsOn && row.endsOn > row.date)
+    return "something that runs for days isn't due on one of them";
+  return "";
+}
+
 // WHERE IN THE DOCUMENT THIS CAME FROM — as a SPAN, not a line.
 //
 // "Is the date written on the line it quoted" was the right question asked a
@@ -1722,6 +1758,15 @@ function writtenIn(said, iso) {
   // "Oct. 16", "16 October", "October 16"
   const near = new RegExp(`${mon}[a-z]*\\.?\\s*,?\\s*0?${d}(?!\\d)|\\b0?${d}(?:st|nd|rd|th)?\\s*,?\\s*(?:of\\s+)?${mon}`, "i");
   if (near.test(s)) return true;
+  // A RANGE INSIDE ONE MONTH SAYS THE MONTH ONCE. "Tentatively Nov. 10-12" has
+  // the twelfth of November written on it as plainly as anything else on the
+  // page, and asking for "Nov 12" found nothing — so two exam windows on the
+  // real calendar were sent back with "the day it ends isn't written near that
+  // line" printed directly above the line that ends on it.
+  const span = new RegExp(
+    `${mon}[a-z]*\\.?\\s*,?\\s*\\d{1,2}\\s*[-–—~]\\s*0?${d}(?!\\d)` +
+    `|\\b\\d{1,2}\\s*[-–—~]\\s*0?${d}(?:st|nd|rd|th)?\\s*,?\\s*(?:of\\s+)?${mon}`, "i");
+  if (span.test(s)) return true;
   // 16/10, 16-10-2026, 2026/10/16 and the other way round
   const n = `0?${d}`, o = `0?${m}`;
   const slash = new RegExp(`\\b(?:${n}[-/.]${o}|${o}[-/.]${n}|${y}[-/.]${o}[-/.]${n})(?![\\d])`);
@@ -1765,16 +1810,19 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       const c = want.get(n);
       const said = (a.said || "").toString().trim().slice(0, 300);
       const checked = verify(doc, said, c.date, c.endsOn);
+      const means = MEANS.indexOf(a.means) >= 0 ? a.means : "";
+      // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees.
+      const fits = disagrees(means, c);
       answers.push({
         n,
-        means: MEANS.indexOf(a.means) >= 0 ? a.means : "",
+        means,
         runsAsFrom: Number.isInteger(Number(a.runsAsDay)) &&
           Number(a.runsAsDay) >= 0 && Number(a.runsAsDay) <= 6 ? Number(a.runsAsDay) : undefined,
         why: (a.why || "").toString().trim().slice(0, 160),
         sure: Number.isFinite(Number(a.sure)) ? Math.max(0, Math.min(1, Number(a.sure))) : 1,
         mine: a.mine === "yes" || a.mine === "no" ? a.mine : "",
         fromLine: said,
-        checked: checked.checked,
+        checked: checked.checked || fits,
         source: checked.source,
       });
     });
@@ -1882,6 +1930,9 @@ async function handleCalendar(res, body) {
       // both the question and the showing of it. Asked twice it would be two
       // answers to drift apart.
       const seen = verify(doc, said, date, endsOn);
+      const means = MEANS.indexOf(e.means) >= 0 ? e.means : "";
+      // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees.
+      const fits = disagrees(means, { label, line: said || label, date, endsOn });
       rows.push({
         label, date, endsOn,
         // A REPEAT AND A DATE ARE DIFFERENT ANSWERS. Something on a date does
@@ -1896,7 +1947,7 @@ async function handleCalendar(res, body) {
         // plain English, ticked where it can be trusted, and changed with one
         // press. What is not done is asking the model how sure it is and
         // believing the number — see verify().
-        means: MEANS.indexOf(e.means) >= 0 ? e.means : "",
+        means,
         runsAsFrom: Number.isInteger(Number(e.runsAsDay)) &&
           Number(e.runsAsDay) >= 0 && Number(e.runsAsDay) <= 6 ? Number(e.runsAsDay) : undefined,
         why: (e.why || "").toString().trim().slice(0, 160),
@@ -1909,7 +1960,7 @@ async function handleCalendar(res, body) {
         // answered it, and one word meaning two things is how a row comes back
         // looking answered because a model quoted a document.
         fromLine: said,
-        checked: seen.checked,
+        checked: seen.checked || fits,
         // THE DOCUMENT'S OWN WORDS THAT BACK IT — the span the check was made
         // against, not the reader's quote of it. Kept so the page can show what
         // a reading actually rests on: a conclusion you cannot see the grounds

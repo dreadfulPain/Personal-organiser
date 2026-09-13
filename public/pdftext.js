@@ -161,6 +161,11 @@
     return raw;
   }
 
+  // The twelve, short and long, at the very end of a line. Format, not
+  // vocabulary: no fact about any school is written down here.
+  const MONTH_END =
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?$/i;
+
   const unescapeStr = (t) =>
     t.replace(/\\([nrtbf()\\]|[0-7]{1,3})/g, (m, g) =>
       ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" }[g] ??
@@ -385,6 +390,16 @@
           join(prev + l, at, "");
           return;
         }
+        // A MONTH THAT LOST ITS DAY. "Feb." at the end of one line and "17, 2027"
+        // at the start of the next is one date the extractor cut in half — and
+        // the half that survives is a month with no day in it, which reads as an
+        // entry that simply has no end: "Winter Vacation: Jan. 23, 2027 ~ Feb."
+        //
+        // Month names are a date FORMAT and not something anybody's school is
+        // being assumed about — the same list every date reader in this app
+        // already has — and a month at the very end of a line is never the end
+        // of a sentence.
+        if (MONTH_END.test(prev) && /^\d{1,2}\b/.test(l)) { join(prev + " " + l, at, " "); return; }
         // A HYPHEN ON A LINE OF ITS OWN IS THE MIDDLE OF A WORD, or of a range.
         // A school calendar is made of these — "Mid-Autumn Festival", "Oct. 1 -
         // Oct. 7", "Grade 11-12" — and every one of them came out in three

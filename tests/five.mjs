@@ -2141,8 +2141,24 @@ sec("A calendar can be handed to the model too, and it still never says what a d
         if (/api\/health/.test(String(url)))
           return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
         if (!/api\/calendar/.test(String(url))) return { ok: true, json: async () => ({}) };
-        asked.push(JSON.parse((init && init.body) || "{}"));
+        const sent = JSON.parse((init && init.body) || "{}");
+        asked.push(sent);
         if (o.answer === "down") throw new Error("nothing listening");
+        // ASKED BY NUMBER, ANSWERED BY NUMBER. With a list to annotate the model
+        // is not asked to produce entries at all — see calMark — so this stands
+        // in for that instead, carrying whatever the test wanted said onto the
+        // rows this app read.
+        if (Array.isArray(sent.candidates) && sent.candidates.length && o.answer !== "refused") {
+          const say = Array.isArray(o.answer) ? o.answer : [];
+          const answers = sent.candidates.map((c, i) => ({
+            n: c.n, means: (say[i] && say[i].means) || "off",
+            why: (say[i] && say[i].why) || "it looks like a holiday",
+            sure: say[i] && typeof say[i].sure === "number" ? say[i].sure : 0.9,
+            mine: (say[i] && say[i].mine) || "yes",
+            fromLine: c.line, checked: "", source: c.line,
+          }));
+          return { ok: true, json: async () => ({ answers, missed: [] }) };
+        }
         return { ok: o.answer !== "refused", json: async () => (o.answer === "refused"
           ? { message: o.message || "AI sorting isn't switched on yet.",
               ...(o.saw ? { saw: o.saw } : {}) }
@@ -2281,7 +2297,15 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     ok("pressing the button asks it", asked.length === 1, JSON.stringify(asked));
     ok("over the document that is on screen, not a re-read",
        asked[0] && /Students return/.test(asked[0].text), JSON.stringify(asked[0]));
-    ok("and its answer takes over", rows(r).length === 1, String(rows(r).length));
+    // AND ITS ANSWER LANDS ON THE ROWS — it does not become the rows. The list
+    // is this app's; all the model adds is what each one means. Before, its list
+    // replaced this one, and a model that stopped after the first entry took the
+    // rest of the calendar off the screen with it.
+    ok("and its answer lands on what was already read", rows(r).length === 2, String(rows(r).length));
+    ok("with what it said about each one on the row",
+       calRowsOf(r).every((n) => /day off/.test(String(n.textContent || "")) ||
+         [...(n.children || [])].some((c) => /day off/.test(String(c.textContent || "")))),
+       calRowsOf(r).map((n) => String(n.textContent)).join(" | ").slice(0, 200));
   }
 
   // AND WHEN IT CANNOT BE REACHED, WHAT WAS READ STAYS. A second opinion that
@@ -2706,9 +2730,14 @@ sec("And asking the model can be got out of, and cannot be won by the slower ans
   const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
   ok("a late answer to a replaced question is discarded",
      /if \(got\.stale\) return;/.test(tl), "a stale answer can still land on the screen");
-  ok("and both panels ask through the one guard",
-     (tl.match(/await askModel\(/g) || []).length === 2,
-     "one of the two ways of asking has its own fetch again");
+  // EVERY WAY OF ASKING GOES THROUGH THE ONE GUARD. Counting the calls was a
+  // proxy for that and broke the moment a third way of asking was added, which
+  // is a check failing for the opposite of the reason it exists. The question is
+  // whether anything reaches those endpoints without the guard.
+  ok("and every panel asks through the one guard",
+     tl.split("\n").filter((l) => /"\/api\/(calendar|timetable)"/.test(l))
+       .every((l) => /askModel\(/.test(l)),
+     tl.split("\n").find((l) => /"\/api\/(calendar|timetable)"/.test(l) && !/askModel\(/.test(l)));
   ok("which gives up on its own", /const MODEL_WAIT = \d+;/.test(tl) &&
      /ctl\.why = "slow"; ctl\.abort\(\);/.test(tl), "nothing stops a request that never ends");
 }
@@ -2789,7 +2818,13 @@ sec("A real school calendar, read by the model, in the order a person reads one"
   });
   r.get("#calBox").open = true;
   const box = r.get("#calPaste");
-  box.value = "2026-27 School Calendar\nSemester begins\t1 September 2026";
+  // A DOCUMENT THIS READER CAN MAKE NOTHING OF, which is the one case where the
+  // model is asked to produce entries at all. Where this app has already read a
+  // list, the model annotates it and cannot reorder or replace it — see calMark
+  // — so the shuffle this section is about can only arrive down this path.
+  box.value = "2026-27 School Calendar. The autumn holiday runs from the " +
+    "twenty-fifth of September until the twenty-seventh, and the semester " +
+    "begins on the first Tuesday of the month.";
   box.fire("input", { target: box });
   await r.settle();
   const btn = r.get("#calSecond");
@@ -2825,64 +2860,87 @@ sec("A calendar you check three things on, not thirty");
   // done twice — once by the reader and once by you — and the second time is
   // the tiring one.
   //
-  // The old refusal was principled and aimed at the wrong thing. The APP must
-  // not have a vocabulary; a READER saying what it thinks and being corrected
-  // is not one. So it says, the app checks what it can check, and you see the
-  // exceptions.
+  // AND WHO OWNS THE LIST. The model used to be asked to turn the calendar into
+  // entries, and its list then REPLACED the one this app had read. On a real
+  // school calendar the reply ran out of room after the first entry and
+  // twenty-two dates became one. So the rows this app found are the list, they
+  // go out numbered a few at a time, and all that comes back is what each
+  // number means. Nothing the model does can take a row away.
   const L = {
     start: "Semester begins: Sept. 1 — Grade 1 - 10 Opening Ceremonies",
     holiday: "Holidays: Mid-Autumn Festival: Sep. 25",
     pd: "Professional Development (PD) Days for Teachers: Oct. 16, Nov. 13",
     theirs: "Grade 11 - 12 Director Meeting: Sept. 8",
-    sports: "School Events & PD Days: Sports Week: Tentatively Week 7",
+    exams: "Exam week: Nov. 10",
   };
   const DOC = Object.values(L).join("\n");
-  // A PLAUSIBLE READING: mostly right, one date invented, one week number read
-  // as a day of the month, one plainly somebody else's.
-  const ROWS = [
-    { label: "Semester begins", date: "2026-09-01", endsOn: "", kind: "", extras: [],
-      fromLine: L.start, means: "lessons", sure: 0.93, mine: "yes", checked: "",
+  // WHAT THE MODEL SAYS ABOUT EACH NUMBER, keyed by the day it is for so the
+  // test does not have to know what order the reader put them in. A plausible
+  // reading: mostly right, one annotated from the general sense of the page
+  // rather than the entry in front of it, one it is honestly unsure of, one
+  // plainly somebody else's.
+  const SAYS = {
+    "2026-09-01": { means: "lessons", sure: 0.93, mine: "yes", said: L.start,
       why: "the document calls it the start of the semester" },
-    { label: "Mid-Autumn Festival", date: "2026-09-25", endsOn: "", kind: "", extras: [],
-      fromLine: L.holiday, means: "off", sure: 0.96, mine: "yes", checked: "",
+    "2026-09-25": { means: "off", sure: 0.96, mine: "yes", said: L.holiday,
       why: "listed under Holidays" },
-    { label: "Professional Development (PD) Days for Teachers", date: "2026-10-13",
-      endsOn: "", kind: "", extras: [], fromLine: L.pd, means: "noLessons", sure: 0.9,
-      mine: "yes", checked: "that day isn't written near that line", why: "a teacher training day",
-      source: L.pd },
-    { label: "Grade 11 - 12 Director Meeting", date: "2026-09-08", endsOn: "", kind: "",
-      extras: [], fromLine: L.theirs, means: "week", sure: 0.88, mine: "no", checked: "",
+    "2026-10-16": { means: "noLessons", sure: 0.9, mine: "yes", said: L.pd,
+      why: "a teacher training day" },
+    // QUOTED FROM NOWHERE. The dates are this app's now, so a date cannot be
+    // invented — but a model can still answer from the look of the page instead
+    // of from the line, and that is what this is.
+    "2026-11-13": { means: "noLessons", sure: 0.9, mine: "yes",
+      said: "PD days are in October and November", why: "a teacher training day" },
+    "2026-09-08": { means: "week", sure: 0.88, mine: "no", said: L.theirs,
       why: "a meeting for years 11 and 12" },
-    { label: "Sports Week", date: "2026-10-07", endsOn: "", kind: "", extras: [],
-      fromLine: L.sports, means: "noLessons", sure: 0.55, mine: "yes", checked: "",
-      why: "it says week 7 and I guessed the date" },
-  ];
-  const openCal = async () => {
+    "2026-11-10": { means: "noLessons", sure: 0.55, mine: "yes", said: L.exams,
+      why: "it says exam week and I am guessing" },
+  };
+  const asked = [];
+  const openCal = async (opts) => {
+    const o = opts || {};
     const r = await open("timeline.html", {
       schedule: [], scheduleConfig: { about: "Grade 1 homeroom, primary school" },
       config: {}, items: [], goals: [],
     }, {
-      fetch: async (url, init) => (/api\/health/.test(String(url))
-        ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
-        : /api\/calendar/.test(String(url))
-          ? (asked.push(JSON.parse((init && init.body) || "{}")),
-             { ok: true, json: async () => ({ rows: ROWS, unreadable: [] }) })
-          : { ok: false, json: async () => ({}) }),
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        asked.push(body);
+        if (o.answer === "down") throw new Error("nothing listening");
+        const cands = body.candidates || [];
+        // ONLY THE FIRST BATCH ANSWERS, where the test asks for that: the model
+        // that runs out of room part-way through, which is what happened.
+        if (o.only && asked.length > o.only)
+          return { ok: false, json: async () => ({ message: "Ollama answered with something this app couldn't read.", saw: "I'm sorry, I can't help with that." }) };
+        const answers = cands
+          .filter((c) => SAYS[c.date])
+          .map((c) => ({ n: c.n, ...SAYS[c.date], runsAsFrom: undefined,
+            fromLine: SAYS[c.date].said,
+            // The server's own check, done here so the page is tested and not
+            // the server twice: a quote the document hasn't got is a question.
+            checked: DOC.indexOf(SAYS[c.date].said) < 0 ? "line not in the document" : "",
+            source: SAYS[c.date].said }));
+        return { ok: true, json: async () => ({ answers,
+          missed: cands.map((c) => c.n).filter((n) => !answers.some((a) => a.n === n)) }) };
+      },
     });
     r.get("#calBox").open = true;
     const box = r.get("#calPaste");
-    box.value = DOC;
+    // FOUR MORE DATED LINES, where a second batch is what the test is about.
+    box.value = o.more
+      ? DOC + "\n" + [4, 5, 6, 7].map((d) => `Spare ${d}: ${d} December 2026`).join("\n")
+      : DOC;
     box.fire("input", { target: box });
     await r.settle();
-    const b = r.get("#calSecond");
-    b.fire("click", { target: b });
+    const bt = r.get("#calSecond");
+    bt.fire("click", { target: bt });
     await r.settle();
     return r;
   };
-  const asked = [];
   const kids = (r) => [...(r.get("#calRows").children || [])];
-  const headOf = (n) => String(n.textContent || "") ||
-    String(((n.children || [])[0] || {}).textContent || "");
   const rowSaying = (r, t) => kids(r).concat(kids(r).flatMap((n) => [...(n.children || [])]))
     .find((n) => String(n.className || "").includes("cal-row") &&
       new RegExp(t).test(A.deep(n).map((c) => c.textContent).join(" ")));
@@ -2894,57 +2952,53 @@ sec("A calendar you check three things on, not thirty");
   ok("what you teach is sent with it",
      asked[0] && asked[0].about === "Grade 1 homeroom, primary school",
      JSON.stringify(asked[0] && asked[0].about));
+  // AND THE LIST GOES WITH IT, NUMBERED, so that all the model can do is answer.
+  ok("the rows this app read are what it is asked about",
+     (asked[0].candidates || []).length > 0 &&
+     (asked[0].candidates || []).every((c) => c.n > 0 && c.date),
+     JSON.stringify(asked[0].candidates));
+  ok("and it is never asked to produce entries of its own",
+     asked.every((x) => !("rows" in x) && !!x.candidates), JSON.stringify(Object.keys(asked[0])));
 
   const piles = kids(r).find((n) => String(n.className || "").includes("cal-piles"));
   ok("it says what it came to before anything else",
-     piles && /2 ready to go in, 2 for you to say, 1 that don't look like yours/.test(
+     piles && /3 ready to go in, 2 for you to say, 1 that don't look like yours/.test(
        String(piles.textContent)), piles && String(piles.textContent));
 
   // THE ONES IT GOT RIGHT ARE ONE LINE EACH, ticked, saying what they will do.
   const ready = kids(r).filter((n) => String(n.className || "").includes("cal-ready"));
-  ok("what it is sure of is one line each", ready.length === 2, String(ready.length));
+  ok("what it is sure of is one line each", ready.length === 3, String(ready.length));
   ok("ticked, so the button below is the only press left",
      ready.every((n) => A.deep(n).some((c) => / on\b/.test(String(c.className || "")) &&
        String(c.className).includes("cal-tick"))),
      ready.map((n) => A.deep(n).map((c) => c.className).join(",")).join(" | "));
+  const holiday = ready.find((n) => /Mid-Autumn/.test(A.deep(n).map((c) => c.textContent).join(" ")));
   ok("saying what each will do to the week",
-     A.deep(ready[1]).some((c) => String(c.textContent) === "day off"),
-     A.deep(ready[1]).map((c) => c.textContent).join(" | "));
+     holiday && A.deep(holiday).some((c) => String(c.textContent) === "day off"),
+     holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
   ok("and why it thinks so, in the reader's own words",
-     A.deep(ready[1]).some((c) => /listed under Holidays/.test(String(c.textContent))),
-     A.deep(ready[1]).map((c) => c.textContent).join(" | "));
+     holiday && A.deep(holiday).some((c) => /listed under Holidays/.test(String(c.textContent))),
+     holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
   ok("with no row of seven buttons under it",
-     !A.deep(ready[1]).some((c) => String(c.className || "").includes("cal-pick")),
+     holiday && !A.deep(holiday).some((c) => String(c.className || "").includes("cal-pick")),
      "the seven choices are still under every ready row");
 
-  // AND THE APP'S OWN CHECK BEATS THE MODEL'S OWN CONFIDENCE.
-  //
-  // "Professional Development Days for Teachers: Oct. 16, Nov. 13" came back as
-  // ONE entry dated the 13th of October, which is in neither half of it — and
-  // the reader said 0.9 about it. A number a model gives for its own confidence
-  // is not evidence that it is right. Whether the day it landed on is actually
-  // written on the line it claims to come from is.
-  const pd = rowSaying(r, "Professional Development");
-  ok("a date the document doesn't contain is asked about, whatever it says",
+  // AND THE APP'S OWN CHECK BEATS THE MODEL'S OWN CONFIDENCE. It cannot invent a
+  // date any more — the dates are this app's — but it can still answer from the
+  // look of the page rather than from the entry, and that is a fact this app can
+  // check: the words it quotes must be in the document.
+  const pd = rowSaying(r, "Nov 13");
+  ok("an answer quoting a line the document hasn't got is asked about",
      !!pd && A.deep(pd).some((c) => String(c.className || "").includes("cal-pick")),
      "it went through on the reader's say-so");
   ok("and the row says that is why",
-     pd && A.within(pd, /that day isn't written near that line/).length > 0,
+     pd && A.within(pd, /line not in the document/).length > 0,
      pd && A.deep(pd).map((c) => c.textContent).join(" | ").slice(0, 200));
-  // AND SHOWS YOU THE WORDS IT IS TALKING ABOUT.
-  //
-  // "that day isn't written near that line" is a claim about a document, and
-  // answering it meant going back to the PDF, finding the line and coming back
-  // — for each one. The span the check was made against goes on the row, which
-  // is also the school's own wording rather than the tidy name in front of it.
-  ok("with the document's own words under it, so you can settle it there",
-     pd && A.within(pd, /Oct\. 16, Nov\. 13/).length > 0,
-     pd && A.deep(pd).map((c) => c.textContent).join(" | ").slice(0, 300));
   // A READER THAT SAYS IT IS UNSURE IS TAKEN AT ITS WORD — in that direction
   // only. It may ask for help; it may never wave anything through.
-  const sports = rowSaying(r, "Sports Week");
+  const exam = rowSaying(r, "Nov 10");
   ok("and one the reader itself doubted is asked about too",
-     !!sports && A.deep(sports).some((c) => String(c.className || "").includes("cal-pick")),
+     !!exam && A.deep(exam).some((c) => String(c.className || "").includes("cal-pick")),
      "a reading it called a guess went through unasked");
 
   // AND WHAT IS PLAINLY SOMEBODY ELSE'S IS FOLDED AWAY, NOT THROWN AWAY.
@@ -2955,63 +3009,99 @@ sec("A calendar you check three things on, not thirty");
      fold && String(fold.textContent));
 
   // ONE BUTTON, AND IT SAYS HOW MANY.
-  ok("one button, counting what it will do", /Put these 2 in/.test(String(r.get("#calAdd").textContent)),
+  ok("one button, counting what it will do", /Put these 3 in/.test(String(r.get("#calAdd").textContent)),
      String(r.get("#calAdd").textContent));
-
   const add = r.get("#calAdd");
   add.fire("click", { target: add });
   await r.settle();
-  const kept = r.state.schedule || [];
+  const kept = (r.state.schedule || []).map((x) => x.label);
   ok("and pressing it puts in what was ticked",
-     kept.length === 1 && kept[0].label === "Mid-Autumn Festival", JSON.stringify(kept));
-  ok("not the ones it was unsure of", !kept.some((b) => /Sports|Professional/.test(b.label)),
-     JSON.stringify(kept.map((b) => b.label)));
-  ok("nor the ones that aren't yours", !kept.some((b) => /Director/.test(b.label)),
-     JSON.stringify(kept.map((b) => b.label)));
+     kept.some((l) => /Mid-Autumn Festival/.test(String(l))), JSON.stringify(kept));
+  ok("not the ones it was unsure of", !kept.some((l) => /Exam week/.test(String(l))),
+     JSON.stringify(kept));
+  ok("nor the ones that aren't yours", !kept.some((l) => /Director/.test(String(l))),
+     JSON.stringify(kept));
 
-  // AND ANSWERING ONE DOES NOT REARRANGE THE OTHERS UNDER YOU.
+  // ---- AND NOTHING VANISHES, WHATEVER THE MODEL DOES ----------------------
   //
-  // The piles were worked out afresh on every redraw, so the moment you
-  // answered a question that row left the questions and reappeared in "ready"
-  // further down the page — the row you had just finished with vanished from
-  // under the cursor and everything below it jumped up a line. Twice down a
-  // list of twenty and you have lost your place; three times and you stop
-  // believing the list. What the READER made of it does not change while you
-  // work. What YOU made of it is on the row, and in the button.
+  // THE INVARIANT THE WHOLE PANEL RESTS ON. Every row this app read ends up in
+  // exactly one pile — ready, yours to say, or not yours — no matter what comes
+  // back. It was possible, a moment ago in this project's history, for a model
+  // that stopped mid-sentence to reduce a screen of twenty-two dates to one.
   {
-    const r2 = await openCal();
-    const order = () => calRowsOf(r2).map((n) => String((n.children[0] || {}).textContent || ""));
-    const before = order();
-    const pdRow = rowSaying(r2, "Professional Development");
-    const pick = A.deep(pdRow).find((c) => String(c.className || "").includes("cal-pick") &&
-      String(c.textContent) === "no lessons");
-    ok("the row being asked about offers an answer", !!pick,
-       A.deep(pdRow).map((c) => c.textContent).join(" | ").slice(0, 200));
-    if (pick) pick.fire("click", { target: pick });
+    const all = await openCal();
+    const first = [...(all.get("#calRows").children || [])]
+      .filter((n) => String(n.className || "").includes("cal-row")).length +
+      [...A.deep(all.get("#calRows"))].filter((n) => String(n.className || "").includes("cal-row")).length;
+    const count = (r) => [...A.deep(r.get("#calRows"))]
+      .filter((n) => String(n.className || "").includes("cal-row")).length;
+    const whole = count(all);
+    ok("every row the reader found is on the page", whole === 6, String(whole));
+
+    // ONE BATCH ANSWERS AND THE REST FALL OVER. Two batches' worth of rows, so
+    // there is a second batch to fall over on.
+    asked.length = 0;
+    const part = await openCal({ only: 1, more: true });
+    ok("a model that gives up part-way keeps every row it never reached",
+       count(part) === 10, String(count(part)));
+    ok("and says how many are still waiting on you",
+       /still waiting on you/.test(String(part.get("#calWords").textContent || "")),
+       String(part.get("#calWords").textContent).slice(0, 200));
+    ok("and says nothing was lost, because nothing was",
+       /Nothing was lost/.test(String(part.get("#calWords").textContent || "")),
+       String(part.get("#calWords").textContent).slice(0, 200));
+    ok("with what the model said, to look at",
+       !part.get("#calSaw").hidden, "no way to see what it answered with");
+
+    // AND ONE THAT NEVER ANSWERS AT ALL.
+    const none = await openCal({ answer: "down" });
+    ok("a model that cannot be reached keeps every row too",
+       count(none) === whole, `${count(none)} of ${whole}`);
+    ok("and says so", /couldn't be reached/.test(String(none.get("#calWords").textContent || "")),
+       String(none.get("#calWords").textContent).slice(0, 120));
+  }
+
+  // AND ASKED A FEW AT A TIME, because the other half of the same fault is the
+  // size of the answer: twenty-two entries of a dozen fields each is a long
+  // thing for a small model to write without stopping, and six numbers with a
+  // sentence apiece is not.
+  {
+    asked.length = 0;
+    const many = Array.from({ length: 14 }, (_, i) =>
+      `Thing ${i + 1}: ${i + 1} November 2026`).join("\n");
+    const r2 = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        asked.push(JSON.parse((init && init.body) || "{}"));
+        return { ok: true, json: async () => ({ answers: [], missed: [] }) };
+      },
+    });
+    r2.get("#calBox").open = true;
+    const box = r2.get("#calPaste");
+    box.value = many;
+    box.fire("input", { target: box });
     await r2.settle();
-    ok("answering one leaves every row exactly where it was",
-       JSON.stringify(order()) === JSON.stringify(before),
-       `${JSON.stringify(before)}\n   became ${JSON.stringify(order())}`);
-    const after = rowSaying(r2, "Professional Development");
-    ok("and it is still where you answered it, with your answer on it",
-       !!after && A.deep(after).some((c) => /cal-pick/.test(String(c.className || "")) &&
-         / on\b/.test(String(c.className || "")) && String(c.textContent) === "no lessons"),
-       "the row moved, or lost the answer");
-    // THE COUNT IS WHERE THE CHANGE SHOWS. One thing does move when you answer
-    // something, and it is the button that says what is going to happen.
-    ok("and the button below has counted it",
-       /Put these 3 in/.test(String(r2.get("#calAdd").textContent)),
-       String(r2.get("#calAdd").textContent));
-    // AND THE ONE STILL WAITING ON YOU IS NOT IN THAT NUMBER, and cannot be
-    // carried in by the press that takes the rest.
-    const go = r2.get("#calAdd");
-    go.fire("click", { target: go });
+    const bt = r2.get("#calSecond");
+    bt.fire("click", { target: bt });
     await r2.settle();
-    const in2 = (r2.state.schedule || []).map((b) => b.label);
-    ok("while the one still waiting on you stays out of it",
-       !in2.some((l) => /Sports/.test(String(l))), JSON.stringify(in2));
-    ok("and the one you answered goes in", in2.some((l) => /Professional/.test(String(l))),
-       JSON.stringify(in2));
+    const lots = asked.filter((x) => x.candidates);
+    ok("fourteen entries go out in more than one go", lots.length > 1, String(lots.length));
+    ok("none of them a long one", lots.every((x) => x.candidates.length <= 6),
+       JSON.stringify(lots.map((x) => x.candidates.length)));
+    // EVERY ROW ASKED ABOUT ONCE, which is the same invariant said about the
+    // asking rather than about the answering.
+    // EVERY ROW ASKED ABOUT, AND NONE TWICE IN ONE PASS. A batch that came back
+    // with nothing IS asked a second time — that is the point of batching, one
+    // that fails costs its own six and nothing else — so what must hold is that
+    // the first pass covers every row exactly once.
+    const pass1 = lots.slice(0, 3).flatMap((x) => x.candidates.map((c) => c.n));
+    ok("and every row asked about exactly once in the first go",
+       pass1.length === new Set(pass1).size && new Set(pass1).size === 14,
+       JSON.stringify(pass1));
+    ok("with the ones that came back empty asked again on their own",
+       lots.length > 3, String(lots.length));
   }
 }
 

@@ -78,6 +78,29 @@ const ol = http.createServer((req, res) => {
       });
       out = { blocks };
     }
+    // THE OTHER CALENDAR JOB: saying what a numbered list of entries MEANS,
+    // without being able to change the list. The stand-in answers by number and
+    // quotes the line it was given, which is what the server checks against the
+    // document — and a marker in the text tells it how to misbehave.
+    else if (/numbered list of entries already found/i.test(sys)) {
+      const user = (JSON.parse(b).messages || []).find((m) => m.role === "user")?.content || "";
+      const nums = [...user.matchAll(/^(\d+)\. (\d{4}-\d{2}-\d{2})[^\n]*?— ([^\n\[]*)(?:\[as written: ([^\]]*)\])?/gm)]
+        .map((m) => ({ n: Number(m[1]), label: m[3].trim(), line: (m[4] || m[3]).trim() }));
+      const how = (/MARKS:(\w+)/.exec(user) || [])[1] || "";
+      const one = (c) => ({ n: c.n, means: "off", runsAsDay: 0, sure: 0.9,
+        why: "it looks like a holiday", mine: "yes", said: c.line });
+      let answers = nums.map(one);
+      // HALF AN ANSWER, which is what a model that runs out of room gives.
+      if (how === "half") answers = answers.slice(0, Math.ceil(answers.length / 2));
+      // AN ANSWER TO A NUMBER NOBODY ASKED ABOUT.
+      if (how === "extra") answers = answers.concat([{ ...one({ n: 999, line: "nowhere" }) }]);
+      // AND THE SAME NUMBER TWICE, with a different answer the second time.
+      if (how === "dup" && answers.length)
+        answers = answers.concat([{ ...answers[0], means: "lessons", why: "changed my mind" }]);
+      // A QUOTE THE DOCUMENT DOES NOT HAVE: the evidence gate must still bite.
+      if (how === "nowhere") answers = answers.map((a) => ({ ...a, said: "a line from nowhere" }));
+      out = { answers };
+    }
     // THE CALENDAR JOB. There is no real model here and there cannot be, so
     // this stands in for one by SAYING WHATEVER THE TEST TELLS IT TO: each line
     // of the document is one entry, tab-separated. That puts the right thing
@@ -673,6 +696,78 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
      JSON.stringify(why.message));
   ok("while still saying what you can do instead",
      /type the dates in by hand/.test(why.message || ""), JSON.stringify(why.message));
+}
+
+{
+  // THE READER OWNS THE LIST. THE MODEL ONLY SAYS WHAT EACH ONE MEANS.
+  //
+  // Asked to turn a calendar into entries, a model hands back its own list — and
+  // that list then REPLACED the one this app had already read out of the
+  // document. On a real school calendar the reply ran out of room after the
+  // first entry, and twenty-two dates a person could see on their screen a
+  // moment earlier became one. A model going quiet, going slow or going wrong
+  // must not be able to delete what was read before it was asked.
+  const DOC = [
+    "• Mid-Autumn Festival: Sep. 25",
+    "• National Day: Oct. 1-Oct. 7",
+    "• Christmas Holiday: Dec. 22-Dec. 25",
+    "• New Year's Day: Jan. 1-Jan. 3, 2027",
+  ].join("\n");
+  const CANDS = [
+    { n: 1, date: "2026-09-25", endsOn: "", label: "Mid-Autumn Festival", line: "• Mid-Autumn Festival: Sep. 25" },
+    { n: 2, date: "2026-10-01", endsOn: "2026-10-07", label: "National Day", line: "• National Day: Oct. 1-Oct. 7" },
+    { n: 3, date: "2026-12-22", endsOn: "2026-12-25", label: "Christmas Holiday", line: "• Christmas Holiday: Dec. 22-Dec. 25" },
+    { n: 4, date: "2027-01-01", endsOn: "2027-01-03", label: "New Year's Day", line: "• New Year's Day: Jan. 1-Jan. 3, 2027" },
+  ];
+  const mark = (how, cands) => askCal({ year: 2026, candidates: cands || CANDS,
+    text: how ? `MARKS:${how}\n${DOC}` : DOC });
+
+  const all = await mark("");
+  ok("a numbered list comes back answered by number",
+     (all.answers || []).map((a) => a.n).join(",") === "1,2,3,4", JSON.stringify(all.answers));
+  ok("with no entries in the answer at all — it cannot add or remove one",
+     !("rows" in all) && !("entries" in all), JSON.stringify(Object.keys(all)));
+  ok("and nothing left unanswered", (all.missed || []).length === 0, JSON.stringify(all.missed));
+  ok("what it thinks each one means is carried",
+     (all.answers || []).every((a) => a.means === "off" && a.why), JSON.stringify(all.answers[0]));
+  // THE EVIDENCE GATE IS STILL THE GATE. The dates are this app's now, so a date
+  // cannot be invented — but a model can still annotate from the general sense
+  // of the page rather than from the entry in front of it, and that is checked
+  // exactly as before: the words it quotes must be in the document, with the
+  // entry's own date beside them.
+  const astray = await mark("nowhere");
+  ok("an answer quoting a line the document hasn't got is still a question",
+     (astray.answers || []).every((a) => /not in the document/.test(a.checked || "")),
+     JSON.stringify((astray.answers || [])[0]));
+  ok("while one quoting the real line goes through",
+     (all.answers || []).every((a) => a.checked === ""), JSON.stringify(all.answers));
+
+  // AND HALF AN ANSWER LEAVES THE OTHER HALF NAMED, NOT MISSING.
+  const half = await mark("half");
+  ok("a half-finished answer answers what it answered",
+     (half.answers || []).length === 2, JSON.stringify((half.answers || []).map((a) => a.n)));
+  ok("and says which numbers it never got to",
+     JSON.stringify(half.missed) === "[3,4]", JSON.stringify(half.missed));
+  ok("so every number is accounted for exactly once",
+     [...(half.answers || []).map((a) => a.n), ...(half.missed || [])].sort().join(",") === "1,2,3,4",
+     JSON.stringify([half.answers, half.missed]));
+
+  // AN ANSWER TO A NUMBER NOBODY ASKED ABOUT IS NOT AN ANSWER.
+  const extra = await mark("extra");
+  ok("an answer to a number that was never asked is dropped",
+     (extra.answers || []).every((a) => a.n <= 4), JSON.stringify((extra.answers || []).map((a) => a.n)));
+  // NOR IS A SECOND ONE TO A NUMBER ALREADY ANSWERED.
+  const twice = await mark("dup");
+  ok("and a number answered twice keeps the first answer",
+     (twice.answers || []).filter((a) => a.n === 1).length === 1 &&
+     (twice.answers || []).find((a) => a.n === 1).means === "off",
+     JSON.stringify((twice.answers || []).filter((a) => a.n === 1)));
+
+  // AND THE JOB IT IS ACTUALLY ASKED TO DO IS THE OTHER ONE.
+  const used = chats.filter((c) => /numbered list of entries already found/i.test(c.sys));
+  ok("with a list to annotate it is never asked to produce entries",
+     used.length > 0 && chats.filter((c) => /plain list of dated entries/i.test(c.sys) &&
+       /numbered list/i.test(c.sys)).length === 0, String(used.length));
 }
 
 {

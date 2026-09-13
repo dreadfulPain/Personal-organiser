@@ -1451,6 +1451,80 @@ You are asked for this so that they do not have to answer the same question thir
 
 Return only the JSON object.`;
 
+// ---- THE SAME JOB, THE OTHER WAY ROUND -------------------------------------
+//
+// THE READER OWNS THE LIST. THE MODEL ONLY SAYS WHAT EACH ONE MEANS.
+//
+// Asked to turn a calendar into entries, a model hands back its own list — and
+// then that list REPLACED the one this app had already read out of the
+// document. On a real calendar the reply ran out of room after the first entry,
+// and twenty-two dates a person could see on their screen a moment earlier
+// became one. A model going quiet, going slow, or going wrong must not be able
+// to delete what was read before it was asked.
+//
+// So where there is something to annotate, the entries are numbered here and
+// sent WITH the document, and all that comes back is what each number means.
+// Three things follow from that, and all three are the point:
+//
+//   · nothing can vanish — an unanswered number stays a question,
+//   · no date can be invented — the dates are this app's, not the model's,
+//   · and the answer is small, which is what stops it being cut off at all.
+//
+// The other prompt is still there and still needed: a calendar written in prose,
+// or in month names this reader has never heard of, produces no numbered list to
+// annotate, and then reading it from scratch is the whole point of asking.
+const CALENDAR_MARK_PROMPT = `You are given a numbered list of entries already found in one school calendar, and the calendar itself. For each number, say what that entry means to the person's working week. Nothing else.
+
+You do NOT decide dates. The dates are already known. Do not change them, do not add entries, do not leave any out.
+
+For each number:
+
+- "n" is the number, exactly as given.
+
+- "means" is what it does to their working week. Exactly one of:
+    "off"       — they are not working: a holiday, a public holiday, a break.
+    "noLessons" — a working day with no teaching: a training day, a staff-only day, an exam day with no classes.
+    "week"      — something that happens AT A TIME on a working day they should turn up to: a meeting, a parents' evening, a ceremony.
+    "runsAs"    — a working day that follows a DIFFERENT day's timetable, which is how a school pays for a holiday. Put the weekday it follows in "runsAsDay" (0=Sunday … 6=Saturday).
+    "due"       — something has to be finished by then: papers in, marks in, reports out.
+    "lessons"   — the day teaching starts for students.
+    ""          — you cannot tell. Say nothing rather than guess; they will be asked.
+
+- "sure" is how confident you are of "means", 0 to 1. Be honest. A line you had to reason about is not a 0.9.
+
+- "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document lists this under Holidays". It is shown to them, so write it to be read by a person.
+
+- "mine" is whether it looks like it applies to THEM, given what they say they do. "yes" if it is for the whole school, their own year group, all staff, or anyone teaching. "no" only when it is plainly limited to a group they have nothing to do with. "" if you cannot tell — which is the right answer far more often than "no".
+
+- "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the calendar below. It is looked for in the document, and the entry's own date is looked for beside it, so quote enough of it to take the date in. An answer whose "said" is not in the document is not trusted.
+
+Answer every number you are given, and no others. Return only the JSON object.`;
+
+const CALENDAR_MARK_SCHEMA = {
+  type: "object",
+  properties: {
+    answers: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          n: { type: "integer" },
+          means: { type: "string", enum: ["off", "noLessons", "week", "runsAs", "due", "lessons", ""] },
+          runsAsDay: { type: "integer" },
+          sure: { type: "number" },
+          why: { type: "string" },
+          mine: { type: "string", enum: ["yes", "no", ""] },
+          said: { type: "string" },
+        },
+        required: ["n", "means", "runsAsDay", "sure", "why", "mine", "said"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["answers"],
+  additionalProperties: false,
+};
+
 const CALENDAR_SCHEMA = {
   type: "object",
   properties: {
@@ -1654,6 +1728,77 @@ function writtenIn(said, iso) {
   return slash.test(s);
 }
 
+// SAYING WHAT A LIST OF ENTRIES MEANS, WITHOUT BEING ABLE TO CHANGE THE LIST.
+//
+// Every answer is matched back to the number it was for; every number that gets
+// no answer stays unanswered, and the page keeps it as a question. The dates are
+// the ones this app read — the model is never asked for one and never handed
+// one back, so the whole class of invented dates cannot arise here at all.
+//
+// What IS still checked is whether it looked at the right line: the words it
+// quotes must be in the document, and the entry's own date must be written
+// beside them. A model that annotates from the general sense of the page rather
+// than from the entry in front of it fails that, and is asked about instead.
+async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
+  const numbered = candidates
+    .map((c) => `${c.n}. ${c.date}${c.endsOn && c.endsOn !== c.date ? ` to ${c.endsOn}` : ""} — ` +
+      `${c.label || "(no name)"}${c.line && c.line !== c.label ? `   [as written: ${c.line}]` : ""}`)
+    .join("\n");
+  try {
+    const parsed = await runEngine(
+      cfg, CALENDAR_MARK_PROMPT,
+      `The rest of this document is about the year ${year}.\n` +
+      (about ? `\nThe person reading this says of themselves: ${about}\n` : "") +
+      `\nThe entries to say something about:\n"""\n${numbered}\n"""\n` +
+      `\nThe calendar they came out of:\n"""\n${sent}\n"""`,
+      CALENDAR_MARK_SCHEMA, "calendar-marks");
+    const doc = prepare(text);
+    const want = new Map(candidates.map((c) => [c.n, c]));
+    const seen = new Set();
+    const answers = [];
+    (Array.isArray(parsed.answers) ? parsed.answers : []).forEach((a) => {
+      const n = Number(a?.n);
+      // AN ANSWER TO A NUMBER THAT WAS NOT ASKED ABOUT IS NOT AN ANSWER. Nor is
+      // a second one to a number already answered.
+      if (!want.has(n) || seen.has(n)) return;
+      seen.add(n);
+      const c = want.get(n);
+      const said = (a.said || "").toString().trim().slice(0, 300);
+      const checked = verify(doc, said, c.date, c.endsOn);
+      answers.push({
+        n,
+        means: MEANS.indexOf(a.means) >= 0 ? a.means : "",
+        runsAsFrom: Number.isInteger(Number(a.runsAsDay)) &&
+          Number(a.runsAsDay) >= 0 && Number(a.runsAsDay) <= 6 ? Number(a.runsAsDay) : undefined,
+        why: (a.why || "").toString().trim().slice(0, 160),
+        sure: Number.isFinite(Number(a.sure)) ? Math.max(0, Math.min(1, Number(a.sure))) : 1,
+        mine: a.mine === "yes" || a.mine === "no" ? a.mine : "",
+        fromLine: said,
+        checked: checked.checked,
+        source: checked.source,
+      });
+    });
+    // WHAT IT DID NOT ANSWER, BY NUMBER. Said out loud rather than left to be
+    // noticed: an entry the model skipped and an entry it had nothing to say
+    // about look identical on the page, and only one of them is a reading.
+    const missed = candidates.map((c) => c.n).filter((n) => !seen.has(n));
+    return sendJson(res, 200, {
+      answers, missed,
+      ...(parsed && parsed.__cut ? { shortAnswer: true } : {}),
+      ...(text.length > sent.length ? { cut: sent.length } : {}),
+    });
+  } catch (err) {
+    console.warn("[calendar-marks] failed:", err?.message || err);
+    const why = offlineReason(cfg, err);
+    return sendJson(res, 502, {
+      error: "ai_failed",
+      ...(err && err.raw ? { saw: String(err.raw).slice(0, 4000) } : {}),
+      message: (why ? why + " " : "Couldn't read that just now — ") +
+        `${why ? "Y" : "y"}ou can still say what each one is by hand.`,
+    });
+  }
+}
+
 async function handleCalendar(res, body) {
   const text = (body?.text || "").toString().trim();
   if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to read." });
@@ -1675,6 +1820,22 @@ async function handleCalendar(res, body) {
   // exactly like one the model had read and found nothing more in.
   const CAP = 12000;
   const sent = text.slice(0, CAP);
+  // THE LIST THIS APP ALREADY READ, where there is one. See
+  // CALENDAR_MARK_PROMPT: with a list to annotate, the model is not asked to
+  // produce entries at all, so it cannot replace them, cannot invent a date,
+  // and has almost nothing to say — which is what stops the answer being cut
+  // off in the first place.
+  const candidates = (Array.isArray(body?.candidates) ? body.candidates : [])
+    .slice(0, 60)
+    .map((c) => ({
+      n: Number(c?.n) || 0,
+      date: ISO.test(String(c?.date || "")) ? String(c.date) : "",
+      endsOn: ISO.test(String(c?.endsOn || "")) ? String(c.endsOn) : "",
+      label: String(c?.label || "").slice(0, 120),
+      line: String(c?.line || "").slice(0, 300),
+    }))
+    .filter((c) => c.n > 0);
+  if (candidates.length) return markCalendar(res, { cfg, text, sent, year, about, candidates });
   try {
     const parsed = await runEngine(
       cfg, CALENDAR_PROMPT,

@@ -314,6 +314,11 @@
   async function calAsk(already, saying) {
     const text = calText;
     if (!text.trim()) return;
+    // WHERE THERE IS ALREADY A LIST, THE MODEL ANNOTATES IT AND DOES NOT REPLACE
+    // IT. See calMark. Reading it from scratch is for the document this reader
+    // could make nothing of, which is the case the model was added for.
+    const mine = (already && already.r && already.r.rows) || [];
+    if (mine.length) return calMark(already, saying);
     calNote = (saying || "Asking the model… ") + "this one's allowed to take a moment. ";
     renderCal();
     const t0 = msNow();
@@ -362,6 +367,141 @@
         `Read by the model in ${took(modelMs)}. ` + calCut(d.cut) + calShort(d.shortAnswer) +
           calStumbles(d.unreadable));
     }
+  }
+
+  // ANNOTATING WHAT WAS ALREADY READ, A FEW AT A TIME.
+  //
+  // THE FAULT THIS EXISTS FOR. The model was asked to turn the calendar into
+  // entries, and its list then REPLACED the one this app had read out of the
+  // document. On a real school calendar the reply ran out of room after the
+  // first entry, and twenty-two dates that were on the screen a moment earlier
+  // became one — with a sentence saying the answer had stopped early, which is
+  // honest and is not nearly enough. A model going quiet, going slow or going
+  // wrong must not be able to delete what was read before it was asked.
+  //
+  // So the rows this app found are the list. They are numbered, sent with the
+  // document, and all that comes back is what each number means. Every number
+  // that gets no answer stays exactly where it was, unanswered, as a question
+  // for you — which is the invariant the whole panel now rests on:
+  //
+  //   EVERY ROW THE READER FOUND ENDS UP IN EXACTLY ONE PILE. Nothing vanishes
+  //   because a model was cut off, was slow, or was wrong.
+  //
+  // AND A FEW AT A TIME, because the other half of the same fault is the size of
+  // the answer. Twenty-two entries of a dozen fields each is a long thing for a
+  // small model on a laptop to write without stopping; six numbers with a
+  // sentence apiece is not. Each batch is its own request, so one that fails
+  // costs its own six and nothing else, and the ones that failed are asked again
+  // on their own.
+  const BATCH = 6;
+  async function calMark(already, saying) {
+    const text = calText;
+    const rows = (already && already.r && already.r.rows) || [];
+    const year = (already && already.r && already.r.year) || 0;
+    const about = S().normaliseConfig(cfg).about || "";
+    const t0 = msNow();
+    const got = new Map();
+    let stopped = false, worst = null, sawText = "", short = false, cutAt = 0, refused = "";
+    const lots = [];
+    for (let i = 0; i < rows.length; i += BATCH) lots.push(rows.slice(i, i + BATCH));
+    // Which batch each row is in, so a failed batch can be asked again alone.
+    const numbered = rows.map((r, i) => ({
+      n: i + 1, date: r.date || "", endsOn: r.endsOn || "",
+      label: r.label || "", line: r.line || "",
+    }));
+    const askLot = async (from, count) => {
+      const candidates = numbered.slice(from, from + count);
+      const answer = await askModel("/api/calendar",
+        { text, year, about, candidates }, renderCal);
+      if (answer.stale) return "stale";
+      if (answer.stopped) { stopped = true; return "stopped"; }
+      if (answer.slow) { worst = worst || "slow"; return "slow"; }
+      if (answer.failed) { worst = worst || "failed"; return "failed"; }
+      const d = answer.data || {};
+      if (!answer.ok) {
+        worst = worst || "refused";
+        // THE SERVER'S OWN SENTENCE, not one made up here. It knows which
+        // failure it was — see offlineReason — and saying "the model couldn't
+        // read that" over the top of "Ollama isn't answering at …, is it
+        // running?" throws away the only useful half.
+        refused = refused || (d && d.message) || "";
+        sawText = sawText || (d && d.saw) || "";
+        return "refused";
+      }
+      (Array.isArray(d.answers) ? d.answers : []).forEach((a) => {
+        if (a && Number.isInteger(a.n)) got.set(a.n, a);
+      });
+      if (d.shortAnswer) short = true;
+      if (d.cut) cutAt = d.cut;
+      return "ok";
+    };
+    for (let i = 0; i < lots.length; i++) {
+      calNote = `${saying || "Asking the model… "}${rows.length > BATCH
+        ? `${Math.min(i * BATCH, rows.length)} of ${rows.length} so far. ` : ""}`;
+      renderCal();
+      const how = await askLot(i * BATCH, lots[i].length);
+      if (how === "stale") return;
+      if (how === "stopped") break;
+    }
+    // AND THE ONES THAT CAME BACK WITH NOTHING, ASKED AGAIN ON THEIR OWN. One
+    // more go each, because a batch that timed out is usually the machine being
+    // busy rather than the question being impossible — and because asking again
+    // costs six entries' worth of waiting, not the whole calendar's.
+    if (!stopped)
+      for (let i = 0; i < lots.length; i++) {
+        const none = lots[i].every((_, j) => !got.has(i * BATCH + j + 1));
+        if (!none) continue;
+        const how = await askLot(i * BATCH, lots[i].length);
+        if (how === "stale") return;
+        if (how === "stopped") break;
+      }
+    // WHAT CAME BACK, MERGED ONTO WHAT WAS ALREADY THERE. The row is the row
+    // this app read: same date, same name, same place in the list. All the
+    // model can add is what it thinks the day means, and it cannot take a row
+    // away by saying nothing about it.
+    const marked = rows.map((r, i) => {
+      const a = got.get(i + 1);
+      if (!a) return r;
+      return {
+        ...r,
+        means: a.means || "",
+        ...(a.runsAsFrom === undefined ? {} : { runsAsFrom: a.runsAsFrom }),
+        why: a.why || "",
+        sure: typeof a.sure === "number" ? a.sure : 1,
+        mine: a.mine || "",
+        fromLine: a.fromLine || "",
+        checked: a.checked || "",
+        source: a.source || "",
+      };
+    });
+    const answered = got.size;
+    if (!answered && worst) {
+      const why = { slow: `The model still hadn't answered after ${took(MODEL_WAIT)}, so:`,
+        failed: "The model couldn't be reached, so:",
+        refused: refused || "The model couldn't read that." }[worst];
+      return calFallBack(why, worst === "refused", sawText);
+    }
+    if (stopped && !answered) return calFallBack("Stopped waiting, so:");
+    calShow({ ...already.r, rows: marked, from: "model" },
+      `Read by the model in ${took(msNow() - t0)}. ` +
+      calCut(cutAt) + calShort(short) + calLeftOver(rows.length - answered, rows.length, stopped));
+    // A READING THAT CAME BACK IN PIECES IS STILL ONE TO OFFER AGAIN, and what
+    // the model said about the pieces that failed is still worth being able to
+    // look at. Set after calShow, which clears both for a reading that landed
+    // whole.
+    calSawText = sawText;
+    calFailed = !!worst || (stopped && answered < rows.length);
+    if (calSawText || calFailed) renderCal();
+  }
+
+  // AND WHAT IT DID NOT GET TO. The number that matters when a reading is
+  // partial: not how much came back, but how much is still waiting on you — and
+  // where those rows are, which is exactly where they always were.
+  function calLeftOver(left, all, stopped) {
+    if (left <= 0) return "";
+    return `${left} of the ${all} ${left === 1 ? "is" : "are"} still waiting on you` +
+      (stopped ? " — you stopped it" : "") +
+      ", in the list below. Nothing was lost. ";
   }
 
   // WHAT WAS NOT SENT. The server has a limit on how much of a document goes to

@@ -4464,3 +4464,8 @@ a.btn {
 .cal-sawtext { max-height: 16em; overflow: auto; white-space: pre-wrap;
   word-break: break-word; font-size: 0.72rem; background: var(--paper-sunk, #f2efe9);
   padding: 8px; border-radius: 6px; margin: 0; }
+/* WHAT THE READER THINKS, as against what the document says. The two sat in the
+   same grey and read as one thing — so a conclusion the model drew came across
+   as something the calendar stated. Marked, not shouted: this is still the
+   quiet line under a row. */
+.cal-thinks { flex: 1 1 100%; }

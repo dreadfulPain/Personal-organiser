@@ -1590,6 +1590,19 @@ function notTheLabel(label, extras) {
 
 const MEANS = ["off", "noLessons", "week", "runsAs", "due", "lessons"];
 
+// WHETHER "IS THIS YOURS" WAS EVEN ASKED.
+//
+// The model is told what the person teaches, in their own words, and decides
+// from that whether an entry is plainly somebody else's. With that box empty it
+// is told nothing — so "yes, this is for you" is not a judgement about them, it
+// is a shrug in the shape of one. Thrown away, because an answer to a question
+// nobody asked is worth nothing and looks exactly like one that is worth
+// something.
+function mineMeans(about, said) {
+  if (!String(about || "").trim()) return "";
+  return said === "yes" || said === "no" ? said : "";
+}
+
 // WHAT THE APP CAN CHECK FOR ITSELF, WHICH IS NOT WHAT THE MODEL SAYS IT IS
 // SURE OF.
 //
@@ -1609,11 +1622,31 @@ const MEANS = ["off", "noLessons", "week", "runsAs", "due", "lessons"];
 // check the invented October 13th fails.
 //
 // NOT "ON THAT LINE", THOUGH — see evidence(). A PDF has no lines.
-function verify(doc, said, date, endsOn) {
+function verify(doc, said, row) {
+  const { date, endsOn, label } = row || {};
   const span = evidence(doc, said);
   if (span === null) return { checked: "line not in the document", source: "" };
-  // A repeating rule has no date to look for.
-  if (!date) return { checked: "", source: span };
+  // WITH NO DATE ON IT, THE NAME IS THE ANCHOR.
+  //
+  // THE HOLE THIS CLOSES. The date was the only thing tying a quote to the entry
+  // it was supposed to be about — so an entry with no date, which is what a
+  // mark on a term grid is, could be "supported" by ANY line anywhere in the
+  // document. "Grade 9-10 Director Meeting" came back on screen justified by
+  // "Holidays: Mid-Autumn Festival: Sep. 25", and "Grade 11-12 Director Meeting"
+  // by the National Day line. Both quotes are really in the document, so both
+  // passed.
+  //
+  // That is worse than a wrong answer. A wrong answer is a thing you can
+  // disagree with; an answer showing you somebody else's evidence as its reason
+  // is the app lying about where it got something, and the whole panel is built
+  // on being able to check it.
+  if (!date) {
+    const flat = (x) => String(x || "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!label) return { checked: "", source: span };
+    return flat(span).indexOf(flat(label)) < 0
+      ? { checked: "that isn't the line this came off", source: span }
+      : { checked: "", source: span };
+  }
   const has = (iso) => !iso || writtenIn(span, iso);
   if (!has(date)) return { checked: "that day isn't written near that line", source: span };
   if (!has(endsOn))
@@ -1809,7 +1842,7 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       seen.add(n);
       const c = want.get(n);
       const said = (a.said || "").toString().trim().slice(0, 300);
-      const checked = verify(doc, said, c.date, c.endsOn);
+      const checked = verify(doc, said, c);
       const means = MEANS.indexOf(a.means) >= 0 ? a.means : "";
       // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees.
       const fits = disagrees(means, c);
@@ -1820,7 +1853,14 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
           Number(a.runsAsDay) >= 0 && Number(a.runsAsDay) <= 6 ? Number(a.runsAsDay) : undefined,
         why: (a.why || "").toString().trim().slice(0, 160),
         sure: Number.isFinite(Number(a.sure)) ? Math.max(0, Math.min(1, Number(a.sure))) : 1,
-        mine: a.mine === "yes" || a.mine === "no" ? a.mine : "",
+        // AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION.
+        //
+        // With the "what you teach" box empty the model is told nothing about
+        // the person, so "yes, this is for you" is not a judgement — it is a
+        // shrug in the shape of one, and it was enough to tick a year-group
+        // meeting into somebody's week. Asked nothing, its answer counts for
+        // nothing. See mineMeans.
+        mine: mineMeans(about, a.mine),
         fromLine: said,
         checked: checked.checked || fits,
         source: checked.source,
@@ -1929,7 +1969,7 @@ async function handleCalendar(res, body) {
       // WHAT THE DOCUMENT ITSELF SAYS ABOUT THIS ENTRY, found once and used for
       // both the question and the showing of it. Asked twice it would be two
       // answers to drift apart.
-      const seen = verify(doc, said, date, endsOn);
+      const seen = verify(doc, said, { date, endsOn, label });
       const means = MEANS.indexOf(e.means) >= 0 ? e.means : "";
       // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees.
       const fits = disagrees(means, { label, line: said || label, date, endsOn });
@@ -1954,7 +1994,8 @@ async function handleCalendar(res, body) {
         // Its own confidence, kept only so it can ask for help — never so it
         // can wave something through. See pile() on the page.
         sure: Number.isFinite(Number(e.sure)) ? Math.max(0, Math.min(1, Number(e.sure))) : 1,
-        mine: e.mine === "yes" || e.mine === "no" ? e.mine : "",
+        // Only an answer if there was a question — see mineMeans.
+        mine: mineMeans(about, e.mine),
         // THE LINE IT SAYS THIS CAME FROM, AND WHETHER THE DOCUMENT AGREES.
         // Not called "said": a row already uses that for whether YOU have
         // answered it, and one word meaning two things is how a row comes back

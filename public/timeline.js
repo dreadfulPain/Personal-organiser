@@ -518,7 +518,8 @@
     if (stopped && !answered) return calFallBack("Stopped waiting, so:");
     calShow({ ...already.r, rows: marked, from: "model" },
       `Read by the model in ${took(msNow() - t0)}. ` +
-      calCut(cutAt) + calShort(short) + calLeftOver(all - answered, all, stopped));
+      calCut(cutAt) + calShort(short) + calNoProfile(about) +
+      calLeftOver(all - answered, all, stopped));
     // A READING THAT CAME BACK IN PIECES IS STILL ONE TO OFFER AGAIN, and what
     // the model said about the pieces that failed is still worth being able to
     // look at. Set after calShow, which clears both for a reading that landed
@@ -532,6 +533,19 @@
     calSawText = sawText;
     calFailed = !!worst || (stopped && answered < all);
     if (calSawText || calFailed) renderCal();
+  }
+
+  // AND WHEN NOTHING WAS SET ASIDE BECAUSE NOTHING WAS ASKED.
+  //
+  // The reader decides whether an entry is plainly somebody else's from what you
+  // say you teach. With that box empty it is told nothing about you, so its
+  // answer to that question is thrown away — see mineMeans — and the result is a
+  // list with nothing folded away and no sign of why. One sentence, once, rather
+  // than a year-group meeting quietly in your week.
+  function calNoProfile(about) {
+    if (String(about || "").trim()) return "";
+    return "You haven't said what you teach, so nothing has been set aside as " +
+      "somebody else's — the box is just above, and it is remembered. ";
   }
 
   // AND WHAT IT DID NOT GET TO. The number that matters when a reading is
@@ -755,11 +769,18 @@
       // deciding, which is the one thing this panel promises it never does.
       const said0 = calMarkWhy.get(i);
       if (said0) {
-        const w = el("span", "muted cal-hint cal-mark-why",
+        const w = el("span", "muted cal-hint cal-mark-why cal-thinks",
           (said0.mine === "no"
-            ? "set aside — the reader thought this isn't yours: "
-            : "the reader thought: ") + (said0.why || "no reason given"));
+            ? "set aside — the reader thinks this isn't yours: "
+            : "the reader thinks: ") + (said0.why || "no reason given"));
         wrap.appendChild(w);
+        // AND THE DOCUMENT'S OWN WORDS UNDER IT, so the two can never be read as
+        // one thing. A mark's evidence is the line of the legend that names it.
+        if (said0.source) {
+          const src = el("span", "muted cal-hint cal-source",
+            `the document says: ${said0.source}`);
+          wrap.appendChild(src);
+        }
       }
 
       // ONLY THE ONE THAT NEEDS IT ASKS. A time and "somewhere you have to be"
@@ -1104,10 +1125,17 @@
       // AND WHY IT THINKS SO, in the reader's own plain sentence. Shown because
       // a conclusion you cannot see the reason for is one you can only accept
       // or reject, and this panel is meant to be argued with.
+      // ATTRIBUTED, ALWAYS. The reader's sentence sat here bare, in the same
+      // quiet grey the document's own words are shown in, so "the document lists
+      // this under Professional Development (PD) Days for Teachers, WHICH ARE
+      // DAYS WHEN TEACHERS ARE NOT TEACHING" read as something the calendar
+      // said. The second half of that is not in any document; it is the reader
+      // thinking, and a conclusion wearing the clothes of evidence is the one
+      // thing this panel cannot allow, because checking it is the whole point.
       if (r.why) {
         const w = document.createElement("span");
-        w.className = "muted cal-hint";
-        w.textContent = r.why;
+        w.className = "muted cal-hint cal-thinks";
+        w.textContent = `the reader thinks: ${r.why}`;
         row.appendChild(w);
       }
       const change = document.createElement("button");
@@ -1341,8 +1369,18 @@
         asked.className = "muted cal-hint cal-asked";
         asked.textContent = r.checked
           ? `asking because ${r.checked}`
-          : `the reader wasn't sure — it thought: ${r.why}`;
+          : `the reader wasn't sure about this one`;
         row.appendChild(asked);
+      }
+      // AND WHAT THE READER MADE OF IT, SAID AS THE READER'S. A row being asked
+      // about because the app could not check the reading is a row where the
+      // reading itself is the thing to judge — so it is shown, and shown as a
+      // thought rather than as something the document says.
+      if (r.why) {
+        const t = document.createElement("span");
+        t.className = "muted cal-hint cal-thinks";
+        t.textContent = `the reader thinks: ${r.why}`;
+        row.appendChild(t);
       }
       // AND THE WORDS IT IS ALL RESTING ON.
       //

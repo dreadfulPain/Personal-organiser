@@ -84,7 +84,9 @@ const ol = http.createServer((req, res) => {
     // document — and a marker in the text tells it how to misbehave.
     else if (/numbered list of entries already found/i.test(sys)) {
       const user = (JSON.parse(b).messages || []).find((m) => m.role === "user")?.content || "";
-      const nums = [...user.matchAll(/^(\d+)\. (\d{4}-\d{2}-\d{2})[^\n]*?— ([^\n\[]*)(?:\[as written: ([^\]]*)\])?/gm)]
+      // A CANDIDATE WITH NO DATE ON IT is what a mark on a term grid is, and
+      // insisting on one here meant the stand-in simply never saw them.
+      const nums = [...user.matchAll(/^(\d+)\. (\d{4}-\d{2}-\d{2})?[^\n]*?— ([^\n\[]*)(?:\[as written: ([^\]]*)\])?/gm)]
         .map((m) => ({ n: Number(m[1]), label: m[3].trim(), line: (m[4] || m[3]).trim() }));
       const how = (/MARKS:(\w+)/.exec(user) || [])[1] || "";
       const one = (c) => ({ n: c.n, means: "off", runsAsDay: 0, sure: 0.9,
@@ -99,6 +101,9 @@ const ol = http.createServer((req, res) => {
         answers = answers.concat([{ ...answers[0], means: "lessons", why: "changed my mind" }]);
       // A QUOTE THE DOCUMENT DOES NOT HAVE: the evidence gate must still bite.
       if (how === "nowhere") answers = answers.map((a) => ({ ...a, said: "a line from nowhere" }));
+      // AND ONE THAT IS REALLY IN THE DOCUMENT AND IS ABOUT SOMETHING ELSE.
+      if (how === "borrow")
+        answers = answers.map((a) => ({ ...a, said: "• Mid-Autumn Festival: Sep. 25" }));
       // AND A MEANING THAT CONTRADICTS THE SHAPE OF THE ROW.
       if (how === "due") answers = answers.map((a) => ({ ...a, means: "due" }));
       out = { answers };
@@ -834,6 +839,51 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
       label: "Midterm exams", line: "Tentatively Nov. 10-12" }] });
   ok("a range written once inside a month is read as evidence for both ends",
      ((short2.answers || [])[0] || {}).checked === "", JSON.stringify((short2.answers || [])[0]));
+
+  // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------
+  //
+  // The model is told what the person teaches, in their own words, and judges
+  // relevance from that. With the box empty it is told nothing — so "yes, this
+  // is for you" is not a judgement, it is a shrug in the shape of one, and it
+  // was enough to tick a year-group meeting into somebody's week.
+  const askedNothing = await askCal({ year: 2026, text: DOC, candidates: CANDS });
+  ok("with nothing said about the person, what it says about relevance is dropped",
+     (askedNothing.answers || []).every((a) => a.mine === ""),
+     JSON.stringify((askedNothing.answers || []).map((a) => a.mine)));
+  const toldSomething = await askCal({ year: 2026, text: DOC, candidates: CANDS,
+    about: "Grade 1 homeroom, primary school" });
+  ok("and kept once there is something to judge it against",
+     (toldSomething.answers || []).every((a) => a.mine === "yes"),
+     JSON.stringify((toldSomething.answers || []).map((a) => a.mine)));
+
+  // ---- AND NO ENTRY MAY BORROW ANOTHER'S EVIDENCE --------------------------
+  //
+  // The date was the only thing tying a quote to the entry it was about, so an
+  // entry with NO date — which is what a mark on a term grid is — could be
+  // supported by any line anywhere in the document. On a real calendar "Grade
+  // 9-10 Director Meeting" came back on screen justified by "Holidays:
+  // Mid-Autumn Festival: Sep. 25" and "Grade 11-12 Director Meeting" by the
+  // National Day line. Both quotes really are in the document, so both passed.
+  //
+  // That is worse than a wrong answer. A wrong answer can be disagreed with; an
+  // answer showing somebody else's evidence as its reason is the app lying about
+  // where it got something, and being checkable is the whole of what this panel
+  // is for.
+  const WITH_LEGEND = `${DOC}\nGrade 9-10 Director Meeting\nStaff Meeting`;
+  const legend = (how) => askCal({ year: 2026,
+    text: how ? `MARKS:${how}\n${WITH_LEGEND}` : WITH_LEGEND,
+    candidates: [{ n: 1, date: "", endsOn: "", label: "Grade 9-10 Director Meeting",
+      line: "Grade 9-10 Director Meeting" }] });
+  const borrow = await legend("borrow");
+  ok("an entry with no date can't be justified by a line about something else",
+     /isn't the line this came off/.test(((borrow.answers || [])[0] || {}).checked || ""),
+     JSON.stringify((borrow.answers || [])[0]));
+  // AND ITS OWN LINE STILL WORKS. The rule is an anchor, not a refusal.
+  const own = await legend("");
+  ok("while its own line does",
+     ((own.answers || [])[0] || {}).checked === "" &&
+     /Grade 9-10 Director Meeting/.test(((own.answers || [])[0] || {}).source || ""),
+     JSON.stringify((own.answers || [])[0]));
 
   // AND THE JOB IT IS ACTUALLY ASKED TO DO IS THE OTHER ONE.
   const used = chats.filter((c) => /numbered list of entries already found/i.test(c.sys));

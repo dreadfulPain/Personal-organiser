@@ -372,7 +372,13 @@
         // line itself must be prose — lower case AND more than one word. Without
         // that last part a table of names and email addresses joins every
         // address onto the person above it.
-        if (/^[,;]/.test(l)) { join(prev + l, at, ""); return; }
+        // A COLON NEVER STARTS A LINE EITHER. ": Feb. 18-19, 2027" is the rest
+        // of the line above it, always — no sentence in any document begins with
+        // one. The rule above it only joined a line starting with punctuation
+        // when the line before was a couple of characters long, so a name split
+        // across three runs came out as three lines and the entry underneath
+        // them had nothing to call it.
+        if (/^[,;:]/.test(l)) { join(prev + l, at, ""); return; }
         // A NUMBER THAT LOST ITS OTHER HALF. "Dec. 2" / "2-" / "Dec. 25" is the
         // twenty-second of December cut in two where the column ran out, and
         // read as written it is the second — three weeks of holiday in the

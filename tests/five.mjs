@@ -2949,6 +2949,28 @@ sec("A calendar you check three things on, not thirty");
   // WHAT YOU SAY YOU DO GOES WITH THE DOCUMENT. Nothing about any school is in
   // this app; this is a box you fill in, and it is the difference between a
   // calendar that sets aside other years' meetings and one that asks every term.
+  // AND WHEN IT IS BLANK, THE PAGE SAYS WHY NOTHING WAS FOLDED AWAY.
+  {
+    const blank = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: true }) }
+        : /api\/calendar/.test(String(url))
+          ? { ok: true, json: async () => ({ answers: [], missed: [1] }) }
+          : { ok: false, json: async () => ({}) }),
+    });
+    blank.get("#calBox").open = true;
+    const bx = blank.get("#calPaste");
+    bx.value = "Staff return\t24 August 2026";
+    bx.fire("input", { target: bx });
+    await blank.settle();
+    const bt2 = blank.get("#calSecond");
+    bt2.fire("click", { target: bt2 });
+    await blank.settle();
+    ok("with nothing said about you, the page says nothing was set aside",
+       /haven't said what you teach/.test(String(blank.get("#calWords").textContent || "")),
+       String(blank.get("#calWords").textContent).slice(0, 200));
+  }
+
   ok("what you teach is sent with it",
      asked[0] && asked[0].about === "Grade 1 homeroom, primary school",
      JSON.stringify(asked[0] && asked[0].about));
@@ -2979,6 +3001,20 @@ sec("A calendar you check three things on, not thirty");
   ok("and why it thinks so, in the reader's own words",
      holiday && A.deep(holiday).some((c) => /listed under Holidays/.test(String(c.textContent))),
      holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
+  // AND SAID AS THE READER'S, NOT AS THE DOCUMENT'S.
+  //
+  // The sentence sat here bare, in the same quiet grey the document's own words
+  // are shown in, so "the document lists this under Professional Development
+  // Days for Teachers, WHICH ARE DAYS WHEN TEACHERS ARE NOT TEACHING" read as
+  // something the calendar said. The second half of that is in no document. A
+  // conclusion wearing the clothes of evidence is the one thing this panel
+  // cannot allow, because being able to check it is the whole point of it.
+  ok("and marked as a thought rather than as something the document said",
+     holiday && A.deep(holiday).some((c) => /^the reader thinks: /.test(String(c.textContent || ""))),
+     holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
+  ok("while the document's own words say they are the document's",
+     A.deep(r.get("#calRows")).some((c) => /^the document says: /.test(String(c.textContent || ""))),
+     "nothing on the page says which words are the school's");
   ok("with no row of seven buttons under it",
      holiday && !A.deep(holiday).some((c) => String(c.className || "").includes("cal-pick")),
      "the seven choices are still under every ready row");
@@ -3177,7 +3213,7 @@ sec("And the things marked on the grid are asked about too");
   ok("what the reader made of the staff meetings is filled in",
      staff && staff.on.includes("in my week"), JSON.stringify(said));
   ok("and says so, so it can never look like the app deciding",
-     staff && /the reader thought/.test(staff.why), JSON.stringify(staff));
+     staff && /the reader thinks/.test(staff.why), JSON.stringify(staff));
   ok("while another year group's is set aside",
      theirs && theirs.on.includes("ignore"), JSON.stringify(theirs));
   ok("and says that is why", theirs && /isn't yours/.test(theirs.why), JSON.stringify(theirs));

@@ -401,6 +401,32 @@ ok("without that having to be typed in afterwards", first && first.label === "Sc
 // BOTH SCHEMAS, because the second one is where a record lives and it had the
 // same hole: adding a field to what the server reads without adding it to what
 // the model is told it may send leaves the model unable to guess it is allowed.
+// WHAT THE MODEL IS TOLD ABOUT ITS OWN CONFIDENCE.
+//
+// There is one question about a school calendar this app cannot settle for
+// itself and must not pretend to: whether a day with a name on it is a day
+// without lessons. "Professional Development (PD) Days for Teachers: Oct. 16,
+// Nov. 13" says who the day is for. It does not say that classes are off —
+// and a model that reads it as "no lessons" is inferring, confidently.
+//
+// The app cannot tell that reading from a correct one without acquiring a
+// vocabulary, which it will not do (§0.2). What it can do is ask the model to
+// be honest about it, and then gate on the honesty — a low "sure" is already
+// enough to send a row to be asked about. So the instruction is load-bearing:
+// remove it and the only thing standing between a guess and your calendar is
+// the model's mood. This is here so it cannot go quietly.
+{
+  const src = fs.readFileSync(`${REPO_ROOT}/server.js`, "utf8");
+  const prompts = [...src.matchAll(/const CALENDAR(?:_MARK)?_PROMPT = `([\s\S]*?)`;/g)].map((m) => m[1]);
+  ok("both calendar prompts are being looked at", prompts.length === 2, String(prompts.length));
+  ok("each says what a meaning is a claim about",
+     prompts.every((p) => /what happens to their lessons/i.test(p)),
+     JSON.stringify(prompts.map((p) => /what happens to their lessons/i.test(p))));
+  ok("and each says to be honest when that is being inferred",
+     prompts.every((p) => /naming who a day is for is not a line saying whether classes run/i.test(p)),
+     JSON.stringify(prompts.map((p) => p.slice(-200))));
+}
+
 for (const [name, schemaRe, handlerRe, readRe] of [
   ["timetable", /const TIMETABLE_SCHEMA = \{[\s\S]*?\n\};/,
    /async function handleTimetable[\s\S]*?\n\}/, /\bb\.(\w+)/g],

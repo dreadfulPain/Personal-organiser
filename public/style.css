@@ -4456,3 +4456,11 @@ a.btn {
   .ai-dot-on { color: #8fd6b0; border-color: #2f5c45; background: rgba(47, 145, 96, 0.12); }
   .ai-dot-off { color: #f0a898; border-color: #6b3a30; background: rgba(192, 85, 63, 0.12); }
 }
+/* WHAT THE MODEL SAID, WHEN IT COULDN'T BE READ. A wall of somebody else's
+   words: folded away, monospaced because it is meant to be a machine's answer
+   and not prose, and boxed so a long one cannot run off the page. */
+.cal-saw { margin-top: 8px; }
+.cal-saw > summary { font-size: 0.82rem; }
+.cal-sawtext { max-height: 16em; overflow: auto; white-space: pre-wrap;
+  word-break: break-word; font-size: 0.72rem; background: var(--paper-sunk, #f2efe9);
+  padding: 8px; border-radius: 6px; margin: 0; }

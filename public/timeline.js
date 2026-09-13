@@ -102,6 +102,12 @@
   // WHETHER THE LAST ASKING CAME TO NOTHING — so the offer can say "again"
   // rather than pretending this is the first time. Cleared by a reading landing.
   let calFailed = false;
+  // WHAT THE MODEL ACTUALLY SENT BACK, when it could not be read. Held here for
+  // as long as the failure is on screen and nowhere else: not saved, not in the
+  // report, and this app has never had anywhere to send it. Only the person at
+  // the computer the model is running on can see what it does, so this is the
+  // only way they ever find out.
+  let calSawText = "";
   // WHICH READY ROWS YOU HAVE OPENED UP TO ARGUE WITH. A row the reader got
   // right is one line; pressing "change" on it turns that one back into the
   // full set of choices, and it stays open while you decide.
@@ -246,6 +252,7 @@
     const sorted = triagedRows(calRows);
     calRows = calRows.map((x) => ({ ...x, pile: sorted ? pileOf(x) : "ask" }));
     calFailed = false;
+    calSawText = "";
     calMeta = { ...r, rows: calRows };
     calNote = note || "";
     // A NEW DOCUMENT IS A NEW SET OF QUESTIONS. Kept choices would sit against
@@ -335,7 +342,8 @@
         // couldn't — X — so:" produced two dashes, a question mark mid-clause
         // and a lowercase word after it. It is said on its own, and this adds
         // only the join.
-        return calFallBack((d && d.message) || "The model couldn't read that.", true);
+        return calFallBack((d && d.message) || "The model couldn't read that.", true,
+          d && d.saw);
       const rows = Array.isArray(d.rows) ? d.rows : [];
       if (!rows.length)
         return calFallBack(`The model found nothing in ${took(modelMs)}, so:`);
@@ -351,7 +359,8 @@
         // reading came to. Said here as well it was "4 dates read by the model
         // in 13ms. 4 dates read.", which is the same fact twice and neither of
         // them is the sentence that tells you what to do next.
-        `Read by the model in ${took(modelMs)}. ` + calCut(d.cut) + calStumbles(d.unreadable));
+        `Read by the model in ${took(modelMs)}. ` + calCut(d.cut) + calShort(d.shortAnswer) +
+          calStumbles(d.unreadable));
     }
   }
 
@@ -363,6 +372,16 @@
     if (!cut) return "";
     return `Only the first part of this went to the model — about ${Math.round(cut / 1000)},000 ` +
       "characters of it. Anything after that is still in the box; read it in on its own. ";
+  }
+
+  // AND WHERE THE ANSWER ITSELF RAN OUT. A reply that stopped mid-sentence is
+  // mended back to its last whole entry rather than thrown away — twenty-two of
+  // twenty-five is worth having — but a reading that is quietly short is exactly
+  // the kind this app must not hand over without a word.
+  function calShort(short) {
+    if (!short) return "";
+    return "The model's answer stopped before it finished, so what is here is the part " +
+      "that came through — check the end of the document for anything missing. ";
   }
 
   // A ROW THAT VANISHED IS INVISIBLE; A ROW THE READER SAYS IT STUMBLED ON CAN
@@ -386,7 +405,7 @@
   // never came and leaves everything else exactly as it was, answers included.
   // Nothing is re-read: reading one document twice is how two readings of it
   // start to disagree.
-  function calFallBack(why, whole) {
+  function calFallBack(why, whole, saw) {
     // `whole` says the message is already a finished sentence and needs no
     // "so:" welded onto the end of it.
     //
@@ -397,6 +416,7 @@
     // model read it too", which is an invitation to do a thing that has just
     // failed, so the whole panel read as if this were simply how it works.
     calFailed = true;
+    calSawText = String(saw || "");
     calNote = whole ? why + " What was read here is still below. " : why + " ";
     renderCal();
   }
@@ -750,6 +770,32 @@
       why.textContent = asking
         ? "It gets two minutes, then it gives up on its own and what was read here stays."
         : "It reads the words and the dates; what each one means to your week is still yours to say.";
+    // AND WHAT IT SAID, WHERE IT COULD NOT BE READ. Folded away, because it is a
+    // wall of a model's own words and nobody wants it by default — and there,
+    // because "answered with something this app couldn't read" is a claim about
+    // somebody's own computer that they otherwise have no way to check.
+    const sawBox = $("#calSaw");
+    if (sawBox) {
+      sawBox.innerHTML = "";
+      sawBox.hidden = !calSawText;
+      if (calSawText) {
+        const d = document.createElement("details");
+        d.className = "p-setup cal-saw";
+        const sum = document.createElement("summary");
+        sum.textContent = "show what the model said";
+        d.appendChild(sum);
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "Its answer, as it arrived. It stays on this page — nothing is saved " +
+          "and nothing is sent anywhere.";
+        d.appendChild(p);
+        const pre = document.createElement("pre");
+        pre.className = "cal-sawtext";
+        pre.textContent = calSawText;
+        d.appendChild(pre);
+        sawBox.appendChild(d);
+      }
+    }
     // What each row will actually cover, worked out by the reader rather than
     // guessed at again here — so what this shows is what gets kept.
     const marks = new Map();

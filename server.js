@@ -509,19 +509,120 @@ function stripThink(s) {
     .trim();
 }
 
-// Pull JSON out of a model reply even if it's wrapped in prose or ``` fences.
-function extractJson(text) {
-  let t = stripThink(text);
-  if (!t) throw new Error("empty reply");
-  t = t.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```$/, "").trim();
-  try {
-    return JSON.parse(t);
-  } catch {
-    const s = t.indexOf("{");
-    const e = t.lastIndexOf("}");
-    if (s >= 0 && e > s) return JSON.parse(t.slice(s, e + 1));
-    throw new Error("no JSON in reply");
+// WHAT A LOCAL MODEL ACTUALLY SENDS BACK.
+//
+// Asked for JSON and given a schema, a small model on somebody's laptop answers
+// with JSON most of the time and with one of these the rest of the time:
+//
+//   "Here is the JSON:" and then a fenced block, and then "Hope that helps!"
+//   a fenced block in the middle of two paragraphs of explanation
+//   the array on its own, without the object around it
+//   the right array under a name of its own choosing
+//   a trailing comma, because it was writing a list
+//   an answer that simply stops — the reply ran out of room
+//
+// The old reader handled a fence at the very start and a fence at the very end,
+// then fell back to "from the first { to the last }", which is not the same
+// thing as a JSON value and breaks on a brace in the prose, on two objects, and
+// on anything truncated. Everything else came out as "no JSON in reply" — the
+// whole reading thrown away over its wrapping — and the person was put back in
+// front of twenty-five rows to classify by hand, which is the work this panel
+// exists to remove.
+//
+// So: try the whole thing, then each fenced block, then each balanced value in
+// it, and — last — mend a value that was cut off, because twenty-two entries out
+// of twenty-five is worth having and nothing is not.
+function extractJson(text, schema) {
+  const raw = String(text ?? "");
+  const t = stripThink(raw);
+  if (!t.trim()) throw sawNothing(raw, "it sent nothing back");
+  for (const [candidate, cut] of jsonTries(t)) {
+    const v = parseLoose(candidate);
+    if (v === undefined) continue;
+    const out = shaped(v, schema);
+    // SAID, NOT SWALLOWED. A mended answer is missing its tail, and a reading
+    // that is quietly short is the one kind this app must never hand over
+    // without a word. Not enumerable, so it cannot ride out in a response by
+    // accident — only what asks for it sees it.
+    if (cut && out && typeof out === "object")
+      Object.defineProperty(out, "__cut", { value: true, enumerable: false });
+    return out;
   }
+  throw sawNothing(raw, "no JSON in reply");
+}
+
+// The error carries what the model said, so the page can show it rather than
+// leaving somebody to guess at what their own computer did.
+function sawNothing(raw, why) {
+  return Object.assign(new Error(why), { raw: String(raw || "").slice(0, 4000) });
+}
+
+// Every place a JSON value might be hiding, best first. Yields [text, wasCut].
+function* jsonTries(t) {
+  yield [t.trim(), false];
+  for (const m of t.matchAll(/```[a-zA-Z]*\s*([\s\S]*?)```/g)) yield [m[1].trim(), false];
+  // An unclosed fence — the reply stopped inside it.
+  const open = /```[a-zA-Z]*\s*([\s\S]*)$/.exec(t);
+  if (open && !/```/.test(open[1])) yield [open[1].trim(), false];
+  const mends = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== "{" && t[i] !== "[") continue;
+    const found = balancedAt(t, i);
+    if (found.whole) { yield [found.whole, false]; i = found.end - 1; continue; }
+    if (found.mended) mends.push(found.mended);
+    break;
+  }
+  for (const m of mends) yield [m, true];
+}
+
+// The complete JSON value starting at `from`, or — where the text stops before
+// it closes — the same value cut back to its last complete element and closed.
+function balancedAt(t, from) {
+  const stack = [];
+  let inStr = false, esc = false, cut = -1, need = null;
+  for (let i = from; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") { stack.push(c === "{" ? "}" : "]"); continue; }
+    if (c !== "}" && c !== "]") continue;
+    stack.pop();
+    if (!stack.length) return { whole: t.slice(from, i + 1), end: i + 1 };
+    cut = i + 1;
+    need = stack.slice();
+  }
+  if (cut < 0 || !need || !need.length) return {};
+  return { mended: t.slice(from, cut) + need.reverse().join("") };
+}
+
+// JSON, allowing the one thing a model writing a list gets wrong.
+function parseLoose(s) {
+  if (!s) return undefined;
+  try { return JSON.parse(s); } catch { /* below */ }
+  try { return JSON.parse(s.replace(/,\s*([}\]])/g, "$1")); } catch { return undefined; }
+}
+
+// THE ARRAY, WHATEVER IT CAME WRAPPED IN. Asked for {"entries": [...]} a model
+// hands back the bare array about as often, or the right array under a name of
+// its own choosing. The schema says which one array is wanted; nothing here
+// knows or cares what is in it.
+function arrayKey(schema) {
+  const props = (schema && schema.properties) || {};
+  const keys = Object.keys(props).filter((k) => props[k] && props[k].type === "array");
+  return keys.length === 1 ? keys[0] : "";
+}
+function shaped(v, schema) {
+  const key = arrayKey(schema);
+  if (!key) return v;
+  if (Array.isArray(v)) return { [key]: v };
+  if (!v || typeof v !== "object" || Array.isArray(v[key])) return v;
+  const mine = Object.keys(v).filter((k) => Array.isArray(v[k]));
+  return mine.length === 1 ? { ...v, [key]: v[mine[0]] } : v;
 }
 
 // The AI box is asked for ONE thing: turn a system+user prompt into a JSON
@@ -535,12 +636,28 @@ function extractJson(text) {
 async function callOllama(cfg, system, user, schema) {
   const url = cfg.baseUrl.replace(/\/+$/, "") + "/api/chat";
   const headers = { "Content-Type": "application/json" };
+  // HOW MUCH THE MODEL IS ALLOWED TO SEE AND SAY.
+  //
+  // Ollama's default context is small — 4,096 tokens on a current build, 2,048
+  // on an older one — and nothing here ever said otherwise. A school calendar is
+  // the longest job in this app: the instructions, the whole document, and then
+  // an answer of a dozen fields for each of twenty-five entries. Past the limit
+  // Ollama does not refuse; it quietly drops the front of the conversation and
+  // the reply stops mid-sentence, so what comes back is half an answer and the
+  // app calls it unreadable. The machine is doing as it was told and the fault
+  // is here.
+  //
+  // Asked for from the size of what is actually being sent — three characters to
+  // a token is the usual rule of thumb — with room for the answer, and a ceiling
+  // so a long document cannot ask somebody's laptop for more memory than it has.
+  const need = Math.ceil((system.length + user.length) / 3) + 2000;
+  const num_ctx = Math.min(16384, Math.max(4096, Math.ceil(need / 1024) * 1024));
   const base = {
     model: cfg.model,
     stream: false,
     // Keep the model resident between calls so only the first one pays cold-start.
     keep_alive: cfg.keepAlive,
-    options: { temperature: 0.2 },
+    options: { temperature: 0.2, num_ctx },
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
@@ -563,7 +680,7 @@ async function callOllama(cfg, system, user, schema) {
     throw new Error(`Ollama responded ${resp ? resp.status : "?"} ${detail.slice(0, 150)}`);
   }
   const data = await resp.json();
-  return extractJson(data?.message?.content ?? "");
+  return extractJson(data?.message?.content ?? "", schema);
 }
 
 // Engine: any OpenAI-compatible server (LM Studio, a free cloud tier, or
@@ -602,7 +719,7 @@ async function callOpenAI(cfg, system, user, schema) {
   }
   const data = await resp.json();
   const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? "";
-  return extractJson(content);
+  return extractJson(content, schema);
 }
 
 // Engine: Anthropic cloud (uses the official SDK, loaded only if needed).
@@ -907,18 +1024,45 @@ async function modelHere(cfg) {
   return name || cfg.model;
 }
 
+// ASKED ONCE MORE, PLAINLY, BEFORE GIVING UP.
+//
+// A model that wrapped its answer in an apology is a model that can be told not
+// to. This is added to the instructions for the second attempt only, and only
+// when the first attempt came back unreadable — never after a timeout or a
+// refused connection, where asking again is just waiting twice.
+const PLAIN_JSON =
+  "\n\nYour last answer could not be read. Reply with the JSON object and nothing else: " +
+  "no explanation, no code fence, no words before or after it.";
+
 async function runEngine(cfg, system, user, schema, label) {
   const t0 = Date.now();
   // Whatever this computer has, rather than whatever the file says it has.
   const here = await modelHere(cfg);
   if (here && here !== cfg.model) cfg = { ...cfg, model: here };
+  const once = (sys) =>
+    cfg.engine === "anthropic"
+      ? callAnthropic(cfg, sys, user, schema)
+      : cfg.engine === "ollama"
+        ? callOllama(cfg, sys, user, schema)
+        : callOpenAI(cfg, sys, user, schema);
   try {
-    const out =
-      cfg.engine === "anthropic"
-        ? await callAnthropic(cfg, system, user, schema)
-        : cfg.engine === "ollama"
-          ? await callOllama(cfg, system, user, schema)
-          : await callOpenAI(cfg, system, user, schema);
+    let out;
+    try {
+      out = await once(system);
+    } catch (e) {
+      // Only a reply that could not be read is worth asking about again.
+      if (!e || e.raw === undefined) throw e;
+      logEvent("ai", { job: label || "sort", ms: Date.now() - t0, ok: false, why: "unreadable, asking again" });
+      try {
+        out = await once(system + PLAIN_JSON);
+      } catch (again) {
+        // The FIRST reply is the one worth showing: the second was made under
+        // an instruction the person never wrote and says less about what their
+        // model does.
+        if (again && again.raw !== undefined) again.raw = e.raw;
+        throw again;
+      }
+    }
     logEvent("ai", { job: label || "sort", ms: Date.now() - t0, ok: true });
     return out;
   } catch (e) {
@@ -1616,12 +1760,29 @@ async function handleCalendar(res, body) {
         endFrom: endsOn ? "model" : "",
       });
     });
-    return sendJson(res, 200, { rows, unreadable, ...(text.length > CAP ? { cut: CAP } : {}) });
-  } catch (e) {
-    console.warn("[calendar] failed:", e?.message || e);
-    const why = offlineReason(cfg, e);
+    // AND WHERE THE ANSWER ITSELF WAS CUT OFF. A reply that ran out of room was
+    // mended back to its last whole entry — which is worth having, and is not
+    // the same as a reading that finished, so it is not allowed to look like
+    // one.
+    return sendJson(res, 200, { rows, unreadable,
+      ...(parsed && parsed.__cut ? { shortAnswer: true } : {}),
+      ...(text.length > CAP ? { cut: CAP } : {}) });
+  } catch (err) {
+    console.warn("[calendar] failed:", err?.message || err);
+    const why = offlineReason(cfg, err);
+    // AND WHAT IT ACTUALLY SAID, WHERE THERE IS SOMETHING TO SHOW.
+    //
+    // "Ollama answered with something this app couldn't read" is true and it is
+    // still a description of somebody else's computer. Only the person at that
+    // computer can see what their own model does, and without this they cannot:
+    // they are left guessing, or waiting for somebody to guess for them. It goes
+    // no further than the page — it is not stored, not in the report, and this
+    // app has never had anywhere to send it.
     // Same join, same reason — see handleTimetable.
-    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + `${why ? "Y" : "y"}ou can still type the dates in by hand.` });
+    return sendJson(res, 502, {
+      error: "ai_failed",
+      ...(err && err.raw ? { saw: String(err.raw).slice(0, 4000) } : {}),
+      message: (why ? why + " " : "Couldn't read that just now — ") + `${why ? "Y" : "y"}ou can still type the dates in by hand.` });
   }
 }
 
@@ -1768,13 +1929,16 @@ async function handleTimetable(res, body) {
       blocks.push({ label, start, end, days, date, where, note, extras, soft: false, source: "paste" });
     });
     return sendJson(res, 200, { blocks, unreadable });
-  } catch (e) {
-    console.warn("[timetable] failed:", e?.message || e);
-    const why = offlineReason(cfg, e);
+  } catch (err) {
+    console.warn("[timetable] failed:", err?.message || err);
+    const why = offlineReason(cfg, err);
     // TWO SENTENCES, NOT ONE WELDED TO ANOTHER'S TAIL. offlineReason writes a
     // whole one and it ends in a question mark, so this produced "…is it
     // running? you can still type the blocks in by hand."
-    return sendJson(res, 502, { error: "ai_failed", message: (why ? why + " " : "Couldn't read that just now — ") + `${why ? "Y" : "y"}ou can still type the blocks in by hand.` });
+    // What it said, where there is something to show — see handleCalendar.
+    return sendJson(res, 502, { error: "ai_failed",
+      ...(err && err.raw ? { saw: String(err.raw).slice(0, 4000) } : {}),
+      message: (why ? why + " " : "Couldn't read that just now — ") + `${why ? "Y" : "y"}ou can still type the blocks in by hand.` });
   }
 }
 

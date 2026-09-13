@@ -15,6 +15,7 @@ const oport = 11700, sport = 3700;
 // below: a name out of a settings file is not evidence that this computer has
 // it, and two computers is all it takes for it to be wrong on one of them.
 const modelsAsked = [];
+const chats = [];
 // What this stand-in Ollama says it has pulled, which is deliberately NOT the
 // model the server is configured with.
 const PULLED = ["llama3.2:3b"];
@@ -25,6 +26,10 @@ const ol = http.createServer((req, res) => {
     const askedFor = JSON.parse(b || "{}").model || "";
     if (askedFor) modelsAsked.push(askedFor);
     const sys = (JSON.parse(b || "{}").messages || []).find((m) => m.role === "system")?.content || "";
+    // WHAT WAS ACTUALLY ASKED, every time. The retry and the context size are
+    // both invisible from the answer, and both are the difference between a
+    // model that works on this document and one that does not.
+    chats.push({ sys, options: JSON.parse(b || "{}").options || {} });
     let out = {};
     if (/router inside a calm personal organiser/.test(sys) && /RECORDPLEASE/.test(b))
       out = { entries: [{ kind: "record", title: "", item_type: "", date: "", time: "", deadline: "",
@@ -129,8 +134,22 @@ const ol = http.createServer((req, res) => {
       res.writeHead(200, {"Content-Type":"application/json"});
       return res.end(JSON.stringify({ message: { content: "I'm sorry, I can't help with that." } }));
     }
+    // THE WRAPPING A LOCAL MODEL PUTS ROUND ITS ANSWER. Asked for JSON and given
+    // a schema, a small model on somebody's laptop answers with JSON most of the
+    // time and with one of these the rest of the time. Each was a whole reading
+    // thrown away over its packaging, and twenty-five rows to classify by hand.
+    const wrap = (/WRAPPED:(\w+)/.exec(b) || [])[1] || "";
+    let content = JSON.stringify(out);
+    if (wrap === "fenced") content = "Here is the JSON:\n```json\n" + content + "\n```\nHope that helps!";
+    else if (wrap === "array") content = JSON.stringify(out.entries || []);
+    else if (wrap === "othername") content = JSON.stringify({ calendar: out.entries || [] });
+    else if (wrap === "comma") content = content.replace(/\}\]\}$/, "},]}");
+    else if (wrap === "think") content = "<think>let me look at the holidays…</think>\n" + content;
+    else if (wrap === "openfence") content = "```json\n" + content;
+    // Stopped mid-entry, which is what a reply that runs out of room looks like.
+    else if (wrap === "cutoff") content = content.replace(/\}\]\}$/, "},{\"label\":\"Sum");
     res.writeHead(200, {"Content-Type":"application/json"});
-    res.end(JSON.stringify({ message: { content: JSON.stringify(out) } }));
+    res.end(JSON.stringify({ message: { content } }));
   });
 }).listen(oport);
 
@@ -654,6 +673,99 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
      JSON.stringify(why.message));
   ok("while still saying what you can do instead",
      /type the dates in by hand/.test(why.message || ""), JSON.stringify(why.message));
+}
+
+{
+  // THE WRAPPING A LOCAL MODEL PUTS ROUND ITS ANSWER.
+  //
+  // This is the fault that stopped the whole feature working on a real machine.
+  // Asked for JSON and given a schema, a small model answers with JSON most of
+  // the time and with one of these the rest of the time — and the reader took a
+  // fence at the very start, a fence at the very end, and otherwise "from the
+  // first { to the last }", which is not a JSON value and breaks on a brace in
+  // the prose, on a bare array, and on anything cut off. Every one of them was a
+  // whole reading thrown away over its packaging, and twenty-five rows to
+  // classify by hand instead.
+  const LINE = "Mid-Autumn Festival\t2026-09-25";
+  const wrapped = async (how) => (await (await fetch(B + "/api/calendar", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: `WRAPPED:${how}\t2026-12-01\n${LINE}`, year: 2026 }) })).json());
+  for (const [how, what] of [
+    ["fenced", "a fenced block with a sentence either side of it"],
+    ["array", "the bare array, without the object round it"],
+    ["othername", "the right array under a name of its own choosing"],
+    ["comma", "a trailing comma, because it was writing a list"],
+    ["think", "its thinking out loud, and then the answer"],
+    ["openfence", "a fence it opened and never closed"],
+  ]) {
+    const got = await wrapped(how);
+    ok(`${what} still reads`,
+       (got.rows || []).some((r) => r.label === "Mid-Autumn Festival"),
+       JSON.stringify(got).slice(0, 200));
+  }
+  // AND AN ANSWER THAT SIMPLY STOPS. A reply that ran out of room is mended back
+  // to its last whole entry, because twenty-two entries out of twenty-five is
+  // worth having and nothing is not — and then SAID, because a reading that is
+  // quietly short is the one kind this app must never hand over without a word.
+  const short = await wrapped("cutoff");
+  ok("an answer that stops mid-entry keeps the entries that finished",
+     (short.rows || []).some((r) => r.label === "Mid-Autumn Festival"),
+     JSON.stringify(short).slice(0, 200));
+  ok("and says that is what happened", short.shortAnswer === true,
+     JSON.stringify(short.shortAnswer));
+  const whole = await wrapped("none");
+  ok("while an answer that finished says nothing of the sort",
+     !("shortAnswer" in whole), JSON.stringify(whole.shortAnswer));
+}
+
+{
+  // AND WHEN IT REALLY CANNOT BE READ, IT IS ASKED ONCE MORE, PLAINLY.
+  //
+  // A model that wrapped its answer in an apology is one that can be told not
+  // to. Only for a reply that could not be read — never after a timeout or a
+  // refused connection, where asking again is just waiting twice.
+  const before = chats.length;
+  const r = await fetch(B + "/api/calendar", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "BROKENJSON\tterm dates", year: 2026 }) });
+  const said = await r.json();
+  const mine = chats.slice(before).filter((c) => /plain list of dated entries/i.test(c.sys));
+  ok("an unreadable answer is asked about a second time", mine.length === 2,
+     String(mine.length));
+  ok("and the second time it is told to send the JSON and nothing else",
+     /JSON object and nothing else/.test((mine[1] || {}).sys || ""),
+     JSON.stringify(((mine[1] || {}).sys || "").slice(-120)));
+  ok("and the first time it is not — that is the prompt you wrote",
+     !/JSON object and nothing else/.test((mine[0] || {}).sys || ""), "the nudge is in the first ask");
+  // AND WHAT IT SAID COMES BACK, so the person whose computer it is can see it.
+  ok("what the model actually said comes back with the failure",
+     /I'm sorry/.test(said.saw || ""), JSON.stringify(said.saw));
+  ok("and it is the FIRST answer, not the one made under an instruction they never wrote",
+     !/could not be read/.test(said.saw || ""), JSON.stringify(said.saw));
+}
+
+{
+  // HOW MUCH THE MODEL IS ALLOWED TO SEE AND SAY.
+  //
+  // Ollama's default context is 4,096 tokens on a current build and 2,048 on an
+  // older one, and nothing here ever said otherwise. A school calendar is the
+  // longest job in this app — the instructions, the whole document, and then a
+  // dozen fields for each of twenty-five entries — and past the limit Ollama
+  // does not refuse: it drops the front of the conversation and the reply stops
+  // mid-sentence. The machine was doing as it was told.
+  const asked = (c) => c.options && c.options.num_ctx;
+  const small = chats.filter((c) => /plain list of dated entries/i.test(c.sys)).slice(-1)[0];
+  ok("the context size is asked for at all", asked(small) >= 4096, JSON.stringify(small && small.options));
+  const big = chats.length;
+  await fetch(B + "/api/calendar", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "Padding line with no date on it at all.\n".repeat(250) +
+      "Sports Day\t2026-06-12", year: 2026 }) });
+  const long = chats.slice(big).filter((c) => /plain list of dated entries/i.test(c.sys))[0];
+  ok("and it grows with the document rather than being one number for everything",
+     asked(long) > asked(small), `${asked(small)} then ${asked(long)}`);
+  ok("with a ceiling, so a long document can't ask a laptop for more than it has",
+     asked(long) <= 16384, String(asked(long)));
 }
 
 {

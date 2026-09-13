@@ -2144,7 +2144,8 @@ sec("A calendar can be handed to the model too, and it still never says what a d
         asked.push(JSON.parse((init && init.body) || "{}"));
         if (o.answer === "down") throw new Error("nothing listening");
         return { ok: o.answer !== "refused", json: async () => (o.answer === "refused"
-          ? { message: "AI sorting isn't switched on yet." }
+          ? { message: o.message || "AI sorting isn't switched on yet.",
+              ...(o.saw ? { saw: o.saw } : {}) }
           : { rows: o.answer || [], unreadable: o.unreadable || [] }) };
       },
     });
@@ -2319,6 +2320,43 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     ok("and a document that reads puts the plain offer back",
        /let the model read it too/.test(String(r.get("#calSecond").textContent || "")),
        String(r.get("#calSecond").textContent));
+  }
+
+  // AND WHAT THE MODEL ACTUALLY SAID, WHERE IT COULD NOT BE READ.
+  //
+  // "Ollama answered with something this app couldn't read" is true and it is
+  // still a description of somebody else's computer. Only the person sitting at
+  // that computer can see what their own model does, and without this they
+  // cannot: they are left guessing, or waiting for somebody else to guess.
+  {
+    const SAID = "I'm sorry, I can't help with that.";
+    const r = await openCal({ modelFirst: true, answer: "refused",
+      message: "Ollama answered with something this app couldn't read. You can still type the dates in by hand.",
+      saw: SAID, handed: "Staff return\t24 August 2026" });
+    const box = r.get("#calSaw");
+    const D = await import("./_dom.mjs");
+    const inside = () => D.deep(box).map((c) => String(c.textContent || "")).join(" | ");
+    ok("what it said is on the page", !box.hidden && inside().includes(SAID), inside().slice(0, 160));
+    ok("folded away rather than dumped in front of you",
+       /show what the model said/.test(inside()), inside().slice(0, 160));
+    ok("and the page still says what to do instead",
+       /type the dates in by hand/.test(said(r)), said(r));
+    // IT GOES NO FURTHER THAN THE PAGE. What a model said back is the document
+    // in other words — a school's calendar, and on other panels a child's name
+    // — and this app has never had anywhere to send that. Not saved, so it
+    // cannot reach the report or the folder either.
+    ok("and it is nowhere in what gets saved",
+       !JSON.stringify(r.state || {}).includes("I'm sorry"),
+       JSON.stringify(r.state || {}).slice(0, 200));
+    // AND IT GOES WHEN A READING LANDS. Last week's failure hanging under this
+    // week's calendar is the panel remembering something the screen has no sign
+    // of.
+    const paste = r.get("#calPaste");
+    paste.value = "Students return\t1 September 2026";
+    paste.fire("input", { target: paste });
+    await r.settle();
+    ok("and a reading that lands clears it", r.get("#calSaw").hidden === true,
+       String(r.get("#calSaw").textContent).slice(0, 80));
   }
 
   // AND A ROW IT COULDN'T PLACE IS SAID, NOT DROPPED. You can check a list for

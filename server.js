@@ -1427,6 +1427,18 @@ RULES
 - NEVER WORK OUT A DATE THAT IS NOT WRITTEN. If a line does not give one, leave "date" empty rather than choosing a likely day.
 - Never invent an entry that is not in the text. An empty list is a fine answer.
 
+- "stated" and "says": DOES THE DOCUMENT SAY THIS, OR ARE YOU CONCLUDING IT?
+
+    "stated" is true only when the words you quoted SAY what "means" says. Then "says" is the exact words out of that quote that say it, copied character for character — it is looked for inside your quote, and an answer that cannot point at the words is treated as a conclusion.
+
+    "stated" is false when the words make your answer likely without saying it. That is not a failing and it is not a wrong answer: it is the honest shape of most reading. Say false and give "says" as "".
+
+    "Holidays: Mid-Autumn Festival: Sep. 25" says it is a holiday — the document files it under Holidays. True, and "says" is "Holidays".
+    "Sep. 20 is a working day, even week Tuesday schedule" says which timetable runs. True.
+    "Professional Development Days for Teachers: Oct. 16, Nov. 13" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
+
+    Never write into "says" anything that is not in your quote. There is nothing to lose by saying false — it only means they are asked.
+
 - "said": the words of the document this entry came from, COPIED EXACTLY. Not tidied, not shortened. It is looked for in the document, so an entry whose "said" is not in the text is thrown away — and the date you gave is looked for beside it, so quote enough of the document to take the date in.
 
 - "extras": anything else the line says that none of the fields above can hold — a room, a year group, who it is for, a note — as {"name","value"} pairs, named however the document names it. If the document says it, it can go in.
@@ -1500,6 +1512,18 @@ For each number:
 
 - "mine" is whether it looks like it applies to THEM, given what they say they do. "yes" if it is for the whole school, their own year group, all staff, or anyone teaching. "no" only when it is plainly limited to a group they have nothing to do with. "" if you cannot tell — which is the right answer far more often than "no".
 
+- "stated" and "says": DOES THE DOCUMENT SAY THIS, OR ARE YOU CONCLUDING IT?
+
+    "stated" is true only when the words you quoted SAY what "means" says. Then "says" is the exact words out of that quote that say it, copied character for character — it is looked for inside your quote, and an answer that cannot point at the words is treated as a conclusion.
+
+    "stated" is false when the words make your answer likely without saying it. That is not a failing and it is not a wrong answer: it is the honest shape of most reading. Say false and give "says" as "".
+
+    "Holidays: Mid-Autumn Festival: Sep. 25" says it is a holiday — the document files it under Holidays. True, and "says" is "Holidays".
+    "Sep. 20 is a working day, even week Tuesday schedule" says which timetable runs. True.
+    "Professional Development Days for Teachers: Oct. 16, Nov. 13" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
+
+    Never write into "says" anything that is not in your quote. There is nothing to lose by saying false — it only means they are asked.
+
 - "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the calendar below. It is looked for in the document, and the entry's own date is looked for beside it, so quote enough of it to take the date in. An answer whose "said" is not in the document is not trusted.
 
 Answer every number you are given, and no others. Return only the JSON object.`;
@@ -1518,9 +1542,11 @@ const CALENDAR_MARK_SCHEMA = {
           sure: { type: "number" },
           why: { type: "string" },
           mine: { type: "string", enum: ["yes", "no", ""] },
+          stated: { type: "boolean" },
+          says: { type: "string" },
           said: { type: "string" },
         },
-        required: ["n", "means", "runsAsDay", "sure", "why", "mine", "said"],
+        required: ["n", "means", "runsAsDay", "sure", "why", "mine", "stated", "says", "said"],
         additionalProperties: false,
       },
     },
@@ -1549,10 +1575,12 @@ const CALENDAR_SCHEMA = {
           sure: { type: "number" },
           why: { type: "string" },
           mine: { type: "string", enum: ["yes", "no", ""] },
+          stated: { type: "boolean" },
+          says: { type: "string" },
           extras: EXTRAS_SCHEMA,
         },
         required: ["label", "date", "endsOn", "start", "end", "days", "said",
-                   "means", "runsAsDay", "sure", "why", "mine", "extras"],
+                   "means", "runsAsDay", "sure", "why", "mine", "stated", "says", "extras"],
         additionalProperties: false,
       },
     },
@@ -1652,6 +1680,52 @@ function verify(doc, said, row) {
   if (!has(endsOn))
     return { checked: "the day it ends isn't written near that line", source: span };
   return { checked: "", source: span };
+}
+
+// DOES THE DOCUMENT SAY THIS, OR DID THE READER WORK IT OUT?
+//
+// THE LAST GAP, AND THE ONE CONFIDENCE COULD NOT CLOSE. "Professional
+// Development (PD) Days for Teachers: Oct. 16, Nov. 13" says who the day is
+// for. It does not say the students are away or that lessons stop — and a model
+// reading it as "no lessons" was ticking a teaching day out of somebody's term
+// at 0.9, which is a number and not evidence. Raising the number would only have
+// made it ask about the holidays too.
+//
+// What separates the two is not how sure the reader is. It is whether the words
+// it quoted SAY the thing, or merely make it likely. That is a question about
+// the text rather than about the model, so it can be asked — and, crucially,
+// half of it can be CHECKED: a reader claiming the document says so must point
+// at the words, and the words must really be in what it quoted.
+//
+//   says nothing that supports it   →  a question, and honestly so
+//   points at words that are there  →  it can go through
+//   points at words that are not    →  a question, and a louder one
+//
+// A model cannot get past this by being confident, and it cannot get past it by
+// inventing the supporting phrase either. Nothing here knows what a holiday or a
+// training day is; the rule is about quoting, and quoting is arithmetic.
+//
+// AND SAYING FALSE COSTS IT NOTHING. Most honest reading is inference — the
+// prompt says so — and inference is exactly what the "your say" pile is for.
+function entails(means, stated, says, doc) {
+  if (!means) return "";
+  if (!stated) return "the line doesn't say that — the reader worked it out";
+  const words = String(says || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!words) return "the line doesn't say that — the reader worked it out";
+  // AGAINST THE WHOLE DOCUMENT, NOT THE ENTRY'S OWN SPAN.
+  //
+  // What makes "Mid-Autumn Festival: Sep. 25" a holiday is the word "Holidays"
+  // two lines above it, over the list it is in. Checked against the entry's own
+  // span that proof is not there, and a reader that had pointed at exactly the
+  // right word would have been refused — which is the wrong failure to make: it
+  // buries somebody in questions about rows that were fine.
+  //
+  // Where the words came from is already settled by "said", which is anchored
+  // to the entry by its date or its name. This is the other question: is the
+  // phrase real at all, or did the reader write the proof it wanted?
+  return doc.flat.indexOf(words) < 0
+    ? "the words it says prove it aren't in the document"
+    : "";
 }
 
 // AND WHETHER THE MEANING FITS THE ROW IT WAS PUT ON.
@@ -1844,8 +1918,10 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       const said = (a.said || "").toString().trim().slice(0, 300);
       const checked = verify(doc, said, c);
       const means = MEANS.indexOf(a.means) >= 0 ? a.means : "";
-      // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees.
-      const fits = disagrees(means, c);
+      // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees — and whether the
+      // document says it or the reader worked it out — see entails.
+      const fits = disagrees(means, c) ||
+        entails(means, a.stated === true, a.says, doc);
       answers.push({
         n,
         means,
@@ -1971,8 +2047,9 @@ async function handleCalendar(res, body) {
       // answers to drift apart.
       const seen = verify(doc, said, { date, endsOn, label });
       const means = MEANS.indexOf(e.means) >= 0 ? e.means : "";
-      // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees.
-      const fits = disagrees(means, { label, line: said || label, date, endsOn });
+      // Same two gates as the other path — see disagrees and entails.
+      const fits = disagrees(means, { label, line: said || label, date, endsOn }) ||
+        entails(means, e.stated === true, e.says, doc);
       rows.push({
         label, date, endsOn,
         // A REPEAT AND A DATE ARE DIFFERENT ANSWERS. Something on a date does

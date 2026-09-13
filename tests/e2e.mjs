@@ -89,8 +89,12 @@ const ol = http.createServer((req, res) => {
       const nums = [...user.matchAll(/^(\d+)\. (\d{4}-\d{2}-\d{2})?[^\n]*?— ([^\n\[]*)(?:\[as written: ([^\]]*)\])?/gm)]
         .map((m) => ({ n: Number(m[1]), label: m[3].trim(), line: (m[4] || m[3]).trim() }));
       const how = (/MARKS:(\w+)/.exec(user) || [])[1] || "";
+      // AND WHETHER THE DOCUMENT SAYS IT. The stand-in points at a word that is
+      // really in the line; the markers below make it misbehave in each of the
+      // ways a real model does.
       const one = (c) => ({ n: c.n, means: "off", runsAsDay: 0, sure: 0.9,
-        why: "it looks like a holiday", mine: "yes", said: c.line });
+        why: "it looks like a holiday", mine: "yes", said: c.line,
+        stated: true, says: (c.line || "").split(":")[0] });
       let answers = nums.map(one);
       // HALF AN ANSWER, which is what a model that runs out of room gives.
       if (how === "half") answers = answers.slice(0, Math.ceil(answers.length / 2));
@@ -106,6 +110,16 @@ const ol = http.createServer((req, res) => {
         answers = answers.map((a) => ({ ...a, said: "• Mid-Autumn Festival: Sep. 25" }));
       // AND A MEANING THAT CONTRADICTS THE SHAPE OF THE ROW.
       if (how === "due") answers = answers.map((a) => ({ ...a, means: "due" }));
+      // POINTING AT THE HEADING THE LIST IS UNDER, which is not on the entry's
+      // own line at all.
+      if (how === "heading")
+        answers = answers.map((a) => ({ ...a, stated: true, says: "Holidays (subject to change)" }));
+      // A READER BEING HONEST THAT IT WORKED THE ANSWER OUT.
+      if (how === "guessed") answers = answers.map((a) => ({ ...a, stated: false, says: "" }));
+      // AND ONE CLAIMING THE DOCUMENT SAYS SO AND POINTING AT WORDS THAT AREN'T
+      // IN IT — the way past a rule that only asked the model to be honest.
+      if (how === "invented")
+        answers = answers.map((a) => ({ ...a, stated: true, says: "which are days when lessons do not run" }));
       out = { answers };
     }
     // THE CALENDAR JOB. There is no real model here and there cannot be, so
@@ -152,6 +166,9 @@ const ol = http.createServer((req, res) => {
               ? "a line the stand-in made up, which is in no document"
               : (saidAs || l.replace(/\t/g, " ").trim()),
             means: "off", runsAsDay: 0, sure: 0.9, why: "it looks like a holiday", mine: "yes",
+            // AND WHERE THE DOCUMENT SAYS SO — pointing at words really in the
+            // line, which is what the gate checks. See entails.
+            stated: true, says: saidAs || l.replace(/\t/g, " ").trim(),
           };
         });
       out = { entries };
@@ -839,6 +856,42 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
       label: "Midterm exams", line: "Tentatively Nov. 10-12" }] });
   ok("a range written once inside a month is read as evidence for both ends",
      ((short2.answers || [])[0] || {}).checked === "", JSON.stringify((short2.answers || [])[0]));
+
+  // ---- DOES THE DOCUMENT SAY THIS, OR DID THE READER WORK IT OUT? ----------
+  //
+  // THE LAST GAP, AND THE ONE CONFIDENCE COULD NOT CLOSE. "Professional
+  // Development (PD) Days for Teachers: Oct. 16, Nov. 13" says who the day is
+  // for. It does not say the students are away or that lessons stop — and a
+  // model reading it as "no lessons" was ticking a teaching day out of a term at
+  // 0.9, which is a number and not evidence. Raising the number would only have
+  // made it ask about the holidays too.
+  //
+  // What separates the two is whether the words it quoted SAY the thing. That is
+  // a question about the text, not about the model, so it can be asked — and
+  // half of it can be CHECKED: a reader claiming the document says so must point
+  // at the words, and the words must really be in what it quoted.
+  // AND THE PROOF MAY BE THE HEADING THE LIST IS UNDER. What makes "Mid-Autumn
+  // Festival: Sep. 25" a holiday is the word over the list it is in, not a word
+  // on its own line — and refusing that would bury somebody in questions about
+  // rows that were fine.
+  const heading = await askCal({ year: 2026,
+    text: `MARKS:heading\nHolidays (subject to change):\n${DOC}`, candidates: CANDS });
+  ok("proof from the heading the list sits under counts",
+     (heading.answers || []).every((a) => a.checked === ""),
+     JSON.stringify((heading.answers || [])[0]));
+  const said0 = await mark("");
+  ok("a reader that points at words really in the line goes through",
+     (said0.answers || []).every((a) => a.checked === ""), JSON.stringify(said0.answers));
+  const guessed = await mark("guessed");
+  ok("one that says it worked the answer out is asked about",
+     (guessed.answers || []).every((a) => /the reader worked it out/.test(a.checked || "")),
+     JSON.stringify((guessed.answers || [])[0]));
+  // AND IT CANNOT GET PAST THIS BY CLAIMING OTHERWISE. A model that says the
+  // document states it must produce the words, and the words are looked for.
+  const invented = await mark("invented");
+  ok("and one that invents the words that prove it is caught",
+     (invented.answers || []).every((a) => /aren't in the document/.test(a.checked || "")),
+     JSON.stringify((invented.answers || [])[0]));
 
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------
   //

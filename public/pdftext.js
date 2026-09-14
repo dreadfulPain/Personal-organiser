@@ -104,9 +104,83 @@
     // with it beyond the luck of where its deflate stopped.
     if (!byLength)
       while (to > from && (bytes[to - 1] === 10 || bytes[to - 1] === 13 || bytes[to - 1] === 32)) to--;
-    const raw = bytes.subarray(from, to);
-    if (!/\/FlateDecode/.test(o.body)) return raw;
-    return (await inflate(raw, false)) || (await inflate(raw, true));
+    let data = bytes.subarray(from, to);
+    // A STREAM CAN BE PACKED MORE THAN ONCE, AND IN ORDER.
+    //
+    // /Filter is not one name. It is a name OR A LIST, and a list is applied in
+    // the order it is written: "[ /ASCII85Decode /FlateDecode ]" means the
+    // deflated bytes were then written out as printable characters, so they must
+    // be un-printed before they can be inflated. Reading /Filter by looking for
+    // the word FlateDecode anywhere in the dictionary got the right answer for
+    // one of those and the wrong answer for the other — it inflated the
+    // ASCII85 text as if it were compressed data, which fails, and the page came
+    // back empty with nothing to say why.
+    //
+    // ReportLab writes this pairing by default, and ReportLab is what a great
+    // many school systems generate their PDFs with. A calendar produced that way
+    // was three blank pages.
+    for (const f of filtersOf(o.body)) {
+      if (f === "FlateDecode") data = (await inflate(data, false)) || (await inflate(data, true));
+      else if (f === "ASCII85Decode") data = ascii85(bytesToLatin1(data));
+      else if (f === "ASCIIHexDecode") data = asciiHex(bytesToLatin1(data));
+      // A PACKING THIS READER DOES NOT KNOW. Handing back the packed bytes would
+      // be handing back nonsense that looks like text, which is the one failure
+      // this whole file is written to avoid.
+      else return null;
+      if (!data) return null;
+    }
+    return data;
+  }
+
+  // The filters a stream is packed with, in the order they were applied. One
+  // name or a list of them; both are ordinary and both turn up.
+  function filtersOf(body) {
+    const m = body.match(/\/Filter\s*(\[[^\]]*\]|\/[A-Za-z0-9]+)/);
+    if (!m) return [];
+    return [...m[1].matchAll(/\/([A-Za-z0-9]+)/g)].map((x) => x[1]);
+  }
+
+  // ASCII85: four bytes written as five printable characters, base 85, so that
+  // a stream survives being sent through something that only carries text. A
+  // published format, the same in every document there is.
+  function ascii85(s) {
+    let t = String(s || "").replace(/\s/g, "");
+    if (t.slice(0, 2) === "<~") t = t.slice(2);
+    const end = t.indexOf("~>");
+    if (end >= 0) t = t.slice(0, end);
+    const out = [];
+    let tuple = 0, count = 0;
+    const four = (n, howMany) => {
+      const b = [0, 0, 0, 0];
+      for (let i = 3; i >= 0; i--) { b[i] = n % 256; n = (n - b[i]) / 256; }
+      for (let i = 0; i < howMany; i++) out.push(b[i]);
+    };
+    for (let i = 0; i < t.length; i++) {
+      // "z" stands for four zero bytes, and only where a group has not started.
+      if (t[i] === "z" && count === 0) { out.push(0, 0, 0, 0); continue; }
+      const v = t.charCodeAt(i) - 33;
+      if (v < 0 || v > 84) continue;
+      tuple = tuple * 85 + v;
+      if (++count === 5) { four(tuple, 4); tuple = 0; count = 0; }
+    }
+    // A last group that never filled up is padded, and gives one byte fewer
+    // than the characters it was written with.
+    if (count > 1) {
+      for (let i = count; i < 5; i++) tuple = tuple * 85 + 84;
+      four(tuple, count - 1);
+    }
+    return new Uint8Array(out);
+  }
+
+  // ASCIIHex: the same idea, two characters to a byte, ending at ">".
+  function asciiHex(s) {
+    const t = String(s || "").replace(/\s/g, "");
+    const end = t.indexOf(">");
+    const h = (end >= 0 ? t.slice(0, end) : t).replace(/[^0-9A-Fa-f]/g, "");
+    const out = [];
+    for (let i = 0; i < h.length; i += 2)
+      out.push(parseInt((h.slice(i, i + 2) + "0").slice(0, 2), 16));
+    return new Uint8Array(out);
   }
 
   // ---- the glyph-to-letter map --------------------------------------------

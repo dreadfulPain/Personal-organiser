@@ -70,6 +70,40 @@ const grid = (cells) =>
   cells.map(({ x, y, text }) =>
     `q BT 42 0 0 42 ${x} ${y} Tm /F1 1 Tf (${text.replace(/([()\\])/g, "\\$1")}) Tj ET Q `).join("");
 
+
+// A STREAM PACKED TWICE: deflated, then written out in ASCII85, which is what a
+// great many PDF generators do by default.
+function a85(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 4) {
+    const chunk = [bytes[i], bytes[i + 1] || 0, bytes[i + 2] || 0, bytes[i + 3] || 0];
+    const n = ((chunk[0] * 256 + chunk[1]) * 256 + chunk[2]) * 256 + chunk[3];
+    const left = Math.min(4, bytes.length - i);
+    if (n === 0 && left === 4) { out += "z"; continue; }
+    const five = [];
+    let v = n;
+    for (let k = 4; k >= 0; k--) { five[k] = String.fromCharCode(33 + (v % 85)); v = Math.floor(v / 85); }
+    out += five.join("").slice(0, left + 1);
+  }
+  return out + "~>";
+}
+function packedStream(text) {
+  const comp = zlib.deflateSync(Buffer.from(text, "latin1"));
+  const body = Buffer.from(a85(comp), "latin1");
+  return Buffer.concat([
+    Buffer.from(`<< /Filter [ /ASCII85Decode /FlateDecode ] /Length ${body.length} >>\nstream\r\n`),
+    body,
+    Buffer.from("\r\nendstream"),
+  ]);
+}
+const packed = (rows) => pdf([
+  "<< /Type /Catalog /Pages 2 0 R >>",
+  "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+  "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+  packedStream(lines(rows)),
+  "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+]);
+
 // ---------------------------------------------------------------------------
 export const CORPUS = [
   {
@@ -230,5 +264,115 @@ export const CORPUS = [
     // dates on it, and a reader cannot know the office's business from a
     // teacher's. Noted rather than counted.
     allow: ["2026-07-14", "2026-08-03"],
+  },
+  {
+    // 8. THE DAY ON ONE LINE AND WHAT HAPPENS ON THE NEXT, under a month heading
+    // that is the only place the year is written. A shape nobody here had
+    // thought of, found by handing this reader a real calendar from a school it
+    // had never met — and the commonest shape there is, once you look.
+    //
+    // Read looking only upwards for a name, every entry is a date with nothing
+    // to call it. Read without the heading, the second half of the year comes
+    // out twelve months early.
+    name: "the name on the line below, the year in the heading",
+    year: 2026,
+    build: () => page(lines([
+      "Eastvale School staff calendar",
+      "AUGUST 2026",
+      "Thu 27 Aug",
+      "Welcome Day",
+      "Whole-staff orientation and department planning. 08:30-15:30.",
+      "Mon 31 Aug",
+      "New Student Orientation",
+      "New students arrive from 10:00.",
+      "DECEMBER 2026",
+      "Mon 21 Dec - Fri 1 Jan",
+      "Winter Recess",
+      "No scheduled classes.",
+      "JANUARY 2027",
+      "Mon 4 Jan",
+      "Classes Resume",
+      "Normal timetable resumes.",
+    ])),
+    want: [
+      ["2026-08-27", /Welcome Day/],
+      ["2026-08-31", /New Student Orientation/],
+      ["2026-12-21", /Winter Recess/, "2027-01-01"],
+      ["2027-01-04", /Classes Resume/],
+    ],
+  },
+  {
+    // 9. A STREAM PACKED TWICE. "[ /ASCII85Decode /FlateDecode ]" — deflated,
+    // then written out as printable characters so it survives being sent
+    // through something that only carries text. One of the commonest PDF
+    // generators there is writes every stream this way by default, and a real
+    // calendar produced by it came back as three blank pages: the reader looked
+    // for the word FlateDecode in the dictionary, found it, and tried to inflate
+    // ASCII85 text.
+    name: "a stream packed twice over",
+    year: 2027,
+    build: () => packed([
+      "Mar. 3, 2027    Open evening",
+      "Mar. 17, 2027    Governors meeting",
+    ]),
+    want: [
+      ["2027-03-03", /Open evening/],
+      ["2027-03-17", /Governors meeting/],
+    ],
+  },
+  {
+    // 8. THE DAY ON ONE LINE AND WHAT HAPPENS ON THE NEXT, under a month heading
+    // that is the only place the year is written. A shape nobody here had
+    // thought of, found by handing this reader a real calendar from a school it
+    // had never met — and the commonest shape there is, once you look.
+    //
+    // Read looking only upwards for a name, every entry is a date with nothing
+    // to call it. Read without the heading, the second half of the year comes
+    // out twelve months early.
+    name: "the name on the line below, the year in the heading",
+    year: 2026,
+    build: () => page(lines([
+      "Eastvale School staff calendar",
+      "AUGUST 2026",
+      "Thu 27 Aug",
+      "Welcome Day",
+      "Whole-staff orientation and department planning. 08:30-15:30.",
+      "Mon 31 Aug",
+      "New Student Orientation",
+      "New students arrive from 10:00.",
+      "DECEMBER 2026",
+      "Mon 21 Dec - Fri 1 Jan",
+      "Winter Recess",
+      "No scheduled classes.",
+      "JANUARY 2027",
+      "Mon 4 Jan",
+      "Classes Resume",
+      "Normal timetable resumes.",
+    ])),
+    want: [
+      ["2026-08-27", /Welcome Day/],
+      ["2026-08-31", /New Student Orientation/],
+      ["2026-12-21", /Winter Recess/, "2027-01-01"],
+      ["2027-01-04", /Classes Resume/],
+    ],
+  },
+  {
+    // 9. A STREAM PACKED TWICE. "[ /ASCII85Decode /FlateDecode ]" — deflated,
+    // then written out as printable characters so it survives being sent
+    // through something that only carries text. One of the commonest PDF
+    // generators there is writes every stream this way by default, and a real
+    // calendar produced by it came back as three blank pages: the reader looked
+    // for the word FlateDecode in the dictionary, found it, and tried to inflate
+    // ASCII85 text.
+    name: "a stream packed twice over",
+    year: 2027,
+    build: () => packed([
+      "Mar. 3, 2027    Open evening",
+      "Mar. 17, 2027    Governors meeting",
+    ]),
+    want: [
+      ["2027-03-03", /Open evening/],
+      ["2027-03-17", /Governors meeting/],
+    ],
   },
 ];

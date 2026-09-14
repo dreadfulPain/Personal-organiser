@@ -245,7 +245,18 @@
       const yEnd = year(m[6], defaultYear);
       // The start's own year if it has one; otherwise the end's, stepped back a
       // year when the months say it crossed New Year.
-      const yStart = m[3] ? Number(m[3]) : month(m[5]) < month(m[2]) ? yEnd - 1 : yEnd;
+      // ANCHORED TO THE START, NOT THE END.
+      //
+      // With no year written on either side, the year the document is about
+      // belongs to the day the span STARTS on: "Winter Recess 21 Dec - 1 Jan"
+      // in a calendar for 2026 is that December and the January after it. Hung
+      // on the end instead, the break moved to the December BEFORE the school
+      // year began — twelve months out, in the direction nobody would check.
+      // Where the end carries its own year there is nothing to guess: the start
+      // is the year before it.
+      const yStart = m[3] ? Number(m[3])
+        : m[6] ? (month(m[5]) < month(m[2]) ? yEnd - 1 : yEnd)
+        : defaultYear;
       return {
         from: iso(yStart, month(m[2]) + 1, +m[1]),
         to: iso(m[6] ? yEnd : month(m[5]) < month(m[2]) ? yStart + 1 : yStart, month(m[5]) + 1, +m[4]),
@@ -260,7 +271,10 @@
     m = new RegExp(`\\b(${MO})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*,?\\s*(\\d{4})?\\s*(?:${DASH})\\s*(${MO})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*,?\\s*(\\d{2,4})?\\b`).exec(s);
     if (m && month(m[1]) >= 0 && month(m[4]) >= 0) {
       const yEnd = year(m[6], defaultYear);
-      const yStart = m[3] ? Number(m[3]) : month(m[4]) < month(m[1]) ? yEnd - 1 : yEnd;
+      // Anchored to the start — see above.
+      const yStart = m[3] ? Number(m[3])
+        : m[6] ? (month(m[4]) < month(m[1]) ? yEnd - 1 : yEnd)
+        : defaultYear;
       return {
         from: iso(yStart, month(m[1]) + 1, +m[2]),
         to: iso(m[6] ? yEnd : month(m[4]) < month(m[1]) ? yStart + 1 : yStart, month(m[4]) + 1, +m[5]),
@@ -1145,6 +1159,42 @@
     return "";
   }
 
+  // AND THE NAME ON THE LINE UNDERNEATH, which is the other half of the same
+  // thought and was missing.
+  //
+  // A great many calendars put the day on one line and what happens on the
+  // next:
+  //
+  //     Thu 27 Aug
+  //     Faculty Welcome Day
+  //     Whole-staff orientation and department planning. 08:30-15:30.
+  //
+  // Read looking only upwards, every one of those is a date with nothing to
+  // call it — thirty of them on one document, which is not a calendar, it is a
+  // list of numbers. The rule is the mirror of nameAbove and refuses the same
+  // things: a line with a date on it is the next entry, a weekday is not a
+  // name, and a heading belongs to what comes after it rather than to what
+  // came before.
+  function nameBelow(lines, at, useYear, order) {
+    const next = tidyLine(lines, at + 1);
+    if (!next || dateIn(next, useYear, order) || !hasWords(next)) return "";
+    if (HEADING.test(next) || monthHeading(next)) return "";
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (T && T.dayOf && T.dayOf(next.replace(/[^A-Za-z]+/g, "")) >= 0) return "";
+    return labelOf(next, "", useYear, order);
+  }
+
+  // A LINE THAT IS A MONTH AND A YEAR AND NOTHING ELSE — "AUGUST 2026",
+  // "January 2027". Not an entry: a heading over the dates beneath it, and the
+  // only place some documents write the year down at all.
+  function monthHeading(line) {
+    const t = String(line || "").trim();
+    const m = /^([A-Za-z]{3,9})\.?\s*,?\s*(\d{4})$/.exec(t);
+    if (!m) return 0;
+    const at = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
+    return at < 0 ? 0 : Number(m[2]);
+  }
+
   // EVERYTHING THIS ENTRY RESTS ON, AND NOTHING ELSE.
   //
   // The heading its list is under, the row and column it is in if it is in a
@@ -1275,11 +1325,39 @@
     const gridMonthYear = wg ? weekGridMonths(wg, useYear) : new Map();
     const rows = [];
     const lines = all.split(LINE_BREAKS);
+    // THE YEAR A MONTH HEADING PUTS OVER THE DATES UNDER IT.
+    //
+    // "AUGUST 2026" and then "Thu 27 Aug"; "JANUARY 2027" and then "Mon 4 Jan".
+    // The entries never write a year, the headings always do, and read without
+    // them a document that runs from one August to the next February comes out
+    // with its whole second half twelve months early. This app already treats a
+    // borrowed year as the one thing that can be quietly wrong by exactly a
+    // year; here the document said it and nothing was listening.
+    //
+    // It holds until the next heading, which is what a heading means.
+    const headYear = [];
+    {
+      let year = 0;
+      lines.forEach((raw, i) => {
+        const t = String(raw || "").replace(/\u00a0/g, " ").trim();
+        // AND IT STOPS AT A BLANK LINE, which is where a block of a document
+        // ends — a page break, a change of section. Carried past one, the
+        // heading over the last month of a chronological list went on applying
+        // to a page organised by something else entirely, and put a year on
+        // dates it had nothing to do with.
+        if (!t) { year = 0; headYear[i] = 0; return; }
+        const y = monthHeading(t);
+        if (y) year = y;
+        headYear[i] = year;
+      });
+    }
     lines
       .forEach((raw, at) => {
         const line = raw.replace(/\u00a0/g, " ").trim();
         if (!line) return;
-        const range = rangeIn(line, useYear, order);
+        // The year this line is under, where the document wrote one over it.
+        const yr = headYear[at] || useYear;
+        const range = rangeIn(line, yr, order);
         // WHERE A RANGE WAS FOUND, ITS START IS THE DATE.
         //
         // These were two searches over one line and nothing made them agree.
@@ -1288,7 +1366,7 @@
         // looks, so it is passed over — and took the SECOND. The row then said
         // it began on the 29th and ended on the 29th: a week of half term
         // collapsed onto its own last day, from a line that plainly said both.
-        const d = (range && range.to > range.from && range.from) || dateIn(line, useYear, order);
+        const d = (range && range.to > range.from && range.from) || dateIn(line, yr, order);
         if (!d) {
           // NO DATE, BUT IT MAY STILL BE SOMETHING. A line naming weekdays and
           // saying "every" is a standing commitment — see repeatIn.
@@ -1306,7 +1384,7 @@
             label: labelOf(
               line.replace(SAYS_EVERY, " ")
                 .replace(/\b[A-Za-z]{3,10}s?\b/g, (w) => (repeatIn("every " + w) ? " " : w)),
-              "", useYear, order) || "(no name)",
+              "", yr, order) || "(no name)",
             ...(t ? { start: t.start, end: t.end } : {}),
             line,
             yearAssumed: false,
@@ -1328,8 +1406,11 @@
           // nothing on it but a date and a clock — what the column it came out
           // of calls it. See nameAbove.
           ...(function () {
-            const own = labelOf(line, d, useYear, order);
-            const above = nameAbove(lines, at, useYear, order);
+            const own = labelOf(line, d, yr, order);
+            const above = nameAbove(lines, at, yr, order);
+            const below = !hasWords(own) && !above.name
+              ? nameBelow(lines, at, yr, order) : "";
+            if (below) return { label: below, nameFrom: "column" };
             // AND WHERE IT CAME FROM. A name the line did not carry is not the
             // row's own identity: two cells of one column can be the same day
             // written twice, and telling them apart is what the line they came
@@ -1350,7 +1431,7 @@
           // EVERYTHING THIS ENTRY RESTS ON — see contextOf. Sent with the entry
           // when a reader is asked what it means, and the only place a claim
           // about it may look for its proof.
-          context: contextOf(lines, at, line, useYear, order),
+          context: contextOf(lines, at, line, yr, order),
           // Whether the year came off the line itself or was borrowed. Shown,
           // because a borrowed year is the one thing here that can be quietly
           // wrong by exactly twelve months.
@@ -1367,11 +1448,11 @@
         // range where there was one, otherwise the single date.
         const already = range && range.to > range.from
           ? range.text
-          : findDate(noDayNames(line), useYear, order).text;
+          : findDate(noDayNames(line), yr, order).text;
         // THE PARENT'S DATE AND THE ONE BEFORE IT, so a jump backwards across a
         // New Year is seen from the first extra onwards rather than only
         // between two extras.
-        const more = alsoOn(line, [already], useYear, order, d);
+        const more = alsoOn(line, [already], yr, order, d);
         if (more.length) {
           // AND THE ROW THIS LINE ALREADY MADE STOPS AT THE FIRST OF THEM. The
           // holiday was called "National Day: (Sep. 20 is a working day, even
@@ -1379,7 +1460,7 @@
           // now two rows of its own, read out again as part of its name.
           const cut = Math.min(...more.map((x) => x.clauseAt));
           const head = noDayNames(line).slice(0, cut).replace(/[\s(;,:•-]+$/, "");
-          const short = labelOf(head, d, useYear, order);
+          const short = labelOf(head, d, yr, order);
           if (short) rows[rows.length - 1].label = short;
           underStem(subjectOf(short), more);
           // AND THE SAME GROUND UNDER THEM. A second date on one line is the

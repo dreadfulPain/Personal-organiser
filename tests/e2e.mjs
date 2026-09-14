@@ -875,10 +875,21 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   // on its own line — and refusing that would bury somebody in questions about
   // rows that were fine.
   const heading = await askCal({ year: 2026,
-    text: `MARKS:heading\nHolidays (subject to change):\n${DOC}`, candidates: CANDS });
+    text: `MARKS:heading\nHolidays (subject to change):\n${DOC}`,
+    candidates: CANDS.map((c) => ({ ...c,
+      context: ["Holidays (subject to change):", c.line] })) });
   ok("proof from the heading the list sits under counts",
      (heading.answers || []).every((a) => a.checked === ""),
      JSON.stringify((heading.answers || [])[0]));
+  // AND A REAL PHRASE BORROWED FROM ANOTHER SECTION DOES NOT. "Holidays" is
+  // genuinely in the file — three sections away — and looked for across the
+  // whole document it would stand as proof that a training day is a day off.
+  const elsewhere = await askCal({ year: 2026,
+    text: `MARKS:heading\nHolidays (subject to change):\n${DOC}`,
+    candidates: CANDS.map((c) => ({ ...c, context: [c.line] })) });
+  ok("while the same phrase fetched from another part of the file does not",
+     (elsewhere.answers || []).every((a) => /aren't in what this came from/.test(a.checked || "")),
+     JSON.stringify((elsewhere.answers || [])[0]));
   const said0 = await mark("");
   ok("a reader that points at words really in the line goes through",
      (said0.answers || []).every((a) => a.checked === ""), JSON.stringify(said0.answers));
@@ -890,7 +901,7 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   // document states it must produce the words, and the words are looked for.
   const invented = await mark("invented");
   ok("and one that invents the words that prove it is caught",
-     (invented.answers || []).every((a) => /aren't in the document/.test(a.checked || "")),
+     (invented.answers || []).every((a) => /aren't in what this came from/.test(a.checked || "")),
      JSON.stringify((invented.answers || [])[0]));
 
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------

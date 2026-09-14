@@ -81,9 +81,12 @@
     const len = o.body.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/);
     const marker = s.indexOf("endstream", from);
     let to = marker;
+    // Whether the document's own /Length settled it, or we had to go looking for
+    // the word "endstream" — which is what the trimming below is for.
+    let byLength = false;
     if (len) {
       const byLen = from + Number(len[1]);
-      if (marker < 0 || byLen <= marker) to = byLen;
+      if (marker < 0 || byLen <= marker) { to = byLen; byLength = true; }
     }
     if (to < 0 || to > bytes.length) return null;
     // THE BROWSER'S INFLATE IS STRICTER THAN NODE'S, and this is the difference
@@ -92,7 +95,15 @@
     // DecompressionStream calls them "trailing junk" and throws away the whole
     // stream — so a reader that passes its tests in Node returns a blank page
     // in the browser, which is where it actually runs.
-    while (to > from && (bytes[to - 1] === 10 || bytes[to - 1] === 13 || bytes[to - 1] === 32)) to--;
+    //
+    // BUT ONLY WHERE THE LENGTH DID NOT SAY. Compressed data is bytes, and one
+    // stream in a few dozen ends in the byte 0x0a or 0x20 — which is a newline
+    // only if you are reading it as text. Trimmed off a stream whose /Length was
+    // exact, that eats real data, the inflate fails, and the page comes back
+    // blank with nothing to say why. Found by a calendar that had nothing wrong
+    // with it beyond the luck of where its deflate stopped.
+    if (!byLength)
+      while (to > from && (bytes[to - 1] === 10 || bytes[to - 1] === 13 || bytes[to - 1] === 32)) to--;
     const raw = bytes.subarray(from, to);
     if (!/\/FlateDecode/.test(o.body)) return raw;
     return (await inflate(raw, false)) || (await inflate(raw, true));
@@ -161,6 +172,35 @@
     return raw;
   }
 
+  // THE TWENTY-SEVEN BYTES EVERY OTHER ENCODING LEAVES EMPTY.
+  //
+  // A PDF font with no glyph map of its own is read byte for byte, and for the
+  // printable range that is right. Between 0x80 and 0x9f it is not: those are
+  // control codes in Latin-1 and typography in the encoding PDFs actually use —
+  // the en dash, the em dash, curly quotes, the ellipsis. A calendar writes its
+  // ranges with one of them.
+  //
+  // Left unmapped, "29 March – 10 April" came through with an invisible control
+  // character where the dash was, so it was not a range at all: two separate
+  // days, one of them named after the other. Nothing about this is a fact about
+  // any school — it is a published table, the same for every document there is.
+  const WINANSI = {
+    0x80: "\u20ac", 0x82: "\u201a", 0x83: "\u0192", 0x84: "\u201e", 0x85: "\u2026",
+    0x86: "\u2020", 0x87: "\u2021", 0x88: "\u02c6", 0x89: "\u2030", 0x8a: "\u0160",
+    0x8b: "\u2039", 0x8c: "\u0152", 0x8e: "\u017d", 0x91: "\u2018", 0x92: "\u2019",
+    0x93: "\u201c", 0x94: "\u201d", 0x95: "\u2022", 0x96: "\u2013", 0x97: "\u2014",
+    0x98: "\u02dc", 0x99: "\u2122", 0x9a: "\u0161", 0x9b: "\u203a", 0x9c: "\u0153",
+    0x9e: "\u017e", 0x9f: "\u0178",
+  };
+  const winAnsi = (raw) => {
+    let out = "";
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw.charCodeAt(i);
+      out += c >= 0x80 && c <= 0x9f && WINANSI[c] ? WINANSI[c] : raw[i];
+    }
+    return out;
+  };
+
   // The twelve, short and long, at the very end of a line. Format, not
   // vocabulary: no fact about any school is written down here.
   const MONTH_END =
@@ -204,6 +244,7 @@
         }
       } else {
         tally.glyphs += raw.length;
+        raw = winAnsi(raw);
         // No map at all. The bytes may be ordinary letters, or they may be
         // glyph numbers — and there is no way to tell from in here. Counted, so
         // the caller can say how much of the page is only probably right.

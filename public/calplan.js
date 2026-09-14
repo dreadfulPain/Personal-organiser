@@ -1123,6 +1123,52 @@
   // of one; ONE date under a line of words is a date under a heading — and
   // taking the heading is how "4th March" comes to be called "Thursday", and a
   // date at the foot of a page comes to be called after the title at the top.
+  // THE HEADING A LINE SITS UNDER.
+  //
+  // A calendar files things: "Holidays:", "Deadlines:", "Term dates:" — a line
+  // of words, no date, ending in a colon, and everything below it belongs to it
+  // until the next one. That heading is often the only place the document says
+  // what a whole list of entries IS, so it is part of what an entry rests on
+  // even though it is nowhere near it.
+  //
+  // Bounded: it stops at a blank line and at a line with a date on it, because
+  // once dates have started the heading above them is the one that applies.
+  const HEADING = /:\s*$/;
+  function headingOver(lines, at, useYear, order) {
+    for (let i = at - 1; i >= 0 && at - i <= 12; i--) {
+      const t = tidyLine(lines, i);
+      if (!t) return "";
+      if (!HEADING.test(t)) continue;
+      if (dateIn(t, useYear, order)) return "";
+      return hasWords(t) ? t : "";
+    }
+    return "";
+  }
+
+  // EVERYTHING THIS ENTRY RESTS ON, AND NOTHING ELSE.
+  //
+  // The heading its list is under, the row and column it is in if it is in a
+  // table, and its own words. This is what the app can say about where an entry
+  // sits WITHOUT knowing anything about schools — and it is the only place a
+  // claim about that entry may look for its proof. Checked against the whole
+  // document instead, a reader could justify a training day by quoting the word
+  // "Holidays" out of a list three sections away: a real phrase, borrowed, which
+  // is the same fault as a borrowed line wearing different clothes.
+  function contextOf(lines, at, line, useYear, order) {
+    const out = [];
+    const head = headingOver(lines, at, useYear, order);
+    if (head) out.push(head);
+    const cells = cellRun(lines, at, useYear, order);
+    if (cells) {
+      const row = tidyLine(lines, cells.lo - 1);
+      if (row && hasWords(row)) out.push(row);
+      const heads = headingsOver(lines, cells, useYear, order);
+      if (heads) out.push(...heads);
+    }
+    out.push(line);
+    return out.filter(Boolean).slice(0, 6);
+  }
+
   function cellRun(lines, at, useYear, order) {
     const dated = (i) => { const t = tidyLine(lines, i); return !!t && !!dateIn(t, useYear, order); };
     let lo = at, hi = at;
@@ -1283,6 +1329,10 @@
             return t ? { start: t.start, end: t.end } : {};
           })(),
           line,
+          // EVERYTHING THIS ENTRY RESTS ON — see contextOf. Sent with the entry
+          // when a reader is asked what it means, and the only place a claim
+          // about it may look for its proof.
+          context: contextOf(lines, at, line, useYear, order),
           // Whether the year came off the line itself or was borrowed. Shown,
           // because a borrowed year is the one thing here that can be quietly
           // wrong by exactly twelve months.
@@ -1314,6 +1364,13 @@
           const short = labelOf(head, d, useYear, order);
           if (short) rows[rows.length - 1].label = short;
           underStem(subjectOf(short), more);
+          // AND THE SAME GROUND UNDER THEM. A second date on one line is the
+          // same entry said twice — "Oct. 16, Nov. 13" — so it rests on exactly
+          // what the first one rests on. Without this the thirteenth of November
+          // arrived with nothing behind it and no claim about it could be
+          // checked at all.
+          const ground = rows[rows.length - 1] && rows[rows.length - 1].context;
+          if (ground) more.forEach((x) => { x.context = ground.slice(); });
           rows.push(...more);
         }
       });

@@ -1422,8 +1422,8 @@ RULES
 - "days" is for something that REPEATS every week rather than happening once: "staff meeting every Friday" is days [5] with no date. 0=Sunday, 1=Monday … 6=Saturday. Anything with a date is not a repeat.
 - If the year is not written on a line, use the year the rest of the document is about.
 - If a row is not an entry (a title, a page number, a column heading), leave it out.
-- ONE LINE CAN HOLD MORE THAN ONE ENTRY. "Score input: Midterm Nov. 17 16:00, Final Jan. 15 16:00" is TWO entries on two different dates, not one. Give each its own entry, and put in the name what tells them apart ("Score input — Midterm", "Score input — Final").
-- A WEEK NUMBER IS NOT A DATE. "Week 16 - Week 17", "Tentatively Week 7", "Return Week 12" say where in the term something falls, not what date it is — never read that number as a day of the month. Leave the date empty; it will be asked about.
+- ONE LINE CAN HOLD MORE THAN ONE ENTRY. "Marks in: first half Nov. 17 16:00, second half Jan. 15 16:00" is TWO entries on two different dates, not one. Give each its own entry, and put in the name what tells them apart ("Marks in — first half", "Marks in — second half").
+- A WEEK NUMBER IS NOT A DATE. "Week 16 - Week 17", "provisionally Week 7", "back in Week 12" say where in the term something falls, not what date it is — never read that number as a day of the month. Leave the date empty; it will be asked about.
 - NEVER WORK OUT A DATE THAT IS NOT WRITTEN. If a line does not give one, leave "date" empty rather than choosing a likely day.
 - Never invent an entry that is not in the text. An empty list is a fine answer.
 
@@ -1433,11 +1433,11 @@ RULES
 
     "stated" is false when the words make your answer likely without saying it. That is not a failing and it is not a wrong answer: it is the honest shape of most reading. Say false and give "says" as "".
 
-    "Holidays: Mid-Autumn Festival: Sep. 25" says it is a holiday — the document files it under Holidays. True, and "says" is "Holidays".
-    "Sep. 20 is a working day, even week Tuesday schedule" says which timetable runs. True.
-    "Professional Development Days for Teachers: Oct. 16, Nov. 13" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
+    "School closed: Spring Fair: May 4" says the school is shut — the document says so in as many words. True, and "says" is "School closed".
+    "Apr. 6 is a working day, running the Tuesday timetable" says which timetable runs. True.
+    "Training day for staff: Mar. 2, Jun. 9" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
 
-    Never write into "says" anything that is not in your quote. There is nothing to lose by saying false — it only means they are asked.
+    Never write into "says" anything that is not in the document. There is nothing to lose by saying false — it only means they are asked.
 
 - "said": the words of the document this entry came from, COPIED EXACTLY. Not tidied, not shortened. It is looked for in the document, so an entry whose "said" is not in the text is thrown away — and the date you gave is looked for beside it, so quote enough of the document to take the date in.
 
@@ -1459,7 +1459,7 @@ You are asked for this so that they do not have to answer the same question thir
 
 - AND "means" IS ABOUT TEACHING. It says what happens to their lessons that day. If the words you quote do not say what happens to lessons, you are inferring it, and "sure" must say so — a line naming who a day is for is not a line saying whether classes run. "Training day for teachers" tells you who it is for and nothing about the students; be honest that you are guessing and let them decide.
 
-- "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document lists this under Holidays". It is shown to them, so write it to be read by a person and not by a machine.
+- "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document files this under the list of closures". It is shown to them, so write it to be read by a person and not by a machine.
 
 - "mine" is whether this looks like it applies to THEM, given what they say they do. "yes" if it is for the whole school, their own year group, all staff, or anyone teaching. "no" only when the line is plainly limited to a group they have nothing to do with. "" if you cannot tell — which is the right answer far more often than "no".
 
@@ -1508,7 +1508,7 @@ For each number:
 
 - AND "means" IS ABOUT TEACHING. It says what happens to their lessons that day. If the words you quote do not say what happens to lessons, you are inferring it, and "sure" must say so — a line naming who a day is for is not a line saying whether classes run. "Training day for teachers" tells you who it is for and nothing about the students; be honest that you are guessing and let them decide.
 
-- "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document lists this under Holidays". It is shown to them, so write it to be read by a person.
+- "why" is ONE short sentence, in plain English, saying what you concluded and from what — "the document files this under the list of closures". It is shown to them, so write it to be read by a person.
 
 - "mine" is whether it looks like it applies to THEM, given what they say they do. "yes" if it is for the whole school, their own year group, all staff, or anyone teaching. "no" only when it is plainly limited to a group they have nothing to do with. "" if you cannot tell — which is the right answer far more often than "no".
 
@@ -1518,11 +1518,11 @@ For each number:
 
     "stated" is false when the words make your answer likely without saying it. That is not a failing and it is not a wrong answer: it is the honest shape of most reading. Say false and give "says" as "".
 
-    "Holidays: Mid-Autumn Festival: Sep. 25" says it is a holiday — the document files it under Holidays. True, and "says" is "Holidays".
-    "Sep. 20 is a working day, even week Tuesday schedule" says which timetable runs. True.
-    "Professional Development Days for Teachers: Oct. 16, Nov. 13" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
+    "School closed: Spring Fair: May 4" says the school is shut — the document says so in as many words. True, and "says" is "School closed".
+    "Apr. 6 is a working day, running the Tuesday timetable" says which timetable runs. True.
+    "Training day for staff: Mar. 2, Jun. 9" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
 
-    Never write into "says" anything that is not in your quote. There is nothing to lose by saying false — it only means they are asked.
+    Never write into "says" anything that is not in the document. There is nothing to lose by saying false — it only means they are asked.
 
 - "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the calendar below. It is looked for in the document, and the entry's own date is looked for beside it, so quote enough of it to take the date in. An answer whose "said" is not in the document is not trusted.
 
@@ -1707,24 +1707,25 @@ function verify(doc, said, row) {
 //
 // AND SAYING FALSE COSTS IT NOTHING. Most honest reading is inference — the
 // prompt says so — and inference is exactly what the "your say" pile is for.
-function entails(means, stated, says, doc) {
+function entails(means, stated, says, ground) {
   if (!means) return "";
   if (!stated) return "the line doesn't say that — the reader worked it out";
   const words = String(says || "").replace(/\s+/g, " ").trim().toLowerCase();
   if (!words) return "the line doesn't say that — the reader worked it out";
-  // AGAINST THE WHOLE DOCUMENT, NOT THE ENTRY'S OWN SPAN.
+  // AND THE PROOF MUST BE WHERE THE ENTRY IS.
   //
-  // What makes "Mid-Autumn Festival: Sep. 25" a holiday is the word "Holidays"
-  // two lines above it, over the list it is in. Checked against the entry's own
-  // span that proof is not there, and a reader that had pointed at exactly the
-  // right word would have been refused — which is the wrong failure to make: it
-  // buries somebody in questions about rows that were fine.
+  // Looked for in the whole document, this let a real phrase be BORROWED: the
+  // word "Holidays" is genuinely in the file, three sections away, and would
+  // have stood as proof that a training day was a day off. That is the same
+  // fault as an entry citing somebody else's line, in different clothes.
   //
-  // Where the words came from is already settled by "said", which is anchored
-  // to the entry by its date or its name. This is the other question: is the
-  // phrase real at all, or did the reader write the proof it wanted?
-  return doc.flat.indexOf(words) < 0
-    ? "the words it says prove it aren't in the document"
+  // So it is looked for in what the entry rests on — the heading its list is
+  // under, the row and column it is in, its own words — which the reader works
+  // out from the shape of the page and not from what any of it says. See
+  // contextOf. Wide enough that "Holidays" over a list of holidays counts;
+  // narrow enough that it cannot be fetched from somewhere else.
+  return ground.indexOf(words) < 0
+    ? "the words it says prove it aren't in what this came from"
     : "";
 }
 
@@ -1920,8 +1921,13 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       const means = MEANS.indexOf(a.means) >= 0 ? a.means : "";
       // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees — and whether the
       // document says it or the reader worked it out — see entails.
+      // WHAT THIS ONE RESTS ON. Its own context where the reader gave one, and
+      // the whole document only where it did not — which is the free-form path,
+      // where there is no list for a context to be worked out from.
+      const ground = (c.context.length ? c.context.join(" ") : text)
+        .replace(/\s+/g, " ").toLowerCase();
       const fits = disagrees(means, c) ||
-        entails(means, a.stated === true, a.says, doc);
+        entails(means, a.stated === true, a.says, ground);
       answers.push({
         n,
         means,
@@ -1997,6 +2003,10 @@ async function handleCalendar(res, body) {
       endsOn: ISO.test(String(c?.endsOn || "")) ? String(c.endsOn) : "",
       label: String(c?.label || "").slice(0, 120),
       line: String(c?.line || "").slice(0, 300),
+      // WHAT THIS ENTRY RESTS ON, worked out by the reader that found it — see
+      // contextOf. The only place a claim about the entry may look for proof.
+      context: (Array.isArray(c?.context) ? c.context : [])
+        .slice(0, 6).map((x) => String(x || "").slice(0, 300)).filter(Boolean),
     }))
     .filter((c) => c.n > 0);
   if (candidates.length) return markCalendar(res, { cfg, text, sent, year, about, candidates });
@@ -2049,7 +2059,7 @@ async function handleCalendar(res, body) {
       const means = MEANS.indexOf(e.means) >= 0 ? e.means : "";
       // Same two gates as the other path — see disagrees and entails.
       const fits = disagrees(means, { label, line: said || label, date, endsOn }) ||
-        entails(means, e.stated === true, e.says, doc);
+        entails(means, e.stated === true, e.says, doc.flat);
       rows.push({
         label, date, endsOn,
         // A REPEAT AND A DATE ARE DIFFERENT ANSWERS. Something on a date does

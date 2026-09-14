@@ -425,11 +425,18 @@
     const numbered = rows.map((r, i) => ({
       n: i + 1, date: r.date || "", endsOn: r.endsOn || "",
       label: r.label || "", line: r.line || "",
+      // EVERYTHING THIS ROW RESTS ON — the heading its list is under, the row
+      // and column it sits in, its own words. A claim about it may look for its
+      // proof here and nowhere else. See contextOf.
+      context: Array.isArray(r.context) ? r.context : [],
     })).concat(marks.map((m, j) => ({
       // NO DATE ON IT. A mark is a kind of day, not a day — it is the legend
       // that says what it is, and the legend is what the model must quote.
       n: rows.length + j + 1, date: "", endsOn: "",
       label: m.name || `the "${m.symbol}" days`, line: m.name || "",
+      // A MARK RESTS ON ITS OWN LINE OF THE LEGEND AND NOTHING ELSE. That is the
+      // whole of what the document says about it.
+      context: [m.name || ""],
     })));
     const askLot = async (from, count) => {
       const candidates = numbered.slice(from, from + count);

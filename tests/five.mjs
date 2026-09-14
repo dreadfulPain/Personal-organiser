@@ -3141,6 +3141,112 @@ sec("A calendar you check three things on, not thirty");
   }
 }
 
+sec("And a reader that only got half of it says so, and a second look is offered");
+{
+  const A = await import("./_dom.mjs");
+  // THE HOLE THIS CLOSES. This app owns the list, and a reader that found
+  // NOTHING hands the job to the model. A reader that found FIVE OF TWELVE hands
+  // over nothing at all: it did not fail, so nothing asks the question, and the
+  // seven it never saw do not exist. The five are safe and the seven are gone —
+  // the same silence the whole panel was built to end, arriving by another door.
+  //
+  // The tell is about the document and not about any school: a month is named
+  // and nothing came out in it.
+  const LETTER = [
+    "Dear colleagues,",
+    "The autumn term begins on Tuesday 1 September 2026 and ends on Friday 18",
+    "December 2026. There is a half-term break from Monday 26 October to Friday",
+    "30 October 2026.",
+  ].join("\n");
+  const CLEAN = "Term starts\t1 September 2026\nHalf term\t26 October 2026";
+  const asked = [];
+  const openIt = async (text) => {
+    const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const sent = JSON.parse((init && init.body) || "{}");
+        asked.push(sent);
+        if (sent.candidates && sent.candidates.length)
+          return { ok: true, json: async () => ({ missed: [],
+            answers: sent.candidates.map((c) => ({ n: c.n, means: "off", why: "a closure",
+              sure: 0.9, mine: "yes", fromLine: c.line, checked: "", source: c.line })) }) };
+        // The second look, with no numbered list: the free-form reading.
+        return { ok: true, json: async () => ({ rows: [{ label: "Autumn term ends",
+          date: "2026-12-18", endsOn: "", days: [], extras: [], kind: "",
+          line: "ends on Friday 18 December 2026", endFrom: "",
+          means: "lessons", sure: 0.9, mine: "yes", checked: "",
+          why: "the letter says the term ends then",
+          source: "ends on Friday 18 December 2026" }], unreadable: [] }) };
+      },
+    });
+    r.get("#calBox").open = true;
+    const box = r.get("#calPaste");
+    box.value = text;
+    box.fire("input", { target: box });
+    await r.settle();
+    const bt = r.get("#calSecond");
+    bt.fire("click", { target: bt });
+    await r.settle();
+    return r;
+  };
+
+  asked.length = 0;
+  const r = await openIt(LETTER);
+  ok("a document with a month nothing came out in is read a second time",
+     asked.filter((x) => !x.candidates || !x.candidates.length).length === 1,
+     JSON.stringify(asked.map((x) => (x.candidates || []).length)));
+  ok("and the page says which month, and why it looked again",
+     /Nothing came out in December/.test(String(r.get("#calWords").textContent || "")),
+     String(r.get("#calWords").textContent).slice(0, 200));
+  const heads = A.deep(r.get("#calRows"))
+    .filter((n) => String(n.className || "").includes("cal-pilehead"))
+    .map((n) => String(n.textContent));
+  ok("what it found is in a pile of its own", heads.some((h) => /Possibly missed/.test(h)),
+     JSON.stringify(heads));
+  const found = A.deep(r.get("#calRows")).find((n) =>
+    String(n.className || "").includes("cal-row") &&
+    /Dec 18/.test(A.deep(n).map((c) => String(c.textContent || "")).join(" ")));
+  ok("with the day it found on it", !!found,
+     JSON.stringify(A.deep(r.get("#calRows")).filter((n) => String(n.className || "").includes("cal-row"))
+       .map((n) => String((n.children[0] || {}).textContent))));
+  // NEVER READY, HOWEVER SURE ANYBODY IS. This app did not find it; it is an
+  // offer, and an offer waits.
+  ok("and never ticked, whatever the model said about it",
+     found && !A.deep(found).some((c) => / on\b/.test(String(c.className || "")) &&
+       String(c.className).includes("cal-tick")),
+     "it arrived answered");
+  ok("so the button below does not count it",
+     /Put these 3 in/.test(String(r.get("#calAdd").textContent)),
+     String(r.get("#calAdd").textContent));
+  // AND IT CANNOT REPLACE OR REORDER A THING ABOVE IT.
+  const dates = A.deep(r.get("#calRows")).filter((n) => String(n.className || "").includes("cal-row"))
+    .map((n) => A.deep(n).map((c) => String(c.textContent || "")).join(" "));
+  ok("everything this app found is still there, in order",
+     /Sep 1/.test(dates[0]) && /Oct 26/.test(dates[1]) && /Oct 30/.test(dates[2]),
+     JSON.stringify(dates.map((d) => d.slice(0, 40))));
+  // AND SAYING WHAT IT IS PUTS IT IN, like anything else.
+  const pick = A.deep(found).find((c) =>
+    String(c.className || "").includes("cal-pick") && String(c.textContent) === "lessons start");
+  if (pick) pick.fire("click", { target: pick });
+  await r.settle();
+  ok("and saying what it is takes it", /Put these 4 in/.test(String(r.get("#calAdd").textContent)),
+     String(r.get("#calAdd").textContent));
+
+  // AND A DOCUMENT THIS READER GOT CLEANLY IS NOT READ TWICE. The second look
+  // costs a wait, and asking for it over a reading with nothing missing from it
+  // is the panel being slow for no reason.
+  asked.length = 0;
+  const clean = await openIt(CLEAN);
+  ok("a document with nothing missing is read once",
+     asked.filter((x) => !x.candidates || !x.candidates.length).length === 0,
+     JSON.stringify(asked.map((x) => (x.candidates || []).length)));
+  ok("and says nothing about looking again",
+     !/read again/.test(String(clean.get("#calWords").textContent || "")),
+     String(clean.get("#calWords").textContent).slice(0, 160));
+}
+
 sec("And the things marked on the grid are asked about too");
 {
   const A = await import("./_dom.mjs");

@@ -14,6 +14,13 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // the typesetter cut into six pieces, and a page with the office's own
 // paperwork dated on it.
 //
+// AND IT IS A REGRESSION CORPUS NOW, NOT A HOLD-OUT. It was a hold-out for
+// exactly one run — the first, which came to 63 of 68 and found two faults that
+// were nothing to do with calendars. Mending those because of what these
+// documents showed is what stopped them being evidence about anything unseen.
+// A later claim about generality has to come from a set that has not yet
+// changed a line of this code.
+//
 // A FAILURE HERE IS INFORMATION, NOT A FIRE. What it must not become is a list
 // of rules invented one at a time to make each of these pass — that is the
 // fault it is here to find, done deliberately. Anything mended because of this

@@ -1234,6 +1234,24 @@
     /[A-Za-zЀ-ӿ一-鿿぀-ヿ]/
       .test(String(s || "").replace(/\b\d{1,2}:\d{2}\b/g, " "));
 
+  // MONTHS THE DOCUMENT NAMES THAT NOTHING CAME OUT IN.
+  //
+  // Not a count of failures — a reader cannot know what it did not see. This is
+  // the one shape of not-seeing that leaves a mark: the word "December" is on
+  // the page and no entry is in December. On a document read cleanly it is
+  // empty, and where it is not, something is worth a second look.
+  function monthsMissed(all, rows, useYear) {
+    const named = new Set();
+    const text = String(all || "");
+    MONTHS.forEach((m, i) => {
+      if (new RegExp(`\\b${m}[a-z]*\\b`, "i").test(text)) named.add(i + 1);
+    });
+    rows.forEach((r) => { if (r.date) named.delete(Number(r.date.slice(5, 7))); });
+    rows.forEach((r) => { if (r.endsOn) named.delete(Number(r.endsOn.slice(5, 7))); });
+    void useYear;
+    return [...named].sort((a, b) => a - b);
+  }
+
   // EVERY LINE WITH A DATE IN IT. Lines without one are headings, page numbers
   // or notes, and are left alone rather than guessed at.
   function read(text, opts) {
@@ -1468,6 +1486,21 @@
     out = out.filter((r) => r.label !== "(no name)" || !named.has(r.date));
     return {
       rows: out,
+      // AND WHETHER IT THINKS IT GOT EVERYTHING.
+      //
+      // THE HOLE THIS CLOSES. This reader owns the list, and a reader that
+      // found NOTHING hands the job to the model. A reader that found FIVE of
+      // twelve hands over nothing at all — it did not fail, so nothing asks the
+      // question, and the seven it never saw do not exist. The five are safe
+      // and the seven are gone, which is the same silence the whole panel was
+      // built to end, arriving by a different door.
+      //
+      // The tell is cheap and it is about the document rather than about any
+      // school: a month is NAMED in the text and no entry came out in it. That
+      // is either a month heading over an empty stretch or a date this reader
+      // could not resolve, and it cannot tell which — so it says so and lets
+      // the model look. See monthsMissed.
+      missed: monthsMissed(all, out, useYear),
       read: rows.length,
       year: useYear,
       yearFromDoc: fromDoc || 0,

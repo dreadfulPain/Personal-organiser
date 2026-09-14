@@ -16,6 +16,19 @@
 //
 // THESE ARE NOT FIXTURES TO TUNE AGAINST. A rule invented to make one of them
 // pass, that makes no sense on the others, is the fault they exist to find.
+//
+// AND THIS IS NO LONGER A HOLD-OUT. It was one exactly once — the first run,
+// which came to 63 of 68 and found two faults that had nothing to do with
+// calendars: a compressed stream trimmed past its own end, and twenty-seven
+// bytes of ordinary typography read as control codes. The moment those were
+// mended because of what these documents showed, these documents stopped being
+// evidence about anything unseen and became what they are now: a regression
+// corpus, which is a different and also useful thing.
+//
+// So they stay here for ever, and the next time somebody wants to know whether
+// this reader has been fitted to the documents in front of it, the answer is
+// not in this file. It is a fresh set nobody has run yet, or better, a real
+// calendar from a school nobody here has met.
 
 import zlib from "node:zlib";
 import { pdf } from "./_pdf.mjs";

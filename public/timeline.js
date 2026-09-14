@@ -128,12 +128,18 @@
   // the line it claims to come from is a fact. The number is allowed to make it
   // ASK, never to wave anything through.
   const trusted = (r) =>
-    !!r && !!r.means && !r.checked && !(typeof r.sure === "number" && r.sure < 0.65);
+    !!r && !!r.means && !r.checked && !(typeof r.sure === "number" && r.sure < 0.65) &&
+    // AND NEVER SOMETHING ONLY THE MODEL SAW. A row this app did not find for
+    // itself is an offer, not a reading — see calExtra. It goes in a pile of its
+    // own and waits for you, however sure anybody is about it.
+    r.found !== "model";
   // WHETHER A READER PROPOSED ANYTHING AT ALL, and which of three piles a row
   // landed in. Both are asked in more than one place, so both are answered in
   // one: see calShow, where a row is put in its pile once and stays there.
   const triagedRows = (rows) => (rows || []).some((x) => x && x.means);
-  const pileOf = (r) => (!r.said || !r.kind ? "ask" : r.mine === "no" ? "not" : "ready");
+  const pileOf = (r) =>
+    r.found === "model" ? "maybe"
+      : !r.said || !r.kind ? "ask" : r.mine === "no" ? "not" : "ready";
   // WHAT YOU SAID A LINE MEANT, LAST TIME YOU SAW IT. Keyed by the words on the
   // line, because that is all a calendar gives you and it is the same words
   // next term. See the store: this is recall of your own answer, not the app
@@ -515,17 +521,34 @@
       // see trusted.
       if (trusted(as)) markSaid.set(j, as);
     });
+    // AND, WHERE THIS READER SAID IT MIGHT NOT HAVE FINISHED, A SECOND LOOK.
+    //
+    // The reader owns the list, and a reader that found NOTHING hands the job to
+    // the model. A reader that found five of twelve handed over nothing at all:
+    // it did not fail, so nothing asked the question, and the seven it never saw
+    // did not exist. The five were safe and the seven were gone — the same
+    // silence this panel was built to end, arriving by a different door.
+    //
+    // So when the reader says a month was named that nothing came out in — see
+    // monthsMissed — the document is read once more from scratch, and anything
+    // with a date this app has not already got is OFFERED. Additive only: it
+    // cannot replace, reorder or remove a single thing above it, and it cannot
+    // be ticked by the button at the bottom until you have said what it is.
+    const extra = (already.r.missed || []).length && !stopped
+      ? await calExtra(text, year, about, marked)
+      : [];
     const answered = got.size;
-    if (!answered && worst) {
+    if (!answered && worst && !extra.length) {
       const why = { slow: `The model still hadn't answered after ${took(MODEL_WAIT)}, so:`,
         failed: "The model couldn't be reached, so:",
         refused: refused || "The model couldn't read that." }[worst];
       return calFallBack(why, worst === "refused", sawText);
     }
     if (stopped && !answered) return calFallBack("Stopped waiting, so:");
-    calShow({ ...already.r, rows: marked, from: "model" },
+    calShow({ ...already.r, rows: marked.concat(extra), from: "model" },
       `Read by the model in ${took(msNow() - t0)}. ` +
       calCut(cutAt) + calShort(short) + calNoProfile(about) +
+      calMoreFound(extra.length, already.r.missed || []) +
       calLeftOver(all - answered, all, stopped));
     // A READING THAT CAME BACK IN PIECES IS STILL ONE TO OFFER AGAIN, and what
     // the model said about the pieces that failed is still worth being able to
@@ -540,6 +563,36 @@
     calSawText = sawText;
     calFailed = !!worst || (stopped && answered < all);
     if (calSawText || calFailed) renderCal();
+  }
+
+  // READING IT ONCE MORE, FOR WHAT THIS READER MAY HAVE WALKED PAST.
+  //
+  // The free-form job — the one used on a document this reader can make nothing
+  // of at all. Here it is used on a document it made SOMETHING of, and every
+  // gate the server has still applies: the quote must be in the document, the
+  // date must be written beside it, the meaning must fit the shape of the row
+  // and the document must say it. What comes back is then filtered again, here,
+  // against the days this app already has — because a second reading of the same
+  // line is not a missed entry.
+  async function calExtra(text, year, about, have) {
+    const known = new Set(have.map((r) => r.date).filter(Boolean));
+    const got = await askModel("/api/calendar", { text, year, about }, renderCal);
+    if (!got.ok || got.stale || got.stopped || got.slow || got.failed) return [];
+    const rows = Array.isArray(got.data && got.data.rows) ? got.data.rows : [];
+    return rows
+      .filter((r) => r && r.date && !known.has(r.date))
+      .slice(0, 30)
+      .map((r) => ({ ...r, kind: "", said: false, keep: false, found: "model" }));
+  }
+
+  // AND HOW MANY, AND WHY IT LOOKED AT ALL.
+  function calMoreFound(n, missed) {
+    if (!missed.length) return "";
+    const names = missed.map((m) => MONTH_WORDS[m - 1]).filter(Boolean).join(", ");
+    return `Nothing came out in ${names}, though the document names ${missed.length === 1 ? "it" : "them"} — ` +
+      (n
+        ? `so it was read again and ${n} more ${n === 1 ? "was" : "were"} found, at the bottom, for you to say yes or no to. `
+        : "so it was read again, and nothing more came out. ");
   }
 
   // AND WHEN NOTHING WAS SET ASIDE BECAUSE NOTHING WAS ASKED.
@@ -1058,9 +1111,9 @@
     // when the reading arrived, so that nothing moves while you are working
     // down it. See calShow. With no reader proposing anything there is nothing
     // to sort and every row is a question, which is the panel as it was: §0.1.
-    const piles = { ready: [], ask: [], not: [] };
+    const piles = { ready: [], ask: [], not: [], maybe: [] };
     calRows.forEach((r, i) => piles[(triaged && r.pile) || "ask"].push([r, i]));
-    const some = triaged && piles.ready.length + piles.not.length > 0;
+    const some = triaged && piles.ready.length + piles.not.length + piles.maybe.length > 0;
     // HOW TO ANSWER THEM, ONLY WHERE ANSWERING THEM IS THE JOB. With most of
     // the reading already proposed, a paragraph about which row to mark as
     // "lessons start" is instructions for work somebody else has done.
@@ -1071,7 +1124,8 @@
       head.textContent =
         `${piles.ready.length} ready to go in` +
         (piles.ask.length ? `, ${piles.ask.length} for you to say` : "") +
-        (piles.not.length ? `, ${piles.not.length} that don't look like yours` : "") + ".";
+        (piles.not.length ? `, ${piles.not.length} that don't look like yours` : "") +
+        (piles.maybe.length ? `, ${piles.maybe.length} the model thinks this missed` : "") + ".";
       box.appendChild(head);
     }
     if (piles.ask.length && some) {
@@ -1095,6 +1149,24 @@
       drawReady(piles.ready, marks, box);
     }
     if (piles.not.length) drawNotMine(piles.not, marks, box);
+    // AND THE ONES ONLY THE MODEL SAW, LAST AND SEPARATE.
+    //
+    // This app did not find these. They are a second reader's suggestion about a
+    // document this one admitted it might not have finished — so they are shown
+    // as what they are, they cannot be ticked by the button at the bottom until
+    // you say what one is, and they never arrive answered.
+    if (piles.maybe.length) {
+      const h = document.createElement("p");
+      h.className = "cal-pilehead";
+      h.textContent = "Possibly missed — the model found these and this app didn't";
+      box.appendChild(h);
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Read out of the document a second time, because a month was " +
+        "named that nothing came out in. Nothing here goes in until you say what it is.";
+      box.appendChild(p);
+      piles.maybe.forEach(([r, i]) => drawCalRow(r, i, marks, box));
+    }
     renderCalTerm();
   }
 

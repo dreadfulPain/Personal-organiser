@@ -1657,7 +1657,7 @@
     // So nothing is merged on a nearly. Two copies of one event is a thing to
     // notice and untick; two different events silently becoming one is a thing
     // that disappears, and there is no screen on which that can be seen. Both
-    // rows stay, both are answerable, and each says it may be the other.
+    // rows stay, and the pair becomes a question you are asked.
     const nearly = (a, b) => {
       const x = a.label.toLowerCase().replace(/\s+/g, " ").trim();
       const y = b.label.toLowerCase().replace(/\s+/g, " ").trim();
@@ -1665,12 +1665,28 @@
       const short = x.length < y.length ? x : y, long = x.length < y.length ? y : x;
       return short.length >= 6 && long.indexOf(short) === 0;
     };
-    kept.forEach((r, i) => kept.slice(i + 1).forEach((o) => {
+    //
+    // AND THE NEAR ONES ON A DAY ARE ONE QUESTION, NOT ONE QUESTION PER ROW.
+    // "Semester", "Semester Assessment" and "Semester Assessment Paper Upload"
+    // over the same Friday is a single thing to decide, and asked three times
+    // it can be answered three ways that contradict each other. Which rows
+    // belong to which question is only knowable here, where what-is-near-what
+    // is worked out — so it is settled here, as a tag the rows in one question
+    // share, rather than each row naming one neighbour and the screen trying to
+    // reassemble the sets from that. What to SAY on a row is then the other
+    // rows carrying its tag: one fact, in one place. See drawSameGroups.
+    const group = kept.map((_, i) => i);
+    const find = (i) => (group[i] === i ? i : (group[i] = find(group[i])));
+    kept.forEach((r, i) => kept.slice(i + 1).forEach((o, j) => {
       if (!r.date || r.date !== o.date || (r.endsOn || "") !== (o.endsOn || "")) return;
       if (!nearly(r, o)) return;
-      r.maybeSame = o.label;
-      o.maybeSame = r.label;
+      group[find(i)] = find(i + 1 + j);
     }));
+    {
+      const size = new Map();
+      kept.forEach((_, i) => size.set(find(i), (size.get(find(i)) || 0) + 1));
+      kept.forEach((r, i) => { if (size.get(find(i)) > 1) r.sameGroup = `${r.date}#${find(i)}`; });
+    }
     // Dated rows in date order, and the rules that have no date after them.
     let out = inOrder(kept);
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A

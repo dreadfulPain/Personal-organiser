@@ -4469,6 +4469,22 @@ a.btn {
    as something the calendar stated. Marked, not shouted: this is still the
    quiet line under a row. */
 .cal-thinks { flex: 1 1 100%; }
-/* TWO ROWS THAT MAY BE ONE EVENT. Said on both, never decided: merging two
-   different days's events would make one vanish with no screen to see it on. */
-.cal-maybe { flex: 1 1 100%; }
+/* TWO ROWS THAT MAY BE ONE EVENT. A question, never a decision: merging two
+   different events would make one vanish with no screen left to see it on, and
+   keeping both wrongly leaves a line you can untick. So the pair is boxed and
+   asked about, rather than flagged on two rows that are ticked and ready. */
+.cal-same { border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+/* ANSWERED, AND THEREFORE QUIET. The box stops being the loud thing on the page
+   the moment it has been dealt with, but stays where it was so that changing
+   your mind means looking at the same place, not hunting for it. */
+.cal-same.cal-samedone { border-left-color: var(--line); }
+.cal-samehead { margin: 0 0 2px; font-size: 0.8rem; font-weight: 600;
+  color: var(--ink-soft); letter-spacing: 0.02em; }
+.cal-samerow { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  padding: 3px 0; }
+.cal-samesaid { margin: 2px 0 4px; font-size: 0.8rem; }
+/* THE ONE A MERGE FOLDED AWAY. Still named — a thing that quietly stopped
+   existing is the whole fault this question is here to prevent — but with no
+   tick, because it is not going in and a tick that does nothing is a lie. */
+.cal-folded { opacity: 0.65; }

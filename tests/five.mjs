@@ -3001,27 +3001,94 @@ sec("A calendar you check three things on, not thirty");
   ok("and why it thinks so, in the reader's own words",
      holiday && A.deep(holiday).some((c) => /listed under Holidays/.test(String(c.textContent))),
      holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
-  // AND A ROW THAT MAY BE ANOTHER ROW SAYS SO ON THE SCREEN. Nothing in the app
-  // can tell "Staff Preparation" and "Staff Preparation Days" apart from "Staff
-  // Meeting" and "Staff Meeting Prep", and getting it wrong in the merging
-  // direction makes an entry disappear with no screen to see it on. So both stay
-  // and both say it.
+  // AND A ROW THAT MAY BE ANOTHER ROW IS A QUESTION, NOT A TICK.
+  //
+  // Nothing in this app can tell "Staff Preparation" and "Staff Preparation
+  // Days" — one thing a document wrote twice, in its month list and again in
+  // its table — from "Staff Meeting" and "Staff Meeting Prep", which are two
+  // things, one of them the work before the other.
+  //
+  // WHAT THIS WAS: a sentence on each of the two rows saying it might be the
+  // other, and both rows sitting ticked in "ready to go in". So the app knew
+  // there was a question, printed the question, and put both in anyway the
+  // moment the button at the bottom was pressed — the doubt was decoration.
+  // The model is answering confidently here for exactly that reason: this has
+  // to hold on the rows the reader is SUREST of, because those are the ones
+  // that were going in unasked.
   {
-    const two = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
-      fetch: async (url) => (/api\/health/.test(String(url))
-        ? { ok: true, json: async () => ({ ok: true, hasAI: false }) }
-        : { ok: false, json: async () => ({}) }),
+    const PAIR = "Staff Preparation: 15 February 2027\nStaff Preparation Days: 15 February 2027";
+    const two = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Grade 1 homeroom, primary school" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        const answers = (body.candidates || []).map((c) => ({
+          n: c.n, means: "noLessons", sure: 0.96, mine: "yes", checked: "",
+          said: c.line, fromLine: c.line, source: c.line,
+          why: "a day the document sets aside for getting ready",
+        }));
+        return { ok: true, json: async () => ({ answers, missed: [] }) };
+      },
     });
     two.get("#calBox").open = true;
     const bx = two.get("#calPaste");
-    bx.value = "Study Leave\t21 June 2027\nStudy Leave Week\t21 June 2027";
+    bx.value = PAIR;
     bx.fire("input", { target: bx });
     await two.settle();
-    const said = A.deep(two.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
-    ok("two names that are nearly one both stay",
-       calRowsOf(two).length === 2, String(calRowsOf(two).length));
-    ok("and each says it may be the other",
-       (said.match(/possibly the same as/g) || []).length === 2, said.slice(0, 220));
+    const go = two.get("#calSecond");
+    go.fire("click", { target: go });
+    await two.settle();
+    const all = () => A.deep(two.get("#calRows"));
+    const words = () => all().map((c) => String(c.textContent || "")).join(" | ");
+    const button = (t) => all().find((c) => c.tagName === "BUTTON" &&
+      new RegExp(t).test(String(c.textContent || "")));
+    ok("two names that are nearly one both stay", calRowsOf(two).length +
+       all().filter((c) => String(c.className || "").includes("cal-samerow")).length === 2,
+       words().slice(0, 300));
+    // THE WHOLE POINT: NOT IN READY, however sure anybody is.
+    ok("and neither of them is sitting ticked in ready to go in",
+       !all().some((c) => String(c.className || "").includes("cal-ready")), words().slice(0, 300));
+    ok("the pair is one question, asked once",
+       (words().match(/These may be the same event/g) || []).length === 1, words().slice(0, 300));
+    ok("with the document's own words under each, to decide it on",
+       (words().match(/the document says: Staff Preparation/g) || []).length === 2,
+       words().slice(0, 300));
+    ok("and two answers, one of which names what it would keep",
+       !!button("Same event — keep “Staff Preparation Days”") && !!button("^Keep both$"),
+       all().filter((c) => c.tagName === "BUTTON").map((c) => c.textContent).join(" | "));
+    // AND THE BUTTON AT THE BOTTOM CANNOT BE PRESSED PAST IT. This is the fault
+    // itself: two rows the reader was sure of, going in, unasked.
+    ok("nothing goes in while the question is open", two.get("#calAdd").hidden === true,
+       String(two.get("#calAdd").textContent));
+    // KEEP BOTH: two rows again, ordinary ones, and the button says two.
+    const both = button("^Keep both$");
+    both.fire("click", { target: both });
+    await two.settle();
+    ok("say they are two and they are two, tickable like any other row",
+       all().filter((c) => String(c.className || "").includes("cal-ready")).length === 2,
+       words().slice(0, 300));
+    ok("and the button below says so", /Put these 2 in/.test(String(two.get("#calAdd").textContent)),
+       String(two.get("#calAdd").textContent));
+    // SAME EVENT: one row goes in, the other is named and folded, not vanished.
+    const undo = button("^change$");
+    undo.fire("click", { target: undo });
+    await two.settle();
+    const one = button("Same event");
+    one.fire("click", { target: one });
+    await two.settle();
+    ok("say they are one and one goes in",
+       /Put this one in/.test(String(two.get("#calAdd").textContent)),
+       String(two.get("#calAdd").textContent));
+    // A THING THAT QUIETLY STOPPED EXISTING is the fault this question exists to
+    // prevent, so the folded one is still named and still says where it went.
+    ok("and the other is still on the screen, saying where it went",
+       /folded into “Staff Preparation Days”/.test(words()), words().slice(0, 400));
+    ok("and the one that stays remembers where else it was written",
+       /also written: Staff Preparation: 15 February 2027/.test(words()), words().slice(0, 400));
   }
 
   // AND SAID AS THE READER'S, NOT AS THE DOCUMENT'S.

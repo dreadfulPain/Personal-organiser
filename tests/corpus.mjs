@@ -97,12 +97,14 @@ for (const doc of CORPUS) {
     ok("  and remembers where else it was written",
        !!(on[0] && (on[0].alsoFrom || []).length), JSON.stringify(on[0] && on[0].alsoFrom));
   });
-  // AND TWO NAMES THAT ARE NEARLY ONE SAY SO RATHER THAN BECOMING ONE.
+  // AND TWO NAMES THAT ARE NEARLY ONE BECOME A QUESTION RATHER THAN ONE ROW.
+  // Both stay, and they are tagged as belonging to the SAME question, so the
+  // screen asks about them once instead of twice — see drawSameGroups.
   (doc.maybeOn || []).forEach((d) => {
     const on = r.rows.filter((x) => x.date === d);
-    ok(`the near-names on ${d} both say they may be the other`,
-       on.length === 2 && on.every((x) => !!x.maybeSame),
-       JSON.stringify(on.map((x) => `${x.label} ~ ${x.maybeSame || "-"}`)));
+    ok(`the near-names on ${d} are one question, not one row`,
+       on.length === 2 && on.every((x) => !!x.sameGroup) && on[0].sameGroup === on[1].sameGroup,
+       JSON.stringify(on.map((x) => `${x.label} ~ ${x.sameGroup || "-"}`)));
   });
   const spare = r.rows.map((x) => x.date).filter((d) => allowed.has(d));
   if (spare.length) notes.push(`${doc.name}: also read ${spare.join(", ")} — real dates on the page, not entries`);

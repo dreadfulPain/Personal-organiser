@@ -139,7 +139,27 @@
   const triagedRows = (rows) => (rows || []).some((x) => x && x.means);
   const pileOf = (r) =>
     r.found === "model" ? "maybe"
-      : !r.said || !r.kind ? "ask" : r.mine === "no" ? "not" : "ready";
+      // AND A ROW THAT MIGHT BE ANOTHER ROW IS NOT READY, WHATEVER IT MEANS.
+      //
+      // The reader can be perfectly sure "Semester Assessment Paper Upload" is
+      // a deadline and equally sure "Semester" is, and both be right, and one
+      // of them still be the other one written short. Left in the ready pile
+      // they arrived ticked, and the big button put two of it in your term —
+      // the app knowing there was a question and never asking it, which is the
+      // same fault as answering for you. See drawSameGroups: the ones sharing
+      // a tag are one question, asked once, before anything goes anywhere.
+      : r.sameGroup ? "same"
+        : !r.said || !r.kind ? "ask" : r.mine === "no" ? "not" : "ready";
+  // AND WHETHER A ROW IS ACTUALLY GOING IN. Asked by the button that says how
+  // many, and by the button that does it — one question, which had two answers
+  // and could therefore promise one number and do another. An unanswered pair
+  // is excluded here rather than by quietly unticking both rows, because an
+  // untick is a thing you did and this is the app waiting to be told.
+  // The tick is never touched by any of this: `keep` is what YOU said about a
+  // row and nothing else may write it, or answering "same event" and changing
+  // your mind would hand you back a row you had unticked, ticked.
+  const goingIn = (r) => !!r && r.keep !== false &&
+    !(r.sameGroup && (!r.sameSaid || r.sameSaid === "folded"));
   // WHAT YOU SAID A LINE MEANT, LAST TIME YOU SAW IT. Keyed by the words on the
   // line, because that is all a calendar gives you and it is the same words
   // next term. See the store: this is recall of your own answer, not the app
@@ -259,8 +279,12 @@
     // The piles say what the READER made of it, which does not change while you
     // work. What YOU made of it shows on the row, and in the button at the
     // bottom, which counts live and is the thing that says what will happen.
+    // WITH NOTHING PROPOSED THERE IS NOTHING TO SORT and every row is a
+    // question — §0.1, the panel as it was before any model existed. EXCEPT a
+    // pair that may be one event: that question is the plain reader's, it is
+    // there with no model in the room, and it is asked the same way either way.
     const sorted = triagedRows(calRows);
-    calRows = calRows.map((x) => ({ ...x, pile: sorted ? pileOf(x) : "ask" }));
+    calRows = calRows.map((x) => ({ ...x, pile: sorted || x.sameGroup ? pileOf(x) : "ask" }));
     calFailed = false;
     calSawText = "";
     calMeta = { ...r, rows: calRows };
@@ -1017,7 +1041,7 @@
     // AND THE BUTTON SAYS HOW MANY, because "Put these in" over a list where
     // most are ticked and some are not is a button you have to count before
     // you press.
-    const going = calRows.filter((r) => r.kind && r.keep !== false).length;
+    const going = calRows.filter((r) => r.kind && goingIn(r)).length;
     if (btn) {
       btn.hidden = !going;
       btn.textContent = going === 1 ? "Put this one in" : `Put these ${going} in`;
@@ -1111,29 +1135,46 @@
     // when the reading arrived, so that nothing moves while you are working
     // down it. See calShow. With no reader proposing anything there is nothing
     // to sort and every row is a question, which is the panel as it was: §0.1.
-    const piles = { ready: [], ask: [], not: [], maybe: [] };
-    calRows.forEach((r, i) => piles[(triaged && r.pile) || "ask"].push([r, i]));
-    const some = triaged && piles.ready.length + piles.not.length + piles.maybe.length > 0;
+    const piles = { ready: [], ask: [], not: [], maybe: [], same: [] };
+    calRows.forEach((r, i) => piles[r.pile || "ask"].push([r, i]));
+    const some = triaged &&
+      piles.ready.length + piles.not.length + piles.maybe.length + piles.same.length > 0;
     // HOW TO ANSWER THEM, ONLY WHERE ANSWERING THEM IS THE JOB. With most of
     // the reading already proposed, a paragraph about which row to mark as
     // "lessons start" is instructions for work somebody else has done.
     if (how) how.hidden = !calRows.length || some;
+    // THE PAIRS THAT MIGHT BE ONE THING, COUNTED AS QUESTIONS AND NOT AS ROWS.
+    // Four rows in two pairs is two things to decide, and "4 possible repeats"
+    // would have you looking for four.
+    const sameGroups = groupSame(piles.same);
+    const repeats = sameGroups.filter((g) => !g.rows[0][0].sameSaid).length;
     if (some) {
       const head = document.createElement("p");
       head.className = "muted cal-piles";
-      head.textContent =
-        `${piles.ready.length} ready to go in` +
-        (piles.ask.length ? `, ${piles.ask.length} for you to say` : "") +
-        (piles.not.length ? `, ${piles.not.length} that don't look like yours` : "") +
-        (piles.maybe.length ? `, ${piles.maybe.length} the model thinks this missed` : "") + ".";
+      // A COUNT OF NOTHING IS NOT WORTH SAYING. "0 ready to go in, 1 that may
+      // already be in the list twice" is a sentence about a pile that isn't
+      // there, and a document whose only question is a possible repeat gets
+      // exactly that sentence.
+      const bits = [];
+      if (piles.ready.length) bits.push(`${piles.ready.length} ready to go in`);
+      if (piles.ask.length) bits.push(`${piles.ask.length} for you to say`);
+      if (repeats) bits.push(`${repeats} that may already be in the list twice`);
+      if (piles.not.length) bits.push(`${piles.not.length} that don't look like yours`);
+      if (piles.maybe.length) bits.push(`${piles.maybe.length} the model thinks this missed`);
+      head.textContent = bits.join(", ") + ".";
       box.appendChild(head);
     }
-    if (piles.ask.length && some) {
+    if ((piles.ask.length || sameGroups.length) && some) {
       const h = document.createElement("p");
       h.className = "cal-pilehead";
       h.textContent = "Your say on these";
       box.appendChild(h);
     }
+    // AND THE POSSIBLE REPEATS FIRST, because they are the only question on
+    // this page that the button at the bottom cannot be pressed past — see
+    // goingIn — so leaving them at the end would be a button that does nothing
+    // and does not say why.
+    if (sameGroups.length) drawSameGroups(sameGroups, marks, box);
     // WITH NOTHING PROPOSED, THIS IS THE WHOLE PANEL — the no-model case — and
     // then a term sheet wants its months back. Inside a short pile of questions
     // a heading over one row is another line to read.
@@ -1217,14 +1258,7 @@
         w.textContent = `the reader thinks: ${r.why}`;
         row.appendChild(w);
       }
-      // AND ON A READY ROW TOO — see drawCalRow. A row you are about to tick
-      // through without opening is the one that most needs telling.
-      if (r.maybeSame) {
-        const dup = document.createElement("span");
-        dup.className = "muted cal-hint cal-maybe";
-        dup.textContent = `possibly the same as “${r.maybeSame}” on this day`;
-        row.appendChild(dup);
-      }
+      drawAlsoFrom(r, row);
       const change = document.createElement("button");
       change.type = "button";
       change.className = "link cal-change";
@@ -1233,6 +1267,186 @@
       row.appendChild(change);
       box.appendChild(row);
     });
+  }
+
+  // AND ANYWHERE ELSE THE DOCUMENT WROTE THE SAME THING.
+  //
+  // A calendar says a date in its month list and again in a table at the back,
+  // and the reader keeps one row and remembers the other line — see alsoFrom.
+  // It was remembering it into a field nothing on any screen ever drew, so
+  // "both places are kept" was true of the data and false of the only place it
+  // could be any use. A merge whose other half you cannot see is a merge you
+  // have to take on trust, which is the thing this panel exists not to ask for.
+  const drawAlsoFrom = (r, row) => {
+    (r.alsoFrom || []).forEach((l) => {
+      const el = document.createElement("span");
+      el.className = "muted cal-hint cal-source";
+      el.textContent = `also written: ${l}`;
+      row.appendChild(el);
+    });
+  };
+
+  // THE ROWS THAT MAY BE ONE ROW, PUT BACK TOGETHER. The reader worked out
+  // which of them belong to one question — see calplan — and this only collects
+  // the ones carrying each tag, in the order they are on screen.
+  const groupSame = (list) => {
+    const out = [];
+    list.forEach((pair) => {
+      const g = out.find((x) => x.key === pair[0].sameGroup);
+      if (g) g.rows.push(pair);
+      else out.push({ key: pair[0].sameGroup, rows: [pair] });
+    });
+    // A tag is only put on a row that has a neighbour, but a row can be taken
+    // out of the list between the reading and the drawing, and a group of one
+    // is a question with nothing to decide.
+    return out.filter((g) => g.rows.length > 1);
+  };
+
+  // WHEN TWO NAMES ON ONE DAY MIGHT BE ONE EVENT.
+  //
+  // "Staff Preparation" and "Staff Preparation Days" over the same days are
+  // almost certainly one thing the document said twice — the month list at the
+  // front and the table at the back. "Staff Meeting" and "Staff Meeting Prep"
+  // are two things, one of them the work before the other. "Sports Day" and
+  // "Sports Day Setup". Nothing here can tell those apart, and nothing here is
+  // going to try: merging wrongly makes a day disappear with no screen left to
+  // see it on, and keeping both wrongly puts a line you can untick in front of
+  // you. One of those is recoverable.
+  //
+  // WHAT IT WAS, AND WHY THAT WASN'T ENOUGH: a sentence on each of the two
+  // rows saying it might be the other, while both sat ticked in "ready to go
+  // in". So the app knew there was a question, printed the question, and put
+  // both in anyway the moment you pressed the button — which is the same fault
+  // as answering for you, with the extra insult of having said so first.
+  //
+  // Now it is one question for the pair, in your say, with two answers. Until
+  // one of them is pressed neither row goes anywhere — see goingIn.
+  function drawSameGroups(groups, marks, box) {
+    groups.forEach((g) => {
+      const wrap = document.createElement("div");
+      wrap.className = "cal-same" + (g.rows[0][0].sameSaid ? " cal-samedone" : "");
+      const h = document.createElement("p");
+      h.className = "cal-samehead";
+      h.textContent = "These may be the same event";
+      wrap.appendChild(h);
+      // THE LONGEST NAME IS THE ONE A MERGE KEEPS. "Semester" and "Semester
+      // Assessment Paper Upload" are one Friday written short and written out,
+      // and in a fortnight the written-out one is the only one of the two you
+      // could act on. It is named on the button, so nothing about which of
+      // them survives is a surprise.
+      const keeper = g.rows.reduce((best, p) => (p[0].label.length > best[0].label.length ? p : best),
+                                   g.rows[0])[0];
+      const said = g.rows[0][0].sameSaid;
+      if (!said) {
+        const why = document.createElement("p");
+        why.className = "muted";
+        why.textContent = "One name begins the other and they are on the same day. That is " +
+          "usually a document saying one thing twice — and sometimes it is a thing and the " +
+          "work before it, which are two. This app can't tell, so neither goes in until you say.";
+        wrap.appendChild(why);
+        // BOTH OF THEM, WITH THE WORDS THEY CAME OFF. Deciding this on the
+        // tidied-up names alone is guessing at exactly the thing that is in
+        // question; the document's own two lines usually settle it at a glance.
+        g.rows.forEach(([r]) => {
+          const line = document.createElement("div");
+          line.className = "cal-samerow";
+          const nm = document.createElement("span");
+          nm.className = "cal-name";
+          nm.textContent = r.date
+            ? `${calDay(r.date)}${r.endsOn && r.endsOn > r.date ? ` to ${calDay(r.endsOn)}` : ""} — ${r.label}`
+            : `${everyWords(r.days)} — ${r.label}`;
+          line.appendChild(nm);
+          // The span a claim was checked against where there is one, and the
+          // raw line where there isn't — this question is asked with no model
+          // in the room too, and then the line is all there is. Both are the
+          // document's own words, which is what the sentence says they are.
+          const src = r.source || r.line;
+          if (src) {
+            const el = document.createElement("span");
+            el.className = "muted cal-hint cal-source";
+            el.textContent = `the document says: ${src}`;
+            line.appendChild(el);
+          }
+          wrap.appendChild(line);
+        });
+        const opts = document.createElement("div");
+        opts.className = "cal-opts";
+        [["one", `Same event — keep “${keeper.label}”`], ["both", "Keep both"]].forEach(([k, lab]) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "p-opt";
+          b.textContent = lab;
+          b.addEventListener("click", () => answerSame(g, keeper, k));
+          opts.appendChild(b);
+        });
+        wrap.appendChild(opts);
+      } else {
+        // ANSWERED, AND STILL ARGUABLE. What you said, said back in your own
+        // terms, and one press from being undone — the same as every other
+        // answer on this page.
+        const was = document.createElement("p");
+        was.className = "muted cal-samesaid";
+        was.textContent = said === "both"
+          ? "You said these are two different things. Both stay, and each is yours to answer."
+          : `You said these are one event. Keeping “${keeper.label}”, and remembering ` +
+            "where else the document wrote it.";
+        const undo = document.createElement("button");
+        undo.type = "button";
+        undo.className = "link cal-change";
+        undo.textContent = "change";
+        undo.addEventListener("click", () => {
+          g.rows.forEach(([r, i]) => { calRows[i] = { ...r, sameSaid: "" }; });
+          renderCal();
+        });
+        was.appendChild(document.createTextNode(" "));
+        was.appendChild(undo);
+        wrap.appendChild(was);
+        g.rows.forEach(([r, i]) => {
+          // THE FOLDED ONE IS NOT DRAWN AS A ROW YOU CAN TICK, because it is
+          // not going in and a tick that does nothing is a lie. It is still
+          // named, because a thing that quietly stopped existing is the fault
+          // this whole question is here to prevent.
+          if (r.sameSaid === "folded") {
+            const gone = document.createElement("div");
+            gone.className = "cal-row cal-folded";
+            const nm = document.createElement("span");
+            nm.className = "cal-name";
+            nm.textContent = `${r.date ? calDay(r.date) + " — " : ""}${r.label}`;
+            gone.appendChild(nm);
+            const note = document.createElement("span");
+            note.className = "muted cal-hint";
+            note.textContent = `folded into “${keeper.label}”`;
+            gone.appendChild(note);
+            wrap.appendChild(gone);
+            return;
+          }
+          // AND THE ONE THAT STAYS IS AN ORDINARY ROW AGAIN — the same tick,
+          // the same seven answers, drawn by the same two functions as every
+          // other row, so answering this question cannot leave it in a shape
+          // nothing else on the page has.
+          if (pileOf({ ...r, sameGroup: "" }) === "ready") drawReady([[r, i]], marks, wrap);
+          else drawCalRow(r, i, marks, wrap);
+        });
+      }
+      box.appendChild(wrap);
+    });
+  }
+
+  // `keeper` is the row a merge keeps, worked out where the buttons are drawn
+  // so that the button's words and what it does are the same fact.
+  function answerSame(g, keeper, how) {
+    g.rows.forEach(([r, i]) => {
+      if (how === "both") { calRows[i] = { ...r, sameSaid: "both" }; return; }
+      if (r === keeper) {
+        // WHERE ELSE IT WAS WRITTEN, KEPT. A merge that drops one of its two
+        // sources is a reading you can no longer check — the same rule the
+        // reader follows when it merges two identical names. See alsoFrom.
+        const lines = g.rows.map(([o]) => o.line).filter((l) => l && l !== r.line);
+        calRows[i] = { ...r, sameSaid: "kept",
+          alsoFrom: (r.alsoFrom || []).concat(lines).slice(0, 4) };
+      } else calRows[i] = { ...r, sameSaid: "folded" };
+    });
+    renderCal();
   }
 
   // AND THE ONES THAT DON'T LOOK LIKE YOURS, folded away rather than thrown
@@ -1484,22 +1698,7 @@
         src.textContent = `the document says: ${r.source}`;
         row.appendChild(src);
       }
-      // AND WHERE SOMETHING ELSE ON THE SAME DAY IS NEARLY THIS.
-      //
-      // "Staff Preparation" and "Staff Preparation Days" over the same days are
-      // almost certainly one thing the document said twice — and "Staff Meeting"
-      // and "Staff Meeting Prep" are two things, one of them preparing for the
-      // other. Nothing here can tell those apart, and getting it wrong in the
-      // merging direction makes an entry disappear with no screen to see it on.
-      // So both stay and both say so: two copies you can untick is a nuisance,
-      // and a vanished day is not.
-      if (r.maybeSame) {
-        const dup = document.createElement("span");
-        dup.className = "muted cal-hint cal-maybe";
-        dup.textContent = `possibly the same as “${r.maybeSame}” on this day — ` +
-          "the document may just be saying it twice";
-        row.appendChild(dup);
-      }
+      drawAlsoFrom(r, row);
       // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
       //
       // "Sep. 20 is a working day, even week Tuesday schedule" is a Sunday with
@@ -1695,7 +1894,9 @@
     // or unticked because the reader got it wrong, is not a row you are keeping
     // — and it still has a kind on it, because that is what it was set aside
     // FROM.
-    const keeping = calRows.filter((r) => r && r.keep !== false);
+    // AND NOTHING WITH A QUESTION STILL ON IT — see goingIn, which is also what
+    // the button counted, so what it said would happen is what happens.
+    const keeping = calRows.filter(goingIn);
     const made = C.toBlocks(keeping).map((b) => ({ ...b, id: uid() }));
     // AND ANYTHING DUE, WHICH IS A TASK AND NOT A DAY. Deduped the same way the
     // days are: reading one calendar in twice must not leave you with the

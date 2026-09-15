@@ -1117,6 +1117,14 @@
     // are written across the top of the table, one to a line, in the order the
     // cells come in. See headingsOver.
     const heads = headingsOver(lines, cells, useYear, order);
+    // AND A TITLE IS NOT A ROW LABEL. Where no heading row was found, the line
+    // above the run has to have earned its place: a row label of a table sits
+    // under the headings or under the row before it, so a date comes before it.
+    // A document's own title at the top of a page has nothing above it at all,
+    // and handing it to the first two dates on the page names them both after
+    // the paperwork — and then, being the same name over the same day, they
+    // look like one event written twice.
+    if (!heads && !dateIn(tidyLine(lines, cells.lo - 2), useYear, order)) return none;
     const j = at - cells.lo;
     // A NAME OFF THE TABLE BEATS THE CELL'S OWN WORDS. "Tentatively Nov. 10-12"
     // put "Tentatively" on the page as the name of a week of exams, and the
@@ -1175,9 +1183,58 @@
   // things: a line with a date on it is the next entry, a weekday is not a
   // name, and a heading belongs to what comes after it rather than to what
   // came before.
+  // AND THE NAME ON THE LINE ABOVE, where the document is built the other way up.
+  //
+  // Some tables run name-then-dates rather than date-then-name:
+  //
+  //     Summer Break
+  //     1 July 2027 - 31 August 2027
+  //     Notes
+  //
+  // Reaching downwards there takes the heading of whatever comes next — the
+  // summer holiday came out called "Notes". Reaching upwards blindly is no
+  // better: in a list written date-then-name-then-detail, the line above a date
+  // is the PREVIOUS entry's detail sentence.
+  //
+  // What tells them apart is one line further out. Where the line above a date
+  // is itself preceded by a date — or by nothing at all — it is the first line
+  // of its own block and belongs to this date. Where more words come before it,
+  // it is the tail of the block above and belongs to that.
+  function nameJustAbove(lines, at, useYear, order) {
+    const prev = tidyLine(lines, at - 1);
+    if (!prev || dateIn(prev, useYear, order) || !hasWords(prev)) return "";
+    if (HEADING.test(prev) || monthHeading(prev)) return "";
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    if (T && T.dayOf && T.dayOf(prev.replace(/[^A-Za-z]+/g, "")) >= 0) return "";
+    // AND STRICTLY A DATE ABOVE IT. Allowing "nothing at all" as well let the
+    // title at the top of a page name the first date under it — which is the
+    // fault the rule looking upwards was given its bounds to avoid.
+    if (!dateIn(tidyLine(lines, at - 2), useYear, order)) return "";
+    return labelOf(prev, "", useYear, order);
+  }
+
   function nameBelow(lines, at, useYear, order) {
     const next = tidyLine(lines, at + 1);
     if (!next || dateIn(next, useYear, order) || !hasWords(next)) return "";
+    // AND NOT A NAME THAT BELONGS TO THE DATE AFTER IT.
+    //
+    // Some tables run the other way round — the name, then its dates, then the
+    // next name, then its dates:
+    //
+    //     Semester 1
+    //     1 September 2026 - 22 January 2027
+    //     Midyear Recess
+    //     23 January 2027 - 14 February 2027
+    //
+    // Reaching downwards there takes the NEXT entry's name, and every row comes
+    // out labelled one place along: the autumn term called "Midyear Recess",
+    // the midyear break called "Staff Preparation". A wrong name is worse than
+    // none — it reads as a fact and there is nothing on the row to argue with.
+    //
+    // The tell is what follows the candidate. A name with a DATE under it is
+    // the label of that date, not of the one above it. A name with a sentence
+    // under it is this row's, and the sentence is its detail.
+    if (dateIn(tidyLine(lines, at + 2), useYear, order)) return "";
     if (HEADING.test(next) || monthHeading(next)) return "";
     const T = typeof window !== "undefined" && window.OrganiserTimetable;
     if (T && T.dayOf && T.dayOf(next.replace(/[^A-Za-z]+/g, "")) >= 0) return "";
@@ -1408,9 +1465,10 @@
           ...(function () {
             const own = labelOf(line, d, yr, order);
             const above = nameAbove(lines, at, yr, order);
-            const below = !hasWords(own) && !above.name
-              ? nameBelow(lines, at, yr, order) : "";
-            if (below) return { label: below, nameFrom: "column" };
+            const near = !hasWords(own) && !above.name
+              ? nameJustAbove(lines, at, yr, order) || nameBelow(lines, at, yr, order)
+              : "";
+            if (near) return { label: near, nameFrom: "column" };
             // AND WHERE IT CAME FROM. A name the line did not carry is not the
             // row's own identity: two cells of one column can be the same day
             // written twice, and telling them apart is what the line they came
@@ -1548,22 +1606,82 @@
     // first day of this school year and the last day of the next, and one of
     // them was quietly disappearing. Where there is nothing to compare, the line
     // they came off is kept apart.
+    // ONE EVENT, WRITTEN DOWN TWICE.
+    //
+    // A calendar often says a thing once in its month-by-month list and again in
+    // a table at the back — "Midyear Recess, 23 Jan - 14 Feb" in both. Those are
+    // not two events. Offered as two they are two things to answer, two things
+    // to tick, and two identical holidays in somebody's week.
+    //
+    // WHAT IS NOT ENOUGH: the same day. Two different things happen on one day
+    // all the time, and merging on a date alone would quietly throw one of them
+    // away. What IS enough is the same name over the same days — or one name
+    // being the start of the other, which is how "Staff Preparation" and "Staff
+    // Preparation Days" turn up in the two halves of one document.
+    //
+    // AND BOTH PLACES ARE KEPT. The row says what it rests on — see contextOf —
+    // and a reading that quietly drops one of its two sources is a reading you
+    // can no longer check. The second line goes on the row beside the first.
     const byDate = new Map();
     rows.forEach((r) => byDate.set(
       // A repeat has no date to be the same day as, so it is told apart by the
       // days it runs on — two lines both saying "every Friday assembly" are one
       // rule said twice, and "every Friday" and "every Monday" are not.
-      (r.date || "every " + (r.days || []).join(",")) + "|" +
+      (r.date || "every " + (r.days || []).join(",")) + "|" + (r.endsOn || "") + "|" +
       r.label.toLowerCase() +
-      (r.label === "(no name)" || r.nameFrom === "column" ? "|" + r.line : ""), r));
+      // A ROW NOBODY COULD NAME is told apart by the line it came off, because
+      // there is nothing else to tell it apart by.
+      (r.label === "(no name)" ? "|" + r.line : ""), r));
+    // Said twice: the key above kept the later one, so the earlier one's line
+    // is put back on it.
+    {
+      const seen = new Map();
+      rows.forEach((r) => {
+        const key = (r.date || "every " + (r.days || []).join(",")) + "|" + (r.endsOn || "") + "|" +
+          r.label.toLowerCase() + (r.label === "(no name)" ? "|" + r.line : "");
+        const kept = byDate.get(key);
+        if (kept && kept !== r && r.line && kept.line !== r.line)
+          kept.alsoFrom = (kept.alsoFrom || []).concat([r.line]).slice(0, 4);
+        seen.set(key, true);
+      });
+    }
+    // AND THE SAME THING UNDER A LONGER NAME. One half of a document writes
+    // "Staff Preparation", the other "Staff Preparation Days", over the same
+    // days. The longer name is kept because it says more, and the line the
+    // other came off is kept with it.
+    let kept = [...byDate.values()];
+    kept = kept.filter((r, i) => {
+      if (!r.date || r.label === "(no name)") return true;
+      const mine = r.label.toLowerCase();
+      return !kept.some((o, j) => {
+        if (j === i || !o.date || o.date !== r.date || (o.endsOn || "") !== (r.endsOn || "")) return false;
+        const theirs = o.label.toLowerCase();
+        if (theirs.length <= mine.length) return false;
+        if (theirs.indexOf(mine) !== 0 || mine.length < 6) return false;
+        // The one that is kept carries where the other was written down too.
+        o.alsoFrom = (o.alsoFrom || []).concat([r.line]).slice(0, 4);
+        return true;
+      });
+    });
     // Dated rows in date order, and the rules that have no date after them.
-    let out = inOrder([...byDate.values()]);
+    let out = inOrder(kept);
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A
     // booklet that draws August as a grid and then writes "26th August" over its
     // detailed page gives that day twice: once as "All-Staff Orientation" and
     // once as a bare heading with nothing to call it. Both kept, you label the
     // same day twice.
     const named = new Set(out.filter((r) => r.label !== "(no name)").map((r) => r.date));
+    // AND THE LINE IT WAS DROPPED FOR KEEPS ITS LINE. A day written twice — once
+    // where the reader could name it and once where it could not — is one
+    // entry, and losing the second saying without a word is losing half of what
+    // there is to check it against.
+    out.forEach((r) => {
+      if (r.label !== "(no name)" || !named.has(r.date) || !r.line) return;
+      out.forEach((o) => {
+        if (o === r || o.date !== r.date || o.label === "(no name)" || o.line === r.line) return;
+        o.alsoFrom = (o.alsoFrom || []).concat([r.line]).slice(0, 4);
+      });
+    });
     out = out.filter((r) => r.label !== "(no name)" || !named.has(r.date));
     return {
       rows: out,

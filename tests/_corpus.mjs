@@ -375,4 +375,49 @@ export const CORPUS = [
       ["2027-03-17", /Governors meeting/],
     ],
   },
+  {
+    // 10. THE SAME THING WRITTEN DOWN TWICE. A calendar says it once in its
+    // month-by-month list and again in a table at the back — which is normal,
+    // and useful to a person, and must not become two events to answer, two to
+    // tick and two identical holidays in somebody's week.
+    //
+    // AND TWO DIFFERENT THINGS ON ONE DAY ARE TWO THINGS. Merging on a shared
+    // date would quietly throw one of them away, so the 4th of May carries two
+    // entries here and has to keep both.
+    name: "the same thing said twice",
+    year: 2027,
+    build: () => page(lines([
+      "MAY 2027",
+      "Tue 4 May",
+      "Founders Day",
+      "Whole school closed.",
+      "Tue 4 May",
+      "Governors meeting",
+      "In the library, 18:00.",
+      "Mon 24 May - Fri 28 May",
+      "Spring Recess",
+      "No scheduled classes.",
+      "Term blocks",
+      "Autumn Recess",
+      "26 October 2026 - 30 October 2026",
+      "Spring Recess",
+      "24 May 2027 - 28 May 2027",
+      "Study Leave",
+      "7 June 2027 - 11 June 2027",
+    ])),
+    want: [
+      ["2027-05-04", /Founders Day|Governors meeting/],
+      ["2027-05-24", /Spring Recess/, "2027-05-28"],
+      ["2027-06-07", /Study Leave/, "2027-06-11"],
+      // The first block of the table has nothing above it, so it keeps no name
+      // — a title is not a row label. It is here so the two that follow it do
+      // have a date above them, which is what makes them named on both sides
+      // and so a real merge rather than one falling away for want of a name.
+      ["2026-10-26", /./, "2026-10-30"],
+    ],
+    // Two different things on the 4th, and the reader must keep both.
+    twoOn: ["2027-05-04"],
+    // One thing said twice, which must come out once and remember both places.
+    onceOnly: ["2027-05-24"],
+  },
 ];

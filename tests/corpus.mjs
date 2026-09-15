@@ -79,6 +79,21 @@ for (const doc of CORPUS) {
   const allowed = new Set(doc.allow || []);
   const extra = r.rows.map((x) => x.date).filter((d) => d && !wanted.has(d) && !allowed.has(d));
   ok("and nothing it invented", extra.length === 0, JSON.stringify(seen));
+  // TWO DIFFERENT THINGS ON ONE DAY ARE TWO THINGS. Merging on a shared date
+  // alone would quietly throw one of them away.
+  (doc.twoOn || []).forEach((d) => {
+    const on = r.rows.filter((x) => x.date === d);
+    ok(`two different things on ${d} are still two`, on.length === 2,
+       JSON.stringify(on.map((x) => x.label)));
+  });
+  // AND ONE THING SAID TWICE IS ONE THING, which remembers both places.
+  (doc.onceOnly || []).forEach((d) => {
+    const on = r.rows.filter((x) => x.date === d);
+    ok(`the same thing written twice on ${d} comes out once`, on.length === 1,
+       JSON.stringify(on.map((x) => `${x.label} <- ${x.line}`)));
+    ok("  and remembers where else it was written",
+       !!(on[0] && (on[0].alsoFrom || []).length), JSON.stringify(on[0] && on[0].alsoFrom));
+  });
   const spare = r.rows.map((x) => x.date).filter((d) => allowed.has(d));
   if (spare.length) notes.push(`${doc.name}: also read ${spare.join(", ")} — real dates on the page, not entries`);
 }

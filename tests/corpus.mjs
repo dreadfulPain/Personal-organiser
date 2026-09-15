@@ -97,6 +97,13 @@ for (const doc of CORPUS) {
     ok("  and remembers where else it was written",
        !!(on[0] && (on[0].alsoFrom || []).length), JSON.stringify(on[0] && on[0].alsoFrom));
   });
+  // AND TWO NAMES THAT ARE NEARLY ONE SAY SO RATHER THAN BECOMING ONE.
+  (doc.maybeOn || []).forEach((d) => {
+    const on = r.rows.filter((x) => x.date === d);
+    ok(`the near-names on ${d} both say they may be the other`,
+       on.length === 2 && on.every((x) => !!x.maybeSame),
+       JSON.stringify(on.map((x) => `${x.label} ~ ${x.maybeSame || "-"}`)));
+  });
   const spare = r.rows.map((x) => x.date).filter((d) => allowed.has(d));
   if (spare.length) notes.push(`${doc.name}: also read ${spare.join(", ")} — real dates on the page, not entries`);
 }

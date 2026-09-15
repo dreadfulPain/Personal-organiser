@@ -413,6 +413,12 @@ export const CORPUS = [
       "24 May 2027 - 28 May 2027",
       "Study Leave",
       "7 June 2027 - 11 June 2027",
+      "Mon 21 June",
+      "Study Leave",
+      "Sixth form only.",
+      "Mon 21 June",
+      "Study Leave Week",
+      "Whole upper school.",
       "Termly briefings",
       "20 May; 17 June; 15 July",
     ])),
@@ -421,6 +427,7 @@ export const CORPUS = [
       ["2027-05-13", /Staff Meeting/],
       ["2027-05-20", /Book Fair|name/],
       ["2027-06-17", /./],
+      ["2027-06-21", /Study Leave/],
       ["2027-07-15", /./],
       ["2027-05-24", /Spring Recess/, "2027-05-28"],
       ["2027-06-07", /Study Leave/, "2027-06-11"],
@@ -440,7 +447,11 @@ export const CORPUS = [
     // same day, which is a merge on the date alone: a staff briefing was thrown
     // away because a book fair was on that afternoon. A date and nothing else on
     // its line is the same day drawn twice; a date in a list of five is not.
-    twoOn: ["2027-05-04", "2027-05-13", "2027-05-20"],
+    twoOn: ["2027-05-04", "2027-05-13", "2027-05-20", "2027-06-21"],
+    // AND A NAME THAT IS NEARLY ANOTHER IS A QUESTION, NOT A DECISION. "Study
+    // Leave" and "Study Leave Week" on one day may be one thing said twice or
+    // two things; nothing here can tell, so both stay and both say so.
+    maybeOn: ["2027-06-21"],
     // One thing said twice, which must come out once and remember both places.
     onceOnly: ["2027-05-24"],
   },

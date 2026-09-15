@@ -1217,6 +1217,14 @@
         w.textContent = `the reader thinks: ${r.why}`;
         row.appendChild(w);
       }
+      // AND ON A READY ROW TOO — see drawCalRow. A row you are about to tick
+      // through without opening is the one that most needs telling.
+      if (r.maybeSame) {
+        const dup = document.createElement("span");
+        dup.className = "muted cal-hint cal-maybe";
+        dup.textContent = `possibly the same as “${r.maybeSame}” on this day`;
+        row.appendChild(dup);
+      }
       const change = document.createElement("button");
       change.type = "button";
       change.className = "link cal-change";
@@ -1475,6 +1483,22 @@
         src.className = "muted cal-hint cal-source";
         src.textContent = `the document says: ${r.source}`;
         row.appendChild(src);
+      }
+      // AND WHERE SOMETHING ELSE ON THE SAME DAY IS NEARLY THIS.
+      //
+      // "Staff Preparation" and "Staff Preparation Days" over the same days are
+      // almost certainly one thing the document said twice — and "Staff Meeting"
+      // and "Staff Meeting Prep" are two things, one of them preparing for the
+      // other. Nothing here can tell those apart, and getting it wrong in the
+      // merging direction makes an entry disappear with no screen to see it on.
+      // So both stay and both say so: two copies you can untick is a nuisance,
+      // and a vanished day is not.
+      if (r.maybeSame) {
+        const dup = document.createElement("span");
+        dup.className = "muted cal-hint cal-maybe";
+        dup.textContent = `possibly the same as “${r.maybeSame}” on this day — ` +
+          "the document may just be saying it twice";
+        row.appendChild(dup);
       }
       // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
       //

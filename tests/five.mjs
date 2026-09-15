@@ -3001,6 +3001,29 @@ sec("A calendar you check three things on, not thirty");
   ok("and why it thinks so, in the reader's own words",
      holiday && A.deep(holiday).some((c) => /listed under Holidays/.test(String(c.textContent))),
      holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
+  // AND A ROW THAT MAY BE ANOTHER ROW SAYS SO ON THE SCREEN. Nothing in the app
+  // can tell "Staff Preparation" and "Staff Preparation Days" apart from "Staff
+  // Meeting" and "Staff Meeting Prep", and getting it wrong in the merging
+  // direction makes an entry disappear with no screen to see it on. So both stay
+  // and both say it.
+  {
+    const two = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: false }) }
+        : { ok: false, json: async () => ({}) }),
+    });
+    two.get("#calBox").open = true;
+    const bx = two.get("#calPaste");
+    bx.value = "Study Leave\t21 June 2027\nStudy Leave Week\t21 June 2027";
+    bx.fire("input", { target: bx });
+    await two.settle();
+    const said = A.deep(two.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("two names that are nearly one both stay",
+       calRowsOf(two).length === 2, String(calRowsOf(two).length));
+    ok("and each says it may be the other",
+       (said.match(/possibly the same as/g) || []).length === 2, said.slice(0, 220));
+  }
+
   // AND SAID AS THE READER'S, NOT AS THE DOCUMENT'S.
   //
   // The sentence sat here bare, in the same quiet grey the document's own words

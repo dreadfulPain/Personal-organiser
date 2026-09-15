@@ -4469,3 +4469,6 @@ a.btn {
    as something the calendar stated. Marked, not shouted: this is still the
    quiet line under a row. */
 .cal-thinks { flex: 1 1 100%; }
+/* TWO ROWS THAT MAY BE ONE EVENT. Said on both, never decided: merging two
+   different days's events would make one vanish with no screen to see it on. */
+.cal-maybe { flex: 1 1 100%; }

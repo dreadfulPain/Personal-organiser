@@ -1628,7 +1628,7 @@
       // days it runs on — two lines both saying "every Friday assembly" are one
       // rule said twice, and "every Friday" and "every Monday" are not.
       (r.date || "every " + (r.days || []).join(",")) + "|" + (r.endsOn || "") + "|" +
-      r.label.toLowerCase() +
+      r.label.toLowerCase().replace(/\s+/g, " ").trim() +
       // A ROW NOBODY COULD NAME is told apart by the line it came off, because
       // there is nothing else to tell it apart by.
       (r.label === "(no name)" ? "|" + r.line : ""), r));
@@ -1645,43 +1645,32 @@
         seen.set(key, true);
       });
     }
-    // AND THE SAME THING UNDER A LONGER NAME. One half of a document writes
-    // "Staff Preparation", the other "Staff Preparation Days", over the same
-    // days. The longer name is kept because it says more, and the line the
-    // other came off is kept with it.
-    let kept = [...byDate.values()];
-    kept = kept.filter((r, i) => {
-      if (!r.date || r.label === "(no name)") return true;
-      const mine = r.label.toLowerCase();
-      return !kept.some((o, j) => {
-        if (j === i || !o.date || o.date !== r.date || (o.endsOn || "") !== (r.endsOn || "")) return false;
-        const theirs = o.label.toLowerCase();
-        if (theirs.length <= mine.length) return false;
-        if (theirs.indexOf(mine) !== 0 || mine.length < 6) return false;
-        // AND THE EXTRA IS A QUALIFIER, NOT ANOTHER SUBJECT.
-        //
-        // A name being the start of another is NOT on its own enough, and it is
-        // the dangerous half of this rule. "Staff Meeting" and "Staff Meeting
-        // Preparation" on one day are two things — one of them is preparing for
-        // the other — and merging them would throw a real entry away. "Staff
-        // Preparation" and "Staff Preparation Days" are one thing written two
-        // ways.
-        //
-        // What separates them is how much the longer name adds: a short trailing
-        // word is a plural or a qualifier, a long one names an activity of its
-        // own. Deliberately narrow — the exact-name match above is the main way
-        // two sayings meet, and this only catches the small change a document
-        // makes between its list and its table.
-        const extra = theirs.slice(mine.length).trim();
-        if (!/^[a-z]{1,6}$/.test(extra)) return false;
-        // AND NOTHING THEY SAY CONTRADICTS. Two clocks that disagree are two
-        // events whatever they are called.
-        if (r.start && o.start && r.start !== o.start) return false;
-        // The one that is kept carries where the other was written down too.
-        o.alsoFrom = (o.alsoFrom || []).concat([r.line]).slice(0, 4);
-        return true;
-      });
-    });
+    const kept = [...byDate.values()];
+    // AND A NAME THAT IS NEARLY ANOTHER IS A QUESTION, NOT A DECISION.
+    //
+    // "Staff Preparation" and "Staff Preparation Days" over the same days are
+    // almost certainly one thing written two ways. "Staff Meeting" and "Staff
+    // Meeting Prep" are two. "Sports Day" and "Sports Day Setup". "Parent
+    // Meeting" and "Parent Meeting AM". A short trailing word can change the
+    // event entirely, and no length of it decides which case this is.
+    //
+    // So nothing is merged on a nearly. Two copies of one event is a thing to
+    // notice and untick; two different events silently becoming one is a thing
+    // that disappears, and there is no screen on which that can be seen. Both
+    // rows stay, both are answerable, and each says it may be the other.
+    const nearly = (a, b) => {
+      const x = a.label.toLowerCase().replace(/\s+/g, " ").trim();
+      const y = b.label.toLowerCase().replace(/\s+/g, " ").trim();
+      if (!x || !y || x === y || x === "(no name)" || y === "(no name)") return false;
+      const short = x.length < y.length ? x : y, long = x.length < y.length ? y : x;
+      return short.length >= 6 && long.indexOf(short) === 0;
+    };
+    kept.forEach((r, i) => kept.slice(i + 1).forEach((o) => {
+      if (!r.date || r.date !== o.date || (r.endsOn || "") !== (o.endsOn || "")) return;
+      if (!nearly(r, o)) return;
+      r.maybeSame = o.label;
+      o.maybeSame = r.label;
+    }));
     // Dated rows in date order, and the rules that have no date after them.
     let out = inOrder(kept);
     // AND A DAY THE READER COULDN'T NAME IS NOT A SECOND ENTRY FOR THAT DAY. A

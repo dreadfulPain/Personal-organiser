@@ -3139,6 +3139,58 @@ sec("A calendar you check three things on, not thirty");
        !/runs on to/.test(said()), said().slice(0, 500));
   }
 
+  // AND "NOT YOURS" IS AN ANSWER IN ITS OWN RIGHT.
+  //
+  // It was reachable only through the others: a row had to be answered first,
+  // and THEN its being somebody else's counted. So a meeting the document
+  // plainly labels for Grades 9-12 — on the calendar of somebody who has
+  // written "Grade 1 homeroom" in the box — sat in the questions, because
+  // nobody could say whether lessons stop on it. Whether lessons stop is not
+  // the question when it is not your meeting.
+  //
+  // The two are different questions with different evidence. What a day MEANS
+  // comes out of the document's words about that day. Whose it IS comes out of
+  // the document's words about who it is for AND the sentence you wrote about
+  // yourself, which is not in the document and never will be. Tying the second
+  // to the first made the box you filled in do nothing for the rows it should
+  // have cleared.
+  {
+    const notMine = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Grade 1 homeroom" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        // A READER THAT KNOWS WHOSE IT IS AND NOT WHAT IT DOES TO A WEEK, which
+        // is the honest shape for a meeting named after a year group.
+        const answers = (body.candidates || []).map((c) => ({
+          n: c.n, means: "", sure: 0.5, mine: "no", checked: "",
+          said: c.line, fromLine: c.line, source: c.line,
+          why: "a meeting for years this person doesn't teach",
+        }));
+        return { ok: true, json: async () => ({ answers, missed: [] }) };
+      },
+    });
+    notMine.get("#calBox").open = true;
+    const bx = notMine.get("#calPaste");
+    bx.value = "Grade 9-12 Director Meeting, 7 September 2026";
+    bx.fire("input", { target: bx });
+    await notMine.settle();
+    const go = notMine.get("#calSecond");
+    go.fire("click", { target: go });
+    await notMine.settle();
+    const words = A.deep(notMine.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("something plainly somebody else's is set aside without first saying what it does to a week",
+       /don't look like yours/.test(words), words.slice(0, 300));
+    ok("  and it is not left sitting in the questions",
+       !/Your say on these/.test(words), words.slice(0, 300));
+    ok("  and nothing of it goes in", notMine.get("#calAdd").hidden === true,
+       String(notMine.get("#calAdd").textContent));
+  }
+
   // AND A DEADLINE SAYS WHAT PUT YOU UNDER IT.
   //
   // "Due that day" is the one answer on this panel that says something about
@@ -3875,6 +3927,50 @@ sec("And a marked day is not pre-answered either");
          / on\b/.test(String(c.className || ""))), now[0].className);
     ok("and it stops looking like it is waiting",
        !/cal-waiting/.test(String(now[0].className)), now[0].className);
+  }
+
+  // AND A MARK THE READER CAN PLACE AS SOMEBODY ELSE'S IS SET ASIDE, EVEN WHEN
+  // NOBODY CAN SAY WHAT IT DOES TO A WEEK.
+  //
+  // A mark is a kind of day named in a legend and nothing else — "Grade 9-10
+  // Director Meeting" — so whether lessons stop on it is almost never something
+  // the document says, and the answer was thrown away for want of one: the
+  // model's judgement was computed, checked, and then dropped because it could
+  // not also say what the day meant. Whose it is does not depend on that.
+  {
+    const aside = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Grade 1 homeroom" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        const answers = (body.candidates || []).map((c) => ({
+          n: c.n, means: "", sure: 0.5, mine: "no", checked: "",
+          said: c.line, fromLine: c.line, source: c.line,
+          why: "a meeting for years this person doesn't teach",
+        }));
+        return { ok: true, json: async () => ({ answers, missed: [] }) };
+      },
+    });
+    aside.get("#calBox").open = true;
+    const bx = aside.get("#calPaste");
+    bx.value = WEEKS;
+    bx.fire("input", { target: bx });
+    await aside.settle();
+    const go = aside.get("#calSecond");
+    go.fire("click", { target: go });
+    await aside.settle();
+    const shown = [...(aside.get("#calMarks").children || [])]
+      .filter((c) => String(c.className || "").split(" ")[0] === "cal-mark");
+    const said = shown.flatMap((m) => A.deep(m).map((c) => String(c.textContent || ""))).join(" | ");
+    ok("a mark the reader says isn't yours is answered, not left waiting",
+       shown.length > 0 && shown.every((m) => !/cal-waiting/.test(String(m.className))),
+       shown.map((m) => m.className).join(" | ") || "(no marks)");
+    ok("  and says it was set aside, and why",
+       /set aside — the reader thinks this isn't yours/.test(said), said.slice(0, 300));
   }
 }
 

@@ -127,6 +127,12 @@ const ol = http.createServer((req, res) => {
       // AND ONE WHOSE "due" POINTS AT WHATEVER THE TEST GAVE IT — including at
       // nothing, which is what a date something merely HAPPENS on deserves.
       if (how === "owed") answers = answers.map((a) => ({ ...a, means: "due", mustBy: by }));
+      // AND ONE POINTING AT THE DEADLINE WORDS WHILE BEING HONEST THAT THE REST
+      // IS INFERENCE — which is most honest reading, and was being stopped.
+      if (how === "guessedowed")
+        answers = answers.map((a) => ({ ...a, means: "due", mustBy: by, stated: false, says: "" }));
+      // AND AN EVENT ON A WORKING DAY, which proves itself by whose it is.
+      if (how === "week") answers = answers.map((a) => ({ ...a, means: "week", stated: false, says: "" }));
       // POINTING AT THE HEADING THE LIST IS UNDER, which is not on the entry's
       // own line at all.
       if (how === "heading")
@@ -1013,6 +1019,59 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
        ((off.answers || [])[0] || {}).checked === "" &&
        ((off.answers || [])[0] || {}).means === "off",
        JSON.stringify((off.answers || [])[0]));
+  }
+
+  // ---- AND WHAT AN ANSWER HAS TO PROVE DEPENDS ON WHAT IT CLAIMS ---------
+  //
+  // "week" says only that something happens on a working day they should turn
+  // up to. It takes nothing away — no teaching stops, no day comes off, nothing
+  // falls due — and no document has ever written "this is in your week", so
+  // asking one to STATE it is asking for a sentence that does not exist. What
+  // makes a parents' evening yours is who it is FOR, which the document does
+  // say, matched against what you say you teach, which it never will.
+  {
+    const LINE = "Parents' evening, Friday 6 November 2026: Year 7 and Year 8";
+    const ask = (about) => askCal({ year: 2026, about,
+      text: `MARKS:week\n${LINE}`,
+      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: LINE, line: LINE,
+        context: [LINE] }] });
+    const told = await ask("Year 7 form tutor");
+    ok("an event goes in your week when the document says who it is for and you have said who you are",
+       ((told.answers || [])[0] || {}).checked === "" &&
+       ((told.answers || [])[0] || {}).means === "week",
+       JSON.stringify((told.answers || [])[0]));
+    const blank = await ask("");
+    ok("  and is a question when you have told it nothing about yourself",
+       /haven't said what you teach/.test(((blank.answers || [])[0] || {}).checked || ""),
+       JSON.stringify((blank.answers || [])[0]));
+    // AND NOTHING ELSE IS LOOSENED. A day OFF still has to be said by the
+    // document, profile or no profile: it takes a working day out of a term.
+    const off = await askCal({ year: 2026, about: "Year 7 form tutor",
+      text: `MARKS:guessed\n${LINE}`,
+      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: LINE, line: LINE,
+        context: [LINE] }] });
+    ok("while a day off still has to be something the document says",
+       /the reader worked it out/.test(((off.answers || [])[0] || {}).checked || ""),
+       JSON.stringify((off.answers || [])[0]));
+  }
+
+  // AND "due" IS ASKED ONCE, NOT TWICE. Whether the document says something is
+  // owed is the SAME question as which words put you under the deadline, and it
+  // was being asked in both wordings — so a reader that pointed at the words and
+  // was honest that the rest was inference failed on the weaker of the two. On a
+  // real calendar that stopped four genuine deadlines.
+  {
+    const LINE = "Payment deadline Monday 9 November 2026";
+    const got = await askCal({ year: 2026,
+      // "guessed" is a reader saying stated:false — the honest shape of most
+      // reading — while still pointing at the words that make it a deadline.
+      text: `MARKS:guessedowed\nMUSTBY:deadline\n${LINE}`,
+      candidates: [{ n: 1, date: "2026-11-09", endsOn: "", label: LINE, line: LINE,
+        context: [LINE] }] });
+    ok("a deadline that points at the words is not asked the same thing again",
+       ((got.answers || [])[0] || {}).checked === "" &&
+       ((got.answers || [])[0] || {}).mustBy === "deadline",
+       JSON.stringify((got.answers || [])[0]));
   }
 
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------

@@ -136,7 +136,13 @@
   // WHETHER A READER PROPOSED ANYTHING AT ALL, and which of three piles a row
   // landed in. Both are asked in more than one place, so both are answered in
   // one: see calShow, where a row is put in its pile once and stays there.
-  const triagedRows = (rows) => (rows || []).some((x) => x && x.means);
+  // A READING THAT SAID ONLY "THIS ISN'T YOURS" IS STILL A READING. Asked
+  // whether anything had been proposed, this looked for a MEANING — so a
+  // document whose every row the reader could place as somebody else's, and
+  // none of which it could say anything else about, counted as nothing
+  // proposed, and every one of them came back as an unanswered question with
+  // the answer sitting on it. See pileOf: the two are different answers.
+  const triagedRows = (rows) => (rows || []).some((x) => x && (x.means || x.mine));
   const pileOf = (r) =>
     r.found === "model" ? "maybe"
       // AND A ROW THAT MIGHT BE ANOTHER ROW IS NOT READY, WHATEVER IT MEANS.
@@ -149,7 +155,25 @@
       // same fault as answering for you. See drawSameGroups: the ones sharing
       // a tag are one question, asked once, before anything goes anywhere.
       : r.sameGroup ? "same"
-        : !r.said || !r.kind ? "ask" : r.mine === "no" ? "not" : "ready";
+        // AND "NOT YOURS" IS AN ANSWER IN ITS OWN RIGHT.
+        //
+        // It was reachable only through the others: a row had to be answered
+        // first, and THEN its being somebody else's counted. So a meeting the
+        // document plainly labels "Grade 9-12" — on a calendar belonging to a
+        // Grade 1 teacher who has said so in the box — sat in the questions
+        // because nobody could say whether lessons stop on it. But whether
+        // lessons stop is not the question when it is not your meeting.
+        //
+        // The two are different questions with different evidence. What a day
+        // MEANS comes out of the document's words about that day. Whose it IS
+        // comes out of the document's words about who it is for AND the
+        // sentence you wrote about yourself — which is not in the document and
+        // never will be. Tying the second to the first made the box you filled
+        // in do nothing at all for the rows it should have cleared.
+        //
+        // Folded away, not thrown away — and one press puts it back.
+        : r.mine === "no" ? "not"
+          : !r.said || !r.kind ? "ask" : "ready";
   // AND WHETHER A ROW IS ACTUALLY GOING IN. Asked by the button that says how
   // many, and by the button that does it — one question, which had two answers
   // and could therefore promise one number and do another. An unanswered pair
@@ -572,7 +596,13 @@
         why: a.why, source: a.source };
       // ONE TEST, THE SAME ONE. A mark is trusted on exactly the terms a row is:
       // see trusted.
-      if (trusted(as)) markSaid.set(j, as);
+      //
+      // AND "NOT YOURS" COUNTS HERE TOO, on its own. A mark is a kind of day
+      // named in a legend and nothing else — "Grade 9-10 Director Meeting" —
+      // so what it does to a Grade 1 teacher's lessons is almost never
+      // something the document says, and the answer was thrown away for want
+      // of one. Whose it is does not depend on that. See pileOf.
+      if (trusted(as) || as.mine === "no") markSaid.set(j, as);
     });
     // AND, WHERE THIS READER SAID IT MIGHT NOT HAVE FINISHED, A SECOND LOOK.
     //

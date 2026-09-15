@@ -1785,6 +1785,24 @@ function entails(means, stated, says, ground) {
 // deadline, those words must be in what the entry rests on, and they are shown
 // on the row — so an answer that has quietly turned a publication date into a
 // job of yours can be seen and argued with, which is the whole promise here.
+// AND "week" IS PROVED BY WHOSE IT IS, because no document says "this is in
+// your week".
+//
+// "In my week" adds a dated event and takes nothing away — no teaching stops,
+// no day comes off, nothing falls due. It is the one answer whose cost of being
+// wrong is a line you delete. So asking the document to STATE it was asking for
+// something no calendar has ever written: a parents' evening is a parents'
+// evening, and what makes it yours is who it is for.
+//
+// That is knowable, and from two places at once — the audience the document
+// names, and the sentence the person wrote about what they teach. Neither is in
+// the other, and the second is not in the document at all. Told nothing about
+// them, there is nothing to match and it is a question, which is what an empty
+// box has always meant here.
+function belongs(mine) {
+  return mine ? "" : "nothing here says who it is for, or you haven't said what you teach";
+}
+
 function owed(means, by, ground) {
   if (means !== "due") return "";
   const words = String(by || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -2010,12 +2028,31 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       // where there is no list for a context to be worked out from.
       const ground = (c.context.length ? c.context.join(" ") : text)
         .replace(/\s+/g, " ").toLowerCase();
+      const mine = mineMeans(about, a.mine);
+      // AND WHICH GATE AN ANSWER HAS TO PASS DEPENDS ON WHAT IT CLAIMS.
+      //
+      // Four of the six say what happens to the working day — a holiday, a day
+      // with no teaching, a day running another day's timetable, the day
+      // teaching starts. Those are claims about the DOCUMENT, and the document
+      // has to say them: see entails.
+      //
+      // "due" says something has to be finished by then. That is a claim about
+      // the PERSON, and it is proved by the words that put them under the
+      // deadline — see owed. It was being asked BOTH, which is one question in
+      // two wordings: a model that says "yes, and here are the words" to one
+      // and "no, I worked it out" to the other is stopped by the weaker of the
+      // two, and on a real calendar four genuine deadlines were.
+      //
+      // "week" says only that something happens on a working day that they
+      // should turn up to. It takes nothing away: no teaching stops, no day
+      // comes off, nothing is owed. What it needs is not a statement about the
+      // working week — no document says "this is in your week" — but that it is
+      // THEIRS, which is proved by the audience the document names and the
+      // sentence they wrote about themselves. See belongs.
       const fits = disagrees(means, c) ||
-        entails(means, a.stated === true, a.says, ground) ||
-        // AND "due" MUST POINT AT THE WORDS THAT PUT SOMEBODY UNDER A DEADLINE
-        // — see owed. It is the only meaning that asserts something about the
-        // person rather than about the day.
-        owed(means, a.mustBy, ground);
+        (means === "due" ? owed(means, a.mustBy, ground)
+          : means === "week" ? belongs(mine)
+            : entails(means, a.stated === true, a.says, ground));
       answers.push({
         n,
         means,
@@ -2030,7 +2067,7 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
         // shrug in the shape of one, and it was enough to tick a year-group
         // meeting into somebody's week. Asked nothing, its answer counts for
         // nothing. See mineMeans.
-        mine: mineMeans(about, a.mine),
+        mine,
         fromLine: said,
         checked: checked.checked || fits,
         source: checked.source,

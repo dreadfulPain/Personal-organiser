@@ -1660,6 +1660,75 @@ function mineMeans(about, said) {
   return said === "yes" || said === "no" ? said : "";
 }
 
+// GRADE 1 AND GRADE 11-12 DO NOT OVERLAP, AND THAT IS ARITHMETIC.
+//
+// Whose an entry is was left entirely to the model, and a model is inconsistent
+// about it in the way models are: on one real calendar it set aside "Grade 9-10
+// Director Meeting" and put "Grade 11-12 Director Meeting" in the week of
+// somebody who had written "Grade 1 Homeroom teacher" in the box. Two labels of
+// the same shape, answered two ways, and the second one wrong.
+//
+// It did not have to be asked. Both sides wrote numbers down, and whether two
+// sets of numbers meet is not a judgement.
+//
+// NOTHING HERE KNOWS WHAT A GRADE IS, and there is no list of words. What it
+// compares is numbers that carry THE SAME LABEL ON BOTH SIDES: "grade 1" in
+// what you wrote about yourself against "grade 11-12" in what the document
+// wrote about the entry. The label can be anything — grade, year, form, room,
+// key stage, a word this app has never seen — because the rule is only that the
+// two of you used it for the same thing. Where you do not share a word there is
+// nothing to compare and the question goes to the model, as before.
+function labelledNumbers(text) {
+  const out = new Map();
+  const add = (word, lo, hi) => {
+    const key = word.toLowerCase().replace(/s$/, "");
+    if (!(hi >= lo)) return;
+    const set = out.get(key) || new Set();
+    for (let n = lo; n <= hi; n++) set.add(n);
+    out.set(key, set);
+  };
+  const s = String(text || "");
+  // TWO DIGITS AT MOST, WHICH IS WHERE THE FOUR-FIGURE YEARS ARE KEPT OUT.
+  //
+  // Calendars put the year in their titles and people put it in the box —
+  // "…, intake 2026" on both sides. Read as a label with numbers under it, that
+  // is a group everybody is in, and it would overrule the groups that mean
+  // something: two plainly different year groups would come out as one because
+  // both mentioned the same twelvemonth.
+  //
+  // A word, then a span of numbers: "Grade 1-8", "Years 9 to 12", "Y7–Y11".
+  const SPAN = /\b([A-Za-z]{1,12})s?\.?\s*(\d{1,2})\s*(?:[-–—]|\bto\b|\bthrough\b)\s*(?:[A-Za-z]{1,12}s?\.?\s*)?(\d{1,2})\b/g;
+  const taken = [];
+  for (let m = SPAN.exec(s); m; m = SPAN.exec(s)) {
+    add(m[1], Number(m[2]), Number(m[3]));
+    taken.push([m.index, m.index + m[0].length]);
+  }
+  // And a word then one number: "Grade 1", "Year 7".
+  const ONE = /\b([A-Za-z]{1,12})s?\.?\s*(\d{1,2})\b/g;
+  for (let m = ONE.exec(s); m; m = ONE.exec(s)) {
+    if (taken.some(([a, b]) => m.index >= a && m.index < b)) continue;
+    add(m[1], Number(m[2]), Number(m[2]));
+  }
+  return out;
+}
+
+// "yes" where a shared label's numbers meet, "no" where every shared label's
+// numbers miss, and "" where the two sides share no label at all — which is
+// most of the time, and is not an answer.
+function sameCohort(about, words) {
+  const mine = labelledNumbers(about);
+  if (!mine.size) return "";
+  const theirs = labelledNumbers(words);
+  let shared = false;
+  for (const [word, ours] of mine) {
+    const them = theirs.get(word);
+    if (!them || !them.size) continue;
+    shared = true;
+    for (const n of ours) if (them.has(n)) return "yes";
+  }
+  return shared ? "no" : "";
+}
+
 // WHAT THE APP CAN CHECK FOR ITSELF, WHICH IS NOT WHAT THE MODEL SAYS IT IS
 // SURE OF.
 //
@@ -1709,6 +1778,33 @@ function verify(doc, said, row) {
   if (!has(endsOn))
     return { checked: "the day it ends isn't written near that line", source: span };
   return { checked: "", source: span };
+}
+
+// AND AN ENTRY'S OWN GROUND IS A PLACE ITS QUOTE MAY COME FROM.
+//
+// What verify() is really asking is "does this quote BELONG TO THIS ENTRY", and
+// the date was the only way it had of asking — the quote had to be somewhere
+// the entry's day was also written. That was the best available before the
+// reader worked out what each entry rests on, and it is a proxy, not the thing.
+//
+// It costs a table its right-hand column. "Nov. 17 16:00" sits in a cell of a
+// row called Midterm under a heading called "Score Input & Report Confirm", and
+// a reader asked what the document says about it quotes the heading — which is
+// exactly the right thing to quote, is genuinely what that cell is, and has no
+// date anywhere near it. So one column of a deadline table went through and the
+// column beside it, built the same way out of the same page, did not.
+//
+// The entry's context is the direct answer: the heading its list is under, the
+// row and column it is in, its own words — worked out from the shape of the
+// page and nothing else. A quote from there is not borrowed, and a quote from a
+// different entry's line is not in there. Offered ALONGSIDE the older check,
+// never instead of it: an entry with no context loses nothing.
+function ofItsOwn(context, said) {
+  const words = String(said || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!words || words.length < 4) return false;
+  const ground = (Array.isArray(context) ? context : []).join(" ")
+    .replace(/\s+/g, " ").toLowerCase();
+  return !!ground && ground.indexOf(words) >= 0;
 }
 
 // DOES THE DOCUMENT SAY THIS, OR DID THE READER WORK IT OUT?
@@ -2019,7 +2115,9 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       seen.add(n);
       const c = want.get(n);
       const said = (a.said || "").toString().trim().slice(0, 300);
-      const checked = verify(doc, said, c);
+      const checked = ofItsOwn(c.context, said)
+        ? { checked: "", source: said }
+        : verify(doc, said, c);
       const means = MEANS.indexOf(a.means) >= 0 ? a.means : "";
       // AND WHETHER WHAT IT SAID FITS THE ROW — see disagrees — and whether the
       // document says it or the reader worked it out — see entails.
@@ -2028,7 +2126,13 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       // where there is no list for a context to be worked out from.
       const ground = (c.context.length ? c.context.join(" ") : text)
         .replace(/\s+/g, " ").toLowerCase();
-      const mine = mineMeans(about, a.mine);
+      // AND WHERE BOTH SIDES WROTE NUMBERS DOWN, THE NUMBERS DECIDE — see
+      // sameCohort. Not a second opinion to weigh against the model's: whether
+      // two sets of numbers meet is a fact, and a fact beats a judgement about
+      // the same thing. Where there is nothing to compare it says so and the
+      // model's answer stands.
+      const bySets = sameCohort(about, `${c.label} ${c.line} ${c.context.join(" ")}`);
+      const mine = bySets || mineMeans(about, a.mine);
       // AND WHICH GATE AN ANSWER HAS TO PASS DEPENDS ON WHAT IT CLAIMS.
       //
       // Four of the six say what happens to the working day — a holiday, a day

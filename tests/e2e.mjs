@@ -133,6 +133,13 @@ const ol = http.createServer((req, res) => {
         answers = answers.map((a) => ({ ...a, means: "due", mustBy: by, stated: false, says: "" }));
       // AND AN EVENT ON A WORKING DAY, which proves itself by whose it is.
       if (how === "week") answers = answers.map((a) => ({ ...a, means: "week", stated: false, says: "" }));
+      // AND A READER QUOTING WHATEVER THE TEST GAVE IT, so a quote off the
+      // entry's own heading and a quote off another part of the page can both
+      // be tried against the same entry.
+      if (how === "says") {
+        const q = (/SAYS:([^\n]*)/.exec(user) || [])[1] || "";
+        answers = answers.map((a) => ({ ...a, means: "week", said: q, says: q, stated: true }));
+      }
       // POINTING AT THE HEADING THE LIST IS UNDER, which is not on the entry's
       // own line at all.
       if (how === "heading")
@@ -1072,6 +1079,98 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
        ((got.answers || [])[0] || {}).checked === "" &&
        ((got.answers || [])[0] || {}).mustBy === "deadline",
        JSON.stringify((got.answers || [])[0]));
+  }
+
+  // ---- AND WHERE BOTH SIDES WROTE NUMBERS DOWN, THE NUMBERS DECIDE -------
+  //
+  // Whose an entry is was left entirely to a model, and a model is inconsistent
+  // about it in the way models are: on one real calendar it set aside a meeting
+  // labelled for one pair of year groups and put the meeting labelled for the
+  // NEXT pair into the week of somebody who had written which year they teach
+  // in the box. Two labels of the same shape, answered two ways, and the second
+  // one wrong.
+  //
+  // It did not have to be asked. Whether two sets of numbers meet is arithmetic.
+  //
+  // NOTHING HERE KNOWS WHAT A YEAR GROUP IS, and there is no list of words. It
+  // compares numbers carrying THE SAME LABEL ON BOTH SIDES — the label can be
+  // anything the two of you happen to share. These fixtures use a word this app
+  // has never met, on purpose.
+  {
+    const ask = (about, line) => askCal({ year: 2026, about,
+      text: `MARKS:week\n${line}`,
+      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: line, line,
+        context: [line] }] });
+    const apart = await ask("Pod 1 group leader", "Pod 11-12 leaders' briefing, 6 November 2026");
+    ok("numbers on both sides that miss are set aside whatever the model said",
+       ((apart.answers || [])[0] || {}).mine === "no",
+       JSON.stringify((apart.answers || [])[0]));
+    const meet = await ask("Pod 1 group leader", "Pod 1-8 parents' evening, 6 November 2026");
+    ok("and numbers that meet are theirs, whatever the model said",
+       ((meet.answers || [])[0] || {}).mine === "yes",
+       JSON.stringify((meet.answers || [])[0]));
+    // AND THE NEXT ONE ALONG IS DECIDED THE SAME WAY AS THE LAST, which is the
+    // whole complaint: two labels of one shape must not be answered two ways.
+    const next = await ask("Pod 1 group leader", "Pod 9-10 leaders' briefing, 6 November 2026");
+    ok("  and the pair either side of the boundary agree with each other",
+       ((next.answers || [])[0] || {}).mine === "no",
+       JSON.stringify((next.answers || [])[0]));
+    // AND A LABEL THE TWO SIDES DO NOT SHARE IS NOT AN ANSWER. "Pod 1" says
+    // nothing about "Tier 9-12"; there is nothing to compare and the reading
+    // stands.
+    const other = await ask("Pod 1 group leader", "Tier 9-12 briefing, 6 November 2026");
+    ok("while numbers under a label the other side never used decide nothing",
+       ((other.answers || [])[0] || {}).mine === "yes",
+       JSON.stringify((other.answers || [])[0]));
+    // AND NEITHER DOES A LABEL WITH NO NUMBERS AT ALL.
+    const none = await ask("Pod 1 group leader", "Whole-staff briefing, 6 November 2026");
+    ok("and a label with no numbers on it is still the model's to judge",
+       ((none.answers || [])[0] || {}).mine === "yes",
+       JSON.stringify((none.answers || [])[0]));
+    // AND A FOUR-FIGURE YEAR IS NOT A GROUP OF ANYBODY.
+    //
+    // Calendars put the year in their titles and people put it in the box —
+    // "…, intake 2026" on one side and "…, intake 2026" on the other. Counted
+    // as a label with numbers under it, that is a group everybody is in, and it
+    // would overrule the groups that actually mean something: the pods here
+    // plainly miss, and this must not come out as theirs because both sides
+    // mentioned the same year.
+    const yr = await ask("Pod 1 group leader, intake 2026",
+                         "Pod 9-10 briefing, intake 2026, 6 November 2026");
+    ok("and a four-figure year is not a group of anybody",
+       ((yr.answers || [])[0] || {}).mine === "no",
+       JSON.stringify((yr.answers || [])[0]));
+  }
+
+  // ---- AND AN ENTRY'S OWN GROUND IS A PLACE ITS QUOTE MAY COME FROM -------
+  //
+  // What the quote check is really asking is "does this belong to this entry",
+  // and the entry's date was the only way it had of asking. That is a proxy,
+  // and it costs a table its right-hand column: a cell reading "Nov. 17 16:00"
+  // under a heading called "Score Input & Report Confirm" is best described by
+  // quoting the heading — which has no date anywhere near it. So one column of
+  // a deadline table went through and the column beside it, built the same way
+  // out of the same page, did not.
+  {
+    const CELL = { n: 1, date: "2026-11-17", endsOn: "", label: "Midterm — Scores Due",
+      line: "17 Nov 16:00",
+      context: ["Submission and scoring deadlines:", "Midterm", "Papers In", "Scores Due",
+                "17 Nov 16:00"] };
+    const head = await askCal({ year: 2026, about: "Pod 1 group leader",
+      text: "MARKS:says\nSAYS:Scores Due\nSubmission and scoring deadlines:\nMidterm\n17 Nov 16:00",
+      candidates: [CELL] });
+    ok("a cell quoting its own column heading is not treated as borrowing",
+       ((head.answers || [])[0] || {}).checked === "",
+       JSON.stringify((head.answers || [])[0]));
+    // AND A QUOTE OFF SOMEBODY ELSE'S LINE STILL IS. The rule is the entry's
+    // own ground, not the whole page.
+    const borrowed = await askCal({ year: 2026, about: "Pod 1 group leader",
+      text: "MARKS:says\nSAYS:Spring Fair\nSubmission and scoring deadlines:\nMidterm\n17 Nov 16:00\nSpring Fair",
+      candidates: [CELL] });
+    ok("  while a quote off another part of the page still is",
+       /line not in the document|isn't the line this came off|day isn't written/
+         .test(((borrowed.answers || [])[0] || {}).checked || ""),
+       JSON.stringify((borrowed.answers || [])[0]));
   }
 
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------

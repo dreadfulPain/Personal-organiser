@@ -557,6 +557,10 @@
         fromLine: a.fromLine || "",
         checked: a.checked || "",
         source: a.source || "",
+        // AND THE WORDS IT SAYS PUT YOU UNDER A DEADLINE — see owed. Kept
+        // because it goes on the row: a deadline nobody set is pressure the
+        // document never put on anybody, and the claim has to be readable.
+        ...(a.mustBy ? { mustBy: a.mustBy } : {}),
       };
     });
     // AND THE MARKS, WHICH ARE THEIR OWN PANEL AND THE SAME QUESTION.
@@ -1292,6 +1296,7 @@
         s.textContent = `one of ${r.ofSeries} the document lists on one line`;
         row.appendChild(s);
       }
+      drawDueBy(r, row);
       drawAlsoFrom(r, row);
       const change = document.createElement("button");
       change.type = "button";
@@ -1318,6 +1323,27 @@
       el.textContent = `also written: ${l}`;
       row.appendChild(el);
     });
+  };
+
+  // AND THE WORDS THAT PUT YOU UNDER A DEADLINE.
+  //
+  // "Due that day" is the one answer on this panel that says something about
+  // YOU rather than about the day — it makes a task with a deadline on it, and
+  // a deadline nobody set is pressure the document never put on anybody. A
+  // date something is HANDED OUT on is not a date something is OWED by.
+  //
+  // Nothing in this app can tell those apart; the difference is in the words,
+  // and the words are the document's. What it can do is make the claim show
+  // itself: the reader has to point at the words it says put you under the
+  // deadline, they have to be in what the entry rests on, and they are printed
+  // here. A publication date quietly turned into a job of yours is then a thing
+  // you can see, which is the whole of what this panel promises.
+  const drawDueBy = (r, row) => {
+    if (r.kind !== "due" || !r.mustBy) return;
+    const el = document.createElement("span");
+    el.className = "muted cal-hint cal-source";
+    el.textContent = `due, because the document says: ${r.mustBy}`;
+    row.appendChild(el);
   };
 
   // THE ROWS THAT MAY BE ONE ROW, PUT BACK TOGETHER. The reader worked out
@@ -1783,6 +1809,7 @@
         src.textContent = `the document says: ${r.source}`;
         row.appendChild(src);
       }
+      drawDueBy(r, row);
       drawAlsoFrom(r, row);
       // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
       //

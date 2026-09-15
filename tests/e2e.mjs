@@ -100,7 +100,15 @@ const ol = http.createServer((req, res) => {
       // ways a real model does.
       const one = (c) => ({ n: c.n, means: "off", runsAsDay: 0, sure: 0.9,
         why: "it looks like a holiday", mine: "yes", said: c.line,
-        stated: true, says: (c.line || "").split(":")[0] });
+        stated: true, says: (c.line || "").split(":")[0],
+        // NOTHING OWED BY DEFAULT. "due" is the one answer that puts somebody
+        // under a deadline, so it has to be shown, and a model that says
+        // nothing about it has said nothing. See owed.
+        mustBy: "" });
+      // AND THE WORDS A READER CLAIMS PUT SOMEBODY UNDER ONE, where the test
+      // is about those. Written into the document it is answering about, so a
+      // phrase that is really there and a phrase that is not can both be tried.
+      const by = (/MUSTBY:([^\n]*)/.exec(user) || [])[1] || "";
       let answers = nums.map(one);
       // HALF AN ANSWER, which is what a model that runs out of room gives.
       if (how === "half") answers = answers.slice(0, Math.ceil(answers.length / 2));
@@ -115,7 +123,10 @@ const ol = http.createServer((req, res) => {
       if (how === "borrow")
         answers = answers.map((a) => ({ ...a, said: "• Mid-Autumn Festival: Sep. 25" }));
       // AND A MEANING THAT CONTRADICTS THE SHAPE OF THE ROW.
-      if (how === "due") answers = answers.map((a) => ({ ...a, means: "due" }));
+      if (how === "due") answers = answers.map((a) => ({ ...a, means: "due", mustBy: a.says }));
+      // AND ONE WHOSE "due" POINTS AT WHATEVER THE TEST GAVE IT — including at
+      // nothing, which is what a date something merely HAPPENS on deserves.
+      if (how === "owed") answers = answers.map((a) => ({ ...a, means: "due", mustBy: by }));
       // POINTING AT THE HEADING THE LIST IS UNDER, which is not on the entry's
       // own line at all.
       if (how === "heading")
@@ -929,6 +940,80 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   ok("and one that invents the words that prove it is caught",
      (invented.answers || []).every((a) => /aren't in what this came from/.test(a.checked || "")),
      JSON.stringify((invented.answers || [])[0]));
+
+  // ---- AND "DUE" IS NOT LIKE THE OTHER FIVE ------------------------------
+  //
+  // Five of the six meanings describe the DAY: it is a holiday, there is no
+  // teaching, another day's timetable runs, teaching starts, something happens
+  // you should turn up to. Get one wrong and a day is described wrongly, which
+  // you can see and argue with.
+  //
+  // "Due" is the only one that says something about the PERSON — that work of
+  // theirs has to be finished by then. It is the only one that makes a task
+  // with a deadline on it, and a deadline nobody set is pressure the document
+  // never put on anybody. So it is asked for its own evidence, separately,
+  // because folded into one question about whether the document "says" the
+  // answer a model points at the name of the thing, and the name of a thing is
+  // not an obligation.
+  //
+  // NOTHING HERE KNOWS WHICH WORDS MEAN WHICH. The difference between a thing
+  // released on a date and a thing owed by one is in the words, and the words
+  // are the document's — there is no list of verbs anywhere in this app, and
+  // these fixtures deliberately have nothing to do with schools. What is
+  // checked is that the claim is MADE and CHECKABLE: pointed at, really there,
+  // and in this entry's own ground rather than fetched from elsewhere.
+  {
+    const PAIRS = [
+      // [what the document says, the words that would prove an obligation]
+      ["Application due Friday 6 November 2026", "due"],
+      ["Payment deadline Monday 9 November 2026", "deadline"],
+    ];
+    const HAPPENS = [
+      "Applications released Friday 13 November 2026",
+      "Results published Monday 16 November 2026",
+    ];
+    const ask = (line, mustBy, date) => askCal({ year: 2026,
+      text: `MARKS:owed\nMUSTBY:${mustBy}\n${line}`,
+      candidates: [{ n: 1, date, endsOn: "", label: line, line, context: [line] }] });
+    for (const [line, proof] of PAIRS) {
+      const got = await ask(line, proof, /6 November/.test(line) ? "2026-11-06" : "2026-11-09");
+      ok(`"${line.split(" ").slice(0, 2).join(" ")}" can be due, pointing at "${proof}"`,
+         ((got.answers || [])[0] || {}).checked === "", JSON.stringify((got.answers || [])[0]));
+      ok("  and the row carries the words it rests on",
+         ((got.answers || [])[0] || {}).mustBy === proof,
+         JSON.stringify((got.answers || [])[0]));
+    }
+    for (const line of HAPPENS) {
+      const got = await ask(line, "", /13 November/.test(line) ? "2026-11-13" : "2026-11-16");
+      ok(`"${line.split(" ").slice(0, 2).join(" ")}" is a date, not a deadline`,
+         /not that anything of yours is due by then/.test(((got.answers || [])[0] || {}).checked || ""),
+         JSON.stringify((got.answers || [])[0]));
+    }
+    // AND IT CANNOT BE GOT PAST BY MAKING THE WORDS UP, any more than the other
+    // gates can. Same rule, same arithmetic.
+    const bluff = await ask(HAPPENS[0], "must be handed in by", "2026-11-13");
+    ok("and words invented to prove a deadline are caught like any other",
+       /put you under a deadline aren't in what this came from/
+         .test(((bluff.answers || [])[0] || {}).checked || ""),
+       JSON.stringify((bluff.answers || [])[0]));
+    // AND A REAL PHRASE BORROWED FROM ANOTHER ENTRY IS NOT EVIDENCE EITHER.
+    const borrowed = await askCal({ year: 2026,
+      text: `MARKS:owed\nMUSTBY:due\n${PAIRS[0][0]}\n${HAPPENS[0]}`,
+      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: HAPPENS[0],
+        line: HAPPENS[0], context: [HAPPENS[0]] }] });
+    ok("nor one lifted off a different entry that really does have a deadline",
+       /put you under a deadline aren't in what this came from/
+         .test(((borrowed.answers || [])[0] || {}).checked || ""),
+       JSON.stringify((borrowed.answers || [])[0]));
+    // AND NONE OF THIS TOUCHES THE OTHER FIVE MEANINGS.
+    const off = await askCal({ year: 2026, text: `MARKS:\n${HAPPENS[0]}`,
+      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: HAPPENS[0],
+        line: HAPPENS[0], context: [HAPPENS[0]] }] });
+    ok("while a meaning that describes the day needs no such thing",
+       ((off.answers || [])[0] || {}).checked === "" &&
+       ((off.answers || [])[0] || {}).means === "off",
+       JSON.stringify((off.answers || [])[0]));
+  }
 
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------
   //

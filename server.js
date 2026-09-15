@@ -1533,6 +1533,25 @@ For each number:
 
     Never write into "says" anything that is not in the document. There is nothing to lose by saying false — it only means they are asked.
 
+- "mustBy": ONLY FOR "due", AND "due" IS DIFFERENT FROM THE REST.
+
+    Every other meaning describes the DAY. "due" describes THEM: that work of theirs has to be
+    finished by then. It is the one answer that puts somebody under a deadline, so it is the one
+    that has to be shown.
+
+    A date something HAPPENS on is not a date something is DUE. A thing released, published,
+    handed out, announced, opened, started or held on a date proves the date — it does not prove
+    that anybody owes anything by it. A thing submitted, handed in, returned, confirmed, entered,
+    paid or completed BY a date does.
+
+    So when you answer "due", put in "mustBy" the exact words — copied character for character
+    from "what the document puts it under" — that say something has to be FINISHED by this date.
+    If the only words you can point at are the name of the thing that happens, there is nothing
+    to put there: leave "mustBy" as "" and they will be asked. That is the honest answer and it
+    costs nothing.
+
+    For every other "means", leave "mustBy" as "".
+
 - "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the calendar below. It is looked for in the document, and the entry's own date is looked for beside it, so quote enough of it to take the date in. An answer whose "said" is not in the document is not trusted.
 
 Answer every number you are given, and no others. Return only the JSON object.`;
@@ -1553,9 +1572,10 @@ const CALENDAR_MARK_SCHEMA = {
           mine: { type: "string", enum: ["yes", "no", ""] },
           stated: { type: "boolean" },
           says: { type: "string" },
+          mustBy: { type: "string" },
           said: { type: "string" },
         },
-        required: ["n", "means", "runsAsDay", "sure", "why", "mine", "stated", "says", "said"],
+        required: ["n", "means", "runsAsDay", "sure", "why", "mine", "stated", "says", "mustBy", "said"],
         additionalProperties: false,
       },
     },
@@ -1735,6 +1755,43 @@ function entails(means, stated, says, ground) {
   // narrow enough that it cannot be fetched from somewhere else.
   return ground.indexOf(words) < 0
     ? "the words it says prove it aren't in what this came from"
+    : "";
+}
+
+// AND "DUE" IS NOT LIKE THE OTHERS, SO IT IS NOT ASKED FOR LIKE THE OTHERS.
+//
+// Five of the six meanings describe the DAY. It is a holiday; there is no
+// teaching; the timetable of another day runs; teaching starts; something
+// happens that you should turn up to. Get one of those wrong and a day on a
+// calendar is described wrongly, which you can see and disagree with.
+//
+// "Due" is the only one that says something about YOU: that there is work of
+// yours that has to be finished by then. It is the only one that makes a task
+// with a deadline, and a deadline nobody set is pressure the document never
+// put on anybody. So it needs its own evidence, and it is asked for its own
+// evidence separately — because folded into one question about whether the
+// document "says" the answer, a model will point at the name of the entry and
+// the name of the entry is not an obligation.
+//
+//   "Report Distribution — Jan. 20" proves the reports go out on the 20th.
+//   It does not prove anything is due FROM YOU on the 20th.
+//   "Paper Submission — Nov. 2, 16:00" does.
+//
+// NOTHING HERE KNOWS WHICH IS WHICH. It cannot: the difference between a thing
+// released on a date and a thing owed by one is in the words, and the words
+// are the document's, not this app's. §0.2 stands and there is no list of verbs
+// anywhere in this file. What this does is make the claim SEPARATE and
+// CHECKABLE — the reader must point at the words that put somebody under the
+// deadline, those words must be in what the entry rests on, and they are shown
+// on the row — so an answer that has quietly turned a publication date into a
+// job of yours can be seen and argued with, which is the whole promise here.
+function owed(means, by, ground) {
+  if (means !== "due") return "";
+  const words = String(by || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!words)
+    return "it says this happens that day, not that anything of yours is due by then";
+  return ground.indexOf(words) < 0
+    ? "the words it says put you under a deadline aren't in what this came from"
     : "";
 }
 
@@ -1954,7 +2011,11 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       const ground = (c.context.length ? c.context.join(" ") : text)
         .replace(/\s+/g, " ").toLowerCase();
       const fits = disagrees(means, c) ||
-        entails(means, a.stated === true, a.says, ground);
+        entails(means, a.stated === true, a.says, ground) ||
+        // AND "due" MUST POINT AT THE WORDS THAT PUT SOMEBODY UNDER A DEADLINE
+        // — see owed. It is the only meaning that asserts something about the
+        // person rather than about the day.
+        owed(means, a.mustBy, ground);
       answers.push({
         n,
         means,
@@ -1973,6 +2034,13 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
         fromLine: said,
         checked: checked.checked || fits,
         source: checked.source,
+        // AND THE WORDS IT SAYS PUT SOMEBODY UNDER A DEADLINE, kept and shown.
+        // A deadline nobody set is pressure the document never put on anybody,
+        // so the claim goes on the row where it can be read and disagreed with
+        // — the same as every other claim on this panel. Only where it was
+        // actually used: on anything but "due" the field means nothing.
+        ...(means === "due" && !fits && a.mustBy
+          ? { mustBy: String(a.mustBy).trim().slice(0, 160) } : {}),
       });
     });
     // WHAT IT DID NOT ANSWER, BY NUMBER. Said out loud rather than left to be

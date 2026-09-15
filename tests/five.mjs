@@ -3139,6 +3139,42 @@ sec("A calendar you check three things on, not thirty");
        !/runs on to/.test(said()), said().slice(0, 500));
   }
 
+  // AND A DEADLINE SAYS WHAT PUT YOU UNDER IT.
+  //
+  // "Due that day" is the one answer on this panel that says something about
+  // YOU rather than about the day: it makes a task with a deadline on it. A
+  // deadline nobody set is pressure the document never put on anybody, so the
+  // words the reader says put you under it are printed on the row — a date
+  // something is handed out on, quietly turned into a job of yours, is then a
+  // thing you can see.
+  {
+    const dueRow = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        const answers = (body.candidates || []).map((c) => ({
+          n: c.n, means: "due", sure: 0.95, mine: "yes", checked: "",
+          said: c.line, fromLine: c.line, source: c.line,
+          mustBy: "deadline", why: "a payment deadline",
+        }));
+        return { ok: true, json: async () => ({ answers, missed: [] }) };
+      },
+    });
+    dueRow.get("#calBox").open = true;
+    const bx = dueRow.get("#calPaste");
+    bx.value = "Payment deadline Monday 9 November 2026";
+    bx.fire("input", { target: bx });
+    await dueRow.settle();
+    const go = dueRow.get("#calSecond");
+    go.fire("click", { target: go });
+    await dueRow.settle();
+    const words = A.deep(dueRow.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("a row that is due says what puts you under the deadline",
+       /due, because the document says: deadline/.test(words), words.slice(0, 300));
+  }
+
   // AND WHAT IS DOUBTED ABOUT ONE CELL OF A COLUMN IS DOUBTED ABOUT ALL OF THEM.
   //
   // "Midterm — Paper Submission" and "Final — Paper Submission" are two cells of

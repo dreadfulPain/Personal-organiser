@@ -223,6 +223,82 @@ const YEAR_DOC = (cell) => [
      on(r, "2026-08-28").length === 1 && on(r, "2027-06-30").length >= 1, show(r));
 }
 
+// AND A MONTH HEADING DOES NOT REACH ACROSS A PAGE BREAK.
+//
+// A chronological calendar files its entries under "AUGUST 2026", "JANUARY
+// 2027", and the year on those headings is often the only place the document
+// writes one down. It holds until the next heading — which is right, and it
+// stops at a blank line, which is where a block of a document ends.
+//
+// Except that a flattened PDF usually has no blank line at a page break, only
+// a running header and a page number. So on a real staff calendar "FEBRUARY
+// 2027" at the foot of page two went on applying through the whole of page
+// three — a page organised by function rather than by month — and put 2027 on
+// a table of meetings that begins in September. Every one of them a year late,
+// and each date looking perfectly reasonable.
+//
+// A document that writes a year of its own while a heading says otherwise has
+// plainly left that section. It says so itself, which is better evidence than
+// a page number this reader cannot recognise.
+{
+  const r = read([
+    "FEBRUARY 2027",
+    "Wed 17 Feb",
+    "Semester 2 classes commence",
+    "Riverbend Academy — page 3",
+    "Assessment and reporting cycle",
+    "Mid-Semester",
+    "23 Oct 2026",
+    "16 Nov 2026",
+    "Scheduled meetings",
+    "Whole-Staff Briefing",
+    "18 Sep; 9 Oct",
+  ].join("\n"));
+  ok("a month heading stops where the document writes a year against it",
+     on(r, "2026-09-18").length === 1 && on(r, "2026-10-09").length === 1, show(r));
+  ok("  while the entries under the heading itself keep its year",
+     on(r, "2027-02-17").length === 1, show(r));
+}
+
+// THE SAME DAY OF THE SAME MONTH AT BOTH ENDS OF THE SCHOOL YEAR.
+//
+// A school year has the same few days at each end of it. "Aug. 31" at the top
+// of a calendar is the afternoon the students arrive, a fortnight before term;
+// "Aug. 31, 2027" at the bottom of the same calendar is the end of the summer
+// holiday a year later. Same month, same day, consecutive academic years, and
+// only the second of them writes its year down.
+//
+// Read by the span of the document's written dates alone, the first one does
+// not fit — it is ONE DAY before the earliest date the document happens to
+// spell out — so it was moved twelve months, landing on top of the other, and
+// the day that should have sorted first in the list sorted last. Nobody would
+// have caught that except by knowing the document.
+//
+// The written dates are a SAMPLE of the range, not its edges. Landing exactly
+// on one of them is not a fit, it is a collision.
+{
+  const r = read([
+    "Arrangements",
+    "1.",
+    "Aug. 31",
+    "14:00 Students Arrival",
+    "2.",
+    "Sep. 1",
+    "Semester begins",
+    "Overall Academic Year Arrangements:",
+    "First Semester: Sep. 1, 2026 ~ Jan. 22, 2027",
+    "Summer Vacation: Jul. 1, 2027 ~ Aug. 31, 2027",
+  ].join("\n"));
+  ok("the arrival day is the August before term, not the one a year later",
+     !!on(r, "2026-08-31").length, show(r));
+  ok("  and it is the students arriving, not the holiday ending",
+     /Students Arrival/.test((on(r, "2026-08-31")[0] || {}).label || ""), show(r));
+  ok("  while the holiday still ends on the August the document wrote",
+     r.rows.some((x) => x.endsOn === "2027-08-31" && /Summer Vacation/.test(x.label)), show(r));
+  ok("  and the arrival day sorts first, where the document puts it",
+     r.rows[0] && r.rows[0].date === "2026-08-31", show(r));
+}
+
 // AND A DOCUMENT THAT WRITES NO YEARS AT ALL IS LEFT ALONE. There is nothing
 // to read, so nothing is read into it: the ordering rule stands, and the page
 // says the year was borrowed.

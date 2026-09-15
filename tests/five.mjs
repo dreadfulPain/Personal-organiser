@@ -3139,6 +3139,73 @@ sec("A calendar you check three things on, not thirty");
        !/runs on to/.test(said()), said().slice(0, 500));
   }
 
+  // AND WHAT IS DOUBTED ABOUT ONE CELL OF A COLUMN IS DOUBTED ABOUT ALL OF THEM.
+  //
+  // "Midterm — Paper Submission" and "Final — Paper Submission" are two cells of
+  // one column of one table. They rest on the same evidence: the same heading,
+  // the same column, the same shape of line, and the reader saw exactly the same
+  // thing about both. But a model answers each separately and in its own words,
+  // so on a real calendar the three Midterm rows came back unprovable and the
+  // three Final rows came back proved — six structurally identical entries,
+  // three ticked and ready and three questions, and nothing on the page able to
+  // say why.
+  //
+  // THE DOUBT TRAVELS AND THE CONFIDENCE DOES NOT. What the app could not check
+  // was the evidence, and the evidence is shared. The other way round would be
+  // one confident answer waving a doubted column through.
+  {
+    const TBL = [
+      "Test paper submission and score input deadlines:",
+      "\tPaper Submission",
+      "\tScore Input & Report Confirm",
+      "Midterm",
+      "Nov. 2 2026 16:00",
+      "Nov. 17 2026 16:00",
+      "Final",
+      "Dec. 31 2026 16:00",
+      "Jan. 15 2027 16:00",
+    ].join("\n");
+    const col = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Grade 1 homeroom" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        // THE MODEL ANSWERING TWO IDENTICAL CELLS DIFFERENTLY, which is the
+        // whole fault: one it can prove, the other it says it worked out.
+        const answers = (body.candidates || []).map((c) => ({
+          n: c.n, means: "due", sure: 0.95, mine: "yes",
+          said: c.line, fromLine: c.line, source: c.line,
+          checked: /Midterm/.test(c.label) ? "the line doesn't say that — the reader worked it out" : "",
+          why: "a submission deadline",
+        }));
+        return { ok: true, json: async () => ({ answers, missed: [] }) };
+      },
+    });
+    col.get("#calBox").open = true;
+    const bx = col.get("#calPaste");
+    bx.value = TBL;
+    bx.fire("input", { target: bx });
+    await col.settle();
+    const go = col.get("#calSecond");
+    go.fire("click", { target: go });
+    await col.settle();
+    const words = () => A.deep(col.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("both cells of the column are named by row and column",
+       /Midterm — Paper Submission/.test(words()) && /Final — Paper Submission/.test(words()),
+       words().slice(0, 300));
+    ok("and a doubt about one of them is a doubt about the other",
+       !/cal-ready/.test(A.deep(col.get("#calRows")).map((c) => String(c.className || "")).join(" ")),
+       A.deep(col.get("#calRows")).map((c) => String(c.className || "")).join(" ").slice(0, 300));
+    ok("  which the row says, rather than quietly not answering",
+       /the same column of this table couldn't be checked/.test(words()), words().slice(0, 400));
+    ok("  and nothing goes in unasked", col.get("#calAdd").hidden === true,
+       String(col.get("#calAdd").textContent));
+  }
+
   // AND A DEADLINE THE DOCUMENT WRITES TWICE, AT THE SAME HOUR, IS THE SAME
   // QUESTION — with the reason it is being asked being the true one.
   //

@@ -1237,7 +1237,13 @@
     // document says what it is one line further up: this is the Exam Time column
     // of the Midterm row. Only where the headings were actually found — see
     // headingsOver, which returns nothing unless the shape is really a table.
-    if (heads && heads[j]) return { name: `${row} — ${heads[j]}`.slice(0, 120), headed: true };
+    // AND WHICH COLUMN IT IS, KEPT. Two cells of one column of one table are
+    // the same KIND of thing said about two different rows — "Paper Submission"
+    // for the midterm and for the final — and they rest on the same evidence.
+    // See the column pass in calShow: what is doubted about one of them is
+    // doubted about all of them.
+    if (heads && heads[j])
+      return { name: `${row} — ${heads[j]}`.slice(0, 120), headed: true, col: heads[j] };
     return { name: row, headed: false };
   }
 
@@ -1666,6 +1672,22 @@
         if (!t) { year = 0; headYear[i] = 0; return; }
         const y = monthHeading(t);
         if (y) year = y;
+        // AND IT STOPS AT A LINE THAT WRITES ITS OWN YEAR AND DISAGREES.
+        //
+        // A blank line is where a block of a document ends — except that a
+        // flattened PDF often has no blank line at a page break, only a running
+        // header and a page number. On a real staff calendar the heading
+        // "FEBRUARY 2027" at the foot of page two went on applying through the
+        // whole of page three, which is organised by function rather than by
+        // month, and put 2027 on a table of meetings that begins in September.
+        //
+        // A document that writes "23 Oct 2026" while February 2027 is nominally
+        // in force has plainly left that section. It is saying so itself, which
+        // is better evidence than a page number this reader cannot recognise.
+        else if (year && !monthHeading(t)) {
+          const own = hasYearOnIt(t) ? dateIn(t, year, "") : "";
+          if (own && Number(own.slice(0, 4)) !== year) { year = 0; }
+        }
         headYear[i] = year;
       });
     }
@@ -1744,7 +1766,13 @@
             // row's own identity: two cells of one column can be the same day
             // written twice, and telling them apart is what the line they came
             // off is for. Same reasoning as a row with no name at all.
-            if (above.headed) return { label: above.name, nameFrom: "column" };
+            if (above.headed)
+              return {
+                label: above.name, nameFrom: "column",
+                // Named by its table as well as by its column, because two
+                // tables on one page can both have a column called "Dates".
+                colGroup: `${headingOver(lines, at, yr, order) || ""}#${above.col}`,
+              };
             if (hasWords(own)) return { label: own };
             return above.name
               ? { label: above.name, nameFrom: "column" }
@@ -1922,6 +1950,28 @@
             if (moved && moved >= lo && moved <= hi) fits.push(moved);
           }
           if (fits.length !== 1 || fits[0] === r.date) return;
+          // AND NEVER ONTO A DAY THE DOCUMENT HAS ALREADY SPELLED OUT.
+          //
+          // A school year has the same few days at both ends of it. "Aug. 31"
+          // at the top of a calendar is the day the students arrive, a fortnight
+          // before term; "Aug. 31, 2027" at the bottom of the same calendar is
+          // the end of the summer holiday a year later. Same month, same day,
+          // consecutive academic years, and only the second one writes its year.
+          //
+          // The span said the first one did not fit — it is one day before the
+          // earliest date the document happens to write out — so it was moved
+          // twelve months, on top of the other, and a day that should sort first
+          // in the list sorted last. Nobody would have caught that except by
+          // knowing the document.
+          //
+          // The written dates are a SAMPLE of the document's range, not its
+          // edges. So landing exactly on one of them is not a fit, it is a
+          // collision: far likelier that the app has just recreated the entry
+          // the document already spelled out than that two things share that
+          // day and only one of them wrote the year. Endpoints only — a date
+          // inside a term block is an ordinary date in term time.
+          const spelled = new Set(written);
+          if (spelled.has(fits[0])) return;
           const shift = Number(fits[0].slice(0, 4)) - Number(r.date.slice(0, 4));
           r.date = fits[0];
           if (r.endsOn)

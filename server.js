@@ -1522,6 +1522,15 @@ For each number:
     "Apr. 6 is a working day, running the Tuesday timetable" says which timetable runs. True.
     "Training day for staff: Mar. 2, Jun. 9" says who the day is for. It does NOT say the students are away or that lessons stop. If you answer "noLessons", "stated" is false.
 
+    WHERE "says" IS LOOKED FOR: in the lines given as "what the document puts it under" for that
+    entry, and nowhere else. Those are its own line and the heading, row or column it sits under —
+    what the document says ABOUT THIS ENTRY. A phrase that is real but belongs to another part of
+    the page is not evidence about this one, and is treated as a conclusion.
+
+    A HEADING IS PART OF WHAT THE DOCUMENT SAYS. If a list's heading is what makes your answer
+    true, quote the heading — it is there for that. Quote it as written: a heading retyped in your
+    own words is not the document's words, and is treated as a conclusion.
+
     Never write into "says" anything that is not in the document. There is nothing to lose by saying false — it only means they are asked.
 
 - "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the calendar below. It is looked for in the document, and the entry's own date is looked for beside it, so quote enough of it to take the date in. An answer whose "said" is not in the document is not trusted.
@@ -1893,9 +1902,27 @@ function writtenIn(said, iso) {
 // beside them. A model that annotates from the general sense of the page rather
 // than from the entry in front of it fails that, and is asked about instead.
 async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
+  // AND WHAT EACH ONE RESTS ON, WITH IT.
+  //
+  // This was worked out for every entry, sent to this function, used as the
+  // only place a claim about that entry could be proved — and never shown to
+  // the model. So a reading was JUDGED against evidence it had never been
+  // given: four plain holidays on a real calendar sat under the heading
+  // "Holidays (Subject to government announcements)", the app knew it, and the
+  // model, seeing only "• Mid-Autumn Festival: Sep. 25", could do nothing but
+  // reason from the name of the festival — and was then told its reasoning was
+  // not in the document. It was marking to a rubric it had never read.
+  //
+  // The calendar goes with it as before, because the entry's own wording matters
+  // and because this is only what the READER could work out about where the
+  // entry sits. But the lines that count are named, in the order the document
+  // has them, against the number they belong to.
   const numbered = candidates
     .map((c) => `${c.n}. ${c.date}${c.endsOn && c.endsOn !== c.date ? ` to ${c.endsOn}` : ""} — ` +
-      `${c.label || "(no name)"}${c.line && c.line !== c.label ? `   [as written: ${c.line}]` : ""}`)
+      `${c.label || "(no name)"}${c.line && c.line !== c.label ? `   [as written: ${c.line}]` : ""}` +
+      (c.context.length
+        ? `\n    what the document puts it under: ${c.context.map((x) => `"${x}"`).join(" / ")}`
+        : ""))
     .join("\n");
   try {
     const parsed = await runEngine(

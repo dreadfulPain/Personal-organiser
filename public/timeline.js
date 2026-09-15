@@ -248,7 +248,27 @@
       });
       return out;
     };
-    calRows = (CP ? CP.inOrder(spread(r.rows || [])) : (r.rows || [])).map((x) => {
+    const ordered = CP ? CP.inOrder(spread(r.rows || [])) : (r.rows || []);
+    // WHAT IS DOUBTED ABOUT ONE CELL OF A COLUMN IS DOUBTED ABOUT ALL OF THEM.
+    //
+    // "Midterm — Paper Submission" and "Final — Paper Submission" are two cells
+    // of one column of one table. They rest on the same evidence — the same
+    // heading, the same column, the same shape of line — and the reader saw
+    // exactly the same thing about both. But a model answers each of them
+    // separately and in its own words, so on a real calendar the three Midterm
+    // rows came back unprovable and the three Final rows came back proved: six
+    // structurally identical entries, three of them ticked and ready and three
+    // of them questions, and nothing on the page able to say why.
+    //
+    // THE DOUBT TRAVELS AND THE CONFIDENCE DOES NOT. If the app could not check
+    // an answer about one cell, what it could not check was the evidence, and
+    // the evidence is shared — so the others are asked about too. The other
+    // direction would be one confident answer waving a doubted column through,
+    // which is the fault this whole panel exists to prevent.
+    const doubted = new Set(ordered
+      .filter((x) => x && x.colGroup && x.means && !trusted(x))
+      .map((x) => x.colGroup));
+    calRows = ordered.map((x) => {
       const had = calSaid[saidKey(x.label)];
       if (had && had.kind)
         return {
@@ -259,6 +279,11 @@
       // OTHERWISE. Shown in words, ticked, and one press from being changed —
       // see drawReady. Anything it could not tell, or that this app could not
       // find in the document, stays unanswered and is asked about instead.
+      // AND NOT WHERE THE SAME COLUMN WAS DOUBTED SOMEWHERE ELSE — see doubted.
+      // It is asked about instead, and it says which of the two it is, because
+      // a row that quietly stopped being answered is the app deciding again.
+      if (x.colGroup && doubted.has(x.colGroup) && !x.checked)
+        return { ...x, checked: "the same column of this table couldn't be checked further up" };
       if (trusted(x))
         return {
           ...x, kind: x.means, said: true, keep: x.mine !== "no",

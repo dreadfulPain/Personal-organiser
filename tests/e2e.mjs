@@ -29,7 +29,13 @@ const ol = http.createServer((req, res) => {
     // WHAT WAS ACTUALLY ASKED, every time. The retry and the context size are
     // both invisible from the answer, and both are the difference between a
     // model that works on this document and one that does not.
-    chats.push({ sys, options: JSON.parse(b || "{}").options || {} });
+    // AND WHAT IT WAS TOLD ABOUT THE ENTRIES, not only how it was told to read
+    // them. An answer is checked against the lines the reader says an entry
+    // rests on, so whether those lines were ever SHOWN to it is the difference
+    // between a fair check and marking to a rubric nobody handed over.
+    const usr = (JSON.parse(b || "{}").messages || []).filter((m) => m.role === "user")
+      .map((m) => m.content).join("\n");
+    chats.push({ sys, usr, options: JSON.parse(b || "{}").options || {} });
     let out = {};
     if (/router inside a calm personal organiser/.test(sys) && /RECORDPLEASE/.test(b))
       out = { entries: [{ kind: "record", title: "", item_type: "", date: "", time: "", deadline: "",
@@ -881,6 +887,26 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   ok("proof from the heading the list sits under counts",
      (heading.answers || []).every((a) => a.checked === ""),
      JSON.stringify((heading.answers || [])[0]));
+  // AND IT IS SHOWN THE LINES IT IS BEING MARKED AGAINST.
+  //
+  // The reader worked out what each entry rests on, sent it here, and used it
+  // as the only place a claim could be proved — and never put it in front of the
+  // model. So a reading was JUDGED against evidence it had never been given:
+  // four plain holidays on a real calendar sat under the heading "Holidays
+  // (Subject to government announcements)", the app knew it, and the model,
+  // seeing only "Mid-Autumn Festival: Sep. 25", could do nothing but reason from
+  // the name of the festival — and was then told its reasoning was not in the
+  // document. Marking to a rubric nobody handed over.
+  {
+    const sent = chats.filter((c) => /numbered list of entries already found/i.test(c.sys)).slice(-1)[0];
+    ok("the entry's own heading goes to the model with the entry",
+       !!sent && /what the document puts it under/.test(sent.usr || "") &&
+       /Holidays \(subject to change\)/.test(sent.usr || ""),
+       JSON.stringify((sent || {}).usr || "").slice(0, 300));
+    ok("  and it is told that is where its proof is looked for",
+       !!sent && /where "says" is looked for/i.test(sent.sys || ""),
+       String(!!sent));
+  }
   // AND A REAL PHRASE BORROWED FROM ANOTHER SECTION DOES NOT. "Holidays" is
   // genuinely in the file — three sections away — and looked for across the
   // whole document it would stand as proof that a training day is a day off.

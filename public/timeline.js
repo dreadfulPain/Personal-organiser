@@ -1347,11 +1347,23 @@
                                    g.rows[0])[0];
       const said = g.rows[0][0].sameSaid;
       if (!said) {
+        // AND THE REASON IS THE REAL ONE. Two rows land in this question two
+        // ways — one name beginning the other, or the same hour of the same day
+        // — and they are not the same doubt. Printing the name reason over a
+        // pair grouped by their clocks is the app explaining itself with
+        // something that isn't true, on the one panel whose whole purpose is
+        // being checkable. Read off the rows rather than stored twice.
+        const byClock = g.rows.every(([x]) => x.start && x.start === g.rows[0][0].start);
         const why = document.createElement("p");
         why.className = "muted";
-        why.textContent = "One name begins the other and they are on the same day. That is " +
-          "usually a document saying one thing twice — and sometimes it is a thing and the " +
-          "work before it, which are two. This app can't tell, so neither goes in until you say.";
+        why.textContent = byClock
+          ? "The document puts both of these at the same hour of the same day. That is " +
+            "usually a calendar saying one thing twice — in its month list and again in a " +
+            "table — and sometimes it is two things that really do clash. This app can't " +
+            "tell, so neither goes in until you say."
+          : "One name begins the other and they are on the same day. That is " +
+            "usually a document saying one thing twice — and sometimes it is a thing and the " +
+            "work before it, which are two. This app can't tell, so neither goes in until you say.";
         wrap.appendChild(why);
         // BOTH OF THEM, WITH THE WORDS THEY CAME OFF. Deciding this on the
         // tidied-up names alone is guessing at exactly the thing that is in
@@ -1361,9 +1373,12 @@
           line.className = "cal-samerow";
           const nm = document.createElement("span");
           nm.className = "cal-name";
-          nm.textContent = r.date
-            ? `${calDay(r.date)}${r.endsOn && r.endsOn > r.date ? ` to ${calDay(r.endsOn)}` : ""} — ${r.label}`
-            : `${everyWords(r.days)} — ${r.label}`;
+          // AND THE HOUR, WHERE THERE IS ONE. When the clocks are the reason
+          // these two are a question, a row that does not show its clock is
+          // asking you to take the reason on trust.
+          nm.textContent = (r.date
+            ? `${calDay(r.date)}${r.endsOn && r.endsOn > r.date ? ` to ${calDay(r.endsOn)}` : ""}`
+            : everyWords(r.days)) + (r.start ? `, ${r.start}` : "") + ` — ${r.label}`;
           line.appendChild(nm);
           // The span a claim was checked against where there is one, and the
           // raw line where there isn't — this question is asked with no model

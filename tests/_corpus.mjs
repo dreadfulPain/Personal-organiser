@@ -487,16 +487,19 @@ export const CORPUS = [
     // because the only thing settling a year was the order the lines came in
     // and this table comes after a block ending in August.
     //
-    // WHAT IT STILL CANNOT DO is declared below, and it is one thing: a table
-    // whose ROW and COLUMN headings both mean something. "Semester | 18 Dec
-    // 2026 | 14 Jan 2027 | 21 Jan 2027" under the headings "Paper / Task Due",
-    // "Scores & Comments", "Reports Released" is three different deadlines, and
-    // this reader gets at most a name off the row and nothing off the column.
+    // AND ITS ASSESSMENT TABLE IS THE ROW-AND-COLUMN CASE. "Semester | 18 Dec
+    // 2026 | 14 Jan 2027" under "Paper / Task Due" and "Scores & Comments" is
+    // two different deadlines, and what each one IS takes both headings. This
+    // table is the awkward kind: it writes each deadline's TIME in the cell
+    // below its date, so the dates are not directly one under another and the
+    // whole table did not look like a table at all.
+    //
+    // WHAT IT STILL CANNOT DO is declared below: a row label too wide for its
+    // column wraps, and only its last line is taken.
     name: "a staff calendar that says the year twice",
     year: 2026,
-    known: "a table with headings down the side AND along the top is read down " +
-      "the side only: the cells of one row come out named after the row, or not " +
-      "named, rather than as row-and-column",
+    known: "a row label that wrapped comes back cut to its last line: " +
+      "\"Upper School Curriculum\" / \"Leaders\" names the row \"Leaders\"",
     build: () => page(lines([
       "Riverbend Academy",
       "2026-27 Staff Calendar",
@@ -534,6 +537,23 @@ export const CORPUS = [
       "8 Sep; 22 Sep; 20 Oct; 17 Nov; 15 Dec; 19 Jan",
       "Grades 1-5 staff",
       "15:40",
+      "Assessment and reporting cycle",
+      "\t\tCycle",
+      "\tPaper / Task Due",
+      "\tScores & Comments",
+      "Mid-Semester",
+      "23 Oct 2026",
+      "16:30",
+      "16 Nov 2026",
+      "Semester",
+      "18 Dec 2026",
+      "16:30",
+      "14 Jan 2027",
+      "Upper School Curriculum",
+      "Leaders",
+      "10 Sep; 12 Nov",
+      "Years 9-12 curriculum leaders",
+      "15:45",
       "Academic-year blocks",
       "Midyear Recess",
       "23 January 2027 - 14 February 2027",
@@ -566,6 +586,18 @@ export const CORPUS = [
       ["2027-01-08", /Whole-Staff Briefing/],
       ["2027-01-19", /Lower School Team Meeting/],
       ["2027-01-22", /Semester 1 concludes/],
+      // THE ASSESSMENT TABLE, ROW AND COLUMN BOTH. Read down the side only,
+      // three of these four are called "Semester" or "Mid-Semester", and the
+      // 18th of December collides with the paper deadline a page earlier and
+      // looks like the same thing written twice with nothing to tell by.
+      ["2026-10-23", /Mid-Semester .* Paper \/ Task Due/],
+      ["2026-11-16", /Mid-Semester .* Scores & Comments/],
+      ["2026-12-18", /Semester .* Paper \/ Task Due/],
+      ["2027-01-14", /Semester .* Scores & Comments/],
+      // And the meetings table's wrapped row label — the declared gap. Named
+      // by half of its name rather than by none of it.
+      ["2026-09-10", /./],
+      ["2026-11-12", /./],
       // THE FIRST BLOCK OF A TABLE KEEPS NO NAME, because the only thing above
       // it is the table's own heading and a title is not a row label — the
       // bound that stops a page's title naming the first two dates under it.

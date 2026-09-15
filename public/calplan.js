@@ -1207,14 +1207,31 @@
     // cells come in. See headingsOver.
     const heads = headingsOver(lines, cells, useYear, order);
     // AND A TITLE IS NOT A ROW LABEL. Where no heading row was found, the line
-    // above the run has to have earned its place: a row label of a table sits
-    // under the headings or under the row before it, so a date comes before it.
-    // A document's own title at the top of a page has nothing above it at all,
-    // and handing it to the first two dates on the page names them both after
-    // the paperwork — and then, being the same name over the same day, they
-    // look like one event written twice.
-    if (!heads && !dateIn(tidyLine(lines, cells.lo - 2), useYear, order)) return none;
-    const j = at - cells.lo;
+    // above the run has to have earned its place. A document's own title at the
+    // top of a page has nothing above it at all, and handing it to the first two
+    // dates on the page names them both after the paperwork — and then, being
+    // the same name over the same day, they look like one event written twice.
+    //
+    // WHAT EARNS IT IS THAT THE SHAPE REPEATS, which is the whole of what makes
+    // something a table rather than a heading with dates under it. A row above
+    // (a date two lines up) said so, and that is why the first row of a table
+    // was refused: nothing is above it but the table's own heading, so
+    //
+    //     Term blocks / Autumn Recess / 26 Oct / 30 Oct / Spring Recess / …
+    //
+    // kept "Spring Recess" and lost "Autumn Recess". A row BELOW says the same
+    // thing just as well — a label and then its own cells, directly after this
+    // row's last one. A title has neither.
+    const rowAbove = !!dateIn(tidyLine(lines, cells.lo - 2), useYear, order);
+    const below = tidyLine(lines, cells.hi + 1);
+    const rowBelow = !!below && !dateIn(below, useYear, order) && hasWords(below) &&
+      !!dateIn(tidyLine(lines, cells.hi + 2), useYear, order);
+    if (!heads && !rowAbove && !rowBelow) return none;
+    // WHICH CELL OF THE ROW THIS IS, counted in CELLS. It was counted in lines,
+    // which is the same number only when nothing sits between them — and an
+    // assessment table puts a time between every pair, so the third deadline was
+    // the fifth line and looked for a fifth column heading that does not exist.
+    const j = cells.cells ? cells.cells.indexOf(at) : at - cells.lo;
     // A NAME OFF THE TABLE BEATS THE CELL'S OWN WORDS. "Tentatively Nov. 10-12"
     // put "Tentatively" on the page as the name of a week of exams, and the
     // document says what it is one line further up: this is the Exam Time column
@@ -1457,9 +1474,37 @@
 
   function cellRun(lines, at, useYear, order) {
     const dated = (i) => { const t = tidyLine(lines, i); return !!t && !!dateIn(t, useYear, order); };
+    // A LINE THAT IS NOTHING BUT A CLOCK IS NOT A CELL OF ITS OWN.
+    //
+    // There is no day for it to be on. It is the time of the date above it,
+    // written in the cell below because that is where a tall narrow column puts
+    // it — and it broke every table it appeared in:
+    //
+    //     Mid-Semester
+    //     23 Oct 2026
+    //     16:30            <- this
+    //     16 Nov 2026
+    //     17:00            <- and this
+    //     20 Nov 2026
+    //
+    // A run of cells was dates DIRECTLY one under another, so that table's runs
+    // were one cell long, one cell is not a table, and everything that needs a
+    // table to be a table stopped there: the headings above were never looked
+    // for, the row label beside them was never found, and six deadlines came out
+    // called "Semester", "Mid-Semester" or nothing at all.
+    //
+    // Stepped over, not counted: the cells of the row are the DATED ones, which
+    // is what the column headings line up with.
+    const clockOnly = (i) => {
+      const t = tidyLine(lines, i);
+      return !!t && !hasWords(t) && !dateIn(t, useYear, order) && !!timeOnLine(t);
+    };
+    const back = (i) => { let j = i - 1; while (j >= 0 && clockOnly(j)) j--; return j; };
+    const on = (i) => { let j = i + 1; while (j < lines.length && clockOnly(j)) j++; return j; };
     let lo = at, hi = at;
-    while (lo - 1 >= 0 && dated(lo - 1)) lo--;
-    while (hi + 1 < lines.length && dated(hi + 1)) hi++;
+    const cells = [at];
+    for (let p = back(lo); p >= 0 && dated(p); p = back(lo)) { lo = p; cells.unshift(p); }
+    for (let p = on(hi); p < lines.length && dated(p); p = on(hi)) { hi = p; cells.push(p); }
     if (hi === lo || lo === 0) return null;
     // AND A LINE THAT NAMES ITSELF IS NOT A CELL.
     //
@@ -1470,7 +1515,9 @@
     // name. What separates them is on the line: a cell of a table is a date and
     // perhaps a word; an entry writes its own name and then a colon.
     for (let i = lo; i <= hi; i++) if (namesItself(tidyLine(lines, i))) return null;
-    return { lo, hi, size: hi - lo + 1 };
+    // `cells` is where the dated ones are, in order — which is what a column
+    // heading lines up with. `size` counts those, not the lines between them.
+    return { lo, hi, cells, size: cells.length };
   }
   // Words, and then a colon. "Sports Week: Tentatively Week 7" names itself;
   // "Nov. 2 16:00" and "Tentatively Nov. 10-12" do not — the only colon in the
@@ -1493,23 +1540,31 @@
   function headingsOver(lines, cells, useYear, order) {
     if (cells.size < 2) return null;
     const dated = (i) => { const t = tidyLine(lines, i); return !!t && !!dateIn(t, useYear, order); };
+    // THE ROW ABOVE IS STEPPED OVER WHOLE, clocks and all. Its cells are dates
+    // with times between them, the same shape as this row's — and stopping at
+    // the first of those times left the walk sitting in the middle of another
+    // row, where a heading is never going to be.
+    const cellish = (i) => {
+      const t = tidyLine(lines, i);
+      return !!t && (dated(i) || (!hasWords(t) && !!timeOnLine(t)));
+    };
     const run = [];
     let i = cells.lo - 2;
-    // Step over the cells of the row above, if there is one.
-    while (i >= 0 && dated(i)) i--;
+    const skipped = i >= 0 && cellish(i);
+    while (i >= 0 && cellish(i)) i--;
     while (i >= 0) {
       const t = tidyLine(lines, i);
-      if (!t || dated(t ? i : i) || !hasWords(t)) break;
+      if (!t || dated(i) || !hasWords(t)) break;
       run.unshift(t);
       i--;
     }
     if (!run.length) return null;
-    // The last of them is another row's label when a date follows it.
-    const after = cells.lo - 2 - (run.length - 1) + run.length;
-    if (run.length && dated(cells.lo - 2) ) { /* handled by the skip above */ }
-    const labelLike = run.length > 1 && dated(cells.lo - 2);
-    const heads = (labelLike ? run.slice(0, -1) : run).slice(-cells.size);
-    void after;
+    // AND THE LAST OF THEM IS ANOTHER ROW'S LABEL, not a heading, when there was
+    // a row above to step over. "Cycle / Paper / Scores / Reports" then
+    // "Mid-Semester" then that row's dates: walking up from the second row
+    // collects the first row's label along with the headings, and it is the one
+    // nearest the cells.
+    const heads = (skipped && run.length > 1 ? run.slice(0, -1) : run).slice(-cells.size);
     if (heads.length !== cells.size) return null;
     return heads.map((h) => labelOf(h, "", useYear, order) || h);
   }
@@ -1698,8 +1753,13 @@
           // When the line said one. Empty means all day, which is what a
           // holiday is and what every row used to be.
           ...(function () {
-            const t = timeOnLine(line) ||
-              (cellOfDates(line, yr, order) ? timeOfCell(lines, at, yr, order) : null);
+            // AND A CELL OF A TABLE KEEPS ITS TIME IN THE NEXT CELL DOWN. This
+            // was asked only of a line holding a LIST of dates — the meetings
+            // table — and an assessment table writes one date to a cell with
+            // its deadline underneath it, so half past four sat on a line of
+            // its own and no deadline had a time. Same shape, same question,
+            // now asked of any dated line. See timeOfCell.
+            const t = timeOnLine(line) || timeOfCell(lines, at, yr, order);
             return t ? { start: t.start, end: t.end } : {};
           })(),
           line,
@@ -1988,6 +2048,27 @@
       const short = x.length < y.length ? x : y, long = x.length < y.length ? y : x;
       return short.length >= 6 && long.indexOf(short) === 0;
     };
+    // AND SO IS THE SAME DAY AT THE SAME HOUR.
+    //
+    // A calendar written in two halves says its deadlines twice — once in the
+    // month list and once in a table — and once the table is read as a table
+    // the two are both there, correctly named, and named DIFFERENTLY: "Semester
+    // Assessment Paper Upload" and "Semester — Paper / Task Due" are the same
+    // deadline and neither name begins the other, so no rule about words is
+    // going to see it.
+    //
+    // What the document itself says is that both are on the 18th of December at
+    // half past four. Either that is one thing written twice, or it is a genuine
+    // clash — and both are worth a moment of somebody's. So it is a QUESTION, on
+    // exactly the terms a near-name is: nothing merges, both rows stay, and
+    // "Keep both" is one press.
+    //
+    // SAME DAY ALONE IS NOT ENOUGH AND NEVER WILL BE. Two different things
+    // happen on one day constantly, and asking about every busy Friday of the
+    // year is how a useful question becomes noise nobody reads. The hour is what
+    // makes it worth asking, and the hour is on the page.
+    const sameHour = (a, b) =>
+      !!a.start && a.start === b.start && (a.end || "") === (b.end || "");
     //
     // AND THE NEAR ONES ON A DAY ARE ONE QUESTION, NOT ONE QUESTION PER ROW.
     // "Semester", "Semester Assessment" and "Semester Assessment Paper Upload"
@@ -2002,7 +2083,7 @@
     const find = (i) => (group[i] === i ? i : (group[i] = find(group[i])));
     kept.forEach((r, i) => kept.slice(i + 1).forEach((o, j) => {
       if (!r.date || r.date !== o.date || (r.endsOn || "") !== (o.endsOn || "")) return;
-      if (!nearly(r, o)) return;
+      if (!nearly(r, o) && !sameHour(r, o)) return;
       group[find(i)] = find(i + 1 + j);
     }));
     {

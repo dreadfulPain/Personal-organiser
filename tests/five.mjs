@@ -3139,6 +3139,54 @@ sec("A calendar you check three things on, not thirty");
        !/runs on to/.test(said()), said().slice(0, 500));
   }
 
+  // AND A DEADLINE THE DOCUMENT WRITES TWICE, AT THE SAME HOUR, IS THE SAME
+  // QUESTION — with the reason it is being asked being the true one.
+  //
+  // A calendar in two halves says its deadlines twice: once in the month list
+  // and once in a table at the back. Read properly, the table one is called by
+  // its row AND its column — "Semester — Paper / Task Due" — and the month one
+  // by the school's own wording. Neither name begins the other, so no rule
+  // about words will ever see they are one thing. What the document says is
+  // that both are on the 18th at half past four.
+  {
+    const dup = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: false }) }
+        : { ok: false, json: async () => ({}) }),
+    });
+    dup.get("#calBox").open = true;
+    const bx = dup.get("#calPaste");
+    bx.value = [
+      "DECEMBER 2026",
+      "Fri 18 Dec, 16:30",
+      "Semester Assessment Paper Upload",
+      "Assessment and reporting cycle",
+      "\t\tCycle",
+      "\tPaper / Task Due",
+      "\tScores & Comments",
+      "Mid-Semester",
+      "23 Oct 2026",
+      "16:30",
+      "16 Nov 2026",
+      "Semester",
+      "18 Dec 2026",
+      "16:30",
+      "14 Jan 2027",
+    ].join("\n");
+    bx.fire("input", { target: bx });
+    await dup.settle();
+    const words = A.deep(dup.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("a deadline written twice at the same hour is one question",
+       (words.match(/These may be the same event/g) || []).length === 1, words.slice(0, 400));
+    ok("  and the reason given is the hour, not a name that begins another",
+       /same hour of the same day/.test(words) && !/One name begins the other/.test(words),
+       words.slice(0, 500));
+    ok("  with the hour on both rows, so the reason can be checked",
+       (words.match(/16:30/g) || []).length >= 2, words.slice(0, 500));
+    ok("  and the table one says which deadline it is",
+       /Semester — Paper \/ Task Due/.test(words), words.slice(0, 500));
+  }
+
   // AND SAID AS THE READER'S, NOT AS THE DOCUMENT'S.
   //
   // The sentence sat here bare, in the same quiet grey the document's own words

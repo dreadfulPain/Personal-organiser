@@ -1,4 +1,11 @@
-// SEVEN CALENDARS THIS READER HAS NEVER SEEN.
+// ELEVEN CALENDARS, TEN OF WHICH THIS READER HAD NEVER SEEN.
+//
+// THE ELEVENTH IS DIFFERENT AND SAYS SO. It is the shape of a real staff
+// calendar that was read blind and read badly, retired here once the faults it
+// found were mended — invented names and dates, the same shapes. A document
+// that has already changed this code is not evidence about anything unseen; it
+// is a check that what it taught stays taught, which is what the rest of this
+// file is for too.
 //
 // THE WORRY THIS ANSWERS. A reader can be fixed until it works on the document
 // in front of it and then fall apart on the next one, and a suite of five
@@ -454,5 +461,121 @@ export const CORPUS = [
     maybeOn: ["2027-06-21"],
     // One thing said twice, which must come out once and remember both places.
     onceOnly: ["2027-05-24"],
+  },
+
+  {
+    // 11. A STAFF CALENDAR IN TWO HALVES: A MONTH LIST, THEN THE SAME YEAR
+    //     AGAIN BY FUNCTION.
+    //
+    // Retired here from a real one. Nothing of that school is in this — the
+    // names, the divisions and the dates are invented — but every SHAPE on it
+    // is, because the shapes are what it caught:
+    //
+    //   · a chronological list by month, name under date, detail under name;
+    //   · a table of recurring meetings whose dates cell holds the whole term
+    //     ("18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan"), with who it is for and what
+    //     time in the cells after it;
+    //   · one of those cells too wide for its column, so it wrapped between a
+    //     day and its month;
+    //   · one meeting's NAME too wide for its column, so it wrapped too;
+    //   · a table of year blocks, name then span, name then span;
+    //   · and a page that says several of these things twice, in its two halves.
+    //
+    // WHAT IT FOUND, in one document: the meetings' names were the other
+    // meetings' dates or nothing at all, none of them had a time, and every one
+    // of them was twelve months late — twenty-four for the January ones —
+    // because the only thing settling a year was the order the lines came in
+    // and this table comes after a block ending in August.
+    //
+    // WHAT IT STILL CANNOT DO is declared below, and it is one thing: a table
+    // whose ROW and COLUMN headings both mean something. "Semester | 18 Dec
+    // 2026 | 14 Jan 2027 | 21 Jan 2027" under the headings "Paper / Task Due",
+    // "Scores & Comments", "Reports Released" is three different deadlines, and
+    // this reader gets at most a name off the row and nothing off the column.
+    name: "a staff calendar that says the year twice",
+    year: 2026,
+    known: "a table with headings down the side AND along the top is read down " +
+      "the side only: the cells of one row come out named after the row, or not " +
+      "named, rather than as row-and-column",
+    build: () => page(lines([
+      "Riverbend Academy",
+      "2026-27 Staff Calendar",
+      "Issued 18 August 2026",
+      "AUGUST 2026",
+      "Thu 27 Aug",
+      "Faculty Welcome Day",
+      "Whole-staff orientation and department planning. 08:30-15:30.",
+      "SEPTEMBER 2026",
+      "Tue 1 Sep",
+      "Semester 1 classes commence",
+      "Normal timetable begins for all divisions.",
+      "Fri 18 Sep",
+      "Whole-Staff Briefing",
+      "Main auditorium, 15:45.",
+      "OCTOBER 2026",
+      "Thu 1 Oct - Mon 5 Oct",
+      "Autumn Break",
+      "School closed.",
+      "DECEMBER 2026",
+      "Mon 21 Dec - Fri 1 Jan",
+      "Winter Recess",
+      "No scheduled classes.",
+      "JANUARY 2027",
+      "Fri 22 Jan",
+      "Semester 1 concludes",
+      "Last scheduled day of Semester 1.",
+      "Operational Dates, Meetings and Reference",
+      "Scheduled staff and leadership meetings",
+      "Whole-Staff Briefing",
+      "18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan",
+      "All teaching staff",
+      "15:45",
+      "Lower School Team Meeting",
+      "8 Sep; 22 Sep; 20 Oct; 17 Nov; 15 Dec; 19 Jan",
+      "Grades 1-5 staff",
+      "15:40",
+      "Academic-year blocks",
+      "Midyear Recess",
+      "23 January 2027 - 14 February 2027",
+      "Semester 2",
+      "17 February 2027 - 30 June 2027",
+      "Summer Break",
+      "1 July 2027 - 31 August 2027",
+    ])),
+    want: [
+      ["2026-08-18", /Issued/],
+      ["2026-08-27", /Faculty Welcome Day/],
+      ["2026-09-01", /Semester 1 classes commence/],
+      // THE MEETINGS TABLE, IN THE YEAR THE DOCUMENT'S OWN WRITTEN DATES COVER
+      // — not the year the line before it happened to end in. Every one of
+      // these has no year anywhere on its line.
+      ["2026-09-08", /Lower School Team Meeting/],
+      ["2026-09-18", /Whole-Staff Briefing/],
+      ["2026-09-22", /Lower School Team Meeting/],
+      ["2026-10-01", /Autumn Break/, "2026-10-05"],
+      ["2026-10-09", /Whole-Staff Briefing/],
+      ["2026-10-20", /Lower School Team Meeting/],
+      ["2026-11-06", /Whole-Staff Briefing/],
+      ["2026-11-17", /Lower School Team Meeting/],
+      ["2026-12-04", /Whole-Staff Briefing/],
+      // The one the cell was cut in half at — "…17 Nov; 15" / "Dec; 19 Jan".
+      ["2026-12-15", /Lower School Team Meeting/],
+      ["2026-12-21", /Winter Recess/, "2027-01-01"],
+      // AND ACROSS THE NEW YEAR. January is the month a borrowed year is
+      // quietly wrong in, and these two are in a cell that begins in September.
+      ["2027-01-08", /Whole-Staff Briefing/],
+      ["2027-01-19", /Lower School Team Meeting/],
+      ["2027-01-22", /Semester 1 concludes/],
+      // THE FIRST BLOCK OF A TABLE KEEPS NO NAME, because the only thing above
+      // it is the table's own heading and a title is not a row label — the
+      // bound that stops a page's title naming the first two dates under it.
+      // The ones after it have a date two lines up and are named.
+      ["2027-01-23", /./, "2027-02-14"],
+      ["2027-02-17", /Semester 2/, "2027-06-30"],
+      ["2027-07-01", /Summer Break/, "2027-08-31"],
+    ],
+    // The 18th of September is the SAME briefing in both halves of the
+    // document, so it comes out once and remembers both places.
+    onceOnly: ["2026-09-18"],
   },
 ];

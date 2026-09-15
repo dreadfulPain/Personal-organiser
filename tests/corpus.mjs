@@ -1,18 +1,19 @@
 import { fileURLToPath as __f } from "node:url";
 import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
-// SEVEN CALENDARS THIS READER HAS NEVER SEEN, READ ONCE.
+// ELEVEN CALENDARS, TEN OF WHICH THIS READER HAD NEVER SEEN.
 //
 // The question this file exists to answer is not "does the reader work" but
 // "does it work on anything but the document it grew up on". A suite built
 // around one file can pass five thousand times and say nothing about that.
 //
-// So: seven shapes, written before the reader was run on any of them, each one
+// So: ten shapes, written before the reader was run on any of them, each one
 // deliberately unlike the calendar the reader was fixed against — the date on
 // the left instead of the right, sentences instead of a list, a table whose row
 // and column headings both mean something, four ways of writing a span, a line
 // the typesetter cut into six pieces, and a page with the office's own
-// paperwork dated on it.
+// paperwork dated on it. And an eleventh that is not one of those: the shape of
+// a real staff calendar read blind, retired here once what it found was mended.
 //
 // AND IT IS A REGRESSION CORPUS NOW, NOT A HOLD-OUT. It was a hold-out for
 // exactly one run — the first, which came to 63 of 68 and found two faults that
@@ -24,7 +25,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // A FAILURE HERE IS INFORMATION, NOT A FIRE. What it must not become is a list
 // of rules invented one at a time to make each of these pass — that is the
 // fault it is here to find, done deliberately. Anything mended because of this
-// file has to make sense on all seven and on the suite besides.
+// file has to make sense on all of them and on the suite besides.
 
 import fs from "node:fs";
 import path from "node:path";

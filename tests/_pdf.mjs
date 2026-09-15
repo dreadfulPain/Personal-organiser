@@ -291,3 +291,30 @@ export function monthPdf() {
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
   ]);
 }
+
+// 8. A DAY THAT LOST ITS MONTH — the same break as the one above, the other way
+// round, and the one a real staff calendar actually made. A table cell holding
+// a term's worth of one meeting is wider than its column, so it wraps wherever
+// it happens to reach the edge; on that document the edge fell between the 15
+// and its December:
+//
+//     8 Sep; 22 Sep; 20 Oct; 17 Nov; 15
+//     Dec; 19 Jan
+//
+// Read as written, that is a meeting in December gone outright, a row called
+// "; ; ; ; 15", and a second row called "Dec;" on a day nobody meets.
+export function dayPdf() {
+  const at = (x, y, text) => `q BT 42 0 0 42 ${x} ${y} Tm /F1 1 Tf (${text}) Tj ET Q `;
+  const content =
+    at(100, -100, "Lower School Team Meeting") +
+    at(100, -160, "8 Sep; 22 Sep; 20 Oct; 17 Nov; 15") + at(900, -160, "Dec; 19 Jan") +
+    at(100, -220, "Grades 1-5 staff") +
+    at(100, -280, "15:40");
+  return pdf([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(content),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ]);
+}

@@ -1258,6 +1258,15 @@
         w.textContent = `the reader thinks: ${r.why}`;
         row.appendChild(w);
       }
+      // AND ON A READY ROW TOO — see drawCalRow. Five identical lines in a row
+      // is the moment somebody thinks the reader has read the same thing five
+      // times; this is where it says it hasn't.
+      if (r.series) {
+        const s = document.createElement("span");
+        s.className = "muted cal-hint";
+        s.textContent = `one of ${r.ofSeries} the document lists on one line`;
+        row.appendChild(s);
+      }
       drawAlsoFrom(r, row);
       const change = document.createElement("button");
       change.type = "button";
@@ -1600,12 +1609,33 @@
         b.className = "p-opt cal-pick" + (r.said && r.kind === k ? " on" : "");
         b.textContent = lab;
         b.addEventListener("click", () => {
+          // ONE ANSWER FOR ONE THING, HOWEVER MANY DAYS IT IS ON.
+          //
+          // Six whole-staff briefings out of one cell of one table is one
+          // question — the document wrote them as one entry, and what a
+          // briefing is on the 18th of September it is on the 9th of October.
+          // Asked six times it is six presses to say the same word, and six
+          // chances to say a different one by accident halfway down.
+          //
+          // This is not the app deciding: it is YOUR answer, applied to the
+          // rows the DOCUMENT says are the same thing (see series), and every
+          // one of them is still a row you can press again on its own.
+          if (r.series)
+            calRows.forEach((x, j) => {
+              if (j === i || !x || x.series !== r.series) return;
+              calRows[j] = {
+                ...x, kind: k, said: true, keep: !!k, saidBefore: false,
+                spans: k ? x.spans : false, withSeries: true,
+                ...(k === "runsAs" && x.runsAsDay === undefined ? { runsAsDay: 1 } : {}),
+              };
+            });
           // Clearing a row clears the run-on with it — a tick on a line that
           // does nothing would sit there looking like it meant something.
           calRows[i] = {
             ...r,
             kind: k,
             said: true,
+            withSeries: false,
             // ANSWERING ONE IS WANTING IT. A row folded away as somebody
             // else's, that you then say what it is, is one you have claimed.
             keep: !!k,
@@ -1631,6 +1661,21 @@
         recall.className = "muted cal-recall";
         recall.textContent = "what you said last time — change it if it's different";
         row.appendChild(recall);
+      }
+      // AND THAT THIS ROW IS ONE OF SEVERAL THE DOCUMENT WROTE AS ONE ENTRY.
+      //
+      // A table cell holding "18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan" beside one
+      // meeting's name is five occurrences of that meeting, not five rows that
+      // happen to be alike — and the difference matters on screen, because
+      // answering one of them answers all five and nothing else on this page
+      // behaves that way. Said before it happens, and said again when it has.
+      if (r.series) {
+        const s = document.createElement("span");
+        s.className = "muted cal-recall";
+        s.textContent = r.withSeries
+          ? `answered with the other ${r.ofSeries - 1} — the document lists them as one entry`
+          : `one of ${r.ofSeries} on one line of the document — answering it answers them all`;
+        row.appendChild(s);
       }
       // THE OTHER YEAR. A first-semester calendar runs September to January and
       // therefore holds two of them, and every line that didn't write its own
@@ -1725,6 +1770,21 @@
         hint.textContent = `read as ${r.date.slice(0, 4)} — the line puts it after a later date`;
         row.appendChild(hint);
       }
+      // AND A YEAR WORKED OUT FROM THE REST OF THE DOCUMENT.
+      //
+      // A cell of dates with no year on it anywhere — a table of the term's
+      // meetings — is put inside the stretch of time the document's own written
+      // dates cover. It is still the app working something out rather than the
+      // document saying it, so it says which of the two it is, in the same
+      // place and the same words as every other borrowed year on this page.
+      if (r.yearFromDoc) {
+        const hint = document.createElement("span");
+        hint.className = "muted cal-hint";
+        hint.textContent =
+          `read as ${r.date.slice(0, 4)} — the line has no year, and that is the one ` +
+          "this document's own dates cover";
+        row.appendChild(hint);
+      }
       // AND WHICH DAY IT RUNS AS. Only when that is the answer: against a
       // holiday the question means nothing, and a calendar is mostly holidays.
       if (r.kind === "runsAs") {
@@ -1812,7 +1872,14 @@
       // THE RUN-ON. A holiday arrives as two lines — begins, ends — and only
       // you know which pairs are a stretch and which are two separate days.
       // Offered only where pressing it would change something.
-      if (mark && mark.canSpan && !ONE_DAY) {
+      //
+      // AND NEVER BETWEEN TWO OCCURRENCES OF ONE THING. A briefing on the 18th
+      // of September and the same briefing on the 9th of October are two
+      // meetings three weeks apart, and the document said so on one line — so
+      // "runs on to Fri, Oct 9 — 22 days?" is an offer to turn a quarter of an
+      // hour into three weeks of it, on the one kind of row where the document
+      // has already answered the question. See series.
+      if (mark && mark.canSpan && !ONE_DAY && !r.series) {
         const tick = document.createElement("button");
         tick.type = "button";
         tick.className = "p-opt cal-span" + (r.spans ? " on" : "");

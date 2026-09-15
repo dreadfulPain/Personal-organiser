@@ -3091,6 +3091,54 @@ sec("A calendar you check three things on, not thirty");
        /also written: Staff Preparation: 15 February 2027/.test(words()), words().slice(0, 400));
   }
 
+  // AND ONE ANSWER FOR ONE THING, HOWEVER MANY DAYS IT IS ON.
+  //
+  // "Whole-Staff Briefing" against a cell reading "18 Sep; 9 Oct; 6 Nov" is one
+  // entry of the document and three days of your term. They arrive as three
+  // rows because they are three days — but they are not three questions, and
+  // asked as three they are three presses to say the same word and three
+  // chances to say a different one by accident halfway down.
+  //
+  // NOT THE APP DECIDING. It is your answer, put on the rows the DOCUMENT says
+  // are one thing, and every one of them is still a row you can press again on
+  // its own. The screen says so before it happens and again afterwards, because
+  // an answer that appeared on a row you never touched is exactly the shape of
+  // the app having decided for you.
+  {
+    const many = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      fetch: async (url) => (/api\/health/.test(String(url))
+        ? { ok: true, json: async () => ({ ok: true, hasAI: false }) }
+        : { ok: false, json: async () => ({}) }),
+    });
+    many.get("#calBox").open = true;
+    const bx = many.get("#calPaste");
+    bx.value = "Whole-Staff Briefing: 18 Sep 2026; 9 Oct 2026; 6 Nov 2026";
+    bx.fire("input", { target: bx });
+    await many.settle();
+    const rows = () => calRowsOf(many);
+    const said = () => A.deep(many.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("one cell of three dates is three rows", rows().length === 3, said().slice(0, 300));
+    ok("and each says it is one of three on one line",
+       (said().match(/one of 3 on one line of the document/g) || []).length === 3,
+       said().slice(0, 400));
+    const pick = A.deep(rows()[0]).find((c) => c.tagName === "BUTTON" &&
+      String(c.textContent) === "no lessons");
+    pick.fire("click", { target: pick });
+    await many.settle();
+    ok("answering one answers all three",
+       /Put these 3 in/.test(String(many.get("#calAdd").textContent)),
+       String(many.get("#calAdd").textContent));
+    ok("and the two you did not press say why they are answered",
+       (said().match(/answered with the other 2/g) || []).length === 2, said().slice(0, 500));
+    // AND NOTHING OFFERS TO RUN ONE OF THEM INTO THE NEXT. A briefing on the
+    // 18th of September and the same briefing on the 9th of October are two
+    // meetings three weeks apart — the document said so on one line — so an
+    // offer to stretch the first over the gap is an offer to lose the other
+    // two under it.
+    ok("and none of them offers to run on to the next one",
+       !/runs on to/.test(said()), said().slice(0, 500));
+  }
+
   // AND SAID AS THE READER'S, NOT AS THE DOCUMENT'S.
   //
   // The sentence sat here bare, in the same quiet grey the document's own words

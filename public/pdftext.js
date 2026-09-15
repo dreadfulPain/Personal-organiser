@@ -277,8 +277,25 @@
 
   // The twelve, short and long, at the very end of a line. Format, not
   // vocabulary: no fact about any school is written down here.
-  const MONTH_END =
-    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?$/i;
+  // The month names, written once. Three rules below ask where a month sits on
+  // a line — at the end, at the start, anywhere — and three copies of twelve
+  // abbreviations is three chances for one of them to learn a spelling the
+  // others haven't.
+  const MON = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec";
+  const MONTH_END = new RegExp(`\\b(?:${MON})[a-z]*\\.?$`, "i");
+  const MONTH_AT = new RegExp(`^(?:${MON})[a-z]*\\.?\\b`, "i");
+  const MONTH_IN = new RegExp(`\\b(?:${MON})[a-z]*\\.?\\b`, "i");
+  // A LIST OF DATES CUT BETWEEN THE DAY AND ITS MONTH. A table cell holding a
+  // term's worth of one meeting is wider than its column, so it wraps — and it
+  // wraps wherever it happens to reach the edge, which on a real staff calendar
+  // was in the middle of "15 Dec":
+  //
+  //     8 Sep; 22 Sep; 20 Oct; 17 Nov; 15
+  //     Dec; 19 Jan
+  //
+  // Read as written that is a meeting in December lost outright, a row called
+  // "; ; ; ; 15", and a row called "Dec;".
+  const DAY_END = /[;,]\s*\d{1,2}$/;
 
   const unescapeStr = (t) =>
     t.replace(/\\([nrtbf()\\]|[0-7]{1,3})/g, (m, g) =>
@@ -521,6 +538,18 @@
         // already has — and a month at the very end of a line is never the end
         // of a sentence.
         if (MONTH_END.test(prev) && /^\d{1,2}\b/.test(l)) { join(prev + " " + l, at, " "); return; }
+        // AND A DAY THAT LOST ITS MONTH — the same break the other way round.
+        //
+        // All three parts are required, because "12" at the end of a line after
+        // a comma is otherwise an ordinary thing ("Grades 9, 10, 11, 12") and a
+        // line starting with a month is an ordinary thing too. What is not
+        // ordinary is both at once ON A LINE THAT IS ALREADY LISTING DATES: a
+        // line carrying a month, ending mid-list on a bare day, with a month
+        // beginning the next one. See DAY_END.
+        if (DAY_END.test(prev) && MONTH_IN.test(prev) && MONTH_AT.test(l)) {
+          join(prev + " " + l, at, " ");
+          return;
+        }
         // A HYPHEN ON A LINE OF ITS OWN IS THE MIDDLE OF A WORD, or of a range.
         // A school calendar is made of these — "Mid-Autumn Festival", "Oct. 1 -
         // Oct. 7", "Grade 11-12" — and every one of them came out in three

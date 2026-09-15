@@ -351,7 +351,13 @@
       // row on the page with nothing at all to recognise it by was the one this
       // skipped, for want of a name of its own to put the subject in front of.
       // It does not need one: the subject IS its name.
-      if (!x.label || x.label === "(no name)") { x.label = stem; return; }
+      // AND A CLAUSE THAT IS A DATE AND A CLOCK. "Reports Due: 6 Nov 16:00; 26
+      // Mar 16:00" leaves the second clause with nothing in it but the four
+      // o'clock — which is kept as a name where there is nothing else at all
+      // (see labelOf) and is not a name when the subject is right there. It
+      // came out "Reports Due — 16:00", with the deadline's own time sitting in
+      // its title, on every deadline after the first.
+      if (!x.label || x.label === "(no name)" || !hasWords(x.label)) { x.label = stem; return; }
       if (x.label.toLowerCase().indexOf(stem.toLowerCase()) === 0) return;
       x.label = `${stem} — ${x.label}`.slice(0, 120);
     });
@@ -384,6 +390,62 @@
     // next one, and the next one's name is everything since the last date — so
     // "Midterm Nov. 17 16:00 Final Jan. 15 16:00" gave the January deadline the
     // name "16:00 Final": the first deadline's time in the second one's name.
+    // A COMMA BETWEEN TWO DATES DIVIDES THEM; A COMMA INSIDE ANYTHING DOES NOT.
+    //
+    // A calendar separates its dates with a comma at least as often as with a
+    // semicolon, and the comma was not a separator at all. So "Parent
+    // Conferences: 21 Nov, 12 Mar, 14 May" gave March the name "Parent
+    // Conferences — , , 14 May", and "Sports Day 14 May, Speech Day 21 May,
+    // Prize Giving 4 Jun" gave the Speech Day row "Sports Day — Speech Day ,
+    // Prize Giving": its own name, the next one's, and the first one's subject,
+    // all in one line on somebody's calendar.
+    //
+    // BUT A COMMA IS ALSO ORDINARY PUNCTUATION. "Grades 9, 10 and 11 Meeting"
+    // is one name with two of them in it and "November 21, 2026" is one date
+    // with one, so cutting on every comma trades one fault for another.
+    //
+    // THE TEST IS A DATE ON BOTH SIDES OF IT, and not being inside one. Every
+    // date on the line is found first, with where it sits, because that is what
+    // the test needs and because a comma inside a date — the American way of
+    // writing one, and the way a range is often written — must be left exactly
+    // where it is. Asked before anything is blanked, for the same reason: the
+    // blanking is what would erase the evidence.
+    //
+    // Marked in the same character every other separator is blanked to, and in
+    // one character so that nothing after it moves — the positions are what tell
+    // the row this line already made where its own name stops.
+    {
+      const spans = [];
+      let scan = rest;
+      for (let n = 0; n < 12; n++) {
+        const f = findDate(scan, useYear, order);
+        const i = f && f.text ? scan.indexOf(f.text) : -1;
+        if (i < 0) break;
+        spans.push([i, i + f.text.length]);
+        scan = scan.slice(0, i) + gone(f.text.length) + scan.slice(i + f.text.length);
+      }
+      // AND EACH SIDE IS ONLY AS FAR AS THE NEXT SEPARATOR OF ANY KIND. Looked
+      // at as far as the next COMMA, the aside in "National Day: Oct. 1 - Oct.
+      // 7 (Sep. 20 is a working day, even week Tuesday schedule; Oct. 10 is a
+      // working day…)" found a date on both sides of its comma — one of them
+      // past a semicolon, in the NEXT aside — and cut the sentence in half, so
+      // the make-up day lost the weekday it stands in for.
+      const HARD = /[;,()\[\]•]/;
+      const bound = (i, step) => {
+        for (let j = i + step; j >= 0 && j < rest.length; j += step)
+          if (HARD.test(rest[j])) return j;
+        return step < 0 ? -1 : rest.length;
+      };
+      const cut = new Set();
+      for (let i = rest.indexOf(","); i >= 0; i = rest.indexOf(",", i + 1)) {
+        if (spans.some(([a, b]) => i > a && i < b)) continue;
+        const lo = bound(i, -1), hi = bound(i, 1);
+        if (spans.some(([a, b]) => a > lo && b <= i) && spans.some(([a, b]) => a >= i && b <= hi))
+          cut.add(i);
+      }
+      if (cut.size)
+        rest = rest.replace(/,/g, (m, i) => (cut.has(i) ? "•" : ","));
+    }
     (taken || []).forEach((t) => {
       const at = t ? rest.indexOf(t) : -1;
       if (at < 0) return;
@@ -420,8 +482,13 @@
       const after = (clock ? clock[0] : "") +
         rest.slice(ranAt + (clock ? clock[0].length : 0)).split(CUT)[0];
       const clause = `${before} ${after}`;
+      // AND THE FALL-BACK KEEPS THE WORDS AND NOT THE DATES. Where labelOf
+      // trimmed away everything, this took the clause as written — which on a
+      // cell whose dates are divided by nothing but spaces meant the NEXT
+      // date, whole, as the name of this one: "All staff — 6 Nov". See
+      // dropDates.
       const label = labelOf(clause, date, useYear, order) ||
-        `${before} ${after}`.replace(/\s+/g, " ").trim();
+        dropDates(`${before} ${after}`, useYear, order).replace(/\s+/g, " ").trim();
       // AND WHICH DAY IT STANDS IN FOR, when the clause names a weekday that is
       // not the one the date falls on. Same weekday means the words are only
       // naming the date and say nothing more.
@@ -484,6 +551,28 @@
     return out;
   }
 
+  // EVERY DATE A PIECE OF TEXT CARRIES, TAKEN OUT OF IT.
+  //
+  // A DATE IS NEVER PART OF A NAME. Only the date a row had taken was removed,
+  // so a table cell holding a term's worth of one meeting — "18 Sep; 9 Oct; 6
+  // Nov; 4 Dec; 8 Jan" — came out called "; 9 Oct; 6 Nov; 4 Dec; 8 Jan": four
+  // more dates sitting in the name of the first. Untidy is the least of it.
+  // Leftovers with month names in them LOOK like a name, so the line was taken
+  // to have named itself and never asked the cell above it what it was.
+  //
+  // Asked in one place because two asked it — what a row is called, and what
+  // the clause an extra date sits in is called — and the second was answering
+  // it with the raw words, dates and all.
+  function dropDates(text, defaultYear, order) {
+    let s = String(text || "");
+    for (let n = 0; n < 8; n++) {
+      const more = findDate(s, defaultYear, order);
+      if (!more || !more.text || s.indexOf(more.text) < 0) break;
+      s = s.replace(more.text, " ");
+    }
+    return s;
+  }
+
   function labelOf(line, isoDate, defaultYear, order) {
     // THE SAME LINE THE DATE WAS READ OFF. The readers take the weekday names
     // out before they look — "Monday 25 October" is the 25th of October — so
@@ -496,7 +585,7 @@
     const raw = noDayNames(line);
     const range = rangeIn(raw, defaultYear, order);
     const found = range && range.to > range.from ? range : findDate(raw, defaultYear, order);
-    let s = found.text ? raw.replace(found.text, " ") : raw;
+    let s = dropDates(found.text ? raw.replace(found.text, " ") : raw, defaultYear, order);
     // The time belongs to the block, not to what it is called — see timeOnLine.
     //
     // UNLESS IT IS ALL THERE IS. "Nov. 2 16:00" is a paper deadline at four in
@@ -1213,6 +1302,96 @@
     return labelOf(prev, "", useYear, order);
   }
 
+  // A LINE THAT CARRIES DATES AND NOT ONE WORD IS A CELL OF A TABLE.
+  //
+  //     Whole-Staff Briefing
+  //     18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan
+  //     All teaching staff
+  //     15:45
+  //
+  // That is one row of a four-column table, and a flattened PDF gives it to us
+  // one cell per line. The dates cell is the middle of it: the name is BEFORE
+  // it and the line AFTER it is the same row's next column — who it is for —
+  // which is how every meeting in a real staff calendar came out named after
+  // its own audience, or after nothing at all.
+  //
+  // THE TELL IS THAT THERE IS NOT ONE WORD ON IT, AND THAT IT IS A LIST.
+  //
+  // A line with words names itself, however many dates it carries. A line of
+  // nothing but dates and the punctuation between them cannot: it is not a
+  // sentence, not a heading and not a title.
+  //
+  // AND A LIST IS NOT A SPAN. "Mon 24 May - Fri 28 May" is two dates and ONE
+  // entry, whose name sits wherever that document puts names — under it, as
+  // often as not. "18 Sep; 9 Oct; 6 Nov" is several entries, and only a cell
+  // holds several entries with no name on the line. Read as the same thing,
+  // reaching upwards took the previous entry's detail sentence ("In the
+  // library, 18:00.") and called a week's holiday by it. The dash is the
+  // difference, and it is the document's own mark rather than a guess.
+  function cellOfDates(line, useYear, order) {
+    let s = noDayNames(String(line || ""));
+    let n = 0;
+    for (; n < 8; n++) {
+      const f = findDate(s, useYear, order);
+      if (!f || !f.text || s.indexOf(f.text) < 0) break;
+      s = s.replace(f.text, " ");
+    }
+    return n >= 2 && /[;,]/.test(s) && /^[\s;,.:•*|\t]*$/.test(s) ? n : 0;
+  }
+
+  // AND THE CELL BEFORE IT IS WHAT IT IS CALLED.
+  //
+  // ONE LINE, AND THE LINE HAS TO BE IN THIS COLUMN. A flattened table says
+  // which column a line came out of by how far it is indented, so a line at a
+  // different indent is a different column — the table's heading row, not this
+  // row's name — and reaching through it collected "Meeting Dates Who Time"
+  // and put that in front of every meeting in the table.
+  //
+  // AND STRICTLY ONE. Two lines up is as often the section heading over the
+  // whole table as it is the rest of a wrapped name, and nothing on the page
+  // tells those apart: "Academic-year blocks / Semester 1 / 1 September 2026 -
+  // 22 January 2027" and "Upper School Curriculum / Leaders / 10 Sep; 12 Nov;
+  // 14 Jan" are the same four lines in the same order. Taking one gives
+  // "Semester 1", which is right, and "Leaders", which is half a name — and
+  // half a name you can see is worth more than a whole one that might be the
+  // heading of the table it is in. THE GAP: a name that wrapped comes back cut
+  // to its last line. Said here rather than guessed at.
+  function nameOfCell(lines, at, useYear, order) {
+    const col = (i) => (/^\t*/.exec(String(lines[i] || "")) || [""])[0].length;
+    const T = typeof window !== "undefined" && window.OrganiserTimetable;
+    const t = tidyLine(lines, at - 1);
+    if (!t || col(at - 1) !== col(at)) return "";
+    if (dateIn(t, useYear, order) || !hasWords(t)) return "";
+    if (HEADING.test(t) || monthHeading(t) || namesItself(t)) return "";
+    if (T && T.dayOf && T.dayOf(t.replace(/[^A-Za-z]+/g, "")) >= 0) return "";
+    return labelOf(t, "", useYear, order);
+  }
+
+  // AND THE TIME IS IN A CELL OF ITS OWN, FURTHER ALONG THE SAME ROW.
+  //
+  //     Whole-Staff Briefing
+  //     18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan
+  //     All teaching staff
+  //     15:45
+  //
+  // Six briefings at a quarter to four, and the quarter to four is two cells
+  // away from the dates. A line that is nothing but a clock cannot be an entry
+  // — there is no day for it to be on — so in this column, before the next row
+  // of the table begins, it belongs to this one. What is between them is
+  // stepped over rather than read: this app has no column headings to know
+  // what "All teaching staff" IS, and guessing would be inventing a field.
+  function timeOfCell(lines, at, useYear, order) {
+    const col = (i) => (/^\t*/.exec(String(lines[i] || "")) || [""])[0].length;
+    for (let i = at + 1; i < lines.length && i <= at + 4; i++) {
+      const t = tidyLine(lines, i);
+      if (!t || col(i) !== col(at) || dateIn(t, useYear, order)) return null;
+      if (hasWords(t)) continue;
+      const clock = timeOnLine(t);
+      if (clock) return clock;
+    }
+    return null;
+  }
+
   function nameBelow(lines, at, useYear, order) {
     const next = tidyLine(lines, at + 1);
     if (!next || dateIn(next, useYear, order) || !hasWords(next)) return "";
@@ -1382,6 +1561,33 @@
     const gridMonthYear = wg ? weekGridMonths(wg, useYear) : new Map();
     const rows = [];
     const lines = all.split(LINE_BREAKS);
+    // ONE CELL, ONE THING, SEVERAL DAYS.
+    //
+    // "Whole-Staff Briefing | 18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan | All teaching
+    // staff | 15:45" is ONE row of a document describing FIVE occurrences of
+    // ONE meeting. They share a name, a time, whoever it is for and the line
+    // they came off; the only thing that differs is the day. So they are told
+    // apart from five unrelated rows that happen to sit together — the panel
+    // can ask about a termly briefing once instead of five times, and a row can
+    // say what it is one of.
+    //
+    // WHAT IS NOT A SERIES, and both matter:
+    //   · TWO DIFFERENT THINGS ON ONE LINE. "Midterm Nov. 17, Final Jan. 15" is
+    //     a midterm and a final — one line, two names, two events. The tell is
+    //     the name: occurrences of one thing are called one thing.
+    //   · TWO THINGS ON ONE DAY. A cell holding a briefing at eight and a
+    //     conference at half past three is two events that share a date, which
+    //     is the one thing occurrences of a series never do.
+    //   · ONE DATE. A tag on every row would say nothing at all.
+    let seriesN = 0;
+    const markSeries = (kin) => {
+      if (kin.length < 2) return;
+      const name = (x) => String(x.label || "").toLowerCase().replace(/\s+/g, " ").trim();
+      if (new Set(kin.map(name)).size !== 1) return;
+      if (new Set(kin.map((x) => x.date)).size !== kin.length) return;
+      const id = `series-${++seriesN}`;
+      kin.forEach((x) => { x.series = id; x.ofSeries = kin.length; });
+    };
     // THE YEAR A MONTH HEADING PUTS OVER THE DATES UNDER IT.
     //
     // "AUGUST 2026" and then "Thu 27 Aug"; "JANUARY 2027" and then "Mon 4 Jan".
@@ -1464,9 +1670,19 @@
           // of calls it. See nameAbove.
           ...(function () {
             const own = labelOf(line, d, yr, order);
+            // A CELL OF DATES IS NAMED BY THE CELL BEFORE IT, AND BY NOTHING
+            // AFTER IT. The line below is the same table row's next column —
+            // who it is for, what time it starts — not the next entry's name.
+            // See cellOfDates.
+            const cell = cellOfDates(line, yr, order);
+            if (cell) {
+              const named = nameOfCell(lines, at, yr, order);
+              if (named) return { label: named, nameFrom: "column" };
+            }
             const above = nameAbove(lines, at, yr, order);
             const near = !hasWords(own) && !above.name
-              ? nameJustAbove(lines, at, yr, order) || nameBelow(lines, at, yr, order)
+              ? nameJustAbove(lines, at, yr, order) ||
+                (cell ? "" : nameBelow(lines, at, yr, order))
               : "";
             if (near) return { label: near, nameFrom: "column" };
             // AND WHERE IT CAME FROM. A name the line did not carry is not the
@@ -1482,7 +1698,8 @@
           // When the line said one. Empty means all day, which is what a
           // holiday is and what every row used to be.
           ...(function () {
-            const t = timeOnLine(line);
+            const t = timeOnLine(line) ||
+              (cellOfDates(line, yr, order) ? timeOfCell(lines, at, yr, order) : null);
             return t ? { start: t.start, end: t.end } : {};
           })(),
           line,
@@ -1519,8 +1736,23 @@
           const cut = Math.min(...more.map((x) => x.clauseAt));
           const head = noDayNames(line).slice(0, cut).replace(/[\s(;,:•-]+$/, "");
           const short = labelOf(head, d, yr, order);
-          if (short) rows[rows.length - 1].label = short;
-          underStem(subjectOf(short), more);
+          const parent = rows[rows.length - 1];
+          if (short) parent.label = short;
+          // AND WHERE THE LINE HAD NO NAME OF ITS OWN, THE CELL'S NAME IS ALL
+          // OF THEM. "18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan" in the cell after
+          // "Whole-Staff Briefing" is five whole-staff briefings — not one
+          // briefing and four days with nothing at all on them, which is how
+          // every recurring meeting in a real staff calendar arrived.
+          underStem(short ? subjectOf(short) : (parent.nameFrom === "column" ? parent.label : ""),
+                    more);
+          // AND THE TIME IS THE WHOLE CELL'S. Six briefings at a quarter to
+          // four are six meetings with a time, not one with a time and five
+          // all-day blocks over somebody's afternoons.
+          if (parent.start) more.forEach((x) => {
+            if (!x.start) { x.start = parent.start; if (parent.end) x.end = parent.end; }
+          });
+          // ONE CELL, ONE THING, SEVERAL DAYS — see series.
+          markSeries([parent].concat(more));
           // AND THE SAME GROUND UNDER THEM. A second date on one line is the
           // same entry said twice — "Oct. 16, Nov. 13" — so it rests on exactly
           // what the first one rests on. Without this the thirteenth of November
@@ -1529,6 +1761,45 @@
           const ground = rows[rows.length - 1] && rows[rows.length - 1].context;
           if (ground) more.forEach((x) => { x.context = ground.slice(); });
           rows.push(...more);
+        }
+        // AND TWO THINGS IN ONE CELL ON ONE DAY ARE TWO THINGS.
+        //
+        // "Staff Briefing 08:00; Family Conferences 15:30 | 21 Nov 2026" is a
+        // morning briefing and an afternoon conference on the same Friday, and
+        // it came out as one all-day row wearing both their names. The
+        // afternoon was simply gone, and the day it was gone from had something
+        // on it, so nothing anywhere said a thing had been lost.
+        //
+        // THE TELL IS THAT EVERY HALF CARRIES ITS OWN CLOCK. A semicolon
+        // divides plenty of things that are not two events — "Exam Week; Grades
+        // 9-12" is one event and a note about who sits it — and nothing here
+        // can tell those apart by the words, so it does not try. A time is a
+        // thing happening AT a time; two of them either side of a semicolon on
+        // one day is two things, and one untimed half is not evidence of
+        // anything. Splitting on less than all of them would invent rows out of
+        // asides, which is the fault the other way round.
+        else {
+          const parts = noDayNames(line).split(";").map((p) => p.trim()).filter(Boolean);
+          // WITH THE DATE OUT OF THE WAY FIRST. A clock is only read where it
+          // ends a clause or is announced by "at" — see timeOnLine, which is
+          // that strict so that "back by 3:30" in the middle of a sentence is
+          // not an appointment. The date usually sits after the time in a cell
+          // ("Family Conferences 15:30 | 21 Nov 2026"), so asked of the clause
+          // as written the second half of the pair had no time and the line
+          // was never split.
+          const timed = parts.map((p) => {
+            const f = findDate(p, yr, order);
+            return { p, t: timeOnLine(f && f.text ? p.replace(f.text, " ") : p) };
+          }).filter((x) => x.t && hasWords(x.p));
+          if (parts.length > 1 && timed.length === parts.length) {
+            const parent = rows[rows.length - 1];
+            rows.splice(rows.length - 1, 1, ...timed.map(({ p, t }) => ({
+              ...parent,
+              label: labelOf(p, d, yr, order) || "(no name)",
+              start: t.start,
+              end: t.end,
+            })));
+          }
         }
       });
     // AND THE GRID SETTLES THE YEARS. A line that didn't write its own year, in a
@@ -1550,6 +1821,58 @@
         }
         r.yearFromGrid = true;
       });
+    // AND WHERE THERE IS NO GRID, THE DOCUMENT'S OWN WRITTEN DATES SETTLE THEM.
+    //
+    // Most calendars have no grid. What they all have is SOME dates with the
+    // year written out: the line saying when it was issued, the term blocks at
+    // the back, the two or three entries somebody typed in full. Those say what
+    // stretch of time the document is about, and a date with no year on it
+    // belongs inside that stretch.
+    //
+    // WHAT THIS REPLACES, and why: the only thing available before was the
+    // order the dates came in — a date listed after a later one has crossed a
+    // New Year. That is right for a sentence, which runs forwards, and wrong
+    // for a table, which is sorted by nothing. On a real staff calendar the
+    // table of recurring meetings sat after a term block ending in August, so
+    // "18 Sep; 9 Oct; 6 Nov; 4 Dec; 8 Jan" — a line with no year anywhere on it
+    // — put every meeting twelve months late and the January ones twenty-four.
+    // Nobody would have spotted it: each date looked perfectly reasonable.
+    //
+    // NOTHING IS ASSUMED ABOUT WHEN A SCHOOL YEAR STARTS. The span is read off
+    // the page, the same way the grid's years are. Where the document writes no
+    // years at all, or writes them more than about fourteen months apart, there
+    // is nothing to read and nothing here changes. And where a date would fit
+    // the span in more than one year it is left exactly as it was: two answers
+    // is not an answer, and a year quietly moved is the one fault on this page
+    // that looks like no fault at all.
+    {
+      const written = rows.filter((r) => r.date && !r.yearAssumed)
+        .reduce((a, r) => a.concat([r.date, r.endsOn || ""]), []).filter(Boolean).sort();
+      const lo = written[0] || "", hi = written[written.length - 1] || "";
+      const apart = lo && hi
+        ? (Number(hi.slice(0, 4)) - Number(lo.slice(0, 4))) * 12 +
+          (Number(hi.slice(5, 7)) - Number(lo.slice(5, 7)))
+        : 99;
+      if (lo && hi && apart <= 14)
+        rows.forEach((r) => {
+          if (!r.yearAssumed || r.yearFromGrid || !r.date) return;
+          const fits = [];
+          for (let y = Number(lo.slice(0, 4)); y <= Number(hi.slice(0, 4)); y++) {
+            const moved = atYear(r.date, y);
+            if (moved && moved >= lo && moved <= hi) fits.push(moved);
+          }
+          if (fits.length !== 1 || fits[0] === r.date) return;
+          const shift = Number(fits[0].slice(0, 4)) - Number(r.date.slice(0, 4));
+          r.date = fits[0];
+          if (r.endsOn)
+            r.endsOn = atYear(r.endsOn, Number(r.endsOn.slice(0, 4)) + shift) || r.endsOn;
+          // AND SAID, in place of whatever the ordering rule had said about it.
+          // A year the app worked out and a year the document wrote must not
+          // look the same, and the REASON must be the real one.
+          r.yearRolled = false;
+          r.yearFromDoc = true;
+        });
+    }
     // AND HOW LONG EACH OF THEM RUNS, WHERE THE CALENDAR DREW IT.
     //
     // A holiday arrives as two lines — begins, ends — and pairing them is a

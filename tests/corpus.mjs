@@ -62,10 +62,13 @@ for (const doc of CORPUS) {
   const read = await PDF.read(new Uint8Array(doc.build()).buffer);
   ok("it opens", read.ok && read.text.length > 20, `${read.ok} ${read.text.length}`);
   const r = CP.read(read.text, { year: doc.year });
-  const got = new Map(r.rows.map((x) => [x.date, x]));
+  // A DAY CAN CARRY MORE THAN ONE ROW, now that a nameless entry no longer
+  // loses its place to whatever else is on its date. So a wanted date is looked
+  // for among ALL the rows on it, not in a map that keeps whichever came last.
+  const on = (d) => r.rows.filter((x) => x.date === d);
   const seen = r.rows.map((x) => `${x.date}${x.endsOn && x.endsOn !== x.date ? "→" + x.endsOn : ""} ${x.label}`);
   doc.want.forEach(([date, name, endsOn]) => {
-    const row = got.get(date);
+    const row = on(date).find((x) => name.test(x.label)) || on(date)[0];
     ok(`${date} is read`, !!row, JSON.stringify(seen));
     if (!row) return;
     ok(`  and called something like ${name}`, name.test(row.label), row.label);

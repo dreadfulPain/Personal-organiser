@@ -397,6 +397,15 @@ export const CORPUS = [
       "Mon 24 May - Fri 28 May",
       "Spring Recess",
       "No scheduled classes.",
+      "Thu 13 May",
+      "Staff Meeting",
+      "In the hall, 16:00.",
+      "Thu 13 May",
+      "Staff Meeting Preparation",
+      "Heads of department only, 15:00.",
+      "Thu 20 May",
+      "Book Fair",
+      "In the library all week.",
       "Term blocks",
       "Autumn Recess",
       "26 October 2026 - 30 October 2026",
@@ -404,9 +413,15 @@ export const CORPUS = [
       "24 May 2027 - 28 May 2027",
       "Study Leave",
       "7 June 2027 - 11 June 2027",
+      "Termly briefings",
+      "20 May; 17 June; 15 July",
     ])),
     want: [
       ["2027-05-04", /Founders Day|Governors meeting/],
+      ["2027-05-13", /Staff Meeting/],
+      ["2027-05-20", /Book Fair|name/],
+      ["2027-06-17", /./],
+      ["2027-07-15", /./],
       ["2027-05-24", /Spring Recess/, "2027-05-28"],
       ["2027-06-07", /Study Leave/, "2027-06-11"],
       // The first block of the table has nothing above it, so it keeps no name
@@ -416,7 +431,16 @@ export const CORPUS = [
       ["2026-10-26", /./, "2026-10-30"],
     ],
     // Two different things on the 4th, and the reader must keep both.
-    twoOn: ["2027-05-04"],
+    // AND A NAME BEING THE START OF ANOTHER IS NOT ENOUGH. "Staff Meeting" and
+    // "Staff Meeting Preparation" on one day are two things — one of them is
+    // preparing for the other — and a prefix rule on its own would throw one
+    // away.
+    // AND A LINE CARRYING SEVERAL OTHER DATES IS NOT A SECOND SAYING OF THE DAY
+    // IT SHARES. A nameless row used to lose its place to any named row on the
+    // same day, which is a merge on the date alone: a staff briefing was thrown
+    // away because a book fair was on that afternoon. A date and nothing else on
+    // its line is the same day drawn twice; a date in a list of five is not.
+    twoOn: ["2027-05-04", "2027-05-13", "2027-05-20"],
     // One thing said twice, which must come out once and remember both places.
     onceOnly: ["2027-05-24"],
   },

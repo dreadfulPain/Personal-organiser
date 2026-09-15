@@ -1658,6 +1658,25 @@
         const theirs = o.label.toLowerCase();
         if (theirs.length <= mine.length) return false;
         if (theirs.indexOf(mine) !== 0 || mine.length < 6) return false;
+        // AND THE EXTRA IS A QUALIFIER, NOT ANOTHER SUBJECT.
+        //
+        // A name being the start of another is NOT on its own enough, and it is
+        // the dangerous half of this rule. "Staff Meeting" and "Staff Meeting
+        // Preparation" on one day are two things — one of them is preparing for
+        // the other — and merging them would throw a real entry away. "Staff
+        // Preparation" and "Staff Preparation Days" are one thing written two
+        // ways.
+        //
+        // What separates them is how much the longer name adds: a short trailing
+        // word is a plural or a qualifier, a long one names an activity of its
+        // own. Deliberately narrow — the exact-name match above is the main way
+        // two sayings meet, and this only catches the small change a document
+        // makes between its list and its table.
+        const extra = theirs.slice(mine.length).trim();
+        if (!/^[a-z]{1,6}$/.test(extra)) return false;
+        // AND NOTHING THEY SAY CONTRADICTS. Two clocks that disagree are two
+        // events whatever they are called.
+        if (r.start && o.start && r.start !== o.start) return false;
         // The one that is kept carries where the other was written down too.
         o.alsoFrom = (o.alsoFrom || []).concat([r.line]).slice(0, 4);
         return true;
@@ -1671,18 +1690,37 @@
     // once as a bare heading with nothing to call it. Both kept, you label the
     // same day twice.
     const named = new Set(out.filter((r) => r.label !== "(no name)").map((r) => r.date));
-    // AND THE LINE IT WAS DROPPED FOR KEEPS ITS LINE. A day written twice — once
-    // where the reader could name it and once where it could not — is one
-    // entry, and losing the second saying without a word is losing half of what
-    // there is to check it against.
-    out.forEach((r) => {
-      if (r.label !== "(no name)" || !named.has(r.date) || !r.line) return;
-      out.forEach((o) => {
-        if (o === r || o.date !== r.date || o.label === "(no name)" || o.line === r.line) return;
-        o.alsoFrom = (o.alsoFrom || []).concat([r.line]).slice(0, 4);
-      });
-    });
-    out = out.filter((r) => r.label !== "(no name)" || !named.has(r.date));
+    // AND ONLY A SQUARE OF THE GRID LOSES ITS PLACE THIS WAY.
+    //
+    // This dropped ANY nameless row that shared a day with a named one, which is
+    // a merge on the date alone — the one thing that must not be done, because
+    // two different things happen on one day all the time. On a real calendar it
+    // quietly threw away a staff meeting because a family conference was on the
+    // same afternoon, and then, once dropping came with provenance, the
+    // conference claimed the meeting's line as evidence FOR ITSELF. A false
+    // claim about where something came from is worse than the duplicate it was
+    // avoiding.
+    //
+    // The case it was written for is narrower and is about one document saying
+    // one thing twice: a square of a grid, or a cell of a table, that holds a
+    // date AND NOTHING ELSE, on a day the document names elsewhere. That is the
+    // same day drawn twice. A line carrying four other dates is not that — it is
+    // something the reader could not name, and it stays.
+    // NOT YET PINNED BY A FIXTURE, and said so. The shape that needs this —
+    // a nameless row sharing a day with a named one, whose line carries a list
+    // of other dates — cannot be built here yet, because a date cell holding a
+    // list still comes out with a fragment of that list for a name rather than
+    // with no name at all. It gets its fixture when that is mended. Until then
+    // it is exercised by a real document and by nothing committed, which is
+    // worth knowing and worth not pretending otherwise.
+    const bare = (r) => {
+      const line = String(r.line || "");
+      if (hasWords(labelOf(line, r.date, useYear, order))) return false;
+      // One month named on it, or none. Five is a list of other days.
+      const named2 = MONTHS.filter((m) => new RegExp(`\\b${m}`, "i").test(line)).length;
+      return named2 <= 1 && !/\d[^\d]{0,3}\d{1,2}\s*[;,]\s*\d/.test(line);
+    };
+    out = out.filter((r) => r.label !== "(no name)" || !named.has(r.date) || !bare(r));
     return {
       rows: out,
       // AND WHETHER IT THINKS IT GOT EVERYTHING.

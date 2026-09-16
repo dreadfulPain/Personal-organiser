@@ -1353,6 +1353,82 @@ const askCal = async (body) => {
        JSON.stringify((one.answers || [])[0]));
   }
 
+  // ---- AND WHAT THE APP CAN ANSWER FOR ITSELF, IT DOES NOT ASK ABOUT -----
+  //
+  // A whole calendar went to a model one batch at a time, and the model spent
+  // the best part of an hour being asked whether Christmas is a holiday — while
+  // the check waiting behind it already knew, because the document writes
+  // "Holidays" over the list Christmas is in and the app knows what its own
+  // words mean. Every answer came back and was checked against exactly the
+  // evidence that could have produced it.
+  //
+  // So the evidence goes first. The model is shown only what is genuinely open,
+  // and the answers that need no model survive a model that never runs.
+  {
+    const decide = (cands, about) => askCal({ year: 2026, about: about || "Pod 1 group leader",
+      decideOnly: true, text: "some calendar", candidates: cands });
+    const one = (over, label, line) => ([{ n: 1, date: "2026-11-13", endsOn: "",
+      label, line, context: [over, line] }]);
+
+    const off = await decide(one("Closures:", "Autumn break", "13 November 2026"));
+    ok("an entry under a heading that says closed is settled without asking",
+       ((off.answers || [])[0] || {}).means === "off",
+       JSON.stringify((off.answers || [])[0]));
+    ok("  and says it is the document talking, not a reader thinking",
+       /the document says so, in as many words/.test(((off.answers || [])[0] || {}).why || ""),
+       JSON.stringify((off.answers || [])[0]));
+    const due = await decide(one("Submission deadlines:", "Midterm — Papers In", "2 Nov 16:00"));
+    ok("a cell under a heading that says deadlines is settled too",
+       ((due.answers || [])[0] || {}).means === "due",
+       JSON.stringify((due.answers || [])[0]));
+    // AND NOTHING IT CANNOT PROVE. The whole point is that what is left is
+    // genuinely open, not that the list gets shorter.
+    const open = await decide(one("Whole-school events:", "Induction morning", "13 November 2026"));
+    ok("while an entry whose words say nothing is left for the model",
+       !((open.answers || [])[0] || {}).means,
+       JSON.stringify((open.answers || [])[0]));
+    // AND TWO ANSWERS AT ONCE IS AMBIGUITY, WHICH IS WHAT THE MODEL IS FOR. A
+    // line naming a holiday AND the timetable a working day follows says both.
+    const both = await decide(one("Closures:",
+      "Autumn break", "13 Nov is a working day, even week Wednesday schedule"));
+    ok("and where its own words say two different things, nobody is settled on",
+       !((both.answers || [])[0] || {}).means,
+       JSON.stringify((both.answers || [])[0]));
+    // AND WHAT THE ROW IS CALLED CAN STOP IT BEING SETTLED AT ALL. A day the
+    // document calls a working day, inside a list of closures, is the exception
+    // that list is announcing — and it is the one case where being decided
+    // without anybody asking would be worst, because nobody proposed it.
+    const exception = await decide(one("Closures:",
+      "Autumn break — is a working day", "13 November 2026"));
+    ok("a row whose own name says the opposite is not settled by its heading",
+       !((exception.answers || [])[0] || {}).means,
+       JSON.stringify((exception.answers || [])[0]));
+    // AND WHOSE IT IS NEEDS NO MODEL EITHER, which is the half that used to be
+    // downstream of one: a meeting labelled for years somebody does not teach
+    // came back as blank buttons the moment the model ran out of time.
+    const theirs = await decide([{ n: 1, date: "2026-11-13", endsOn: "",
+      label: "Pod 9-10 leaders' briefing", line: "Pod 9-10 leaders' briefing, 13 Nov 2026",
+      context: ["Pod 9-10 leaders' briefing, 13 Nov 2026"] }]);
+    ok("somebody else's meeting is set aside with no model in the room",
+       ((theirs.answers || [])[0] || {}).mine === "no",
+       JSON.stringify((theirs.answers || [])[0]));
+    // AND THE SHAPE STILL HAS TO FIT. A stretch of days cannot be due on one.
+    const span = await decide([{ n: 1, date: "2026-11-13", endsOn: "2026-12-13",
+      label: "Submission window", line: "13 Nov - 13 Dec 2026",
+      context: ["Submission deadlines:", "13 Nov - 13 Dec 2026"] }]);
+    ok("and a stretch of days is still not due on one of them",
+       !((span.answers || [])[0] || {}).means,
+       JSON.stringify((span.answers || [])[0]));
+    // AND NO MODEL IS ASKED. Counted at the far end: this pass must not reach
+    // one, or it is not a pass, it is another round trip with extra steps.
+    {
+      const before = chats.length;
+      await decide(one("Closures:", "Autumn break", "13 November 2026"));
+      ok("and no model is asked for any of it", chats.length === before,
+         `${chats.length - before} asked`);
+    }
+  }
+
   // ---- AND POINTING AT THE RIGHT LINE IS NOT THE LINE SAYING THE THING ---
   //
   // THE HOLE THIS CLOSES, and it took a real calendar to show it. Every check

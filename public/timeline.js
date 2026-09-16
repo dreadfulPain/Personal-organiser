@@ -519,7 +519,7 @@
     })));
     const askLot = async (candidates) => {
       const answer = await askModel("/api/calendar",
-        { text, year, about, candidates }, renderCal);
+        { text, year, about, candidates }, renderCal, by);
       if (answer.stale) return "stale";
       if (answer.stopped) { stopped = true; return "stopped"; }
       if (answer.slow) { worst = worst || "slow"; return "slow"; }
@@ -568,18 +568,59 @@
     // minutes and then hands you twenty-four decisions has not saved you
     // anything, however right each answer would have been.
     const WHOLE_JOB = 300000;
+    const by = t0 + WHOLE_JOB;
     const spent = () => msNow() - t0;
     let ranOut = false;
     let stale = false;
+    // ---- WHAT THE APP CAN ANSWER FOR ITSELF, FIRST ------------------------
+    //
+    // A whole calendar used to go to the model one batch at a time, and the
+    // model spent the best part of an hour being asked whether Christmas is a
+    // holiday — while the check waiting behind it already knew, because the
+    // document writes "Holidays" over the list Christmas is in and the app
+    // knows what its own words mean. Every answer came back and was checked
+    // against exactly the evidence that could have produced it.
+    //
+    // So the evidence goes first and the model is shown only what is open. No
+    // model is asked here and none has to exist: this is the reader and the
+    // document, and it is why a meeting labelled for years somebody does not
+    // teach stays folded away even when the model never runs. See decide.
+    //
+    // NOT THROUGH askModel, because there is nothing to wait for: no model is
+    // asked, so this cannot be slow, cannot be stopped, and must not make the
+    // page say it is asking one.
+    // AND IT CANNOT HOLD ANYTHING UP. Nothing is being waited on but a few
+    // regular expressions over words already in hand, so a few seconds is
+    // generous — and if it does not come back, the model still gets its turn
+    // and nothing has been lost but a shortcut.
+    try {
+      const quick = new AbortController();
+      const cut = setTimeout(() => quick.abort(), 5000);
+      try {
+        const res = await fetch("/api/calendar", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, year, about, candidates: numbered, decideOnly: true }),
+          signal: quick.signal,
+        });
+        const data = await res.json();
+        ((data && data.answers) || []).forEach((a) => {
+          if (a && Number.isInteger(a.n)) got.set(a.n, a);
+        });
+      } finally { clearTimeout(cut); }
+    } catch { /* the model still gets its turn */ }
     // THREE PASSES, EACH OVER WHAT IS STILL MISSING, EACH SMALLER THAN THE LAST.
     // Six, then three, then one — flat rather than splitting all the way down,
     // so the number of goes it can take is a number you can read off the page
     // rather than something that unfolds.
     for (const size of [BATCH, 3, 1]) {
       if (stopped || ranOut || stale) break;
-      const left = size === BATCH
-        ? numbered
-        : numbered.filter((c) => !got.has(c.n));
+      // AND A ROW ALREADY SETTLED IS NOT SENT. "Not yours" is a whole answer —
+      // see pileOf — so a meeting plainly labelled for years this person does
+      // not teach has nothing left to ask anybody about.
+      const left = numbered.filter((c) => {
+        const a = got.get(c.n);
+        return !a || (!a.means && a.mine !== "no");
+      });
       if (!left.length) break;
       for (let i = 0; i < left.length; i += size) {
         if (stopped) break;
@@ -647,8 +688,11 @@
     // with a date this app has not already got is OFFERED. Additive only: it
     // cannot replace, reorder or remove a single thing above it, and it cannot
     // be ticked by the button at the bottom until you have said what it is.
-    const extra = (already.r.missed || []).length && !stopped
-      ? await calExtra(text, year, about, marked)
+    // AND THE SECOND LOOK IS PART OF THE SAME JOB. It was outside the budget
+    // entirely — one more whole reading of the document, begun after the page
+    // had already said it had run out of time.
+    const extra = (already.r.missed || []).length && !stopped && !ranOut && spent() < WHOLE_JOB
+      ? await calExtra(text, year, about, marked, by)
       : [];
     const answered = got.size;
     if (!answered && worst && !extra.length) {
@@ -687,9 +731,9 @@
   // and the document must say it. What comes back is then filtered again, here,
   // against the days this app already has — because a second reading of the same
   // line is not a missed entry.
-  async function calExtra(text, year, about, have) {
+  async function calExtra(text, year, about, have, by) {
     const known = new Set(have.map((r) => r.date).filter(Boolean));
-    const got = await askModel("/api/calendar", { text, year, about }, renderCal);
+    const got = await askModel("/api/calendar", { text, year, about }, renderCal, by);
     if (!got.ok || got.stale || got.stopped || got.slow || got.failed) return [];
     const rows = Array.isArray(got.data && got.data.rows) ? got.data.rows : [];
     return rows
@@ -817,13 +861,23 @@
   // `told` is called when a request starts and when it ends, so whichever panel
   // is asking can redraw its own controls. Kept as a hook rather than calling a
   // particular panel's render, because both panels on this page ask.
-  async function askModel(url, body, told) {
+  async function askModel(url, body, told, by) {
     const mine = ++askSeq;
     // A second press replaces the first rather than joining it.
     if (asking) { asking.why = "replaced"; asking.abort(); }
     const ctl = new AbortController();
     asking = ctl;
-    const timer = setTimeout(() => { ctl.why = "slow"; ctl.abort(); }, MODEL_WAIT);
+    // AND NEVER PAST THE WHOLE JOB'S DEADLINE.
+    //
+    // The budget was checked BEFORE each call and not during one, so the last
+    // call of a run could start a millisecond inside the budget and then have
+    // two full minutes of its own — and a loop that checks a limit it cannot
+    // enforce is a limit in name. One deadline, made once, and every wait after
+    // it is however much of it is left.
+    const wait = by
+      ? Math.max(1000, Math.min(MODEL_WAIT, by - msNow()))
+      : MODEL_WAIT;
+    const timer = setTimeout(() => { ctl.why = "slow"; ctl.abort(); }, wait);
     if (told) told();
     try {
       const res = await fetch(url, {

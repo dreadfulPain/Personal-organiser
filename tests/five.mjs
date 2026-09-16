@@ -2689,6 +2689,12 @@ sec("And asking the model can be got out of, and cannot be won by the slower ans
       if (/api\/health/.test(String(url)))
         return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
       if (/api\/calendar/.test(String(url))) {
+        // THE PASS THAT ASKS NOTHING ANSWERS AT ONCE. This stand-in is a slow
+        // MODEL, not a dead server: the app now settles what the document says
+        // for itself before any model is asked, and that pass is a few regular
+        // expressions over words already in hand.
+        if (/"decideOnly":true/.test(String((init && init.body) || "")))
+          return { ok: true, json: async () => ({ answers: [], missed: [] }) };
         // Never resolves, but abortable — which is the whole point.
         return new Promise((_, no) => {
           const sig = init && init.signal;
@@ -2730,14 +2736,23 @@ sec("And asking the model can be got out of, and cannot be won by the slower ans
   const tl = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
   ok("a late answer to a replaced question is discarded",
      /if \(got\.stale\) return;/.test(tl), "a stale answer can still land on the screen");
-  // EVERY WAY OF ASKING GOES THROUGH THE ONE GUARD. Counting the calls was a
-  // proxy for that and broke the moment a third way of asking was added, which
-  // is a check failing for the opposite of the reason it exists. The question is
-  // whether anything reaches those endpoints without the guard.
+  // EVERY WAY OF ASKING A MODEL GOES THROUGH THE ONE GUARD. Counting the calls
+  // was a proxy for that and broke the moment a third way of asking was added,
+  // which is a check failing for the opposite of the reason it exists. The
+  // question is whether anything reaches a MODEL without the guard.
+  //
+  // The pass that asks no model is the exception, and it says so in the
+  // request: decideOnly. It waits on nothing, cannot be slow, and must not be
+  // stoppable or make the page claim it is asking anybody — which is the whole
+  // of what the guard is for. It carries its own short way out instead.
   ok("and every panel asks through the one guard",
      tl.split("\n").filter((l) => /"\/api\/(calendar|timetable)"/.test(l))
-       .every((l) => /askModel\(/.test(l)),
+       .every((l) => /askModel\(/.test(l) || /decideOnly/.test(tl.split("\n")
+         .slice(tl.split("\n").indexOf(l), tl.split("\n").indexOf(l) + 6).join(" "))),
      tl.split("\n").find((l) => /"\/api\/(calendar|timetable)"/.test(l) && !/askModel\(/.test(l)));
+  ok("and the one that asks nobody says so, and can give up on its own",
+     /decideOnly: true/.test(tl) && /quick\.abort\(\)/.test(tl),
+     "the pass that asks no model must be able to stop waiting for itself");
   ok("which gives up on its own", /const MODEL_WAIT = \d+;/.test(tl) &&
      /ctl\.why = "slow"; ctl\.abort\(\);/.test(tl), "nothing stops a request that never ends");
 }
@@ -3191,6 +3206,50 @@ sec("A calendar you check three things on, not thirty");
        String(notMine.get("#calAdd").textContent));
   }
 
+  // AND WHAT THE APP HAS ALREADY SETTLED IS NEVER SENT TO THE MODEL.
+  //
+  // The point of reading the document first is that the model has less to do.
+  // A row the app can place as somebody else's — two sets of numbers that do
+  // not meet — has nothing left to ask anybody about, and asking anyway is the
+  // whole cost this was meant to remove.
+  {
+    const sent = [];
+    const quiet = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Pod 1 group leader" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        // The pass that asks nobody answers as the server would: it can place
+        // this one by its numbers and settles it.
+        if (body.decideOnly)
+          return { ok: true, json: async () => ({ answers: (body.candidates || []).map((c) => ({
+            n: c.n, means: "", why: "", sure: 1, mine: /Pod 9-10/.test(c.label) ? "no" : "",
+            fromLine: "", checked: "", source: "", byReader: true })), missed: [] }) };
+        sent.push(...(body.candidates || []).map((c) => c.label));
+        return { ok: true, json: async () => ({ answers: [], missed: [] }) };
+      },
+    });
+    quiet.get("#calBox").open = true;
+    const bx = quiet.get("#calPaste");
+    bx.value = "Pod 9-10 leaders' briefing, 6 November 2026\nOpen evening, 13 November 2026";
+    bx.fire("input", { target: bx });
+    await quiet.settle();
+    const go = quiet.get("#calSecond");
+    go.fire("click", { target: go });
+    await quiet.settle();
+    ok("a row already placed as somebody else's is never sent to the model",
+       !sent.some((l) => /Pod 9-10/.test(l)), JSON.stringify(sent));
+    ok("  while the one nobody could place still goes",
+       sent.some((l) => /Open evening/.test(l)), JSON.stringify(sent));
+    const words = A.deep(quiet.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("  and it is folded away rather than left blank",
+       /don't look like yours/.test(words), words.slice(0, 300));
+  }
+
   // AND A DEADLINE SAYS WHAT PUT YOU UNDER IT.
   //
   // "Due that day" is the one answer on this panel that says something about
@@ -3463,7 +3522,7 @@ sec("A calendar you check three things on, not thirty");
     const bt = r2.get("#calSecond");
     bt.fire("click", { target: bt });
     await r2.settle();
-    const lots = asked.filter((x) => x.candidates);
+    const lots = asked.filter((x) => x.candidates && !x.decideOnly);
     ok("fourteen entries go out in more than one go", lots.length > 1, String(lots.length));
     ok("none of them a long one", lots.every((x) => x.candidates.length <= 6),
        JSON.stringify(lots.map((x) => x.candidates.length)));

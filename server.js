@@ -1969,6 +1969,17 @@ const SAYS_SO = {
 // same slip in the other list is a day gone.
 const CARRIES_ON =
   /^(?:by|on|at|in|of|for|from|until|till|all|this|next|last|and|the|an?|as|after|before|during|over|throughout)\b/;
+function saidBy(patterns, text) {
+  for (const re of patterns) {
+    const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    for (let m = rx.exec(text); m; m = rx.exec(text)) {
+      const after = text.slice(m.index + m[0].length).replace(/^\s+/, "");
+      if (!/^[a-z]/.test(after) || CARRIES_ON.test(after)) return m[0];
+    }
+  }
+  return "";
+}
+
 function saysIt(patterns, text) {
   return patterns.some((re) => {
     const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
@@ -2001,6 +2012,75 @@ function against(means, label, says, mustBy) {
   return rule.against.some((re) => re.test(mine))
     ? "the line says the opposite of that"
     : "";
+}
+
+// ---------------------------------------------------------------------------
+// AND WHAT THE APP CAN ANSWER FOR ITSELF, BEFORE ANYTHING IS ASKED.
+//
+// A whole calendar went to a model one batch at a time, and the model spent the
+// best part of an hour being asked whether Christmas is a holiday — while the
+// verifier sitting behind it already knew, because the document says "Holidays"
+// over the list Christmas is in, and the app knows what its own word "day off"
+// means. Every one of those answers came back and was checked against exactly
+// the evidence that could have produced it.
+//
+// So the evidence comes first. Where an entry's own ground SAYS one of the six
+// answers and says no other, and nothing in the entry's own name contradicts
+// it, that is not a guess to be verified — it is the document, read. The model
+// is then asked only about what is genuinely open, which on a real calendar is
+// a third of it rather than all of it.
+//
+// EXACTLY ONE, OR NOTHING. Two answers said at once is ambiguity, and ambiguity
+// is what the model and then the person are for. This is the same arithmetic
+// the verifier does, arranged so that nobody has to be asked first.
+//
+// NOTHING HERE KNOWS WHAT AN EVENT IS — see SAYS_SO. It knows what the app's own
+// six words mean, and it reads the document for them.
+function decide(c, about) {
+  const label = String(c.label || "");
+  // THE NAME IS THE DOCUMENT'S WORDS TOO.
+  //
+  // Half a calendar's entries are named by the cell above or below them rather
+  // than on their own line — "Semester begins" sits over a cell that says only
+  // "Sep. 1" — so the ground an entry rests on can hold its date and not its
+  // name. Read for the app's own words, that entry says nothing; read with the
+  // name the READER worked out from the shape of the page, it says teaching
+  // starts. The name came out of the document and belongs with the rest of it.
+  //
+  // JOINED WITH A FULL STOP, not a space. Each of these is a separate line of
+  // the document and the words at the end of one do not modify the words at the
+  // start of the next — run together, "…even week Wednesday schedule" followed
+  // by a name beginning "Autumn" reads as "schedule autumn", which is a
+  // compound, so the line stopped saying which timetable runs. See saidBy.
+  const ground = (Array.isArray(c.context) ? c.context : []).concat([label])
+    .filter(Boolean).join(" . ").replace(/\s+/g, " ").trim().toLowerCase();
+  const found = [];
+  for (const m of MEANS) {
+    const rule = SAYS_SO[m];
+    if (!rule || !rule.for.length) continue;
+    // WHAT THE ROW IS CALLED CAN VETO, and only that — a line of a calendar can
+    // carry a holiday and the working day that is its exception, so the words
+    // of the line cannot speak for either of them alone. See against.
+    if (against(m, label, "", "")) continue;
+    const said = saidBy(rule.for, ground);
+    if (said) found.push({ means: m, said });
+  }
+  if (found.length !== 1) return null;
+  const { means, said } = found[0];
+  // AND THE SHAPE STILL HAS TO FIT. A stretch of days cannot be due on one of
+  // them, whoever worked it out.
+  if (disagrees(means, c)) return null;
+  return {
+    means,
+    // SAID AS THE DOCUMENT'S, because it is. Nobody proposed this and nothing
+    // inferred it: these are the words, and this is what the app's own button
+    // means. One press changes it, like everything else here.
+    why: `the document says so, in as many words: "${said}"`,
+    source: (Array.isArray(c.context) ? c.context : []).find((x) =>
+      String(x).toLowerCase().includes(said)) || c.line || "",
+    mine: sameCohort(about, `${c.label} ${c.line} ${ground}`),
+    byReader: true,
+  };
 }
 
 function entails(means, stated, says, ground, label) {
@@ -2499,6 +2579,35 @@ async function handleCalendar(res, body, req) {
         .slice(0, 6).map((x) => String(x || "").slice(0, 300)).filter(Boolean),
     }))
     .filter((c) => c.n > 0);
+  // WHAT THE APP CAN ANSWER FOR ITSELF, ANSWERED HERE AND NOT SENT ANYWHERE.
+  // See decide. Asked for on its own by the page before any batching, so the
+  // model is only ever shown what is genuinely open — and so the answers that
+  // need no model survive a model that never runs at all.
+  if (candidates.length && body?.decideOnly === true) {
+    const answers = [];
+    candidates.forEach((c) => {
+      const said = decide(c, about);
+      // AND WHOSE IT IS, WHICH NEEDS NO MODEL EITHER. Two sets of numbers that
+      // do not meet is arithmetic — see sameCohort — and it was downstream of
+      // the model answering at all, so a meeting plainly labelled for years
+      // somebody does not teach came back as blank buttons the moment the model
+      // ran out of time.
+      const mine = sameCohort(about, `${c.label} ${c.line} ${(c.context || []).join(" ")}`);
+      if (!said && !mine) return;
+      answers.push({
+        n: c.n,
+        means: said ? said.means : "",
+        why: said ? said.why : "",
+        sure: 1,
+        mine: said ? (said.mine || mine) : mine,
+        fromLine: said ? said.source : "",
+        checked: "",
+        source: said ? said.source : "",
+        byReader: true,
+      });
+    });
+    return sendJson(res, 200, { answers, missed: [] });
+  }
   if (candidates.length) return markCalendar(res, { cfg, text, sent, year, about, candidates, req });
   try {
     const parsed = await runEngine(

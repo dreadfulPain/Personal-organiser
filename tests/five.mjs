@@ -3250,6 +3250,53 @@ sec("A calendar you check three things on, not thirty");
        /don't look like yours/.test(words), words.slice(0, 300));
   }
 
+  // AND THE APP SAYS WHICH MODEL ANSWERED, AND WHY A ROW IS SOMEBODY ELSE'S.
+  //
+  // "Read by the model in 51s" on one computer and "in eighteen minutes" on
+  // another is two facts about two different machines wearing one sentence.
+  // And "set aside — the reader thinks this isn't yours: no reason given" is
+  // the app asking to be taken on trust about the one judgement it makes
+  // entirely on its own, with no model and nobody asked. It knows exactly why.
+  {
+    const named = await open("timeline.html", {
+      schedule: [], scheduleConfig: { about: "Pod 1 group leader" },
+      config: {}, items: [], goals: [],
+    }, {
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        const body = JSON.parse((init && init.body) || "{}");
+        if (body.decideOnly)
+          return { ok: true, json: async () => ({ answers: (body.candidates || []).map((c) => ({
+            n: c.n, means: "", why: "", sure: 1,
+            mine: /Pod 9-10/.test(c.label) ? "no" : "yes",
+            whyMine: /Pod 9-10/.test(c.label)
+              ? "you said pod 1; this one is pod 9-10"
+              : "you said pod 1; this one is pod 1-8",
+            fromLine: "", checked: "", source: "", byReader: true })), missed: [] }) };
+        return { ok: true, json: async () => ({ answers: [], missed: [],
+          by: "qwen3:8b", via: "ollama" }) };
+      },
+    });
+    named.get("#calBox").open = true;
+    const bx = named.get("#calPaste");
+    bx.value = "Pod 9-10 leaders' briefing, 6 November 2026\nPod 1-8 parents' evening, 13 November 2026";
+    bx.fire("input", { target: bx });
+    await named.settle();
+    const go = named.get("#calSecond");
+    go.fire("click", { target: go });
+    await named.settle();
+    ok("the page says which model answered, not just that one did",
+       /Read by qwen3:8b via Ollama in /.test(String(named.get("#calWords").textContent || "")),
+       String(named.get("#calWords").textContent || "").slice(0, 160));
+    const words = A.deep(named.get("#calRows")).map((c) => String(c.textContent || "")).join(" | ");
+    ok("and a row set aside says what the numbers were",
+       /not yours — you said pod 1; this one is pod 9-10/.test(words), words.slice(0, 400));
+    ok("  and a row kept says the same thing the other way round",
+       /yours — you said pod 1; this one is pod 1-8/.test(words), words.slice(0, 400));
+  }
+
   // AND A DEADLINE SAYS WHAT PUT YOU UNDER IT.
   //
   // "Due that day" is the one answer on this panel that says something about

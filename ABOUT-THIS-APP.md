@@ -455,7 +455,21 @@ which one to try and exactly how.
   set and sharpen slowly. They will be wrong sometimes; the plan is built to
   survive that by staying two-thirds full.
 - **The AI is a local model.** It's good at sorting and extraction, not perfect —
-  which is exactly why the check-back and the "check me" chips exist.
+  which is exactly why the check-back and the "check me" chips exist. It now
+  says *which* one answered and how long it took — "Read by qwen3:8b via Ollama
+  in 51.0s" — because the same document on two computers took fifty-one seconds
+  and eighteen minutes, and with nothing named there is no telling a fast
+  machine from a small model.
+- **One line of a calendar can hold an entry and its exception, and the reader
+  hands both to both.** "National Day: Oct. 1-Oct. 7 (Sep. 20 is a working day,
+  even week Tuesday schedule; Oct. 10 is a working day…)" is a holiday and two
+  make-up days on one line. Each becomes its own row correctly — but each one's
+  *supporting context* is the whole line, so the holiday's ground says both
+  "Holidays" and "working day… schedule". Two answers at once is ambiguity, so
+  the app declines to settle it and asks. That is the safe way to be wrong, and
+  it costs one extra click on a row it could in principle work out. Splitting a
+  line into the clause each row came from is the fix; it is a change to how the
+  reader carves up a line, not to any of the checks, and it is not made yet.
 - **The step-by-step sorter costs time and calls.** A long thread is dozens of
   model calls rather than one. There's a hard ceiling: past it, the rest is
   parked for you to sort by hand — a big paste becoming "here's a pile" is a

@@ -1403,6 +1403,27 @@ const askCal = async (body) => {
     ok("a row whose own name says the opposite is not settled by its heading",
        !((exception.answers || [])[0] || {}).means,
        JSON.stringify((exception.answers || [])[0]));
+    // AND IT SAYS ITS WORKING. This is the one judgement the app makes entirely
+    // on its own — no model, nobody asked — so "the reader thinks this isn't
+    // yours: no reason given" is it asking to be taken on trust about exactly
+    // the decision that most needs to show what it rests on.
+    const shown = await decide([{ n: 1, date: "2026-11-13", endsOn: "",
+      label: "Pod 9-10 leaders' briefing", line: "Pod 9-10 leaders' briefing, 13 Nov 2026",
+      context: ["Pod 9-10 leaders' briefing, 13 Nov 2026"] }]);
+    ok("and it says which numbers it compared, both of them",
+       /you said pod 1/.test(((shown.answers || [])[0] || {}).whyMine || "") &&
+       /this one is pod 9-10/.test(((shown.answers || [])[0] || {}).whyMine || ""),
+       JSON.stringify((shown.answers || [])[0]));
+    // AND THE SAME THE OTHER WAY ROUND, because "this one IS yours, and here is
+    // why" is the other half of one fact — and on a row still waiting on you
+    // for what the day MEANS, it says which half is already answered.
+    const kept = await decide([{ n: 1, date: "2026-11-13", endsOn: "",
+      label: "Pod 1-8 parents' evening", line: "Pod 1-8 parents' evening, 13 Nov 2026",
+      context: ["Pod 1-8 parents' evening, 13 Nov 2026"] }]);
+    ok("  and says it when the numbers meet, not only when they miss",
+       ((kept.answers || [])[0] || {}).mine === "yes" &&
+       /you said pod 1; this one is pod 1-8/.test(((kept.answers || [])[0] || {}).whyMine || ""),
+       JSON.stringify((kept.answers || [])[0]));
     // AND WHOSE IT IS NEEDS NO MODEL EITHER, which is the half that used to be
     // downstream of one: a meeting labelled for years somebody does not teach
     // came back as blank buttons the moment the model ran out of time.

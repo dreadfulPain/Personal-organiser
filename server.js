@@ -1750,10 +1750,27 @@ function labelledNumbers(text) {
 // "yes" where a shared label's numbers meet, "no" where every shared label's
 // numbers miss, and "" where the two sides share no label at all — which is
 // most of the time, and is not an answer.
+// AND IT SAYS ITS WORKING. "Set aside — the reader thinks this isn't yours: no
+// reason given" is the app asking to be taken on trust about the one kind of
+// decision it makes entirely on its own. It knows exactly why: two numbers
+// under a word you both used, and they do not meet. Saying so is what makes a
+// decision nobody proposed safe to leave in place.
 function sameCohort(about, words) {
+  const said = cohort(about, words);
+  return said.mine;
+}
+
+function cohort(about, words) {
+  const none = { mine: "", why: "" };
   const mine = labelledNumbers(about);
-  if (!mine.size) return "";
+  if (!mine.size) return none;
   const theirs = labelledNumbers(words);
+  const asRange = (set) => {
+    const ns = [...set].sort((a, b) => a - b);
+    return ns.length > 1 && ns[ns.length - 1] - ns[0] === ns.length - 1
+      ? `${ns[0]}-${ns[ns.length - 1]}`
+      : ns.join(", ");
+  };
   // EVERY SHARED LABEL IS A CONSTRAINT, AND ONE THAT PLAINLY MISSES SETTLES IT.
   //
   // Taking the first overlap as the answer let a match on one dimension rescue
@@ -1767,17 +1784,19 @@ function sameCohort(about, words) {
   // whatever it is, which errs towards the folded-away pile: visible, counted,
   // and one press to claim back. The other way round is somebody else's meeting
   // ticked into your week.
-  let shared = false, meets = false;
+  let shared = false, meets = false, why = "";
   for (const [word, ours] of mine) {
     const them = theirs.get(word);
     if (!them || !them.size) continue;
     shared = true;
     let hit = false;
     for (const n of ours) if (them.has(n)) { hit = true; break; }
-    if (!hit) return "no";
+    const both = `you said ${word} ${asRange(ours)}; this one is ${word} ${asRange(them)}`;
+    if (!hit) return { mine: "no", why: both };
+    if (!meets) why = both;
     meets = true;
   }
-  return shared && meets ? "yes" : "";
+  return shared && meets ? { mine: "yes", why } : none;
 }
 
 // WHAT THE APP CAN CHECK FOR ITSELF, WHICH IS NOT WHAT THE MODEL SAYS IT IS
@@ -2454,8 +2473,8 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates, req
       // two sets of numbers meet is a fact, and a fact beats a judgement about
       // the same thing. Where there is nothing to compare it says so and the
       // model's answer stands.
-      const bySets = sameCohort(about, `${c.label} ${c.line} ${c.context.join(" ")}`);
-      const mine = bySets || mineMeans(about, a.mine);
+      const numbers = cohort(about, `${c.label} ${c.line} ${c.context.join(" ")}`);
+      const mine = numbers.mine || mineMeans(about, a.mine);
       // AND WHICH GATE AN ANSWER HAS TO PASS DEPENDS ON WHAT IT CLAIMS.
       //
       // Four of the six say what happens to the working day — a holiday, a day
@@ -2499,6 +2518,7 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates, req
         // meeting into somebody's week. Asked nothing, its answer counts for
         // nothing. See mineMeans.
         mine,
+        ...(numbers.why ? { whyMine: numbers.why } : {}),
         fromLine: said,
         checked: checked.checked || fits,
         source: checked.source,
@@ -2517,6 +2537,16 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates, req
     const missed = candidates.map((c) => c.n).filter((n) => !seen.has(n));
     return sendJson(res, 200, {
       answers, missed,
+      // WHICH MODEL ACTUALLY ANSWERED, AND ON WHAT.
+      //
+      // "Read by the model in 51s" on one computer and "in 18 minutes" on
+      // another is two facts about two different machines wearing one sentence.
+      // The name in the settings file is not it either — see modelHere: what
+      // this computer HAS is what answers, and the two differ often enough that
+      // the app already goes and looks. So it says which, because a result you
+      // cannot attribute is a result you cannot compare.
+      by: await modelHere(cfg),
+      via: cfg.engine,
       ...(parsed && parsed.__cut ? { shortAnswer: true } : {}),
       ...(text.length > sent.length ? { cut: sent.length } : {}),
     });
@@ -2592,7 +2622,8 @@ async function handleCalendar(res, body, req) {
       // the model answering at all, so a meeting plainly labelled for years
       // somebody does not teach came back as blank buttons the moment the model
       // ran out of time.
-      const mine = sameCohort(about, `${c.label} ${c.line} ${(c.context || []).join(" ")}`);
+      const numbers = cohort(about, `${c.label} ${c.line} ${(c.context || []).join(" ")}`);
+      const mine = numbers.mine;
       if (!said && !mine) return;
       answers.push({
         n: c.n,
@@ -2600,6 +2631,8 @@ async function handleCalendar(res, body, req) {
         why: said ? said.why : "",
         sure: 1,
         mine: said ? (said.mine || mine) : mine,
+        // WHY IT IS OR IS NOT THEIRS, in the document's numbers and their own.
+        ...(numbers.why ? { whyMine: numbers.why } : {}),
         fromLine: said ? said.source : "",
         checked: "",
         source: said ? said.source : "",

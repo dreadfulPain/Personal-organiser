@@ -487,6 +487,9 @@
     const t0 = msNow();
     const got = new Map();
     let stopped = false, worst = null, sawText = "", short = false, cutAt = 0, refused = "";
+    // WHICH MODEL ANSWERED, as this computer reported it — see modelHere. Not
+    // the name in the settings file: what the machine HAS is what answers.
+    let byModel = "", viaEngine = "";
     // AND THE THINGS MARKED ON THE GRID ITSELF, in the same breath.
     //
     // A term grid carries a symbol against some days and a legend saying what
@@ -540,6 +543,8 @@
       });
       if (d.shortAnswer) short = true;
       if (d.cut) cutAt = d.cut;
+      if (d.by) byModel = d.by;
+      if (d.via) viaEngine = d.via;
       return "ok";
     };
     // ---- HOW LONG THE WHOLE THING IS ALLOWED TO TAKE -----------------------
@@ -649,6 +654,10 @@
         why: a.why || "",
         sure: typeof a.sure === "number" ? a.sure : 1,
         mine: a.mine || "",
+        // AND WHY, WHERE IT WAS THE NUMBERS THAT DECIDED — see cohort. The one
+        // judgement this app makes entirely on its own is the one that most
+        // needs to show its working.
+        ...(a.whyMine ? { whyMine: a.whyMine } : {}),
         fromLine: a.fromLine || "",
         checked: a.checked || "",
         source: a.source || "",
@@ -664,7 +673,7 @@
       const a = got.get(rows.length + j + 1);
       if (!a) return;
       const as = { ...m, means: a.means, sure: a.sure, mine: a.mine, checked: a.checked,
-        why: a.why, source: a.source };
+        why: a.why, whyMine: a.whyMine, source: a.source };
       // ONE TEST, THE SAME ONE. A mark is trusted on exactly the terms a row is:
       // see trusted.
       //
@@ -703,7 +712,7 @@
     }
     if (stopped && !answered) return calFallBack("Stopped waiting, so:");
     calShow({ ...already.r, rows: marked.concat(extra), from: "model" },
-      `Read by the model in ${took(msNow() - t0)}. ` +
+      `Read by ${modelWords(byModel, viaEngine)} in ${took(msNow() - t0)}. ` +
       calCut(cutAt) + calShort(short) + calNoProfile(about) +
       calMoreFound(extra.length, already.r.missed || []) +
       calLeftOver(all - answered, all, stopped, ranOut));
@@ -1004,9 +1013,12 @@
       const said0 = calMarkWhy.get(i);
       if (said0) {
         const w = el("span", "muted cal-hint cal-mark-why cal-thinks",
-          (said0.mine === "no"
-            ? "set aside — the reader thinks this isn't yours: "
-            : "the reader thinks: ") + (said0.why || "no reason given"));
+          said0.mine === "no"
+            // WHY, NOT "no reason given". Where the numbers decided there IS a
+            // reason and the app has it: a decision nobody proposed is only
+            // safe to leave in place if you can see what it rests on.
+            ? `set aside — ${said0.whyMine || `the reader thinks this isn't yours: ${said0.why || "no reason given"}`}`
+            : `the reader thinks: ${said0.why || "no reason given"}`);
         wrap.appendChild(w);
         // AND THE DOCUMENT'S OWN WORDS UNDER IT, so the two can never be read as
         // one thing. A mark's evidence is the line of the legend that names it.
@@ -1418,6 +1430,7 @@
         row.appendChild(s);
       }
       drawDueBy(r, row);
+      drawWhoseIt(r, row);
       drawAlsoFrom(r, row);
       const change = document.createElement("button");
       change.type = "button";
@@ -1428,6 +1441,40 @@
       box.appendChild(row);
     });
   }
+
+  // WHICH MODEL, SAID PLAINLY, BESIDE HOW LONG IT TOOK.
+  //
+  // "Read by the model in 51s" on one computer and "in eighteen minutes" on
+  // another is two facts about two different machines wearing one sentence —
+  // and with nothing naming either, there is no way to tell a fast machine from
+  // a small model, or to know which of your computers to trust with a long
+  // document. Said only when the computer told us; "the model" is still the
+  // honest answer when it did not.
+  const modelWords = (name, engine) =>
+    name
+      ? `${name}${engine && engine !== "ollama" ? ` via ${engine}` : engine ? " via Ollama" : ""}`
+      : "the model";
+
+  // AND WHOSE IT IS, WHERE THE NUMBERS DECIDED IT.
+  //
+  // This is the only judgement the app makes entirely on its own, with no model
+  // and nobody asked — two numbers under a word you both used, meeting or not
+  // meeting. It said "set aside — the reader thinks this isn't yours: no reason
+  // given", which is the app asking to be taken on trust about exactly the
+  // decision that most needs to show its working.
+  //
+  // Said either way round, because "this one IS yours, and here is why" is the
+  // other half of the same fact — and on a row still waiting on you for what
+  // the day MEANS, it says which half of the question is already answered.
+  const drawWhoseIt = (r, row) => {
+    if (!r.whyMine) return;
+    const el = document.createElement("span");
+    el.className = "muted cal-hint cal-whose";
+    el.textContent = r.mine === "no"
+      ? `not yours — ${r.whyMine}`
+      : `yours — ${r.whyMine}`;
+    row.appendChild(el);
+  };
 
   // AND ANYWHERE ELSE THE DOCUMENT WROTE THE SAME THING.
   //
@@ -1661,6 +1708,7 @@
     p.className = "muted";
     p.textContent = "Set aside because of what you said you do — see the box above the paste area. " +
       "Say what any of them is and it goes in like the rest.";
+    void 0;
     wrap.appendChild(p);
     list.forEach(([r, i]) => drawCalRow(r, i, marks, wrap));
     box.appendChild(wrap);
@@ -1931,6 +1979,7 @@
         row.appendChild(src);
       }
       drawDueBy(r, row);
+      drawWhoseIt(r, row);
       drawAlsoFrom(r, row);
       // AND WHERE THE LINE ITSELF NAMED A WEEKDAY THIS DATE IS NOT.
       //

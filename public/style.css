@@ -4488,3 +4488,6 @@ a.btn {
    existing is the whole fault this question is here to prevent — but with no
    tick, because it is not going in and a tick that does nothing is a lie. */
 .cal-folded { opacity: 0.65; }
+/* WHOSE IT IS, AND WHY. The one judgement the app makes with nobody asked, so
+   it shows its working on its own line rather than asking to be trusted. */
+.cal-whose { flex: 1 1 100%; }

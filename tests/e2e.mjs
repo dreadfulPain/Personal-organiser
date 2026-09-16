@@ -1173,6 +1173,101 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
        JSON.stringify((borrowed.answers || [])[0]));
   }
 
+  // ---- AND NO CELL MAY PROVE ITSELF OUT OF THE COLUMN BESIDE IT ----------
+  //
+  // "An entry's own ground" is only worth having if the ground is the CELL'S and
+  // not the whole table row. A two-column deadline table has two headings over
+  // one row, and both were being handed to both cells — so the paper-submission
+  // cell could prove itself by quoting the scores column, a real phrase,
+  // genuinely in the table, and about the cell next to it. That is borrowing in
+  // the one place a borrowed phrase looks most like evidence, because it comes
+  // off the same row of the same table.
+  {
+    const TABLE = ["Submission and scoring deadlines:", "Papers In", "Scores Due",
+                   "Midterm", "2 Nov 16:00", "17 Nov 16:00"].join("\n");
+    // As the reader works them out: each cell knows its row, ITS column, and
+    // its own words.
+    const LEFT = { n: 1, date: "2026-11-02", endsOn: "", label: "Midterm — Papers In",
+      line: "2 Nov 16:00",
+      context: ["Submission and scoring deadlines:", "Midterm", "Papers In", "2 Nov 16:00"] };
+    const RIGHT = { n: 1, date: "2026-11-17", endsOn: "", label: "Midterm — Scores Due",
+      line: "17 Nov 16:00",
+      context: ["Submission and scoring deadlines:", "Midterm", "Scores Due", "17 Nov 16:00"] };
+    const cite = (cell, quote) => askCal({ year: 2026, about: "Pod 1 group leader",
+      text: `MARKS:says\nSAYS:${quote}\n${TABLE}`, candidates: [cell] });
+    const bad = async (what, cell, quote) => {
+      const got = await cite(cell, quote);
+      ok(what, !!((got.answers || [])[0] || {}).checked, JSON.stringify((got.answers || [])[0]));
+    };
+    await bad("the left cell cannot prove itself by the right column's heading", LEFT, "Scores Due");
+    await bad("  nor by the right cell's own words", LEFT, "17 Nov 16:00");
+    await bad("the right cell cannot prove itself by the left column's heading", RIGHT, "Papers In");
+    await bad("  nor by the left cell's own words", RIGHT, "2 Nov 16:00");
+    // AND EACH STILL PROVES ITSELF BY ITS OWN, which is the whole point of the
+    // ground: narrow enough to be honest, wide enough to be usable.
+    for (const [what, cell, quote] of [
+      ["and the left cell still proves itself by its own column", LEFT, "Papers In"],
+      ["and the right cell still proves itself by its own column", RIGHT, "Scores Due"],
+    ]) {
+      const got = await cite(cell, quote);
+      ok(what, ((got.answers || [])[0] || {}).checked === "",
+         JSON.stringify((got.answers || [])[0]));
+    }
+    // AND THE ROW HEADING IS IN BOTH CELLS' GROUND, because it really is what
+    // both of them are in. It says which instance this is; it does not say what
+    // kind of thing the cell is, and it cannot distinguish the two columns.
+    //
+    // THIS ONE IS NOT SETTLED BY ANY RULE HERE, and the check records what
+    // happens rather than pretending otherwise. Refusing a row heading would be
+    // right for this table and wrong for the one written the other way round —
+    //
+    //     Reports due | 12 Nov | 14 Mar
+    //
+    // where the ROW says what is owed and the column says which term. Telling
+    // those apart means knowing which axis carries the kind of thing, and that
+    // is the vocabulary this app must not have.
+    const rowOnly = await askCal({ year: 2026, about: "Pod 1 group leader",
+      text: `MARKS:owed\nMUSTBY:Midterm\n${TABLE}`, candidates: [LEFT] });
+    ok("and a row heading is in its own cells' ground, for better or worse",
+       ((rowOnly.answers || [])[0] || {}).checked === "",
+       JSON.stringify((rowOnly.answers || [])[0]));
+    // WHAT IS SETTLED: it cannot be borrowed from the row NEXT DOOR.
+    const otherRow = await askCal({ year: 2026, about: "Pod 1 group leader",
+      text: `MARKS:owed\nMUSTBY:Final\n${TABLE}\nFinal\n31 Dec 16:00`, candidates: [LEFT] });
+    ok("  while another row's heading proves nothing at all",
+       /put you under a deadline aren't in what this came from/
+         .test(((otherRow.answers || [])[0] || {}).checked || ""),
+       JSON.stringify((otherRow.answers || [])[0]));
+  }
+
+  // ---- AND EVERY SHARED LABEL IS A CONSTRAINT ----------------------------
+  //
+  // Taking the first overlap as the answer let a match on one dimension rescue
+  // a miss on another. "Pod 1, Room 12" against "Pod 9-10 briefing, Room 12"
+  // came out as theirs because the room agreed — and the pod is a fact about
+  // whose it is, saying no, which nothing else agreeing makes less true.
+  {
+    const ask = (about, line) => askCal({ year: 2026, about,
+      text: `MARKS:week\n${line}`,
+      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: line, line,
+        context: [line] }] });
+    const clash = await ask("Pod 1 group leader, Room 12",
+                            "Pod 9-10 briefing in Room 12, 6 November 2026");
+    ok("a label that misses is not rescued by another that meets",
+       ((clash.answers || [])[0] || {}).mine === "no",
+       JSON.stringify((clash.answers || [])[0]));
+    const both = await ask("Pod 1 group leader, Room 12",
+                           "Pod 1-8 evening in Room 12, 6 November 2026");
+    ok("  and two that both meet are still theirs",
+       ((both.answers || [])[0] || {}).mine === "yes",
+       JSON.stringify((both.answers || [])[0]));
+    const one = await ask("Pod 1 group leader, Room 12",
+                          "Pod 1-8 evening in Room 5, 6 November 2026");
+    ok("  while one that misses sets it aside even where the other meets",
+       ((one.answers || [])[0] || {}).mine === "no",
+       JSON.stringify((one.answers || [])[0]));
+  }
+
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------
   //
   // The model is told what the person teaches, in their own words, and judges

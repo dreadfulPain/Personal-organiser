@@ -1471,8 +1471,22 @@
     if (cells) {
       const row = tidyLine(lines, cells.lo - 1);
       if (row && hasWords(row)) out.push(row);
+      // AND ITS OWN COLUMN, NOT EVERY COLUMN.
+      //
+      // All of them were pushed in, so the ground an entry's claims are checked
+      // against held the headings of the cells BESIDE it. On a two-column
+      // deadline table that means the paper-submission cell could prove itself
+      // by quoting "Score Input & Report Confirm" — a real phrase, genuinely in
+      // the table, and about the cell next to it. That is borrowing, in the one
+      // place a borrowed phrase looks most like evidence, because it comes off
+      // the same row of the same table.
+      //
+      // A cell rests on the heading of its list, the row it is in, the column IT
+      // is in, and its own words. Which column that is, is known: the cells of a
+      // row are the dated ones, in order, and the headings line up with them.
       const heads = headingsOver(lines, cells, useYear, order);
-      if (heads) out.push(...heads);
+      const j = cells.cells ? cells.cells.indexOf(at) : at - cells.lo;
+      if (heads && heads[j]) out.push(heads[j]);
     }
     out.push(line);
     return out.filter(Boolean).slice(0, 6);

@@ -1719,14 +1719,30 @@ function sameCohort(about, words) {
   const mine = labelledNumbers(about);
   if (!mine.size) return "";
   const theirs = labelledNumbers(words);
-  let shared = false;
+  // EVERY SHARED LABEL IS A CONSTRAINT, AND ONE THAT PLAINLY MISSES SETTLES IT.
+  //
+  // Taking the first overlap as the answer let a match on one dimension rescue
+  // a miss on another: "Grade 1, Room 12" against "Grade 9-10 briefing, Room
+  // 12" came out as theirs, because the room agreed. The grade is a fact about
+  // whose it is and it says no; nothing else agreeing makes that less true.
+  //
+  // AND EVERY LABEL WEIGHS THE SAME, because nothing here knows that a grade is
+  // about people and a room is about a place — that is exactly the vocabulary
+  // this app must not have. So a shared label that misses sets the entry aside
+  // whatever it is, which errs towards the folded-away pile: visible, counted,
+  // and one press to claim back. The other way round is somebody else's meeting
+  // ticked into your week.
+  let shared = false, meets = false;
   for (const [word, ours] of mine) {
     const them = theirs.get(word);
     if (!them || !them.size) continue;
     shared = true;
-    for (const n of ours) if (them.has(n)) return "yes";
+    let hit = false;
+    for (const n of ours) if (them.has(n)) { hit = true; break; }
+    if (!hit) return "no";
+    meets = true;
   }
-  return shared ? "no" : "";
+  return shared && meets ? "yes" : "";
 }
 
 // WHAT THE APP CAN CHECK FOR ITSELF, WHICH IS NOT WHAT THE MODEL SAYS IT IS

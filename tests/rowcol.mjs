@@ -136,6 +136,50 @@ console.log("\nAnd the same document's chronological half agrees with it");
 }
 
 // ---------------------------------------------------------------------------
+console.log("\nAnd a cell rests on its own column, not on the one beside it");
+
+// WHAT AN ENTRY RESTS ON IS THE ONLY PLACE A CLAIM ABOUT IT MAY BE PROVED, so
+// what goes in there decides what can be borrowed. Every heading of the table
+// was handed to every cell of it — so the paper cell of a two-column deadline
+// table could prove itself by quoting the scores column: a real phrase,
+// genuinely in the table, and about the cell next to it. That is borrowing in
+// the one place a borrowed phrase looks most like evidence, because it comes
+// off the same row of the same table.
+//
+// A cell rests on the heading of its list, the row it is in, the column IT is
+// in, and its own words. Which column that is, is known: the cells of a row are
+// the dated ones, in order, and the headings line up with them.
+{
+  const r = read(CYCLE);
+  const ctx = (d) => JSON.stringify((at(r, d).context || []));
+  ok("the paper cell rests on its own column",
+     /Paper \/ Task Due/.test(ctx("2026-10-23")), ctx("2026-10-23"));
+  ok("  and not on the columns beside it",
+     !/Scores & Comments|Reports Released/.test(ctx("2026-10-23")), ctx("2026-10-23"));
+  ok("the scores cell rests on its own column",
+     /Scores & Comments/.test(ctx("2026-11-16")), ctx("2026-11-16"));
+  ok("  and not on the columns beside it",
+     !/Paper \/ Task Due|Reports Released/.test(ctx("2026-11-16")), ctx("2026-11-16"));
+  // AND ON THE ROW IT IS IN, which really is what it is in.
+  ok("while the row it is in is still under it",
+     /Mid-Semester/.test(ctx("2026-10-23")), ctx("2026-10-23"));
+  // AND ON THE SECTION HEADING, where the document writes one as a heading —
+  // words and then a colon, which is how a list says what it is a list of.
+  // "Assessment and reporting cycle" on its own line is a title, not a heading,
+  // and is not reached for: see HEADING.
+  {
+    const named = read(["Submission and scoring deadlines:", ...CYCLE.slice(1)]);
+    ok("and on the heading its list is under, where the document writes one",
+       /Submission and scoring deadlines/
+         .test(JSON.stringify(at(named, "2026-10-23").context || [])),
+       JSON.stringify(at(named, "2026-10-23").context || []));
+  }
+  // AND NEVER ANOTHER ROW'S CELL. The row below has the same three columns.
+  ok("and never a different row's own words",
+     !/18 Dec|14 Jan|21 Jan/.test(ctx("2026-10-23")), ctx("2026-10-23"));
+}
+
+// ---------------------------------------------------------------------------
 console.log("\nAnd a deadline written twice at the same hour is asked about");
 
 // WHAT READING THE TABLE PROPERLY UNCOVERED. The four cells of it that used to

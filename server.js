@@ -1912,34 +1912,75 @@ function ofItsOwn(context, said) {
 // question, and a wrong phrase in it costs somebody a day of their term.
 const SAYS_SO = {
   off: {
-    for: [/\bclos(ed|ure|ing)\b/, /\bholiday/, /\bvacation/, /\bno school\b/,
-          /\bnon-?working\b/, /\bday off\b/, /\bnot open\b/, /\bshut\b/],
+    for: [/\bclos(ed|ure|ures|ing)\b/, /\bholidays?\b/, /\bvacations?\b/,
+          /\bno school\b/, /\bnon-?working\b/, /\bday off\b/, /\bdays off\b/,
+          /\bnot open\b/, /\bshut\b/],
     against: [/\bworking day\b/, /\bopen as usual\b/, /\bnormal timetable\b/,
               /\bas usual\b/, /\bstaff on site\b/],
   },
   noLessons: {
-    for: [/\bno lessons?\b/, /\bno class(es)?\b/, /\bno teaching\b/,
+    for: [/\bno lessons?\b/, /\bno classes?\b/, /\bno teaching\b/,
           /\bclasses (are )?(cancelled|canceled|suspended)\b/, /\bstudent-free\b/,
-          /\bno students\b/, /\bstaff only\b/, /\bstaff-only\b/],
+          /\bno students\b/, /\bstaff[- ]only\b/],
     against: [/\blessons as (usual|normal)\b/, /\bnormal timetable\b/,
               /\bclasses (run|continue)\b/],
   },
   runsAs: {
-    for: [/\btimetable\b/, /\bschedule\b/, /\bruns? as\b/, /\bfollow(s|ing)? the\b/],
+    for: [/\btimetables?\b/, /\bschedules?\b/, /\bruns? as\b/],
     against: [],
   },
   lessons: {
-    for: [/\b(classes|lessons|teaching|term|semester|school year)\b[^.;]{0,30}\b(begin|begins|commence|commences|start|starts|resume|resumes)\b/,
+    for: [/\b(classes|lessons|teaching|term|semester)\b[^.;]{0,30}\b(begins?|commences?|starts?|resumes?)\b/,
           /\bfirst day\b/, /\bback to school\b/],
     against: [/\b(ends?|concludes?|finishes?)\b/],
   },
   due: {
-    for: [/\bdue\b/, /\bdeadline/, /\bsubmi(t|ssion)/, /\bhand (in|over)\b/,
-          /\bno later than\b/, /\bmust be (in|completed|finished|returned|entered)\b/,
-          /\bcomplete(d)? by\b/, /\breturn(ed)? by\b/, /\bupload/, /\bowed\b/],
+    for: [/\bdue\b/, /\bdeadlines?\b/, /\bsubmissions?\b/, /\bsubmit(ted)?\b/,
+          /\bhand (in|over)\b/, /\bno later than\b/,
+          /\bmust be (in|completed|finished|returned|entered)\b/,
+          /\bcomplete(d)? by\b/, /\breturn(ed)? by\b/, /\buploads?\b/, /\bowed\b/],
     against: [],
   },
 };
+
+// AND IT HAS TO BE THE PHRASE, NOT THE WORD SOMEWHERE IN IT.
+//
+// "Holiday concert" is not a day off. Nor is "Vacation programme", and
+// "deadline guidance meeting" is a meeting about deadlines rather than one.
+// Matched as bare words, every one of those says the thing it merely mentions —
+// which is keyword spotting, and keyword spotting is how a term gets a day
+// taken out of it by a concert.
+//
+// THE DIFFERENCE IS GRAMMATICAL AND IT IS CHECKABLE. In "Christmas Holiday:
+// Dec. 22" the word is the head of its phrase and the phrase ends there. In
+// "Holiday concert" it is modifying the noun after it: the sentence is about a
+// concert. So a match counts only where what FOLLOWS it is not another noun —
+// the end of the string, punctuation, a number, or one of a short closed list
+// of words that carry an assertion onward rather than turn it into a thing.
+//
+// "closed to" is not on that list on purpose. "Closed to students" is closed to
+// THEM, and a teacher reading it is still working; it is the same shape as "no
+// classes for Grade 12", which is somebody else's day and is caught by the
+// numbers. This costs a question on "closed to the public", which is the right
+// way round to be wrong.
+//
+// AND NOT APPLIED TO THE CONTRADICTIONS. A "normal timetable review meeting"
+// stopping a day off is a question, and a question is the safe direction; the
+// same slip in the other list is a day gone.
+const CARRIES_ON =
+  /^(?:by|on|at|in|of|for|from|until|till|all|this|next|last|and|the|an?|as|after|before|during|over|throughout)\b/;
+function saysIt(patterns, text) {
+  return patterns.some((re) => {
+    const rx = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+    for (let m = rx.exec(text); m; m = rx.exec(text)) {
+      const after = text.slice(m.index + m[0].length).replace(/^\s+/, "");
+      // Nothing after it, or something that is not a word, or a word that
+      // carries the assertion on rather than making a compound of it.
+      if (!/^[a-z]/.test(after) || CARRIES_ON.test(after)) return true;
+    }
+    return false;
+  });
+}
 
 // AND THE WORDS THE READER POINTED AT MUST NOT SAY THE OPPOSITE.
 //
@@ -2016,7 +2057,7 @@ function entails(means, stated, says, ground, label) {
   // The app knows what its own six answers mean — see SAYS_SO. It knows nothing
   // about festivals, training days or orientations, and it must not.
   const rule = SAYS_SO[means];
-  if (rule && rule.for.length && !rule.for.some((re) => re.test(words)))
+  if (rule && rule.for.length && !saysIt(rule.for, words))
     return "those words say which day it is, not what it does to your week";
   return "";
 }
@@ -2080,7 +2121,7 @@ function owed(means, by, ground) {
   // that something is owed, it proved only that the app had asked the question
   // and accepted anything as an answer. A distribution date is not a deadline;
   // pointing at it harder does not make it one.
-  return SAYS_SO.due.for.some((re) => re.test(words))
+  return saysIt(SAYS_SO.due.for, words)
     ? ""
     : "those words are a date this happens on, not a thing you owe by then";
 }

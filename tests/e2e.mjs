@@ -1431,6 +1431,42 @@ const askCal = async (body) => {
          ((runs.answers || [])[0] || {}).checked === "",
          JSON.stringify((runs.answers || [])[0]));
     }
+    // AND IT HAS TO BE THE PHRASE, NOT THE WORD SOMEWHERE IN IT.
+    //
+    // A vocabulary matched as bare words is keyword spotting, and keyword
+    // spotting is how a term loses a day to a concert. The difference is
+    // grammatical and it is checkable: in "Christmas Holiday: Dec. 22" the word
+    // is the head of its phrase; in "Holiday concert" it is modifying the noun
+    // after it, and the sentence is about a concert.
+    for (const [line, means, says] of [
+      ["Holiday concert, 13 November 2026", "off", "Holiday concert"],
+      ["Vacation programme, 13 November 2026", "off", "Vacation programme"],
+      ["Deadline guidance meeting, 13 November 2026", "due", "Deadline guidance"],
+      ["Timetable review meeting, 13 November 2026", "runsAs", "Timetable review"],
+    ]) await refused(`"${says}" does not say it, it mentions it`, line, means, says);
+    // WHILE THE SAME WORD AT THE HEAD OF ITS PHRASE DOES SAY IT.
+    await allowed("but the same word heading its own phrase does",
+                  "Winter Holiday, 13 November 2026", "off", "Winter Holiday");
+    // AND A THING CLOSED TO SOMEBODY ELSE IS NOT YOUR DAY OFF. "Closed to
+    // students" is closed to THEM, and whoever reads this is still working.
+    // Costs a question on "closed to the public", which is the right way round.
+    await refused("and closed to somebody else is not closed to you",
+                  "Site closed to students, 13 November 2026", "off", "closed to students");
+    // AND WHERE THE SENTENCE NAMES WHOSE IT IS, THE NUMBERS STILL DECIDE — so a
+    // day with no classes for a year group this person does not teach is set
+    // aside rather than taken out of their week. Same rule as everywhere else;
+    // it is not the semantics' job to know.
+    {
+      const theirs = await askCal({ year: 2026, about: "Pod 1 group leader",
+        text: "MARKS:says\nMEANS:noLessons\nSAYS:No classes\nNo classes for Pod 12, 13 November 2026",
+        candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: "No classes for Pod 12",
+          line: "No classes for Pod 12, 13 November 2026",
+          context: ["No classes for Pod 12, 13 November 2026"] }] });
+      ok("a day with no classes for somebody else's group is not your day",
+         ((theirs.answers || [])[0] || {}).mine === "no",
+         JSON.stringify((theirs.answers || [])[0]));
+    }
+
     // AND A DATE SOMETHING HAPPENS ON IS STILL NOT A DEADLINE, however real the
     // phrase pointed at. This is the same rule reaching "due": "Week 12 (Nov. 20
     // Return Paper)" is a genuine phrase about the genuine entry, and it is a

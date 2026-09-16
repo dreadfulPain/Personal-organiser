@@ -205,6 +205,9 @@
   // this is only what a place implies when nobody has said otherwise.
   const mustBeThere = (b) => !!(b && (b.beThere || String(b.where || "").trim()));
 
+  // The four the app knows, and "" for everything written before it asked.
+  const KINDS = ["teaching", "duty", "break", "other"];
+
   function normaliseBlock(b) {
     if (!b || typeof b !== "object") return null;
     const start = toMin(b.start);
@@ -277,6 +280,38 @@
       // fixed to a person rather than to the clock. Off by default: a lesson is
       // at nine whether or not you're ready for it, until you say otherwise.
       swappable: !!b.swappable,
+      // WHAT THIS BLOCK IS.
+      //
+      // A block knew where it was, who it was about, and whether you had to be
+      // in the room — and not whether it was a lesson. So "when am I teaching",
+      // "when am I on duty" and "when am I actually free" were three questions
+      // the app held all the data for and could not answer, and a day came out
+      // as an undifferentiated column of grey.
+      //
+      // FOUR WORDS AND NO MORE. Not a taxonomy of anybody's working life:
+      //   "teaching" — you are with a class.
+      //   "duty"     — you have to be somewhere, and it is not teaching.
+      //   "break"    — the day's own gaps: lunch, a free period, a breather.
+      //   "other"    — everything else, which is most things.
+      // Anything unrecognised, INCLUDING NOTHING AT ALL, stays "". Every block
+      // written before this existed is still a valid block and still draws,
+      // still plans and still counts; it just has one fewer thing to say about
+      // itself until somebody says it.
+      kind: KINDS.indexOf(b.kind) >= 0 ? b.kind : "",
+      // AND WHETHER A PLANNER MAY HAVE IT.
+      //
+      // A DIFFERENT QUESTION FROM WHAT IT IS, which is why it is a different
+      // field. Lunch is a break AND protected. A hospital appointment is
+      // neither a break nor teaching and is certainly protected. A free period
+      // you intend to work in is a break and is NOT. Fold the two together and
+      // the day you want to protect something that isn't a break, you have to
+      // lie about what it is.
+      //
+      // Nothing reads this yet beyond saying so on screen. It is here now
+      // because the planner that will read it must find the constraint already
+      // in the data rather than be trusted to remember it — a gap is only
+      // free if nothing is in it AND nothing is protecting it.
+      protected: !!b.protected,
       // DATES THIS ONE DOESN'T RUN. The exception to a repeating block: you
       // swapped it away, someone covered it, the class was out on a trip. The
       // pattern is still right for every other week, and saying "except that
@@ -396,13 +431,44 @@
     return blocksOn(schedule, iso).some((b) => (b.blocksDay || b.noLessons) && !b.soft);
   }
 
+  // WHEN AM I TEACHING, WHEN AM I ON DUTY, WHEN AM I ACTUALLY FREE.
+  //
+  // Three questions a person asks of a day, and the app could answer none of
+  // them — see kind. Asked here rather than in each view, because "does a
+  // soft block count", "does a holiday count" and "is a break free time" are
+  // the sort of question six screens answer six ways.
+  //
+  // A GUESS IS NOT A COMMITMENT. Soft blocks — the ones the app is unsure of —
+  // are left out of all three, the same way they are left out of busy time.
+  const kindOn = (schedule, iso, kind) =>
+    blocksOn(schedule, iso).filter((b) => !b.soft && b.kind === kind);
+  function teachingOn(schedule, iso) {
+    return dayIsBlocked(schedule, iso) || noTeachingOn(schedule, iso)
+      ? [] : kindOn(schedule, iso, "teaching");
+  }
+  function dutyOn(schedule, iso) {
+    return dayIsBlocked(schedule, iso) ? [] : kindOn(schedule, iso, "duty");
+  }
+  // AND FREE TIME IS gapsOn, WHICH ALREADY LEAVES PROTECTED TIME OUT — see
+  // busyOn. There is no second function for it: "when am I free" and "where can
+  // work go" are the same question, and two names for it is how they drift.
   // Merge overlapping FIXED blocks into busy intervals. Soft ones are excluded
   // on purpose — a guess never makes you unavailable.
   function busyOn(schedule, iso) {
     // A no-lessons entry is not a busy one: it says the timetable doesn't apply
     // today, not that you are occupied. A blocksDay entry IS busy, because that
     // one means you are not available at all.
-    const fixed = blocksOn(schedule, iso).filter((b) => !b.soft && !b.noLessons);
+    // AND A GUESS YOU CHOSE TO KEEP IS NOT A GUESS ANY MORE.
+    //
+    // Soft blocks are left out on purpose: the app guessing "you usually stop
+    // around five" must never make you unavailable. But marking one PROTECTED
+    // is you answering that guess — the time is spoken for, whoever first
+    // suggested it — and a planner filling it in would be overruling a decision
+    // rather than a hunch. This is the whole of what protected does today, and
+    // it is here so the constraint is in the data before anything optimises
+    // against it, rather than being a thing the planner has to remember.
+    const fixed = blocksOn(schedule, iso)
+      .filter((b) => (!b.soft || b.protected) && !b.noLessons);
     // THE JOURNEY IS BUSY TOO. Without this the planner fills the time you
     // needed to travel in, and you arrive late having done everything it said.
     //
@@ -849,5 +915,11 @@
     durationWords,
     dayWord,
     uid,
+    KINDS,
+    // THE QUESTIONS THE KIND EXISTS TO ANSWER, asked in one place so that six
+    // screens cannot each decide for themselves what counts. "When am I free"
+    // is not among them because it already had an answer: gapsOn.
+    teachingOn,
+    dutyOn,
   };
 })();

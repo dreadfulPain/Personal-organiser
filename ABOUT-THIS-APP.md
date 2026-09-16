@@ -54,6 +54,43 @@ until tomorrow. It has to be honest — if there is something, it says so — an
 has to be safe to believe, which is why everything else in this document is so
 careful about what the app claims to know.
 
+### What those two need, which is being built before the planner that uses it
+
+Neither principle is built. Both are only possible if four things are true of
+the data *before* anything tries to be clever with it, so they are being put in
+as the timetable is built rather than retrofitted onto a planner that has
+already learned to ignore them.
+
+**Protected time is a thing, not an absence.** A gap is only free if nothing is
+in it **and** nothing is protecting it. Lunch, a deliberate breather, the hour
+after you leave — those are not empty space for an optimiser to pour work into,
+and an optimiser that has to *remember* to leave them alone will eventually
+forget. So a block says what it is (`kind`: teaching, duty, break, other) and,
+separately, whether a planner may have the time (`protected`). Two questions,
+because lunch is a break and protected, a hospital appointment is neither a
+break nor teaching and is certainly protected, and a free period you intend to
+work in is a break and is not.
+
+**Departure time is a boundary, not an activity.** Leaving at four is not a
+thing you do for zero minutes at four o'clock; it is the edge of the day. It
+belongs to the working day rather than to the list of blocks in it.
+
+**Work knows where it can be done.** School-only or portable is the single fact
+that makes *protect departure time* computable at all: without it the app cannot
+tell an hour that had to be spent at school from an hour that followed you home
+for no reason.
+
+**And work knows what it is for, and how ready is ready enough.** Roughly:
+*needed by · effort · where it can be done · what lesson or event it supports ·
+what counts as prepared*. Not a form to fill in — the app sorts, you don't — but
+fields the sorter can fill and you can correct, the same way a task's date and
+effort already work.
+
+The point of all four: the app cannot say *"you are prepared through Thursday,
+nothing important becomes urgent tonight, stop"* unless it knows what was owed,
+what it was owed to, how ready counts as ready, and which of the remaining hours
+were never available to work in.
+
 Paper planners worked. Every digital organiser failed — and not because of the
 looking. **Seeing** the week on paper was effortless; **putting things in** to an
 app was not. Tapping into the right field, deciding whether a thought is a task

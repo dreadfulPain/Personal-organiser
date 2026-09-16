@@ -194,7 +194,88 @@
       : "A day of your own — no lessons, but planned to the clock as you asked.";
   }
 
+  // ---- WHAT IS DIFFERENT ABOUT TODAY ---------------------------------------
+  //
+  // THE QUESTION A TIMETABLE CANNOT ANSWER BY BEING SHOWN TO YOU. You know what
+  // a Tuesday looks like; you have taught it thirty times. What you do not know,
+  // and what costs you when you get it wrong, is the Tuesday that ISN'T one —
+  // the make-up day running Wednesday's lessons, the morning the parents are in,
+  // the week Read Aloud doesn't run. Every one of those was already in the data
+  // and none of it was ever said: the app drew the day and left you to notice.
+  //
+  // So this asks what the resolved day has that the ordinary week does not, and
+  // what the ordinary week has that the day has lost. Four things can differ,
+  // and they are the four the schedule can already represent:
+  //
+  //   runsAs  — today is running another weekday's timetable
+  //   lessons — the teaching is off, or the whole day is
+  //   added   — something is on today that is not part of any week
+  //   gone    — something that normally runs today is not running
+  //
+  // NOTHING IS A DIFFERENCE BY DEFAULT. An ordinary day returns an empty list,
+  // and an empty list is the point: a week that says "Wednesday — no changes"
+  // is five lines of reassurance to read before finding the one that matters.
+  function normalWeek(schedule) {
+    const S = window.OrganiserSchedule;
+    if (!S) return [];
+    // The repeating week: blocks that run on weekdays rather than on one date,
+    // and that are not the calendar saying a day is off.
+    return S.normalise(schedule)
+      .filter((b) => b.days.length && b.runsAs === null && !b.blocksDay && !b.noLessons);
+  }
+
+  function differsOn(schedule, iso, config) {
+    const S = window.OrganiserSchedule;
+    if (!S || !/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return [];
+    const out = [];
+    const dow = new Date(iso + "T12:00:00").getDay();
+    const asDay = S.runsAsOn ? S.runsAsOn(schedule, iso) : dow;
+    const here = S.blocksOn(schedule, iso);
+    // 1. A DAY STANDING IN FOR ANOTHER. Said first because it explains
+    //    everything else on the day: the lessons are not yours by accident.
+    if (asDay !== dow)
+      out.push({ how: "runsAs", day: asDay,
+        // The seven words, from the one place that has them — see dates.js.
+        // S.dayWord answers a different question ("today", "tomorrow", else the
+        // weekday) and wants a Date, which is not what a weekday NUMBER is.
+        words: `running ${(window.OrganiserDates && OrganiserDates.DAY_NAMES[asDay]) || "another day"}'s timetable` });
+    // 2. THE TEACHING IS OFF, or the whole day is. Named by the entry that says
+    //    so, because "no lessons" and "no lessons — Faculty Learning Day" are
+    //    the same fact and only one of them tells you anything.
+    here.filter((b) => !b.soft && (b.blocksDay || b.noLessons)).forEach((b) =>
+      out.push({ how: b.blocksDay ? "off" : "noLessons", block: b,
+        words: (b.blocksDay ? "a day off" : "no lessons") +
+          (b.label && b.label !== "(unnamed)" ? ` — ${b.label}` : "") }));
+    // 3. WHAT IS ON TODAY THAT IS NOT PART OF ANY WEEK. A one-off: it has a
+    //    date rather than weekdays, which is exactly what makes it unusual.
+    here.filter((b) => !b.blocksDay && !b.noLessons && b.date && !b.days.length).forEach((b) =>
+      out.push({ how: "added", block: b,
+        words: `${b.label}${b.start ? ` ${S.fmtTime(b.start)}` : ""}` }));
+    // 4. AND WHAT NORMALLY RUNS AND IS NOT RUNNING. The quiet one, and the one
+    //    that catches people out: nothing on the screen is wrong, something is
+    //    simply absent, and absence is exactly what looking at a timetable
+    //    cannot show you.
+    //
+    //    NOT ON A DAY STANDING IN FOR ANOTHER. A Tuesday running Monday's
+    //    timetable has lost every one of Tuesday's lessons, and that is what
+    //    "running Monday's timetable" MEANS — listing them underneath it is the
+    //    same sentence three more times, and the one line that explained the
+    //    day goes under the three that repeat it.
+    //
+    //    A day with no lessons needs no such guard: its blocks are all still
+    //    there, they are simply not taught, so nothing is missing to list.
+    if (asDay === dow) {
+      const on = new Set(here.map((b) => b.id));
+      normalWeek(schedule)
+        .filter((b) => b.days.includes(dow) && !on.has(b.id))
+        .forEach((b) => out.push({ how: "gone", block: b, words: `no ${b.label}` }));
+    }
+    void config;
+    return out;
+  }
+
   window.OrganiserDayShape = {
     STARTING_OWN, STARTING_PARTS, ownDay, workingDays, kindOf, shapeOf, loosen, words,
+    differsOn,
   };
 })();

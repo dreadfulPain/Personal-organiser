@@ -18,6 +18,42 @@ taken the preparation. The second is the price of admission. An organiser that
 buys you that foresight by charging you for every thought you put into it is one
 you stop using by week three, and then it buys you nothing.
 
+And two things that foresight is **for**, because an organiser that buys you
+time and then spends it for you has done nothing:
+
+> **Protect departure time.** Use time at work first for work that benefits from
+> being done at work; move portable work elsewhere rather than extending the
+> workday.
+
+Not all work is equal in where it can be done. Photocopying, the conversation
+with the head of year, the thing that needs the cupboard key or the classroom
+itself — those hours are the only hours those jobs have. Planning and marking
+will follow you home whatever happens. An hour at a desk after four o'clock
+spent on something that would have travelled is an hour of the immovable work
+pushed into tomorrow **and** an hour of your evening gone: the same hour lost
+twice. So when the app arranges a day, the question is not only what is most
+urgent but what this place is for, and leaving on time is a constraint the plan
+is built around rather than what is left when the plan runs out.
+
+> **The organiser must know when enough has been done.** It should explicitly
+> tell the user when current obligations and preparation are sufficiently under
+> control that they can stop working and rest without needing to keep mentally
+> checking what they may have forgotten.
+
+This is the one that makes the rest worth having. The cost of a job you have not
+written down is not the job — it is carrying it: the background checking that
+runs through the evening, through Sunday, at three in the morning, because
+nothing can tell you whether you have missed something. A system that holds
+everything and never says *this is enough* has replaced one kind of vigilance
+with another, and the person is still not resting.
+
+So **stopping is a thing the app has to say out loud.** Not a silence where the
+list happens to be empty, and not praise: a plain statement that what is due
+soon is prepared, that nothing has been dropped, and that the checking can stop
+until tomorrow. It has to be honest — if there is something, it says so — and it
+has to be safe to believe, which is why everything else in this document is so
+careful about what the app claims to know.
+
 Paper planners worked. Every digital organiser failed — and not because of the
 looking. **Seeing** the week on paper was effortless; **putting things in** to an
 app was not. Tapping into the right field, deciding whether a thought is a task

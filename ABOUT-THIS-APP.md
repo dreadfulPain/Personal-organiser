@@ -6,6 +6,18 @@
 
 ## 1. Why it exists
 
+> **The organiser's purpose is to help the user use available time early enough
+> that important work is prepared before it becomes urgent, while making
+> capturing, storing and finding information require as little effort as
+> possible.**
+
+Two halves, and both have to hold at once. The first is the point of the thing:
+the hours before something is due are the hours it can be done well in, and a
+planner that only tells you what is due tomorrow has left you the panic and
+taken the preparation. The second is the price of admission. An organiser that
+buys you that foresight by charging you for every thought you put into it is one
+you stop using by week three, and then it buys you nothing.
+
 Paper planners worked. Every digital organiser failed — and not because of the
 looking. **Seeing** the week on paper was effortless; **putting things in** to an
 app was not. Tapping into the right field, deciding whether a thought is a task

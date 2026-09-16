@@ -1883,6 +1883,85 @@ function ofItsOwn(context, said) {
 //
 // AND SAYING FALSE COSTS IT NOTHING. Most honest reading is inference — the
 // prompt says so — and inference is exactly what the "your say" pile is for.
+// ---------------------------------------------------------------------------
+// WHAT THE APP'S OWN SIX WORDS MEAN.
+//
+// THE RULE THIS BENDS, AND EXACTLY HOW FAR. Nothing in this app may know what
+// an EVENT is. "Mid-Autumn Festival is a holiday", "a PD day means no lessons"
+// — that is knowledge about one school's world, it is endless, it is wrong at
+// the next school, and it is the app deciding somebody's term from a noun.
+// That stays forbidden and there is none of it below.
+//
+// But the app DEFINED these six answers. It wrote "day off" and "due that day"
+// on its own buttons and put them in front of somebody. A verifier that does
+// not know what its own words mean is not being humble, it is being useless —
+// and it leaves every judgement to a model that, on a real calendar, read
+// "Orientation: Feb. 18-19" and proposed a holiday, read "Students Arrival" and
+// proposed a closure, and read a line saying IS A WORKING DAY and proposed a
+// day off. Each time it quoted real words that identified the event, then added
+// a consequence those words do not carry. Pointing at the right line is not the
+// same as the line saying the thing.
+//
+// So: the app's own categories get a vocabulary, and the world's events do not.
+//
+//   "for"     — words that SAY this, so a quote containing one has proved it.
+//   "against" — words that say the opposite, so nothing can propose it.
+//
+// Deliberately short, deliberately about the operation and not the occasion,
+// and deliberately biased towards asking: a phrase missing from "for" costs a
+// question, and a wrong phrase in it costs somebody a day of their term.
+const SAYS_SO = {
+  off: {
+    for: [/\bclos(ed|ure|ing)\b/, /\bholiday/, /\bvacation/, /\bno school\b/,
+          /\bnon-?working\b/, /\bday off\b/, /\bnot open\b/, /\bshut\b/],
+    against: [/\bworking day\b/, /\bopen as usual\b/, /\bnormal timetable\b/,
+              /\bas usual\b/, /\bstaff on site\b/],
+  },
+  noLessons: {
+    for: [/\bno lessons?\b/, /\bno class(es)?\b/, /\bno teaching\b/,
+          /\bclasses (are )?(cancelled|canceled|suspended)\b/, /\bstudent-free\b/,
+          /\bno students\b/, /\bstaff only\b/, /\bstaff-only\b/],
+    against: [/\blessons as (usual|normal)\b/, /\bnormal timetable\b/,
+              /\bclasses (run|continue)\b/],
+  },
+  runsAs: {
+    for: [/\btimetable\b/, /\bschedule\b/, /\bruns? as\b/, /\bfollow(s|ing)? the\b/],
+    against: [],
+  },
+  lessons: {
+    for: [/\b(classes|lessons|teaching|term|semester|school year)\b[^.;]{0,30}\b(begin|begins|commence|commences|start|starts|resume|resumes)\b/,
+          /\bfirst day\b/, /\bback to school\b/],
+    against: [/\b(ends?|concludes?|finishes?)\b/],
+  },
+  due: {
+    for: [/\bdue\b/, /\bdeadline/, /\bsubmi(t|ssion)/, /\bhand (in|over)\b/,
+          /\bno later than\b/, /\bmust be (in|completed|finished|returned|entered)\b/,
+          /\bcomplete(d)? by\b/, /\breturn(ed)? by\b/, /\bupload/, /\bowed\b/],
+    against: [],
+  },
+};
+
+// AND THE WORDS THE READER POINTED AT MUST NOT SAY THE OPPOSITE.
+//
+// "Oct. 10 is a working day, even week Wednesday schedule" came back proposed
+// as a day off — the strongest failure of the lot, because the entry's own text
+// contradicts the answer in as many words. What a line says about ITSELF beats
+// whatever section it happens to be filed under: this one is inside a list of
+// holidays, and it is the exception the list is announcing.
+//
+// Read off the row's own name and the reader's own quote — not off the whole
+// line, because one line of a calendar can carry several entries and the
+// holiday that this working day is an exception TO is on it too.
+function against(means, label, says, mustBy) {
+  const rule = SAYS_SO[means];
+  if (!rule || !rule.against.length) return "";
+  const mine = `${label || ""} ${says || ""} ${mustBy || ""}`
+    .replace(/\s+/g, " ").toLowerCase();
+  return rule.against.some((re) => re.test(mine))
+    ? "the line says the opposite of that"
+    : "";
+}
+
 function entails(means, stated, says, ground, label) {
   if (!means) return "";
   // AND WHERE THE ONLY WORDS ABOUT IT ARE ITS NAME, THERE IS NOTHING TO QUOTE.
@@ -1922,9 +2001,24 @@ function entails(means, stated, says, ground, label) {
   // out from the shape of the page and not from what any of it says. See
   // contextOf. Wide enough that "Holidays" over a list of holidays counts;
   // narrow enough that it cannot be fetched from somewhere else.
-  return ground.indexOf(words) < 0
-    ? "the words it says prove it aren't in what this came from"
-    : "";
+  if (ground.indexOf(words) < 0)
+    return "the words it says prove it aren't in what this came from";
+  // AND THE WORDS MUST SAY THE THING, NOT MERELY NAME THE ENTRY.
+  //
+  // This is where a real calendar got past everything. "Orientation: Feb.
+  // 18-19, 2027" is genuinely the entry, genuinely in what it rests on, and
+  // genuinely quoted — and it says nothing whatever about anybody not working.
+  // Nor does "Students Arrival", nor "Report Distribution". A reader can point
+  // at the right line and then add a consequence the line does not carry, and
+  // every check up to here would say yes, because every check up to here was
+  // asking WHERE the words came from rather than WHAT they say.
+  //
+  // The app knows what its own six answers mean — see SAYS_SO. It knows nothing
+  // about festivals, training days or orientations, and it must not.
+  const rule = SAYS_SO[means];
+  if (rule && rule.for.length && !rule.for.some((re) => re.test(words)))
+    return "those words say which day it is, not what it does to your week";
+  return "";
 }
 
 // AND "DUE" IS NOT LIKE THE OTHERS, SO IT IS NOT ASKED FOR LIKE THE OTHERS.
@@ -1977,9 +2071,18 @@ function owed(means, by, ground) {
   const words = String(by || "").replace(/\s+/g, " ").trim().toLowerCase();
   if (!words)
     return "it says this happens that day, not that anything of yours is due by then";
-  return ground.indexOf(words) < 0
-    ? "the words it says put you under a deadline aren't in what this came from"
-    : "";
+  if (ground.indexOf(words) < 0)
+    return "the words it says put you under a deadline aren't in what this came from";
+  // AND THEY MUST BE WORDS THAT PUT SOMEBODY UNDER ONE.
+  //
+  // "Week 12 (Nov. 20 Return Paper)" is a real phrase in the right place about
+  // the right entry, and it is a date on which reports go out. Offered as proof
+  // that something is owed, it proved only that the app had asked the question
+  // and accepted anything as an answer. A distribution date is not a deadline;
+  // pointing at it harder does not make it one.
+  return SAYS_SO.due.for.some((re) => re.test(words))
+    ? ""
+    : "those words are a date this happens on, not a thing you owe by then";
 }
 
 // AND WHETHER THE MEANING FITS THE ROW IT WAS PUT ON.
@@ -2253,6 +2356,10 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates, req
       // THEIRS, which is proved by the audience the document names and the
       // sentence they wrote about themselves. See belongs.
       const fits = disagrees(means, c) ||
+        // WHAT A LINE SAYS ABOUT ITSELF BEATS THE SECTION IT IS FILED UNDER.
+        // See against: a day the document calls a working day cannot be a day
+        // off, whatever list it appears in.
+        against(means, c.label, a.says, a.mustBy) ||
         (means === "due" ? owed(means, a.mustBy, ground)
           : means === "week" ? belongs(mine)
             : entails(means, a.stated === true, a.says, ground, c.label));

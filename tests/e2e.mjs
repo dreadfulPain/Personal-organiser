@@ -114,7 +114,9 @@ const ol = http.createServer((req, res) => {
       // ways a real model does.
       const one = (c) => ({ n: c.n, means: "off", runsAsDay: 0, sure: 0.9,
         why: "it looks like a holiday", mine: "yes", said: c.line,
-        stated: true, says: (c.line || "").split(":")[0],
+        // POINTING AT THE HEADING THE LIST IS UNDER, which is both a real
+        // phrase in what the entry rests on and a phrase that says the thing.
+        stated: true, says: "Holidays",
         // NOTHING OWED BY DEFAULT. "due" is the one answer that puts somebody
         // under a deadline, so it has to be shown, and a model that says
         // nothing about it has said nothing. See owed.
@@ -139,7 +141,7 @@ const ol = http.createServer((req, res) => {
       if (how === "borrow")
         answers = answers.map((a) => ({ ...a, said: "• Mid-Autumn Festival: Sep. 25" }));
       // AND A MEANING THAT CONTRADICTS THE SHAPE OF THE ROW.
-      if (how === "due") answers = answers.map((a) => ({ ...a, means: "due", mustBy: a.says }));
+      if (how === "due") answers = answers.map((a) => ({ ...a, means: "due", mustBy: "due by" }));
       // AND ONE WHOSE "due" POINTS AT WHATEVER THE TEST GAVE IT — including at
       // nothing, which is what a date something merely HAPPENS on deserves.
       if (how === "owed") answers = answers.map((a) => ({ ...a, means: "due", mustBy: by }));
@@ -162,7 +164,8 @@ const ol = http.createServer((req, res) => {
       // be tried against the same entry.
       if (how === "says") {
         const q = ((/SAYS:([^\n]*)/.exec(standIn) || [])[1] || "").trim();
-        answers = answers.map((a) => ({ ...a, means: "week", said: q, says: q, stated: true }));
+        const m = (/MEANS:(\w+)/.exec(standIn) || [])[1] || "week";
+        answers = answers.map((a) => ({ ...a, means: m, said: q, says: q, stated: true }));
       }
       // POINTING AT THE HEADING THE LIST IS UNDER, which is not on the entry's
       // own line at all.
@@ -219,7 +222,12 @@ const ol = http.createServer((req, res) => {
             said: quote === "NOWHERE"
               ? "a line the stand-in made up, which is in no document"
               : (saidAs || l.replace(/\t/g, " ").trim()),
-            means: "off", runsAsDay: 0, sure: 0.9, why: "it looks like a holiday", mine: "yes",
+            // NO MEANING PROPOSED. These fixtures are about WHERE a quote came
+            // from — an invented date, a borrowed line — and a bare tab-separated
+            // cell says nothing about anybody's working week, so claiming one
+            // would be the stand-in behaving worse than the models it stands in
+            // for. Every meaning still has its own checks, tested where they are.
+            means: "", runsAsDay: 0, sure: 0.9, why: "it looks like a holiday", mine: "yes",
             // AND WHERE THE DOCUMENT SAYS SO — pointing at words really in the
             // line, which is what the gate checks. See entails.
             stated: true, says: saidAs || l.replace(/\t/g, " ").trim(),
@@ -575,7 +583,7 @@ const askCal = async (body) => {
   // same process; the stand-in is told directly, and nothing about the request
   // changes at all.
   standIn = String(body.text || "").split("\n")
-    .filter((l) => /^(MARKS|MUSTBY|SAYS):/.test(l)).join("\n");
+    .filter((l) => /^(MARKS|MUSTBY|SAYS|MEANS):/.test(l)).join("\n");
   return (await (await fetch(B + "/api/calendar", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body) })).json());
@@ -685,7 +693,7 @@ const askCal = async (body) => {
      by("PD Days") && by("PD Days").date === "2026-10-13" && by("PD Days").checked,
      JSON.stringify(by("PD Days")));
   ok("with what it thought, so the page can say what it is asking about",
-     by("PD Days") && by("PD Days").means === "off" && by("PD Days").why,
+     by("PD Days") && by("PD Days").why,
      JSON.stringify(by("PD Days")));
   // AND A LINE THAT IS NOT IN THE DOCUMENT AT ALL. A reader that quotes
   // something the text does not say has not read the text.
@@ -837,7 +845,12 @@ const askCal = async (body) => {
   // first entry, and twenty-two dates a person could see on their screen a
   // moment earlier became one. A model going quiet, going slow or going wrong
   // must not be able to delete what was read before it was asked.
+  // A LIST WITH A HEADING OVER IT, because that is what a calendar gives you and
+  // because the heading is where "a day off" is actually said. Under the words
+  // alone, "Mid-Autumn Festival: Sep. 25" says which day it is and nothing about
+  // whether anybody is working — see SAYS_SO.
   const DOC = [
+    "Holidays:",
     "• Mid-Autumn Festival: Sep. 25",
     "• National Day: Oct. 1-Oct. 7",
     "• Christmas Holiday: Dec. 22-Dec. 25",
@@ -904,7 +917,10 @@ const askCal = async (body) => {
   // These are not beliefs about schools. They are the three ways an answer can
   // contradict the shape of the row it is on, which is arithmetic.
   const shaped = async (c, how) => (await askCal({ year: 2026, candidates: [c],
-    text: `${how ? `MARKS:${how}\n` : ""}• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027\n` +
+    // "due" now has to point at words that put somebody under a deadline, so a
+    // fixture about the SHAPE of a due row needs a document that owes something.
+    text: `${how ? `MARKS:${how}\n` : ""}Papers due by 16:00\n` +
+      "• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027\n" +
       "• Winter Vacation: Jan. 23, 2027 ~ Feb.\nAug. 31" }));
   const term = await shaped({ n: 1, date: "2026-09-01", endsOn: "2027-01-22",
     label: "First Semester", line: "• First Semester: Sep. 1, 2026 ~ Jan. 22, 2027" }, "due");
@@ -931,7 +947,7 @@ const askCal = async (body) => {
   // page, and asking for "Nov 12" found nothing — so two exam windows came back
   // with "the day it ends isn't written near that line" printed directly above
   // the line that ends on it.
-  const short2 = await askCal({ year: 2026, text: "Tentatively Nov. 10-12",
+  const short2 = await askCal({ year: 2026, text: "Holidays:\nTentatively Nov. 10-12",
     candidates: [{ n: 1, date: "2026-11-10", endsOn: "2026-11-12",
       label: "Midterm exams", line: "Tentatively Nov. 10-12" }] });
   ok("a range written once inside a month is read as evidence for both ends",
@@ -1071,12 +1087,14 @@ const askCal = async (body) => {
          .test(((borrowed.answers || [])[0] || {}).checked || ""),
        JSON.stringify((borrowed.answers || [])[0]));
     // AND NONE OF THIS TOUCHES THE OTHER FIVE MEANINGS.
-    const off = await askCal({ year: 2026, text: `MARKS:\n${HAPPENS[0]}`,
-      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: nameOf(HAPPENS[0]),
-        line: HAPPENS[0], context: [HAPPENS[0]] }] });
+    // AND A MEANING THAT DESCRIBES THE DAY NEEDS NO "mustBy" — it needs its own
+    // words instead, which is the same rule wearing different clothes.
+    const SHUT = "Offices closed Friday 13 November 2026";
+    const off = await askCal({ year: 2026, text: `MARKS:says\nMEANS:off\nSAYS:closed\n${SHUT}`,
+      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: nameOf(SHUT),
+        line: SHUT, context: [SHUT] }] });
     ok("while a meaning that describes the day needs no such thing",
-       ((off.answers || [])[0] || {}).checked === "" &&
-       ((off.answers || [])[0] || {}).means === "off",
+       ((off.answers || [])[0] || {}).checked === "",
        JSON.stringify((off.answers || [])[0]));
   }
 
@@ -1269,24 +1287,35 @@ const askCal = async (body) => {
       ok(what, ((got.answers || [])[0] || {}).checked === "",
          JSON.stringify((got.answers || [])[0]));
     }
-    // AND THE ROW HEADING IS IN BOTH CELLS' GROUND, because it really is what
-    // both of them are in. It says which instance this is; it does not say what
-    // kind of thing the cell is, and it cannot distinguish the two columns.
+    // AND THE ROW HEADING IS IN BOTH CELLS' GROUND — it really is what both of
+    // them are in — BUT BEING THERE IS NO LONGER ENOUGH.
     //
-    // THIS ONE IS NOT SETTLED BY ANY RULE HERE, and the check records what
-    // happens rather than pretending otherwise. Refusing a row heading would be
-    // right for this table and wrong for the one written the other way round —
+    // This used to pass, and was written down as a thing no structural rule
+    // could settle: refusing a row heading outright would be right for this
+    // table and wrong for the one written the other way round —
     //
     //     Reports due | 12 Nov | 14 Mar
     //
-    // where the ROW says what is owed and the column says which term. Telling
-    // those apart means knowing which axis carries the kind of thing, and that
-    // is the vocabulary this app must not have.
+    // where the ROW says what is owed and the column says which term. That is
+    // still true, and it is still not decided by where the words sit. It is
+    // decided by WHAT THEY SAY: "Midterm" does not put anybody under a
+    // deadline and "Reports due" does, whichever edge of the table each is on.
+    // See SAYS_SO.
     const rowOnly = await askCal({ year: 2026, about: "Pod 1 group leader",
       text: `MARKS:owed\nMUSTBY:Midterm\n${TABLE}`, candidates: [LEFT] });
-    ok("and a row heading is in its own cells' ground, for better or worse",
-       ((rowOnly.answers || [])[0] || {}).checked === "",
+    ok("and a row heading that owes nothing proves nothing, wherever it sits",
+       /a date this happens on, not a thing you owe by then/
+         .test(((rowOnly.answers || [])[0] || {}).checked || ""),
        JSON.stringify((rowOnly.answers || [])[0]));
+    // AND THE SAME TABLE WRITTEN THE OTHER WAY ROUND STILL WORKS, which is why
+    // this is about the words and not about the edge.
+    const otherWay = await askCal({ year: 2026, about: "Pod 1 group leader",
+      text: `MARKS:owed\nMUSTBY:Reports due\nReports due\n12 Nov 2026`,
+      candidates: [{ n: 1, date: "2026-11-12", endsOn: "", label: "Reports due — Autumn",
+        line: "12 Nov 2026", context: ["Reports due", "Autumn", "12 Nov 2026"] }] });
+    ok("  while a row heading that does owe something proves it",
+       ((otherWay.answers || [])[0] || {}).checked === "",
+       JSON.stringify((otherWay.answers || [])[0]));
     // WHAT IS SETTLED: it cannot be borrowed from the row NEXT DOOR.
     const otherRow = await askCal({ year: 2026, about: "Pod 1 group leader",
       text: `MARKS:owed\nMUSTBY:Final\n${TABLE}\nFinal\n31 Dec 16:00`, candidates: [LEFT] });
@@ -1322,6 +1351,100 @@ const askCal = async (body) => {
     ok("  while one that misses sets it aside even where the other meets",
        ((one.answers || [])[0] || {}).mine === "no",
        JSON.stringify((one.answers || [])[0]));
+  }
+
+  // ---- AND POINTING AT THE RIGHT LINE IS NOT THE LINE SAYING THE THING ---
+  //
+  // THE HOLE THIS CLOSES, and it took a real calendar to show it. Every check
+  // up to here asks WHERE a quote came from — is it in the document, is it in
+  // this entry's own ground, is it the entry's whole name. None of them asks
+  // WHAT IT SAYS. So a reader could quote words that genuinely identify the
+  // event and then append a consequence those words do not carry, and the
+  // answer went through ticked:
+  //
+  //     "Orientation: Feb. 18-19"  →  day off
+  //     "Students Arrival"         →  day off
+  //     "Report Distribution"      →  something is due from you
+  //
+  // Each quote real, in the right place, about the right entry, and proving
+  // nothing at all about anybody's working week.
+  //
+  // WHAT CHANGED, AND WHAT DID NOT. Nothing here knows what an orientation is,
+  // or a festival, or a training day — that is one school's world, it is
+  // endless, and it is the app deciding a term from a noun. But the app DEFINED
+  // these six answers and wrote them on its own buttons, and a verifier that
+  // does not know what its own words mean leaves every judgement to a model.
+  // So: a vocabulary for the app's own categories, none for the world's events.
+  // These fixtures are deliberately nothing to do with schools.
+  {
+    const ask = (line, means, says, mustBy) => askCal({ year: 2026,
+      about: "Pod 1 group leader",
+      text: `MARKS:says\nMEANS:${means}\nSAYS:${says}\n${line}`,
+      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: line.split(",")[0],
+        line, context: [line] }] });
+    const refused = async (what, line, means, says) => {
+      const got = await ask(line, means, says);
+      ok(what, !!((got.answers || [])[0] || {}).checked,
+         JSON.stringify((got.answers || [])[0]));
+    };
+    const allowed = async (what, line, means, says) => {
+      const got = await ask(line, means, says);
+      ok(what, ((got.answers || [])[0] || {}).checked === "",
+         JSON.stringify((got.answers || [])[0]));
+    };
+    // NAMING THE EVENT IS NOT SAYING WHAT IT DOES.
+    await refused("naming an event does not make it a day off",
+                  "Induction morning, 13 November 2026", "off", "Induction morning");
+    await refused("  nor a day with no teaching",
+                  "Induction morning, 13 November 2026", "noLessons", "Induction morning");
+    await refused("  nor the day the work starts",
+                  "Induction morning, 13 November 2026", "lessons", "Induction morning");
+    // WHILE A DOCUMENT THAT SAYS IT, SAYS IT.
+    await allowed("a document that says the place is closed says it",
+                  "Site closed, 13 November 2026", "off", "closed");
+    await allowed("  and one that says there are no classes says that",
+                  "No classes, 13 November 2026", "noLessons", "No classes");
+    // AND WHAT A LINE SAYS ABOUT ITSELF BEATS THE LIST IT IS FILED UNDER.
+    //
+    // The strongest of the failures: a line reading IS A WORKING DAY came back
+    // proposed as a day off. It is inside a list of closures — it is the
+    // exception that list is announcing — and the section it sits under cannot
+    // outrank the words on it.
+    {
+      const clash = await askCal({ year: 2026, about: "Pod 1 group leader",
+        text: "MARKS:says\nMEANS:off\nSAYS:Closures\nClosures\n13 Nov is a working day, even week Wednesday schedule",
+        candidates: [{ n: 1, date: "2026-11-13", endsOn: "",
+          label: "Autumn break — is a working day, even week Wednesday schedule",
+          line: "13 Nov is a working day, even week Wednesday schedule",
+          context: ["Closures", "13 Nov is a working day, even week Wednesday schedule"] }] });
+      ok("a day the document calls a working day cannot be a day off",
+         /says the opposite/.test(((clash.answers || [])[0] || {}).checked || ""),
+         JSON.stringify((clash.answers || [])[0]));
+      // AND THE SAME LINE READ THE WAY IT ACTUALLY READS STILL GOES THROUGH.
+      const runs = await askCal({ year: 2026, about: "Pod 1 group leader",
+        text: "MARKS:says\nMEANS:runsAs\nSAYS:even week Wednesday schedule\nClosures\n13 Nov is a working day, even week Wednesday schedule",
+        candidates: [{ n: 1, date: "2026-11-13", endsOn: "",
+          label: "Autumn break — is a working day, even week Wednesday schedule",
+          line: "13 Nov is a working day, even week Wednesday schedule",
+          context: ["Closures", "13 Nov is a working day, even week Wednesday schedule"] }] });
+      ok("  while the reading the line actually supports goes through",
+         ((runs.answers || [])[0] || {}).checked === "",
+         JSON.stringify((runs.answers || [])[0]));
+    }
+    // AND A DATE SOMETHING HAPPENS ON IS STILL NOT A DEADLINE, however real the
+    // phrase pointed at. This is the same rule reaching "due": "Week 12 (Nov. 20
+    // Return Paper)" is a genuine phrase about the genuine entry, and it is a
+    // date reports go out on.
+    {
+      const out = await askCal({ year: 2026, about: "Pod 1 group leader",
+        text: "MARKS:owed\nMUSTBY:Week 12 handout\nWeek 12 handout\n20 Nov 2026",
+        candidates: [{ n: 1, date: "2026-11-20", endsOn: "", label: "Newsletter — Handed out",
+          line: "20 Nov 2026", context: ["Week 12 handout", "Handed out", "20 Nov 2026"] }] });
+      ok("a real phrase about the right entry still cannot make a deadline",
+         /a date this happens on, not a thing you owe by then/
+           .test(((out.answers || [])[0] || {}).checked || ""),
+         JSON.stringify((out.answers || [])[0]));
+    }
   }
 
   // ---- AND GIVING UP HAS TO ACTUALLY GIVE UP -----------------------------
@@ -1381,9 +1504,9 @@ const askCal = async (body) => {
     // point at; this is not a rule about marks, it is a rule about having
     // nothing but a name.
     const more = await askCal({ year: 2026, about: "Pod 1 group leader",
-      text: "MARKS:name\nMEANS:off\nClosures:\nWhole-Staff Briefing",
+      text: "MARKS:says\nMEANS:off\nSAYS:Closed all day\nClosed all day\nWhole-Staff Briefing",
       candidates: [{ n: 1, date: "", endsOn: "", label: "Whole-Staff Briefing",
-        line: "Whole-Staff Briefing", context: ["Closures:", "Whole-Staff Briefing"] }] });
+        line: "Whole-Staff Briefing", context: ["Closed all day", "Whole-Staff Briefing"] }] });
     ok("while an entry with a heading over it still has something to point at",
        ((more.answers || [])[0] || {}).checked === "",
        JSON.stringify((more.answers || [])[0]));

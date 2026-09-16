@@ -455,6 +455,26 @@ Kept here because they explain nearly every design choice:
    people, levels. Every domain word (student IDs, standards, note kinds, level
    scales) is *your editable data*. Point it at plumbing jobs or a different
    curriculum and it works unchanged.
+
+   **With one line drawn through it, added after a real failure.** The app may
+   know what *its own* answers mean; it may not know what *the world's* events
+   mean. "Mid-Autumn Festival is a holiday", "a PD day means no lessons" — that
+   is one school's world, it is endless, it is wrong at the next school, and it
+   is the app deciding your term from a noun. Still forbidden, and there is none
+   of it in the code.
+
+   But the app invented the six answers on its own buttons. When it asks a model
+   whether a day is a *day off*, and a verifier that knows nothing at all lets
+   through "Orientation: Feb 18–19 → day off" because the quote is real and in
+   the right place, the rule has stopped protecting anybody: it has just made a
+   small local model the only judge of meaning in the system, and on a real
+   calendar that put five wrong days into somebody's term. So the verifier knows
+   that "closed", "holiday", "vacation" support its own category *day off* and
+   that "working day" contradicts it — twenty-odd phrases, about the operation
+   and never the occasion, listed in one place and biased towards asking.
+
+   The test is: **could this list be wrong at a different school?** A list of
+   festivals could. A list of words meaning *closed* could not.
 4. **Name the load, not the person.** Describe the plan as oversized; never imply
    you can't cope.
 5. **Never a bar that can't fill.** Progress always measures the *next*

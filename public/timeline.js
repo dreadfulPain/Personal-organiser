@@ -2766,9 +2766,15 @@
     const shapeNote = DS ? DS.words(shape) : "";
 
     const plan = planFor(iso);
-    const blocks = S().blocksOn(schedule, iso);
+    // THE DAY IN THREE LAYERS — see OrganiserDayShape.layersOn. The printed
+    // timetable, the pencil on top of it, and what is different about the day
+    // as a whole. Asked of the one module that decides it, so this page and the
+    // Week page can never describe the same Tuesday differently.
+    const diffs = DS && DS.differsOn ? DS.differsOn(schedule, iso, cfg) : [];
+    const layers = DS && DS.layersOn ? DS.layersOn(schedule, iso, cfg) : null;
+    const blocks = layers ? layers.map((r) => r.block) : S().blocksOn(schedule, iso);
 
-    if (!blocks.length && !plan.slots.length) {
+    if (!blocks.length && !diffs.length && !plan.slots.length) {
       wrap.innerHTML = `<p class="empty">Nothing to lay out yet. Add your week's shape below, or add tasks on the
         <a href="index.html">main page</a> — this builds itself from both.</p>`;
       renderAccept(null);
@@ -2779,12 +2785,19 @@
     // One list, in time order: fixed blocks and planned tasks interleaved, so
     // the day reads top to bottom the way it will actually happen.
     const rows = [];
-    blocks.forEach((b) => rows.push({ kind: "block", at: S().toMin(b.start), block: b }));
+    (layers || blocks.map((b) => ({ block: b, layer: "standing" }))).forEach((r) =>
+      rows.push({ kind: "block", at: S().toMin(r.block.start), block: r.block, on: r }));
     plan.slots.forEach((s) => {
       const it = itemById(s.itemId);
       if (it && !it.done) rows.push({ kind: "task", at: s.start, slot: s, item: it });
     });
     rows.sort((a, b) => a.at - b.at || (a.kind === "block" ? -1 : 1));
+
+    // WHAT IS DIFFERENT ABOUT TODAY, FIRST. You know what a Tuesday looks like;
+    // you have taught it thirty times. The one thing worth reading before the
+    // list is the part of today that isn't one — and on an ordinary day there
+    // is nothing here at all, which is the point. See differsOn.
+    if (diffs.length) wrap.appendChild(differentBox(diffs));
 
     // WHAT KIND OF DAY THIS IS, said before the list rather than left to be
     // inferred from it looking odd.
@@ -2810,7 +2823,7 @@
         head.textContent = part.part;
         list.appendChild(head);
         part.rows.forEach((r) => {
-          const el = r.kind === "block" ? blockRow(r.block) : taskRow(r.slot, r.item, plan, iso);
+          const el = r.kind === "block" ? blockRow(r.block, r.on) : taskRow(r.slot, r.item, plan, iso);
           el.classList.add("no-clock");
           list.appendChild(el);
         });
@@ -2822,7 +2835,7 @@
         if (prevEnd !== null && startsAt - prevEnd >= S().normaliseConfig(cfg).minGapMinutes) {
           list.appendChild(freeRow(prevEnd, startsAt));
         }
-        list.appendChild(r.kind === "block" ? blockRow(r.block) : taskRow(r.slot, r.item, plan, iso));
+        list.appendChild(r.kind === "block" ? blockRow(r.block, r.on) : taskRow(r.slot, r.item, plan, iso));
         prevEnd = r.kind === "block" ? S().toMin(r.block.end) : r.slot.end;
       });
     }
@@ -2855,7 +2868,37 @@
       : "be there on time"}</div>`;
   }
 
-  function blockRow(b) {
+  // WHAT IS DIFFERENT ABOUT TODAY, AT THE TOP OF TODAY.
+  //
+  // Everything in here was already in the data and none of it was ever said:
+  // the app drew the day and left you to spot the Saturday running Wednesday's
+  // lessons. Drawn only when there is something — a page that says "no changes"
+  // every morning is a line nobody reads by the second week.
+  function differentBox(diffs) {
+    const box = document.createElement("section");
+    box.className = "dp-diff";
+    box.innerHTML = `<h3>Different today</h3>`;
+    const list = document.createElement("ul");
+    list.className = "dp-difflist";
+    diffs.forEach((d) => {
+      const li = document.createElement("li");
+      // The kind of difference is in the class for the eye and in the words for
+      // everybody else — see the words differsOn builds.
+      li.className = `dp-diffrow how-${d.how}`;
+      li.textContent = d.words;
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
+  // The app's own four answers for what a block IS — see OrganiserSchedule.KINDS.
+  // Teaching is not among them on purpose: on a teaching day it is what every
+  // other row already is, and a word repeated down the page stops being read.
+  // "Other" is the app saying it doesn't know, which is not worth a chip either.
+  const KIND_WORDS = { duty: "on duty", break: "break" };
+
+  function blockRow(b, on) {
     const el = document.createElement("div");
     // The solid/dashed difference is the most important thing on this page: a
     // fixed block is a fact, a soft one is the app guessing. If they looked the
@@ -2865,11 +2908,34 @@
     // between two things you can do at your desk, and this is the difference
     // being visible rather than worked out.
     const there = S().mustBeThere(b);
-    el.className = "dp-row dp-block" + (b.soft ? " soft" : "") + (there ? " needs-you-there" : "");
+    // PRINT OR PENCIL — see OrganiserDayShape.layersOn. The printed timetable is
+    // the same every week and you stopped reading it years ago; the pencil on
+    // top of it is the half you came to the page for.
+    const changed = !!on && on.layer === "change";
+    el.className = "dp-row dp-block" + (b.soft ? " soft" : "") + (there ? " needs-you-there" : "") +
+      (changed ? " dp-changed" : " dp-standing") +
+      (b.protected ? " dp-held" : "") + (b.kind ? ` k-${b.kind}` : "");
+    // AND SAID IN WORDS AS WELL. Colour alone is no use to somebody who can't
+    // separate these two greens, and none at all on a printout.
+    const marks = [];
+    // WHAT STOOD IN FOR WHAT, rather than a lesson quietly vanishing. The arrow
+    // is the whole of the news: the title says it, so the chip only has to say
+    // that this row is not the usual one.
+    if (changed) marks.push(on.how === "swapped" ? "Changed" : "Added today");
+    // PROTECTED TIME LOOKS SPOKEN FOR, NOT EMPTY. It is not a layer of its own —
+    // a lunch you keep is kept on the day it moves too — so it rides alongside.
+    if (b.protected) marks.push("Kept");
+    if (KIND_WORDS[b.kind]) marks.push(KIND_WORDS[b.kind]);
+    const title = changed && on.how === "swapped" && on.was
+      ? `${escapeHtml(on.was.label)} <span class="dp-arrow" aria-label="replaced by">→</span> ${escapeHtml(b.label)}`
+      : escapeHtml(b.label);
     el.innerHTML = `
       <div class="dp-time">${escapeHtml(S().fmtSpan(b.start, b.end))}</div>
       <div class="dp-main">
-        <div class="dp-title">${escapeHtml(b.label)}</div>
+        ${marks.length ? `<div class="dp-marks">${marks
+          .map((m) => `<span class="dp-mark">${escapeHtml(m)}</span>`).join("")}</div>` : ""}
+        <div class="dp-title">${title}</div>
+        ${b.protected ? `<div class="dp-guess">spoken for — work isn't planned into it</div>` : ""}
         ${b.soft ? `<div class="dp-guess">the app's guess — not a fixed thing</div>` : ""}
         ${b.where ? `<div class="dp-where">${escapeHtml(b.where)}</div>` : ""}
         ${b.about && b.about.length ? `<div class="dp-about">${escapeHtml(aboutWords(b.about))}</div>` : ""}
@@ -2896,11 +2962,24 @@
     // Says it plainly and describes rather than judges: the job has been on the
     // plan and not got done, which is a fact about the job's size, not about you.
     const again = window.OrganiserDayPlan.carriedOver(cfg, it.id, iso);
+    // A LIST OF JOBS IS NOT A LIST OF APPOINTMENTS. A lesson at nine happens at
+    // nine whether or not you are ready for it; marking a set of books is
+    // something you do, in an order, and the app has only guessed at when. Drawn
+    // the same they read as the same kind of obligation, and a day of fourteen
+    // appointments is a day you don't want to look at.
+    //
+    // So the clock comes out of the left column and a tick box goes in, which is
+    // a difference you can see without reading a word of it — and the time it
+    // has been put at moves in beside the estimate, where it reads as something
+    // the app worked out rather than something the school decided.
     el.innerHTML = `
-      <div class="dp-time">${escapeHtml(S().fmtTime(S().toHM(slot.start)))}</div>
+      <div class="dp-tick">
+        <button type="button" class="tick" aria-label="Done" title="Done"></button>
+      </div>
       <div class="dp-main">
         <div class="dp-title">${escapeHtml(it.title)}</div>
         <div class="dp-meta">
+          <span class="dp-at">from ${escapeHtml(S().fmtTime(S().toHM(slot.start)))}</span>
           <span class="dp-est${slot.pinned ? "" : " guess"}">${escapeHtml(S().durationWords(est.minutes))}${est.spent ? " left" : ""}${slot.pinned ? "" : " — a guess"}</span>
           ${est.spent ? `<span class="dp-sofar">${escapeHtml(S().durationWords(est.spent))} already in</span>` : ""}
           ${slot.why ? `<span class="dp-why">${escapeHtml(slot.why)}</span>` : ""}
@@ -2912,7 +2991,6 @@
         </div>
       </div>
       <div class="dp-actions">
-        <button type="button" class="tick" aria-label="Done" title="Done"></button>
         <button type="button" class="link dp-part">got part way</button>
         <button type="button" class="link dp-stop">something's come up</button>
         <button type="button" class="link dp-move">move</button>

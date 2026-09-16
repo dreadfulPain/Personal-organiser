@@ -10,6 +10,55 @@ let pass = 0, fail = 0;
 const ok = (n, c, e) => { if (c) { pass++; console.log(`  ok  ${n}`); } else { fail++; console.log(`FAIL  ${n}${e ? "\n      " + e : ""}`); } };
 
 const css = fs.readFileSync(path.join(PUB, "style.css"), "utf8");
+
+// FIRST: DOES THE STYLESHEET PARSE AT ALL?
+//
+// Every check in this file — and in every other file that looks at the
+// stylesheet — reads it as TEXT. So a broken one still matches every regex
+// asked of it, and the whole suite goes on passing while a browser silently
+// skips a hundred rules. It has happened once, to a :root holding three
+// colours, and the only thing that caught it was looking at the screen.
+//
+// THE SHAPE IT TOOK, which balanced braces cannot see: an early `*/` closed a
+// comment halfway through, the prose after it was read as a selector, and that
+// selector swallowed the rule underneath it whole — braces and all, so the file
+// still counted out perfectly even.
+function cssBreaks(src) {
+  const wrong = [];
+  let depth = 0, i = 0;
+  while (i < src.length) {
+    if (src.startsWith("/*", i)) {
+      const end = src.indexOf("*/", i + 2);
+      if (end < 0) { wrong.push(`a comment from character ${i} is never closed`); break; }
+      i = end + 2;
+      continue;
+    }
+    if (src.startsWith("*/", i)) {
+      wrong.push(`a comment ends at character ${i} that never started — everything ` +
+        "after it is being read as a selector");
+      i += 2;
+      continue;
+    }
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth < 0) {
+      wrong.push(`a closing brace with nothing open at character ${i}`);
+      depth = 0;
+    }
+    i++;
+  }
+  if (depth > 0) wrong.push(`${depth} rule${depth === 1 ? "" : "s"} left open at the end`);
+  return wrong;
+}
+ok("the stylesheet parses", !cssBreaks(css).length, cssBreaks(css).join("; "));
+// And the check itself notices the three shapes it was written for, rather than
+// being a function that has quietly stopped looking.
+ok("  and would say so if it didn't",
+   cssBreaks("a { b: c } */ d { e: f }").length === 1 &&
+     cssBreaks("a { b: c ").length === 1 &&
+     cssBreaks("a { b: c } /* never ends").length === 1,
+   JSON.stringify(["a { b: c } */ d { e: f }", "a { b: c ", "a { b: c } /* never ends"]
+     .map(cssBreaks)));
+
 ok("a global [hidden] rule exists", /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/.test(css));
 
 // It must come BEFORE any class that sets a display, or !important aside, the

@@ -204,13 +204,14 @@
   // and none of it was ever said: the app drew the day and left you to notice.
   //
   // So this asks what the resolved day has that the ordinary week does not, and
-  // what the ordinary week has that the day has lost. Four things can differ,
-  // and they are the four the schedule can already represent:
+  // what the ordinary week has that the day has lost. Five things can differ,
+  // and they are the five the schedule can already represent:
   //
   //   runsAs  — today is running another weekday's timetable
   //   lessons — the teaching is off, or the whole day is
   //   added   — something is on today that is not part of any week
   //   gone    — something that normally runs today is not running
+  //   swapped — the last two at the same hour, which is one event, not two
   //
   // NOTHING IS A DIFFERENCE BY DEFAULT. An ordinary day returns an empty list,
   // and an empty list is the point: a week that says "Wednesday — no changes"
@@ -222,6 +223,16 @@
     // and that are not the calendar saying a day is off.
     return S.normalise(schedule)
       .filter((b) => b.days.length && b.runsAs === null && !b.blocksDay && !b.noLessons);
+  }
+
+  // Do two blocks cover any of the same minute? A one-off carries a date and a
+  // lesson carries a weekday, so the only thing the two can be compared on is
+  // the clock. normaliseBlock has already refused anything without a real start
+  // and a later end, so there is no unreadable time to defend against here.
+  function overlap(a, b) {
+    const S = window.OrganiserSchedule;
+    if (!S) return false;
+    return S.toMin(a.start) < S.toMin(b.end) && S.toMin(b.start) < S.toMin(a.end);
   }
 
   function differsOn(schedule, iso, config) {
@@ -246,15 +257,20 @@
       out.push({ how: b.blocksDay ? "off" : "noLessons", block: b,
         words: (b.blocksDay ? "a day off" : "no lessons") +
           (b.label && b.label !== "(unnamed)" ? ` — ${b.label}` : "") }));
-    // 3. WHAT IS ON TODAY THAT IS NOT PART OF ANY WEEK. A one-off: it has a
-    //    date rather than weekdays, which is exactly what makes it unusual.
-    here.filter((b) => !b.blocksDay && !b.noLessons && b.date && !b.days.length).forEach((b) =>
-      out.push({ how: "added", block: b,
-        words: `${b.label}${b.start ? ` ${S.fmtTime(b.start)}` : ""}` }));
-    // 4. AND WHAT NORMALLY RUNS AND IS NOT RUNNING. The quiet one, and the one
-    //    that catches people out: nothing on the screen is wrong, something is
-    //    simply absent, and absence is exactly what looking at a timetable
-    //    cannot show you.
+    // 3 AND 4, ASKED TOGETHER. What is on today that is not part of any week,
+    //    and what normally runs and is not running.
+    //
+    //    They were two questions until it became clear that half the time they
+    //    are one event seen from both sides. "No Read Aloud" on one line and
+    //    "Assembly 08:15" on another leaves you to notice they are the same
+    //    twenty minutes; "Read Aloud → Assembly" is the thing that happened.
+    //
+    // 3. A one-off has a date rather than weekdays, which is exactly what makes
+    //    it unusual.
+    const added = here.filter((b) => !b.blocksDay && !b.noLessons && b.date && !b.days.length);
+    // 4. THE QUIET ONE, and the one that catches people out: nothing on the
+    //    screen is wrong, something is simply absent, and absence is exactly
+    //    what looking at a timetable cannot show you.
     //
     //    NOT ON A DAY STANDING IN FOR ANOTHER. A Tuesday running Monday's
     //    timetable has lost every one of Tuesday's lessons, and that is what
@@ -264,18 +280,72 @@
     //
     //    A day with no lessons needs no such guard: its blocks are all still
     //    there, they are simply not taught, so nothing is missing to list.
-    if (asDay === dow) {
-      const on = new Set(here.map((b) => b.id));
-      normalWeek(schedule)
-        .filter((b) => b.days.includes(dow) && !on.has(b.id))
-        .forEach((b) => out.push({ how: "gone", block: b, words: `no ${b.label}` }));
-    }
+    const on = new Set(here.map((b) => b.id));
+    const gone = asDay !== dow ? [] : normalWeek(schedule)
+      .filter((b) => b.days.includes(dow) && !on.has(b.id));
+    // ONLY EVER A SWAP WHEN BOTH HALVES ARE TRUE. The lesson has to be off AND
+    // something has to be on in its place. A meeting that merely clashes with a
+    // lesson still running is a clash, and drawing it as a replacement would be
+    // the app telling you a lesson is cancelled when nobody has cancelled it.
+    const took = new Set();
+    added.forEach((b) => {
+      const was = gone.find((g) => !took.has(g.id) && overlap(b, g));
+      if (was) took.add(was.id);
+      out.push(was
+        ? { how: "swapped", block: b, was, words: `${was.label} → ${b.label}` }
+        : { how: "added", block: b,
+            words: `${b.label}${b.start ? ` ${S.fmtTime(b.start)}` : ""}` });
+    });
+    gone.filter((b) => !took.has(b.id))
+      .forEach((b) => out.push({ how: "gone", block: b, words: `no ${b.label}` }));
     void config;
     return out;
   }
 
+  // WHICH LAYER IS EACH THING ON TODAY?
+  //
+  // A wall timetable with pencil on it. The printed half is the same every week
+  // and you stopped reading it years ago; the pencil is the half you look for.
+  // Drawn in the same ink, finding the pencil becomes the work — and finding
+  // the pencil was the whole job.
+  //
+  // So every block on the day says which it is, and it is answered HERE rather
+  // than in each view, because "is this one different" asked twice is two
+  // answers that drift. The differences themselves are still differsOn's to
+  // find; this only arranges today's blocks around what it said.
+  //
+  // The day-wide entries — a day off, no lessons, another day's timetable — are
+  // deliberately not rows. They are true of the whole day rather than of a time
+  // in it, they come back from differsOn already, and a view that draws both
+  // says the same thing twice.
+  function layersOn(schedule, iso, config) {
+    const S = window.OrganiserSchedule;
+    if (!S || !/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return [];
+    const changed = new Map();
+    differsOn(schedule, iso, config).forEach((d) => {
+      if (d.block && d.block.id) changed.set(d.block.id, d);
+    });
+    return S.blocksOn(schedule, iso)
+      .filter((b) => !b.blocksDay && !b.noLessons)
+      .map((b) => {
+        const d = changed.get(b.id);
+        return {
+          block: b,
+          layer: d ? "change" : "standing",
+          how: d ? d.how : "standing",
+          // What this stands in for, on the rows that stand in for something.
+          was: (d && d.was) || null,
+          // AND PROTECTED IS NOT HERE AT ALL, which is the point of it. It is
+          // true of a block whichever layer that block is on — a lunch you keep
+          // is as spoken for on the day it moves as on the days it doesn't — so
+          // it stays on the block, where it already was. Copying it up onto the
+          // row would be the same fact in two places, waiting to disagree.
+        };
+      });
+  }
+
   window.OrganiserDayShape = {
     STARTING_OWN, STARTING_PARTS, ownDay, workingDays, kindOf, shapeOf, loosen, words,
-    differsOn,
+    differsOn, layersOn,
   };
 })();

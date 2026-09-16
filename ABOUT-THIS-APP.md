@@ -91,6 +91,44 @@ nothing important becomes urgent tonight, stop"* unless it knows what was owed,
 what it was owed to, how ready counts as ready, and which of the remaining hours
 were never available to work in.
 
+### A wall timetable with pencil on it
+
+The Day and Week pages are drawn to one picture: **the printed timetable, the
+handwritten changes on top of it, and the work still to do.** They are three
+different kinds of thing and they had all been drawn as rows in a list.
+
+- **The print** is the same every week and you stopped reading it years ago. It
+  is the quiet layer, and it earns its quiet by having nothing added to it.
+- **The pencil** — a one-off, a lesson swapped, a morning the parents are in — is
+  the half you came to the page for, so it carries a rail, a tint and a word
+  (`Added today`, `Changed`).
+- **The work** is not an appointment. A lesson at nine happens at nine whether or
+  not you are ready; marking a set of books is something you do, in an order,
+  at an hour the app has only guessed at. So a job carries a tick box where a
+  lesson carries its time — a difference you see before reading a word of it.
+- **And time you keep looks kept.** Protected time is hatched and says *spoken
+  for*, because "unavailable" drawn as a blank is a blank somebody fills.
+
+None of the four is done with colour alone: about one man in twelve cannot
+separate two hues and nobody can on a photocopy, so each carries a word and a
+shape as well.
+
+**Replacement is not addition.** If the ordinary week has something at an hour
+today does not, and something else is on at that hour instead, that is one event
+seen from two sides — `Read Aloud → Assembly`, not "no Read Aloud" on one line
+and "Assembly 08:15" on another. It is only ever read as a swap when *both*
+halves are true: something laid across a lesson that is still running is a
+clash, and drawing it as a replacement would be the app telling you a lesson is
+cancelled when nobody has cancelled it.
+
+**And an ordinary day says nothing.** A week that reads "Monday — no changes,
+Tuesday — no changes" is four lines of reassurance in front of the one that
+matters, and after a fortnight nobody reads any of them. So the Week page says
+one quiet word per day and folds the printed timetable behind a line that counts
+it — `4 lessons · 1 duty · 2 breaks · 1 kept`. Counted, not dropped: this page
+once printed "free" under a day with four lessons on it, and *free* is the
+sentence you plan against.
+
 Paper planners worked. Every digital organiser failed — and not because of the
 looking. **Seeing** the week on paper was effortless; **putting things in** to an
 app was not. Tapping into the right field, deciding whether a thought is a task

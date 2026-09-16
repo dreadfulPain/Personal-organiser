@@ -2781,6 +2781,26 @@ body {
   font-style: italic;
   margin: 2px 0;
 }
+/* THE WEEK YOU CAN READ DOWN THE LEFT IN FOUR SECONDS. An ordinary day says one
+   quiet word; the one that isn't ordinary says what it is, in weight as well as
+   in colour. See OrganiserDayShape.differsOn. */
+.wk-note { font-size: 0.85rem; color: var(--ink-soft); font-weight: normal; }
+.wk-note.changed { color: var(--changed); font-weight: 600; }
+/* The printed timetable, counted rather than listed — and openable, because
+   counted is not the same as thrown away. */
+.wk-usual { margin: 0 0 6px; }
+.wk-usual > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  padding: 2px 0;
+  list-style: none;
+}
+.wk-usual > summary::-webkit-details-marker { display: none; }
+.wk-usual > summary::before { content: "▸ "; }
+.wk-usual[open] > summary::before { content: "▾ "; }
+.wk-usual > summary:hover { color: var(--ink); }
+.wk-usual .items { margin-top: 4px; }
 .mo-nav {
   display: flex;
   align-items: center;
@@ -4236,7 +4256,104 @@ a.btn {
 .dp-part { font-size: 0.8rem; text-transform: lowercase; letter-spacing: 0.04em;
   color: var(--ink-soft); margin: 14px 0 4px; font-weight: normal; }
 .dp-list.loose .no-clock .dp-time,
+.dp-list.loose .no-clock .dp-at,
 .dp-list.loose .no-clock .when { display: none; }
+
+/* ---- A WALL TIMETABLE WITH PENCIL ON IT ---------------------------------
+   Three layers and one state, and each of them says which it is in a way that
+   survives being photocopied. Colour is the fast path, never the only one:
+   the print is plain, the pencil is chipped and railed, a job carries a tick
+   box where a time would be, and time that is spoken for is hatched.
+   See OrganiserDayShape.layersOn.
+
+   Three tokens, in one place, because five rules on two pages use them and a
+   colour written out five times is a colour that ends up being four colours.
+   NO DARK VARIANT, deliberately: this app does not have a dark mode — the page
+   surfaces are the same cream whatever the browser prefers — so a paler value
+   behind a prefers-color-scheme query would not be read on a dark background,
+   it would be read on THIS one, at worse contrast. When the surfaces learn to
+   change, these follow in the same breath. */
+:root {
+  --changed: #a8643c;
+  --changed-soft: rgba(168, 100, 60, 0.08);
+  --held-line: rgba(114, 108, 99, 0.3);
+}
+
+/* THE PRINT. The same every week, and already read.
+   AND THE ONE THING THAT HAD TO GIVE. "Needs you in a room" tints the whole row
+   — which was the right call when it was the only signal on the page, and is
+   the wrong one now: on a teaching day nearly every lesson is in a room, so the
+   tint fired on eight rows out of nine and the ordinary timetable came out
+   louder than the morning that wasn't ordinary. The marker itself is kept, and
+   it is the part that was doing the work: the bar down the edge, which is
+   exactly as scannable and doesn't shout. */
+.dp-block.dp-standing.needs-you-there { background: var(--surface); }
+.dp-block.dp-standing .dp-title { font-weight: normal; }
+
+/* THE PENCIL. Wider rail, its own tint, and a word saying what it is. */
+.dp-changed {
+  border-left: 6px solid var(--changed);
+  background: var(--changed-soft);
+}
+.dp-marks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.dp-mark {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.dp-changed .dp-mark:first-child { color: var(--changed); border-color: var(--changed); }
+.dp-changed .dp-title { font-weight: 600; }
+/* What stood in for what. The lesson that went is still named rather than
+   quietly disappearing, because "where is my English" is the question. */
+.dp-arrow { color: var(--changed); padding: 0 2px; }
+
+/* TIME THAT IS SPOKEN FOR. Hatched, not blank: unavailable has to look like
+   something rather than like space nobody has got round to filling. */
+.dp-held {
+  background-image: repeating-linear-gradient(
+    135deg, transparent 0 7px, var(--held-line) 7px 8px
+  );
+}
+.dp-held .dp-title { color: var(--ink-soft); }
+
+/* A JOB IS NOT AN APPOINTMENT. The tick box sits where a time would be, so the
+   left-hand column reads times, times, box, times — the difference is seen
+   before anything is read. */
+.dp-tick { min-width: 108px; padding-top: 2px; }
+.dp-row.dp-task { border-left: none; background: transparent; }
+.dp-at { font-variant-numeric: tabular-nums; }
+
+/* And a duty or a break says so — see OrganiserSchedule.KINDS. A lesson does
+   not, because on a teaching day that is what everything else is. */
+.dp-row.k-break .dp-title { color: var(--ink-soft); }
+
+/* ---- WHAT IS DIFFERENT ABOUT TODAY --------------------------------------
+   Drawn only when there is something. A page that says "no changes" every
+   morning is a line nobody reads by the second week. */
+.dp-diff {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--changed);
+  border-left-width: 6px;
+  border-radius: var(--radius);
+  background: var(--changed-soft);
+}
+.dp-diff h3 {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--changed);
+}
+.dp-difflist { margin: 0; padding: 0 0 0 18px; }
+.dp-diffrow { margin: 2px 0; }
+/* The quiet one: something that normally runs is not running. It is the only
+   line here describing an absence, so it is the only one set in italics. */
+.dp-diffrow.how-gone { font-style: italic; color: var(--ink-soft); }
 
 /* Pasting a whole class in. The skipped rows stay visible and greyed rather
    than vanishing — a count that quietly drops three people is worse than none. */

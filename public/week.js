@@ -100,13 +100,25 @@
   // planner knew about the lessons the whole time — it was placing work around
   // them — and the one view you'd use to decide when to take on more work said
   // the days were empty.
+  // WHICH LAYER EACH THING IS ON — asked of OrganiserDayShape.layersOn, the
+  // same call the Day page makes. "Is this one different" worked out separately
+  // here is how the two pages came to describe the same Tuesday differently
+  // once before, over free time.
   function blocksFor(iso) {
     const S = window.OrganiserSchedule;
+    const DS = window.OrganiserDayShape;
     if (!S || !S.blocksOn) return [];
-    // Soft blocks are guesses and the day markers aren't things you attend.
-    return S.blocksOn(schedule, iso)
-      .filter((b) => !b.soft && !b.blocksDay && !b.noLessons)
-      .map((b) => ({ block: b, start: S.toMin(b.start) }))
+    // Soft blocks are guesses. The day markers are not things you attend, and
+    // layersOn has already left them out — they belong to the day, and the
+    // day's own line says them.
+    const rows = DS && DS.layersOn
+      ? DS.layersOn(schedule, iso, cfg)
+      : S.blocksOn(schedule, iso)
+        .filter((b) => !b.blocksDay && !b.noLessons)
+        .map((b) => ({ block: b, layer: "standing", how: "standing", was: null }));
+    return rows
+      .filter((r) => !r.block.soft)
+      .map((r) => ({ ...r, start: S.toMin(r.block.start) }))
       .sort((a, b) => a.start - b.start);
   }
 
@@ -116,19 +128,96 @@
     // in a particular room is marked down its edge, so a week is scannable
     // without reading a badge on every row.
     const there = window.OrganiserSchedule && OrganiserSchedule.mustBeThere(b.block);
-    el.className = "item wk-item wk-block" + (there ? " needs-you-there" : "");
+    // AND PRINT OR PENCIL. A week of ordinary lessons drawn at the same weight
+    // as the one morning that isn't ordinary is a week you have to read all of.
+    const changed = b.layer === "change";
+    el.className = "item wk-item wk-block" + (there ? " needs-you-there" : "") +
+      (changed ? " dp-changed" : "") + (b.block.protected ? " dp-held" : "");
     const t = fmtTime(b.block.start);
+    const title = changed && b.how === "swapped" && b.was
+      ? `${escapeHtml(b.was.label)} <span class="dp-arrow" aria-label="replaced by">→</span> ${escapeHtml(b.block.label || "Block")}`
+      : escapeHtml(b.block.label || "Block");
     el.innerHTML = `
       ${t ? `<div class="tl-time">${escapeHtml(t)}</div>` : ""}
       <div class="item-main">
-        <div class="item-title">${escapeHtml(b.block.label || "Block")}</div>
+        <div class="item-title">${title}</div>
         <div class="item-meta">
           <span class="badge block">${there ? "BE THERE" : "ON"}</span>
+          ${changed ? `<span class="dp-mark">${b.how === "swapped" ? "Changed" : "Added"}</span>` : ""}
+          ${b.block.protected ? `<span class="dp-mark">Kept</span>` : ""}
           ${b.block.end ? `<span class="when">till ${escapeHtml(fmtTime(b.block.end))}</span>` : ""}
           ${b.block.where ? `<span class="where">${escapeHtml(b.block.where)}</span>` : ""}
         </div>
       </div>`;
     return el;
+  }
+
+  // THE PRINTED TIMETABLE, COUNTED RATHER THAN LISTED.
+  //
+  // Nine rows of it under each of seven days is a wall, and the one morning
+  // that isn't ordinary is somewhere in the middle of it. But an ordinary day
+  // is not an empty one either — this page called a day with four lessons on it
+  // "free" once, and that is the sentence you plan against. So the week says how
+  // much of the day is already spoken for, in one line you can open.
+  //
+  // The counting is what kind was added for: "when am I teaching" and "when am
+  // I on duty" were questions the app held all the data for and couldn't answer.
+  const KIND_COUNT = [
+    ["teaching", "lesson", "lessons"],
+    ["duty", "duty", "duties"],
+    ["break", "break", "breaks"],
+  ];
+  function usualWords(rows) {
+    const bits = [];
+    let named = 0;
+    KIND_COUNT.forEach(([kind, one, many]) => {
+      const n = rows.filter((r) => r.block.kind === kind).length;
+      named += n;
+      if (n) bits.push(`${n} ${n === 1 ? one : many}`);
+    });
+    // NOTHING SAID IS NOT NOTHING THERE. Every schedule saved before the app
+    // asked what a block was has no kind on any of them, and a week that reads
+    // "9 more" for all of them is worse than one that just says how many.
+    if (!named) return `${rows.length} on the timetable`;
+    const rest = rows.length - named;
+    if (rest) bits.push(`${rest} more`);
+    const held = rows.filter((r) => r.block.protected).length;
+    if (held) bits.push(`${held} kept`);
+    return bits.join(" · ");
+  }
+
+  function usualBox(rows) {
+    const box = document.createElement("details");
+    box.className = "wk-usual";
+    const head = document.createElement("summary");
+    head.textContent = usualWords(rows);
+    box.appendChild(head);
+    const list = document.createElement("div");
+    list.className = "items";
+    rows.forEach((r) => list.appendChild(blockRow(r)));
+    box.appendChild(list);
+    return box;
+  }
+
+  // WHAT THE WHOLE DAY IS, IN ONE LINE.
+  //
+  // The week you actually want is the one you can read down the left in four
+  // seconds: Monday normal, Tuesday parents in at half eight, Wednesday normal,
+  // Thursday no lessons. Everything under those headings is still there when
+  // you want it — but the scan comes first, and on an ordinary day it says one
+  // quiet word and stops. See OrganiserDayShape.differsOn.
+  function dayNote(iso) {
+    const DS = window.OrganiserDayShape;
+    if (!DS || !DS.differsOn) return null;
+    const diffs = DS.differsOn(schedule, iso, cfg);
+    if (!diffs.length) return { changed: false, words: "normal" };
+    // Two changes on one day is a day worth opening; five is a wall. The first
+    // is said, the rest are counted, and the day itself has all of them.
+    const rest = diffs.length - 1;
+    return {
+      changed: true,
+      words: diffs[0].words + (rest ? ` · and ${rest} more` : ""),
+    };
   }
 
   const DAYS = 7;
@@ -211,17 +300,41 @@
       const h = document.createElement("h2");
       h.className = "wk-heading" + (i === 0 ? " today" : "");
       h.textContent = dayHeading(iso, i);
+      // WHAT IS DIFFERENT, IN THE HEADING. Not under it: the heading is what
+      // the eye lands on, and a difference three rows down a list of nine
+      // lessons is a difference you find by reading the list.
+      // "Normal" is worth saying about a day with a timetable on it. On a day
+      // with nothing at all it is the wrong word for an empty space, and the
+      // line underneath already says "free" better than this could.
+      const said = dayNote(iso);
+      const note = said && (said.changed || day.length || blocks.length) ? said : null;
+      if (note) {
+        const say = document.createElement("span");
+        say.className = "wk-note" + (note.changed ? " changed" : "");
+        say.textContent = ` — ${note.words}`;
+        h.appendChild(say);
+      }
       sec.appendChild(h);
       // FREE MEANS FREE. Not "no tasks happen to be planned here" — a day with
       // four lessons on it is not free, and saying so is worse than saying
       // nothing, because it is the sentence you plan against.
       if (!day.length && !blocks.length) {
-        sec.insertAdjacentHTML("beforeend", `<p class="wk-free">free</p>`);
+        // AND A DAY YOU MARKED OFF IS NOT FREE. Nothing resolves on it — the
+        // marker is the day, not a row in it — so this page called it free,
+        // which is the exact sentence you plan against. If the heading has
+        // already said what the day is, it does not need contradicting.
+        if (!note || !note.changed) sec.insertAdjacentHTML("beforeend", `<p class="wk-free">free</p>`);
       } else {
+        // THE ORDINARY WEEK GOES BEHIND ONE LINE; THE PENCIL AND THE WORK DO
+        // NOT. You know what a Tuesday looks like — what you came to this page
+        // for is the Tuesday that isn't one, and where the work is going to go.
+        const usual = blocks.filter((b) => b.layer !== "change");
+        if (usual.length) sec.appendChild(usualBox(usual));
         const list = document.createElement("div");
         list.className = "items";
         // One day, in time order, whichever kind of thing each row is.
         const rows = blocks
+          .filter((b) => b.layer === "change")
           .map((b) => ({ at: b.start, make: () => blockRow(b) }))
           .concat(day.map((p) => ({
             at: p.pinnedByHand && p.it.time && window.OrganiserSchedule

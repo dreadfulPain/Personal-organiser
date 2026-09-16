@@ -3467,18 +3467,84 @@ sec("A calendar you check three things on, not thirty");
     ok("fourteen entries go out in more than one go", lots.length > 1, String(lots.length));
     ok("none of them a long one", lots.every((x) => x.candidates.length <= 6),
        JSON.stringify(lots.map((x) => x.candidates.length)));
-    // EVERY ROW ASKED ABOUT ONCE, which is the same invariant said about the
-    // asking rather than about the answering.
-    // EVERY ROW ASKED ABOUT, AND NONE TWICE IN ONE PASS. A batch that came back
-    // with nothing IS asked a second time — that is the point of batching, one
-    // that fails costs its own six and nothing else — so what must hold is that
-    // the first pass covers every row exactly once.
-    const pass1 = lots.slice(0, 3).flatMap((x) => x.candidates.map((c) => c.n));
-    ok("and every row asked about exactly once in the first go",
-       pass1.length === new Set(pass1).size && new Set(pass1).size === 14,
-       JSON.stringify(pass1));
-    ok("with the ones that came back empty asked again on their own",
-       lots.length > 3, String(lots.length));
+    // EVERY ROW ASKED ABOUT, AND A SECOND GO ONLY WHERE THE FIRST GAVE NOTHING.
+    //
+    // This used to say "exactly once in the first three lots", which was true
+    // while a batch that answered nothing was asked again IDENTICALLY — and
+    // that repetition is the eighteen minutes: five batches, then four of them
+    // over again at the same size, nine waits of two minutes. A batch that
+    // answered nothing is halved now, so the asking interleaves and "the first
+    // three lots" stopped meaning anything.
+    //
+    // The invariant underneath it is the one that mattered all along: nothing
+    // is asked about twice for the sake of it.
+    const every = lots.flatMap((x) => x.candidates.map((c) => c.n));
+    ok("and every row is asked about", new Set(every).size === 14,
+       JSON.stringify([...new Set(every)].sort((a, b) => a - b)));
+    ok("and a row is only asked again if the last go answered nothing about it",
+       lots.every((x, i) => i === 0 ||
+         x.candidates.every((c) => !lots.slice(0, i).some((p) =>
+           p.answered && p.answered.includes(c.n)))),
+       JSON.stringify(lots.map((x) => x.candidates.map((c) => c.n))));
+    // AND A SMALLER QUESTION IS A DIFFERENT QUESTION. The one batch that came
+    // back on a real calendar was the small one, so that is what an unanswered
+    // batch is asked next: six, then three, then one. Flat, not splitting all
+    // the way down, so how many goes it can take is a number you can read off.
+    const sizes = lots.map((x) => x.candidates.length);
+    ok("with the ones that came back empty asked again in threes",
+       sizes.includes(3), JSON.stringify(sizes));
+    ok("  and then one at a time", sizes.includes(1), JSON.stringify(sizes));
+    ok("  and never a pass bigger than the one before it",
+       sizes.every((n, i) => i === 0 || n <= Math.max(...sizes.slice(0, i))),
+       JSON.stringify(sizes));
+    // AND THE SECOND PASS CARRIES ONLY WHAT THE FIRST LEFT BEHIND. Asking the
+    // same thing again the same way is how five batches became eighteen
+    // minutes and fifty seconds.
+    const firstPass = lots.filter((x) => x.candidates.length === 6);
+    ok("and the first pass covers every row exactly once",
+       firstPass.flatMap((x) => x.candidates.map((c) => c.n)).length === 12,
+       JSON.stringify(firstPass.map((x) => x.candidates.map((c) => c.n))));
+  }
+
+  // AND THE WHOLE THING HAS A BUDGET, which is the third of the three faults
+  // that made eighteen minutes and fifty seconds. Every part had a limit; the
+  // sum of them had none — so a model slow enough to time out on every batch
+  // could spend the afternoon doing it, and then hand back a list of questions
+  // anyway. An importer that costs eighteen minutes and gives you twenty-four
+  // decisions has not saved you anything, however right each answer would be.
+  {
+    asked.length = 0;
+    const many = Array.from({ length: 14 }, (_, i) =>
+      `Thing ${i + 1}: ${i + 1} November 2026`).join("\n");
+    // A clock that jumps two minutes every time anything looks at it.
+    let tick = 0;
+    const r3 = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] }, {
+      clock: () => (tick += 120000),
+      fetch: async (url, init) => {
+        if (/api\/health/.test(String(url)))
+          return { ok: true, json: async () => ({ ok: true, hasAI: true }) };
+        if (!/api\/calendar/.test(String(url))) return { ok: false, json: async () => ({}) };
+        asked.push(JSON.parse((init && init.body) || "{}"));
+        return { ok: true, json: async () => ({ answers: [], missed: [] }) };
+      },
+    });
+    r3.get("#calBox").open = true;
+    const bx3 = r3.get("#calPaste");
+    bx3.value = many;
+    bx3.fire("input", { target: bx3 });
+    await r3.settle();
+    const go3 = r3.get("#calSecond");
+    go3.fire("click", { target: go3 });
+    await r3.settle();
+    const tries = asked.filter((x) => x.candidates);
+    ok("a model too slow for the document is stopped rather than indulged",
+       tries.length > 0 && tries.length < 6, String(tries.length));
+    ok("  and the page says why it stopped, not just that it did",
+       /taking longer than the whole calendar is worth/
+         .test(String(r3.get("#calWords").textContent || "")),
+       String(r3.get("#calWords").textContent || "").slice(0, 300));
+    ok("  and every row it never reached is still there to answer",
+       calRowsOf(r3).length === 14, String(calRowsOf(r3).length));
   }
 }
 

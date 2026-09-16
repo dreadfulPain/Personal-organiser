@@ -633,7 +633,7 @@ function shaped(v, schema) {
 // Engine: Ollama on this machine (the chosen setup). Its native /api/chat lets
 // us turn thinking OFF cleanly and ask for a fixed JSON shape. Built-in fetch
 // only — nothing leaves the machine.
-async function callOllama(cfg, system, user, schema) {
+async function callOllama(cfg, system, user, schema, signal) {
   const url = cfg.baseUrl.replace(/\/+$/, "") + "/api/chat";
   const headers = { "Content-Type": "application/json" };
   // HOW MUCH THE MODEL IS ALLOWED TO SEE AND SAY.
@@ -672,7 +672,10 @@ async function callOllama(cfg, system, user, schema) {
   ];
   let resp = null;
   for (const body of variants) {
-    resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body),
+      // See untilGivenUp. Without this the page's two-minute patience was a
+      // promise it could not keep: it stopped waiting and the work went on.
+      ...(signal ? { signal } : {}) });
     if (resp.ok) break;
   }
   if (!resp || !resp.ok) {
@@ -1034,7 +1037,39 @@ const PLAIN_JSON =
   "\n\nYour last answer could not be read. Reply with the JSON object and nothing else: " +
   "no explanation, no code fence, no words before or after it.";
 
-async function runEngine(cfg, system, user, schema, label) {
+// WHEN THE PAGE STOPS WAITING, SO DOES THIS.
+//
+// THE 18 MINUTES. The page gives a batch two minutes and then gives up on it —
+// and nothing told the server, and the server had no deadline of its own, so
+// its request to Ollama ran on to the end. Ollama answers one thing at a time.
+// So every abandoned batch went on holding the machine while the NEXT batch
+// queued behind it, and a reading the page had already written off was the
+// reason the one after it was late too. Five batches of a real calendar came to
+// eighteen minutes and fifty seconds of that, and twenty-four of twenty-seven
+// entries still unanswered at the end of it.
+//
+// Two ends of one rope, and neither was tied. Now: the browser hanging up
+// aborts the work it was waiting for, and the server keeps a deadline of its
+// own a little under the page's so a model that has stopped talking cannot hold
+// a slot for ever. Giving up has to actually give up, or it is not giving up —
+// it is queueing.
+const ENGINE_DEADLINE = 110000;
+// WATCHED ON THE WAY OUT, NOT ON THE WAY IN. The request's own body has long
+// since been read by the time any of this runs, so it looks complete whatever
+// the browser does next; the reply is the thing still open. A reply whose
+// connection closes before anything has been written to it is somebody who
+// stopped waiting.
+function untilGivenUp(res) {
+  const ctl = new AbortController();
+  const stop = (why) => { if (!ctl.signal.aborted) { ctl.why = why; ctl.abort(); } };
+  const timer = setTimeout(() => stop("deadline"), ENGINE_DEADLINE);
+  if (res && typeof res.on === "function")
+    res.on("close", () => { if (!res.writableEnded) stop("hung up"); });
+  return { signal: ctl.signal, done: () => clearTimeout(timer),
+    why: () => ctl.why || "" };
+}
+
+async function runEngine(cfg, system, user, schema, label, signal) {
   const t0 = Date.now();
   // Whatever this computer has, rather than whatever the file says it has.
   const here = await modelHere(cfg);
@@ -1043,7 +1078,7 @@ async function runEngine(cfg, system, user, schema, label) {
     cfg.engine === "anthropic"
       ? callAnthropic(cfg, sys, user, schema)
       : cfg.engine === "ollama"
-        ? callOllama(cfg, sys, user, schema)
+        ? callOllama(cfg, sys, user, schema, signal)
         : callOpenAI(cfg, sys, user, schema);
   try {
     let out;
@@ -1552,7 +1587,7 @@ For each number:
 
     For every other "means", leave "mustBy" as "".
 
-- "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the calendar below. It is looked for in the document, and the entry's own date is looked for beside it, so quote enough of it to take the date in. An answer whose "said" is not in the document is not trusted.
+- "said" is the words of the DOCUMENT this entry came from, COPIED EXACTLY from the lines given as "what the document puts it under" for that entry. An answer whose "said" is not really there is not trusted.
 
 Answer every number you are given, and no others. Return only the JSON object.`;
 
@@ -1848,8 +1883,30 @@ function ofItsOwn(context, said) {
 //
 // AND SAYING FALSE COSTS IT NOTHING. Most honest reading is inference — the
 // prompt says so — and inference is exactly what the "your say" pile is for.
-function entails(means, stated, says, ground) {
+function entails(means, stated, says, ground, label) {
   if (!means) return "";
+  // AND WHERE THE ONLY WORDS ABOUT IT ARE ITS NAME, THERE IS NOTHING TO QUOTE.
+  //
+  // A mark on a term grid is a symbol and a line of the legend saying what the
+  // symbol is called — "Staff Meeting" — and that is the whole of what the
+  // document says about it. So a reader answering "no lessons" and pointing at
+  // "Staff Meeting" passed: the words really are in what the entry rests on,
+  // because they are ALL of what it rests on. Fourteen Fridays came back ticked
+  // as a staff-only day with no teaching, which the calendar never said, on the
+  // strength of the meeting's own name.
+  //
+  // Evidence that a thing exists is not evidence that an answer about it is
+  // right — the oldest rule in this file, arriving by a door nobody had shut.
+  // The name says what it is called. What it does to a working week is a
+  // different claim, and a document that says only the name has not made it.
+  //
+  // NOT A RULE ABOUT MARKS. Any entry whose ground is nothing but its own name
+  // is in the same position, and an entry with a heading over it, a row and
+  // column around it, or words of its own beyond the name is not.
+  const flat = (x) => String(x || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const rest = flat(ground).split(flat(label)).join(" ").replace(/[^a-z0-9]+/g, "");
+  if (label && !rest)
+    return "the document says what this is called and nothing else about it";
   if (!stated) return "the line doesn't say that — the reader worked it out";
   const words = String(says || "").replace(/\s+/g, " ").trim().toLowerCase();
   if (!words) return "the line doesn't say that — the reader worked it out";
@@ -2088,7 +2145,7 @@ function writtenIn(said, iso) {
 // quotes must be in the document, and the entry's own date must be written
 // beside them. A model that annotates from the general sense of the page rather
 // than from the entry in front of it fails that, and is asked about instead.
-async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
+async function markCalendar(res, { cfg, text, sent, year, about, candidates, req }) {
   // AND WHAT EACH ONE RESTS ON, WITH IT.
   //
   // This was worked out for every entry, sent to this function, used as the
@@ -2111,14 +2168,40 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
         ? `\n    what the document puts it under: ${c.context.map((x) => `"${x}"`).join(" / ")}`
         : ""))
     .join("\n");
+  // AND THE WHOLE CALENDAR IS NOT SENT WITH EVERY BATCH ANY MORE.
+  //
+  // It was there so a quote could be found in the document — and now every entry
+  // arrives with what it rests on written beside it, which is where its quote
+  // has to come from anyway. So five batches of one real calendar were carrying
+  // five copies of the same three thousand nine hundred characters: more than a
+  // third of everything sent, for a model to read again and again and make no
+  // further use of.
+  const turn =
+    `The rest of this document is about the year ${year}.\n` +
+    (about ? `\nThe person reading this says of themselves: ${about}\n` : "") +
+    `\nThe entries to say something about:\n"""\n${numbered}\n"""`;
+  const gone = untilGivenUp(res);
+  const t0 = Date.now();
+  // WHAT HAPPENED TO THIS BATCH, WRITTEN DOWN WHATEVER HAPPENS.
+  //
+  // Eighteen minutes and fifty seconds, and nothing on the page or in the log
+  // said where any of it went — so the first thing anybody could do about it was
+  // guess. Numbers only: which entries, how big, how long, what came back. No
+  // words off the document, because this goes in a report that must be safe to
+  // send to somebody.
+  const note = (ok, why) => logEvent("ai", {
+    job: "calendar-marks", ms: Date.now() - t0, ok,
+    ...(why ? { why } : {}),
+    of: candidates.length,
+    first: candidates[0] ? candidates[0].n : 0,
+    chars: CALENDAR_MARK_PROMPT.length + turn.length,
+  });
   try {
     const parsed = await runEngine(
-      cfg, CALENDAR_MARK_PROMPT,
-      `The rest of this document is about the year ${year}.\n` +
-      (about ? `\nThe person reading this says of themselves: ${about}\n` : "") +
-      `\nThe entries to say something about:\n"""\n${numbered}\n"""\n` +
-      `\nThe calendar they came out of:\n"""\n${sent}\n"""`,
-      CALENDAR_MARK_SCHEMA, "calendar-marks");
+      cfg, CALENDAR_MARK_PROMPT, turn,
+      CALENDAR_MARK_SCHEMA, "calendar-marks", gone.signal);
+    gone.done();
+    note(true, "");
     const doc = prepare(text);
     const want = new Map(candidates.map((c) => [c.n, c]));
     const seen = new Set();
@@ -2172,7 +2255,7 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       const fits = disagrees(means, c) ||
         (means === "due" ? owed(means, a.mustBy, ground)
           : means === "week" ? belongs(mine)
-            : entails(means, a.stated === true, a.says, ground));
+            : entails(means, a.stated === true, a.says, ground, c.label));
       answers.push({
         n,
         means,
@@ -2210,18 +2293,25 @@ async function markCalendar(res, { cfg, text, sent, year, about, candidates }) {
       ...(text.length > sent.length ? { cut: sent.length } : {}),
     });
   } catch (err) {
+    gone.done();
+    // A BATCH THE PAGE STOPPED WAITING FOR IS NOT A FAILURE TO REPORT AT — it
+    // is the page having moved on, and saying so is how the eighteen minutes
+    // becomes readable next time instead of being a single number at the end.
+    const why = gone.why() || errorClass(err);
+    note(false, why);
+    if (gone.why()) return;
     console.warn("[calendar-marks] failed:", err?.message || err);
-    const why = offlineReason(cfg, err);
+    const said = offlineReason(cfg, err);
     return sendJson(res, 502, {
       error: "ai_failed",
       ...(err && err.raw ? { saw: String(err.raw).slice(0, 4000) } : {}),
-      message: (why ? why + " " : "Couldn't read that just now — ") +
-        `${why ? "Y" : "y"}ou can still say what each one is by hand.`,
+      message: (said ? said + " " : "Couldn't read that just now — ") +
+        `${said ? "Y" : "y"}ou can still say what each one is by hand.`,
     });
   }
 }
 
-async function handleCalendar(res, body) {
+async function handleCalendar(res, body, req) {
   const text = (body?.text || "").toString().trim();
   if (!text) return sendJson(res, 400, { error: "empty", message: "There was nothing to read." });
   const cfg = aiConfig();
@@ -2261,7 +2351,7 @@ async function handleCalendar(res, body) {
         .slice(0, 6).map((x) => String(x || "").slice(0, 300)).filter(Boolean),
     }))
     .filter((c) => c.n > 0);
-  if (candidates.length) return markCalendar(res, { cfg, text, sent, year, about, candidates });
+  if (candidates.length) return markCalendar(res, { cfg, text, sent, year, about, candidates, req });
   try {
     const parsed = await runEngine(
       cfg, CALENDAR_PROMPT,
@@ -4056,7 +4146,7 @@ const server = http.createServer(async (req, res) => {
       } catch {
         return sendJson(res, 400, { error: "bad_json", message: "That didn't arrive in one piece." });
       }
-      return handleCalendar(res, parsed);
+      return handleCalendar(res, parsed, req);
     }
     if (pathname === "/api/timetable" && req.method === "POST") {
       const body = await readBody(req);

@@ -251,7 +251,12 @@ export async function open(pg, data, opts) {
     MutationObserver: class { observe() {} disconnect() {} },
     getComputedStyle: () => ({ getPropertyValue: () => "" }),
     scrollTo() {}, history: { replaceState() {}, pushState() {} },
-    performance: { now: () => 0 },
+    // A CLOCK A TEST CAN MOVE. The pages time themselves with performance.now(),
+    // and a stand-in for it is all it takes to make an hour pass in a
+    // millisecond — so a budget that stops a slow job running away, which is a
+    // safety valve, does not have to go untested. Still nought by default, so
+    // "read in under 1ms" stays the answer everywhere else.
+    performance: { now: o.clock || (() => 0) },
     addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true,
   };
   sb.window = sb; sb.globalThis = sb; sb.self = sb;

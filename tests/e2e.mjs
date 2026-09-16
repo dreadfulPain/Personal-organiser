@@ -16,11 +16,25 @@ const oport = 11700, sport = 3700;
 // it, and two computers is all it takes for it to be wrong on one of them.
 const modelsAsked = [];
 const chats = [];
+// How the stand-in is told which way to misbehave for the call about to be
+// made — see askCal. Not in the prompt, so that what is being tested and the
+// instructions for testing it cannot be mistaken for each other.
+let standIn = "";
+// A STAND-IN THAT NEVER ANSWERS, and whether the server gave up on it. This is
+// how "giving up actually gives up" is observed from outside: the request the
+// server made is aborted at the far end.
+let hangs = false;
+let droppedByServer = false;
 // What this stand-in Ollama says it has pulled, which is deliberately NOT the
 // model the server is configured with.
 const PULLED = ["llama3.2:3b"];
 const ol = http.createServer((req, res) => {
   if (/\/api\/tags/.test(req.url)) { res.writeHead(200, {"Content-Type":"application/json"}); return res.end(JSON.stringify({ models: PULLED.map((name) => ({ name })) })); }
+  if (hangs) {
+    req.on("aborted", () => { droppedByServer = true; });
+    req.on("close", () => { if (!res.writableEnded) droppedByServer = true; });
+    return; // never answers
+  }
   let b = ""; req.on("data", (c) => (b += c));
   req.on("end", () => {
     const askedFor = JSON.parse(b || "{}").model || "";
@@ -94,7 +108,7 @@ const ol = http.createServer((req, res) => {
       // insisting on one here meant the stand-in simply never saw them.
       const nums = [...user.matchAll(/^(\d+)\. (\d{4}-\d{2}-\d{2})?[^\n]*?— ([^\n\[]*)(?:\[as written: ([^\]]*)\])?/gm)]
         .map((m) => ({ n: Number(m[1]), label: m[3].trim(), line: (m[4] || m[3]).trim() }));
-      const how = (/MARKS:(\w+)/.exec(user) || [])[1] || "";
+      const how = (/MARKS:(\w+)/.exec(standIn) || [])[1] || "";
       // AND WHETHER THE DOCUMENT SAYS IT. The stand-in points at a word that is
       // really in the line; the markers below make it misbehave in each of the
       // ways a real model does.
@@ -108,7 +122,9 @@ const ol = http.createServer((req, res) => {
       // AND THE WORDS A READER CLAIMS PUT SOMEBODY UNDER ONE, where the test
       // is about those. Written into the document it is answering about, so a
       // phrase that is really there and a phrase that is not can both be tried.
-      const by = (/MUSTBY:([^\n]*)/.exec(user) || [])[1] || "";
+      // Stops at a quote as well as a line end: on the annotate path the marker
+      // travels inside the entry's own ground, which is printed quoted.
+      const by = ((/MUSTBY:([^\n]*)/.exec(standIn) || [])[1] || "").trim();
       let answers = nums.map(one);
       // HALF AN ANSWER, which is what a model that runs out of room gives.
       if (how === "half") answers = answers.slice(0, Math.ceil(answers.length / 2));
@@ -133,11 +149,19 @@ const ol = http.createServer((req, res) => {
         answers = answers.map((a) => ({ ...a, means: "due", mustBy: by, stated: false, says: "" }));
       // AND AN EVENT ON A WORKING DAY, which proves itself by whose it is.
       if (how === "week") answers = answers.map((a) => ({ ...a, means: "week", stated: false, says: "" }));
+      // A READER POINTING AT THE ENTRY'S OWN NAME, confidently, for whatever
+      // meaning the test named. Which is what a model does when the name is all
+      // it has been given.
+      if (how === "name") {
+        const m = (/MEANS:(\w+)/.exec(standIn) || [])[1] || "off";
+        answers = answers.map((a) => ({ ...a, means: m, stated: true,
+          says: (nums.find((c) => c.n === a.n) || {}).label || a.says }));
+      }
       // AND A READER QUOTING WHATEVER THE TEST GAVE IT, so a quote off the
       // entry's own heading and a quote off another part of the page can both
       // be tried against the same entry.
       if (how === "says") {
-        const q = (/SAYS:([^\n]*)/.exec(user) || [])[1] || "";
+        const q = ((/SAYS:([^\n]*)/.exec(standIn) || [])[1] || "").trim();
         answers = answers.map((a) => ({ ...a, means: "week", said: q, says: q, stated: true }));
       }
       // POINTING AT THE HEADING THE LIST IS UNDER, which is not on the entry's
@@ -527,9 +551,35 @@ ok("it is handed back as one it couldn't read",
 // to help. What comes back is STRUCTURE ONLY, and the checks below are about
 // the line the whole design turns on: it may say when something is, never what
 // it means.
-const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
-  method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body) })).json());
+// HOW THE STAND-IN IS TOLD WHICH WAY TO MISBEHAVE.
+//
+// The markers ride in the document, because the document used to be sent to the
+// model with every batch. It is not any more — each entry now carries what it
+// rests on, which is the only place its quote may come from, so five copies of
+// the same calendar were five copies of something the gates would refuse to use.
+//
+// So on the annotate path the markers are put where the prompt still goes: onto
+// the entries themselves. The document keeps them too, because the free-form
+// path still reads it whole, and because that is where the checks look for a
+// quote. Nothing about what is being tested changes — only the envelope.
+const askCal = async (body) => {
+  // OUT OF BAND, NOT IN THE PROMPT. The markers used to ride in the document,
+  // because the document was sent to the model with every batch. It is not any
+  // more — each entry carries what it rests on, which is the only place its
+  // quote may come from, so five copies of one calendar were five copies of
+  // something the gates would refuse to use.
+  //
+  // Putting them on the entries instead put them INSIDE the ground the checks
+  // are made against, so a test for "words invented to prove a deadline" handed
+  // the invented words to the thing meant to catch them. These two ends are the
+  // same process; the stand-in is told directly, and nothing about the request
+  // changes at all.
+  standIn = String(body.text || "").split("\n")
+    .filter((l) => /^(MARKS|MUSTBY|SAYS):/.test(l)).join("\n");
+  return (await (await fetch(B + "/api/calendar", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body) })).json());
+};
 
 {
   const cal = await askCal({ year: 2026, text: [
@@ -985,9 +1035,11 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
       "Applications released Friday 13 November 2026",
       "Results published Monday 16 November 2026",
     ];
+    // The name as the reader makes it: the line with its date taken out.
+    const nameOf = (line) => line.replace(/,?\s*(?:Friday|Monday)\s+\d+\s+\w+\s+\d{4}/, "").trim();
     const ask = (line, mustBy, date) => askCal({ year: 2026,
       text: `MARKS:owed\nMUSTBY:${mustBy}\n${line}`,
-      candidates: [{ n: 1, date, endsOn: "", label: line, line, context: [line] }] });
+      candidates: [{ n: 1, date, endsOn: "", label: nameOf(line), line, context: [line] }] });
     for (const [line, proof] of PAIRS) {
       const got = await ask(line, proof, /6 November/.test(line) ? "2026-11-06" : "2026-11-09");
       ok(`"${line.split(" ").slice(0, 2).join(" ")}" can be due, pointing at "${proof}"`,
@@ -1020,7 +1072,7 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
        JSON.stringify((borrowed.answers || [])[0]));
     // AND NONE OF THIS TOUCHES THE OTHER FIVE MEANINGS.
     const off = await askCal({ year: 2026, text: `MARKS:\n${HAPPENS[0]}`,
-      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: HAPPENS[0],
+      candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: nameOf(HAPPENS[0]),
         line: HAPPENS[0], context: [HAPPENS[0]] }] });
     ok("while a meaning that describes the day needs no such thing",
        ((off.answers || [])[0] || {}).checked === "" &&
@@ -1038,9 +1090,13 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
   // say, matched against what you say you teach, which it never will.
   {
     const LINE = "Parents' evening, Friday 6 November 2026: Year 7 and Year 8";
+    // AS THE READER MAKES ONE: the name with the date taken out of it, the line
+    // as the document wrote it. A candidate whose label IS its whole line is a
+    // mark on a grid, and a mark is a different case — see the name-only check.
+    const NAME = "Parents' evening: Year 7 and Year 8";
     const ask = (about) => askCal({ year: 2026, about,
       text: `MARKS:week\n${LINE}`,
-      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: LINE, line: LINE,
+      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: NAME, line: LINE,
         context: [LINE] }] });
     const told = await ask("Year 7 form tutor");
     ok("an event goes in your week when the document says who it is for and you have said who you are",
@@ -1055,7 +1111,7 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
     // document, profile or no profile: it takes a working day out of a term.
     const off = await askCal({ year: 2026, about: "Year 7 form tutor",
       text: `MARKS:guessed\n${LINE}`,
-      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: LINE, line: LINE,
+      candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: NAME, line: LINE,
         context: [LINE] }] });
     ok("while a day off still has to be something the document says",
        /the reader worked it out/.test(((off.answers || [])[0] || {}).checked || ""),
@@ -1266,6 +1322,71 @@ const askCal = async (body) => (await (await fetch(B + "/api/calendar", {
     ok("  while one that misses sets it aside even where the other meets",
        ((one.answers || [])[0] || {}).mine === "no",
        JSON.stringify((one.answers || [])[0]));
+  }
+
+  // ---- AND GIVING UP HAS TO ACTUALLY GIVE UP -----------------------------
+  //
+  // THE EIGHTEEN MINUTES. The page gives a batch two minutes and then gives up
+  // on it — and nothing told the server, and the server had no deadline of its
+  // own, so its request to the model ran on to the end. A machine that answers
+  // one thing at a time then spends the next batch's turn finishing the last
+  // batch's, and a reading already written off is the reason the one after it
+  // is late too. Five batches of a real calendar came to eighteen minutes and
+  // fifty seconds of that, with twenty-four of twenty-seven entries still
+  // unanswered at the end.
+  //
+  // Both ends of one rope, and neither was tied. What is checked here is the
+  // one that can be: hanging up on the server stops the work it was waiting for.
+  {
+    hangs = true;
+    const ctl = new AbortController();
+    const asked = fetch(B + "/api/calendar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      signal: ctl.signal,
+      body: JSON.stringify({ year: 2026, text: "Some calendar\nOpen evening 6 Nov 2026",
+        candidates: [{ n: 1, date: "2026-11-06", endsOn: "", label: "Open evening",
+          line: "Open evening 6 Nov 2026", context: ["Open evening 6 Nov 2026"] }] }),
+    }).catch(() => null);
+    await sleep(300);
+    ctl.abort();
+    await asked;
+    await sleep(400);
+    ok("hanging up stops the work the server was waiting for",
+       droppedByServer, String(droppedByServer));
+    hangs = false;
+  }
+
+  // ---- AND A NAME IS NOT EVIDENCE ABOUT WHAT IT MEANS --------------------
+  //
+  // A mark on a term grid is a symbol and a line of legend saying what the
+  // symbol is called. That is the whole of what the document says about it — so
+  // a reader answering "no lessons" and pointing at the mark's own name passed
+  // the check, because the words really are in what the entry rests on: they
+  // are ALL of what it rests on. Fourteen Fridays came back ticked as a
+  // staff-only day with no teaching, which the calendar never said, on the
+  // strength of the meeting's own name.
+  {
+    const only = (label, means) => askCal({ year: 2026, about: "Pod 1 group leader",
+      text: `MARKS:name\nMEANS:${means}\nSome calendar\n${label}`,
+      candidates: [{ n: 1, date: "", endsOn: "", label, line: label, context: [label] }] });
+    for (const means of ["noLessons", "off", "runsAs", "lessons"]) {
+      const got = await only("Whole-Staff Briefing", means);
+      ok(`"${means}" cannot be proved by the entry's own name`,
+         /says what this is called and nothing else/
+           .test(((got.answers || [])[0] || {}).checked || ""),
+         JSON.stringify((got.answers || [])[0]));
+    }
+    // AND AN ENTRY THAT RESTS ON MORE THAN ITS NAME IS UNTOUCHED. A heading over
+    // it, a row and column round it, or words of its own are all something to
+    // point at; this is not a rule about marks, it is a rule about having
+    // nothing but a name.
+    const more = await askCal({ year: 2026, about: "Pod 1 group leader",
+      text: "MARKS:name\nMEANS:off\nClosures:\nWhole-Staff Briefing",
+      candidates: [{ n: 1, date: "", endsOn: "", label: "Whole-Staff Briefing",
+        line: "Whole-Staff Briefing", context: ["Closures:", "Whole-Staff Briefing"] }] });
+    ok("while an entry with a heading over it still has something to point at",
+       ((more.answers || [])[0] || {}).checked === "",
+       JSON.stringify((more.answers || [])[0]));
   }
 
   // ---- AND "IS THIS YOURS" IS ONLY AN ANSWER IF THERE WAS A QUESTION -------

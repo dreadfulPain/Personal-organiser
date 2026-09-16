@@ -517,8 +517,7 @@
       // whole of what the document says about it.
       context: [m.name || ""],
     })));
-    const askLot = async (from, count) => {
-      const candidates = numbered.slice(from, from + count);
+    const askLot = async (candidates) => {
       const answer = await askModel("/api/calendar",
         { text, year, about, candidates }, renderCal);
       if (answer.stale) return "stale";
@@ -543,27 +542,58 @@
       if (d.cut) cutAt = d.cut;
       return "ok";
     };
-    for (let i = 0; i < lots.length; i++) {
-      calNote = `${saying || "Asking the model… "}${all > BATCH
-        ? `${lots[i].from} of ${all} so far. ` : ""}`;
-      renderCal();
-      const how = await askLot(lots[i].from, lots[i].size);
-      if (how === "stale") return;
-      if (how === "stopped") break;
-    }
-    // AND THE ONES THAT CAME BACK WITH NOTHING, ASKED AGAIN ON THEIR OWN. One
-    // more go each, because a batch that timed out is usually the machine being
-    // busy rather than the question being impossible — and because asking again
-    // costs six entries' worth of waiting, not the whole calendar's.
-    if (!stopped)
-      for (let i = 0; i < lots.length; i++) {
-        let none = true;
-        for (let j = 0; j < lots[i].size; j++) if (got.has(lots[i].from + j + 1)) none = false;
-        if (!none) continue;
-        const how = await askLot(lots[i].from, lots[i].size);
-        if (how === "stale") return;
+    // ---- HOW LONG THE WHOLE THING IS ALLOWED TO TAKE -----------------------
+    //
+    // EIGHTEEN MINUTES AND FIFTY SECONDS, and twenty-four of twenty-seven
+    // entries still unanswered at the end of it. Three things made that number
+    // and none of them was the model being asked a hard question.
+    //
+    //   · Giving up did not give up. The page stopped waiting at two minutes
+    //     and nothing told the server, which had no deadline of its own — so
+    //     the abandoned work ran on, and a machine that answers one thing at a
+    //     time spent the next batch's turn finishing the last batch's. Mended
+    //     at the other end: see untilGivenUp.
+    //   · The batch that came back with nothing was asked AGAIN AT THE SAME
+    //     SIZE. Five batches, then four of them over again, identically: nine
+    //     waits of two minutes, which is the eighteen minutes almost exactly.
+    //     A second go at the thing that just failed is a second failure.
+    //   · And nothing capped the total. Every part had a limit; the sum of them
+    //     had none.
+    //
+    // So: a batch that answers nothing is halved and asked again — six, then
+    // three, then one — because a smaller question is a different question and
+    // the one batch that DID come back on that calendar was the small one. And
+    // the whole job has a budget. When it is spent the asking stops, whatever
+    // is left is left, and the page says so. An importer that costs eighteen
+    // minutes and then hands you twenty-four decisions has not saved you
+    // anything, however right each answer would have been.
+    const WHOLE_JOB = 300000;
+    const spent = () => msNow() - t0;
+    let ranOut = false;
+    let stale = false;
+    // THREE PASSES, EACH OVER WHAT IS STILL MISSING, EACH SMALLER THAN THE LAST.
+    // Six, then three, then one — flat rather than splitting all the way down,
+    // so the number of goes it can take is a number you can read off the page
+    // rather than something that unfolds.
+    for (const size of [BATCH, 3, 1]) {
+      if (stopped || ranOut || stale) break;
+      const left = size === BATCH
+        ? numbered
+        : numbered.filter((c) => !got.has(c.n));
+      if (!left.length) break;
+      for (let i = 0; i < left.length; i += size) {
+        if (stopped) break;
+        if (spent() > WHOLE_JOB) { ranOut = true; break; }
+        const lot = left.slice(i, i + size);
+        calNote = `${saying || "Asking the model… "}${all > BATCH
+          ? `${got.size} of ${all} so far. ` : ""}`;
+        renderCal();
+        const how = await askLot(lot);
+        if (how === "stale") { stale = true; break; }
         if (how === "stopped") break;
       }
+    }
+    if (stale) return;
     // WHAT CAME BACK, MERGED ONTO WHAT WAS ALREADY THERE. The row is the row
     // this app read: same date, same name, same place in the list. All the
     // model can add is what it thinks the day means, and it cannot take a row
@@ -632,7 +662,7 @@
       `Read by the model in ${took(msNow() - t0)}. ` +
       calCut(cutAt) + calShort(short) + calNoProfile(about) +
       calMoreFound(extra.length, already.r.missed || []) +
-      calLeftOver(all - answered, all, stopped));
+      calLeftOver(all - answered, all, stopped, ranOut));
     // A READING THAT CAME BACK IN PIECES IS STILL ONE TO OFFER AGAIN, and what
     // the model said about the pieces that failed is still worth being able to
     // look at. Set after calShow, which clears both for a reading that landed
@@ -694,10 +724,17 @@
   // AND WHAT IT DID NOT GET TO. The number that matters when a reading is
   // partial: not how much came back, but how much is still waiting on you — and
   // where those rows are, which is exactly where they always were.
-  function calLeftOver(left, all, stopped) {
+  function calLeftOver(left, all, stopped, ranOut) {
     if (left <= 0) return "";
     return `${left} of the ${all} ${left === 1 ? "is" : "are"} still waiting on you` +
-      (stopped ? " — you stopped it" : "") +
+      (stopped ? " — you stopped it"
+        // AND WHY IT STOPPED ASKING, where it stopped on its own. A reading
+        // that quietly did four fifths of the job and said nothing about the
+        // rest is the silence this whole panel exists to end — and "the model
+        // on this machine is slower than this document is long" is a fact
+        // about somebody's computer that they can act on.
+        : ranOut ? " — the model was taking longer than the whole calendar is worth, so it was left there"
+        : "") +
       ", in the list below. Nothing was lost. ";
   }
 

@@ -2388,7 +2388,13 @@
           to: (t && t.to) || "",
           blocksDay: r.kind === "off",
           noLessons: r.kind === "noLessons",
-          beThere: r.kind === "week",
+          // "IN MY WEEK" IS NOT "BE THERE" — see mustBeThere. A term boundary,
+          // an exam period and a report-distribution date all belong to your
+          // week without there being a room to be in at a time, and attendance
+          // at a time needs a time. Where the document gave one, the entry is an
+          // appointment and is treated as one; where it did not, it is yours and
+          // it is not an appointment.
+          beThere: r.kind === "week" && !!timed,
           // AND WHETHER THAT CLOCK IS A CLOCK — see TIMINGS in schedule.js.
           // Without a time from the document this reads midnight to a minute to
           // midnight, which is not what "it happens on the sixteenth" says and
@@ -2435,7 +2441,8 @@
           // be filed as a day off or thrown away.
           blocksDay: p.kind === "off",
           noLessons: p.kind === "noLessons",
-          beThere: p.kind === "week",
+          // "In my week" is not "be there" — see the note on the rule above.
+          beThere: p.kind === "week" && !!timed,
           // AND WHETHER THAT CLOCK IS A CLOCK — see TIMINGS in schedule.js.
           // Without a time from the document this reads midnight to a minute to
           // midnight, which is not what "it happens on the sixteenth" says and

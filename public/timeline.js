@@ -2969,12 +2969,19 @@
   // So it is a question, at the top, where a question belongs. It is the one
   // thing on the day that nothing else can be planned around.
   function needsATimeBox(rows, iso) {
+    // TWO GROUPS, AND THE DIFFERENCE IS WHETHER YOU ATTEND IT.
+    //
+    // "In my week" and "be there" are not the same thing — see mustBeThere. A
+    // parents' meeting is somewhere you go and the hour is genuinely missing;
+    // a report-distribution date, a term boundary, an exam period matter to the
+    // day without there being a room to be in. Asking for a time on the second
+    // sort is asking a question with no answer, every day, until somebody
+    // invents one to make it stop.
+    const needs = rows.filter((r) => r.block.beThere);
+    const also = rows.filter((r) => !r.block.beThere);
     const box = document.createElement("section");
     box.className = "dp-notime";
-    box.innerHTML = `<h3>Needs a time</h3>`;
-    const list = document.createElement("ul");
-    list.className = "dp-notimelist";
-    rows.forEach((r) => {
+    const line = (r, ask, into) => {
       const b = r.block;
       const li = document.createElement("li");
       li.innerHTML = `<span class="dp-ntlabel">${escapeHtml(b.label)}</span>` +
@@ -2997,9 +3004,47 @@
         setTlStatus(`“${b.label}” is at ${S().fmtTime(start)} now.`);
       });
       li.appendChild(at);
-      list.appendChild(li);
-    });
-    box.appendChild(list);
+      // AND THE WAY OUT OF BEING ASKED AT ALL. Every calendar entry the old
+      // importer put in your week was marked as somewhere you had to be, so
+      // some of these are its assumption rather than your answer. One press
+      // settles it and the question does not come back.
+      if (ask) {
+        const no = document.createElement("button");
+        no.type = "button";
+        no.className = "link dp-ntno";
+        no.textContent = "I don't attend this";
+        no.addEventListener("click", () => {
+          schedule = S().normalise(schedule).map((x) =>
+            x.id === b.id ? { ...x, beThere: false } : x);
+          persist();
+          render();
+          setTlStatus(`“${b.label}” is on your day, and isn't somewhere you go.`);
+        });
+        li.appendChild(no);
+      }
+      into.appendChild(li);
+    };
+    const group = (title, why, rows2, ask) => {
+      const head = document.createElement("h3");
+      head.textContent = title;
+      box.appendChild(head);
+      const note = document.createElement("p");
+      note.className = "muted";
+      note.textContent = why;
+      box.appendChild(note);
+      const list = document.createElement("ul");
+      list.className = "dp-notimelist";
+      rows2.forEach((r) => line(r, ask, list));
+      box.appendChild(list);
+    };
+    if (needs.length)
+      group("Needs a time",
+        "Somewhere you have to be, and the calendar didn't say when. Until it has one, " +
+        "nothing can be planned around it.", needs, true);
+    if (also.length)
+      group("Also on today",
+        "On your day, with no time given — and nothing here says there is one to give.",
+        also, false);
     return box;
   }
 
@@ -3040,6 +3085,26 @@
         ? ` ${escapeHtml(S().durationWords(held.reduce((n, h) => n + (h.to - h.from), 0)))} more is
            spoken for and is not counted here.`
         : "") + `</p>`;
+    // AND WHAT THIS IS COUNTING, WHERE IT IS PLAINLY COUNTING TOO MUCH.
+    //
+    // These stretches are every minute the schedule does not fill, and an
+    // official timetable lists lessons and nothing else: no lunch, no break, no
+    // duty, no time you actually leave. So a Wednesday at school all day came
+    // out as "7h 25m in 5 stretches", one of them three hours and twenty
+    // minutes long straight through the middle of lunch.
+    //
+    // The app cannot know what it was never told. What it can do is not let the
+    // number be read as a promise — and the tell is structural: a day with
+    // nothing protected on it anywhere is a day nobody has told about lunch.
+    if (!held.length) {
+      const warn = document.createElement("p");
+      warn.className = "muted dp-ucaveat";
+      warn.textContent =
+        "This is every stretch your timetable doesn't fill. Nothing today is marked as " +
+        "kept — so if lunch, break, a duty or the time you leave aren't in your week yet, " +
+        "they are being counted here as time you could work in.";
+      box.appendChild(warn);
+    }
     const list = document.createElement("ul");
     list.className = "dp-usablelist";
     free.forEach((h) => {

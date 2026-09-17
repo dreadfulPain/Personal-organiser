@@ -47,9 +47,9 @@ const sb = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array,
 sb.window = sb;
 sb.globalThis = sb;
 vm.createContext(sb);
-["dates.js", "schedule.js", "priority.js", "dayplan.js"]
+["dates.js", "schedule.js", "priority.js", "dayplan.js", "timetable.js", "calplan.js"]
   .forEach((f) => vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), sb, { filename: f }));
-const S = sb.OrganiserSchedule, DP = sb.OrganiserDayPlan;
+const S = sb.OrganiserSchedule, DP = sb.OrganiserDayPlan, C = sb.OrganiserCalPlan;
 
 // A Tuesday with two lessons on it, and a working day of half seven to half
 // five. Everything below is measured against this same day.
@@ -152,12 +152,20 @@ console.log("\nAn untimed event — the one this was all about");
   ok("  so the day has its free time back",
      minutes([bad]) === PLAIN.minutes && free([bad]).length === 3,
      `${minutes([bad])} minutes in ${free([bad]).length} stretches: ${free([bad]).join(", ")}`);
-  // SOMEWHERE YOU HAVE TO BE IS STILL SOMEWHERE YOU HAVE TO BE. What it cannot
-  // do is say when to leave for it, because that question needs an hour.
   ok("and there is no leaving time for a thing with no time",
      leave(bad) === "—", leave(bad));
-  ok("  though it still says you have to be there",
-     S.mustBeThere(S.normaliseBlock(bad)) === true, "it stopped being yours");
+  // AND IT IS NOT AN APPOINTMENT EITHER, which is a correction to what this
+  // file used to claim. It said a thing with no hour was "still somewhere you
+  // have to be" — keeping beThere while refusing to act on it. That is the same
+  // conflation one layer down: the flag exists to drive a journey and a
+  // departure, so a thing it cannot drive them for is not one. It is on the
+  // day, it is yours, and it is not an appointment. See mustBeThere.
+  ok("  and it is not an appointment either, because being there needs an hour",
+     S.mustBeThere(S.normaliseBlock(bad)) === false,
+     String(S.mustBeThere(S.normaliseBlock(bad))));
+  ok("  while it is still on the day and still yours",
+     S.blocksOn(WEEK.concat([bad]), DAY).some((b) => b.id === "u"),
+     "it fell off the day");
   // AND IT SAYS SO IN WORDS. Drawn as a span it reads as a lesson that starts
   // before breakfast and ends after midnight.
   ok("and it is drawn as what it is, not as midnight to midnight",
@@ -299,6 +307,90 @@ console.log("\nAnd a thing with no hour cannot clash with anything");
   const s2 = p2.slots.find((x) => x.itemId === "L");
   ok("and the journey to a thing does not clash with the thing",
      s2 && !(s2.clashWith || []).includes("Observation"), JSON.stringify(s2 && s2.clashWith));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd a day-level protection is a day, not a ten-hour appointment");
+
+// hoursOn is asked for a WINDOW — the hours the day planner is allowed to use —
+// and on a holiday it answers "07:30 to 17:30, protected". That is the window
+// speaking, not the holiday: the protection has to remain a fact about the DAY,
+// or the evening becomes schedulable at 17:31 the moment something asks about
+// evenings.
+{
+  const hol = WEEK.concat([{ id: "h", label: "Half term", date: DAY,
+    start: "00:00", end: "23:59", days: [], blocksDay: true }]);
+  const inHours = S.hoursOn(hol, CFG, DAY);
+  ok("asked about the working day, the whole of it is protected",
+     inHours.length === 1 && inHours[0].use === "protected",
+     JSON.stringify(inHours.map((h) => `${S.toHM(h.from)}-${S.toHM(h.to)}:${h.use}`)));
+  // THE SAME DAY, ASKED ABOUT THE EVENING. If the protection ended with the
+  // window, this is where the holiday would quietly become free time.
+  const evening = S.hoursOn(hol, { dayStart: "17:30", dayEnd: "22:00" }, DAY);
+  ok("  and asked about the evening, so is that",
+     evening.length === 1 && evening[0].use === "protected" &&
+       S.toHM(evening[0].to) === "22:00",
+     JSON.stringify(evening.map((h) => `${S.toHM(h.from)}-${S.toHM(h.to)}:${h.use}`)));
+  ok("  and the day itself still says it is a day off, whatever window is asked",
+     S.dayIsBlocked(hol, DAY) === true, "the day-level answer was lost");
+  ok("  with no free minute in either window",
+     S.gapsOn(hol, CFG, DAY).length === 0 &&
+       S.gapsOn(hol, { dayStart: "17:30", dayEnd: "22:00" }, DAY).length === 0,
+     JSON.stringify(S.gapsOn(hol, { dayStart: "17:30", dayEnd: "22:00" }, DAY)));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd in my week is not be there");
+
+// The calendar panel has a button meaning "this is part of my week", and the
+// importer wired it straight to beThere — so a report-distribution date, a term
+// boundary and an exam period all became things you physically travel to and
+// have to arrive at on time. Some calendar entries are attendance. Most are
+// structure: they matter to the day without there being a room to be in.
+{
+  const rd = S.normaliseBlock({ id: "rd", label: "Report Distribution", date: DAY,
+    start: "00:00", end: "23:59", days: [], beThere: true, getThere: 15 });
+  // BEING SOMEWHERE ON TIME NEEDS A TIME. Not a policy — arithmetic: the flag
+  // exists to drive a journey and a departure, and both are subtraction from a
+  // start that nobody has given.
+  ok("a thing with no hour on it is not somewhere you have to be on time",
+     S.mustBeThere(rd) === false, String(S.mustBeThere(rd)));
+  ok("  so it makes no journey to set off on", S.leaveBy(rd) === null, String(S.leaveBy(rd)));
+  // THE ONE THAT WAS ACTUALLY HAPPENING: a job to leave at midnight, every day,
+  // for an event with no time.
+  const jobs = S.prepPlan([rd], { prepHorizonDays: 3 }, [], new Date(DAY + "T09:00:00"));
+  ok("  and no job to set off for it at midnight",
+     !(jobs.add || []).some((j) => /Leave for Report Distribution/.test(j.title)),
+     JSON.stringify((jobs.add || []).map((j) => `${j.time} ${j.title}`)));
+  // AND THE IMPORTER DOES NOT MAKE ANY MORE OF THEM. This is where the two
+  // concepts were welded together: a button that means "this is part of my
+  // week" wired straight to a flag that means "I travel to this and must arrive
+  // on time".
+  // BOTH WAYS IN: a line with a date on it, and a line that repeats on a
+  // weekday. They are read by different halves of the importer and both halves
+  // had the same weld in them.
+  const made = C.toBlocks([
+    { label: "Report Distribution", date: DAY, kind: "week", keep: true, said: true, start: "", end: "" },
+    { label: "Staff briefing", date: DAY, kind: "week", keep: true, said: true, start: "08:00", end: "08:30" },
+    { label: "Duty week", days: [1], kind: "week", keep: true, said: true, start: "", end: "" },
+    { label: "Briefing", days: [1], kind: "week", keep: true, said: true, start: "07:45", end: "08:00" },
+  ]).map((b) => S.normaliseBlock(b)).filter(Boolean);
+  const got = (label) => made.find((b) => b.label === label);
+  ok("and the importer does not call a line with no hour an appointment",
+     got("Report Distribution") && got("Report Distribution").beThere === false &&
+       got("Duty week") && got("Duty week").beThere === false,
+     JSON.stringify(made.map((b) => `${b.label}:${b.beThere}`)));
+  ok("  while a line that gave an hour still is one",
+     got("Staff briefing") && got("Staff briefing").beThere === true &&
+       got("Briefing") && got("Briefing").beThere === true,
+     JSON.stringify(made.map((b) => `${b.label}:${b.beThere}`)));
+
+  // AND A REAL APPOINTMENT IS UNTOUCHED.
+  const meet = S.normaliseBlock({ id: "m", label: "Staff briefing", date: DAY,
+    start: "08:00", end: "08:30", days: [], beThere: true, getThere: 10 });
+  ok("while a thing with an hour on it is still somewhere you have to be",
+     S.mustBeThere(meet) === true && S.toHM(S.leaveBy(meet)) === "07:50",
+     JSON.stringify({ there: S.mustBeThere(meet), leave: S.leaveBy(meet) }));
 }
 
 finish();

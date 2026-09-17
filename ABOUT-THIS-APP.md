@@ -242,6 +242,34 @@ nothing downstream has to conflate the two in order to use it. Where the two
 disagree one of them is lying, so the free stretches from `hoursOn` are checked
 against `gapsOn`.
 
+### "In my week" is not "be there"
+
+The calendar panel has a button meaning *this is part of my week*, and the
+importer wired it straight to `beThere` — so a report-distribution date, a term
+boundary and an exam period all became things you physically travel to and have
+to arrive at on time. Some calendar entries are attendance. Most are structure:
+they matter to the day without there being a room to be in.
+
+**Being somewhere on time needs a time.** That is not a policy, it is
+arithmetic: `beThere` exists to drive the journey and the departure, and both
+are subtraction from a start. Asked of a thing whose hour nobody gave, it was
+producing *"Leave for Report Distribution, 00:00"* — a job to set off at
+midnight for an event with no time.
+
+So `mustBeThere` requires a time, and the importer sets the flag only where the
+document gave one. The stored flag stays whatever somebody answered, which is
+what the Day screen asks about: *Needs a time* is for things you attend, *Also
+on today* for things that merely matter, and each of the first sort carries **I
+don't attend this** — because every calendar entry the old importer put in your
+week was marked as somewhere you had to be, and some of those are its assumption
+rather than your answer.
+
+**And a day-level protection stays a day.** `hoursOn` is asked for a window, so
+on a holiday it answers "07:30 to 17:30, protected" — that is the window
+speaking, not the holiday. Ask it about the evening and the evening is protected
+too; the day itself still says it is a day off whatever window is asked. If that
+ever stops being true, a holiday becomes schedulable at 17:31.
+
 ### The Day screen answers three questions, in the order they are asked
 
 Nothing here places any work. This is the day, not the plan — and until it can be
@@ -794,6 +822,14 @@ which one to try and exactly how.
 - **Student data:** it stays on your machine — but if the folder syncs, the notes
   sync too. Practice with fake IDs until you know what your school's policy
   allows outside their official system.
+- **The usable-time number counts what nobody has been told about.** An
+  official timetable lists lessons and nothing else — no lunch, no break, no
+  duty, no time you actually leave — so a real Wednesday spent at school came
+  out as *7h 25m in 5 stretches*, one of them three hours and twenty minutes
+  straight through the middle of lunch. The app cannot know what it was never
+  told; what it does is refuse to let the number pass as a promise. A day with
+  nothing marked as kept says so, because that is the tell. The fix is not code:
+  it is putting lunch, break, duties and departure time into the week.
 - **A gap is still only "nothing booked".** The Day page draws an empty stretch
   as free, and it isn't necessarily: a free period, a supervision duty, a lunch
   you keep and five minutes of walking between rooms are four different things

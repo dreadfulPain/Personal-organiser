@@ -557,8 +557,9 @@ console.log("\nAnd the Day screen, in the order a day is asked about");
     // a one-off, which IS unusual about today
     { id: "obs", label: "Lesson observation", date: TODAY, start: "10:30", end: "11:05", days: [], where: "B204" },
     // and two the calendar dated and never timed
+    // One you go to, and one that merely matters to the day — see mustBeThere.
     { id: "pm", label: "Parents' Meeting", date: TODAY, start: "00:00", end: "23:59", days: [], beThere: true },
-    { id: "rd", label: "Report Distribution", date: TODAY, start: "00:00", end: "23:59", days: [], beThere: true },
+    { id: "rd", label: "Report Distribution", date: TODAY, start: "00:00", end: "23:59", days: [], beThere: false },
   ];
   const r = await open("timeline.html", { schedule: DAY, items: [], goals: [],
     scheduleConfig: { dayStart: "07:30", dayEnd: "17:30" } });
@@ -583,6 +584,17 @@ console.log("\nAnd the Day screen, in the order a day is asked about");
   ok("  and there is somewhere to say when it is",
      !!nt && deep(nt).some((c) => c.type === "time"),
      JSON.stringify(deep(nt || {}).map((c) => c.tagName + ":" + c.type)));
+  // AND "IN MY WEEK" IS NOT "BE THERE". A report-distribution date matters to
+  // the day without there being a room to be in, and asking for a time on it is
+  // asking a question with no answer, every day, until somebody invents one to
+  // make it stop. Parents' Meeting is marked as somewhere you go; the other is
+  // not, and they are named apart.
+  ok("  and only the one you attend is said to need a time",
+     /Needs a time/.test(inside(nt)) && /Also on today/.test(inside(nt)),
+     inside(nt).slice(0, 320));
+  ok("  with a way to say you don't attend it, since the importer used to assume you did",
+     deep(nt || {}).some((c) => /don.t attend/.test(String(c.textContent || ""))),
+     JSON.stringify(deep(nt || {}).map((c) => c.textContent).filter(Boolean).slice(0, 8)));
   // AND NOT TWICE. It is a difference and it is a question; the question says
   // more and can be answered, so it is asked once.
   ok("  and it is not also listed as a difference",
@@ -611,6 +623,24 @@ console.log("\nAnd the Day screen, in the order a day is asked about");
   // is empty of appointments and is not available.
   ok("  and the hour you keep is not offered as time to work in",
      !!use && !/12:30 PM–1:15 PM/.test(inside(use)), inside(use).slice(0, 260));
+  // AND IT DOES NOT CAVEAT A DAY THAT HAS NOTHING TO CAVEAT. This day has a
+  // kept lunch on it, so the app has been told what fills the middle of it.
+  ok("  and a day that knows about its lunch is not warned about lunch",
+     !!use && !/aren.t in your week yet/.test(inside(use)), inside(use).slice(0, 300));
+
+  // BUT A DAY WITH NOTHING KEPT ON IT ANYWHERE IS A DAY NOBODY HAS TOLD ABOUT
+  // LUNCH. A real official timetable lists lessons and nothing else — no break,
+  // no duty, no time you leave — so "7h 25m free" on a Wednesday spent at
+  // school reads as a promise the app cannot keep. It cannot know what it was
+  // never told; it can refuse to let the number pass as a fact.
+  const bare = await open("timeline.html", {
+    schedule: DAY.filter((b) => b.id !== "lun"), items: [], goals: [],
+    scheduleConfig: { dayStart: "07:30", dayEnd: "17:30" } });
+  const bareUse = deep(bare.get("#timeline"))
+    .filter((c) => String(c.className).split(/\s+/).includes("dp-usable"))[0];
+  ok("and a day with nothing kept on it says what it is counting",
+     !!bareUse && /aren.t in your week yet/.test(inside(bareUse)),
+     inside(bareUse).slice(0, 320));
 }
 
 finish();

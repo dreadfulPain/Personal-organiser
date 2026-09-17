@@ -4710,3 +4710,7 @@ a.btn {
 .dp-ntat { font-size: 0.85rem; }
 .dp-usablelist > li { padding: 2px 0; font-variant-numeric: tabular-nums; }
 .dp-utime { font-size: 0.95rem; }
+
+/* "In my week" is not "be there" — so the two groups are named apart. */
+.dp-notime h3 + h3, .dp-notime ul + h3 { margin-top: 10px; }
+.dp-ntno { font-size: 0.78rem; }

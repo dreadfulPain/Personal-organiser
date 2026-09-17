@@ -216,7 +216,23 @@
   // asking somebody to tick sixteen boxes to tell the app what it has just read
   // is asking them to do the app's job. The tick still wins where it is set;
   // this is only what a place implies when nobody has said otherwise.
-  const mustBeThere = (b) => !!(b && (b.beThere || String(b.where || "").trim()));
+  // AND "IN MY WEEK" IS NOT "BE THERE".
+  //
+  // The calendar panel has a button that means "this is part of my week", and
+  // the importer wired it straight to beThere — so a report-distribution date, a
+  // term boundary and an exam period all became things you physically travel to
+  // and have to arrive at on time. Some calendar entries are attendance. Most
+  // are structure: they matter to the day without there being a room to be in.
+  //
+  // BEING SOMEWHERE ON TIME NEEDS A TIME. That is not a policy, it is
+  // arithmetic: this flag exists to drive the journey and the departure, and
+  // both are subtraction from a start. Asked of a thing whose hour nobody gave,
+  // it produced "Leave for Report Distribution, 00:00" — a job to set off at
+  // midnight for an event with no time. So the derived question requires one,
+  // and the stored flag stays what somebody answered, which is what the Day
+  // screen asks about.
+  const mustBeThere = (b) =>
+    !!(b && b.timing !== "sometime" && (b.beThere || String(b.where || "").trim()));
 
   // The four the app knows, and "" for everything written before it asked.
   const KINDS = ["teaching", "duty", "break", "other"];
@@ -696,7 +712,7 @@
   // Null for everything else — a block you are already sitting in front of has
   // no leaving time, and showing one would be noise on every row.
   function leaveBy(b) {
-    if (!b || !b.beThere) return null;
+    if (!b || !mustBeThere(b) || !b.beThere) return null;
     // AND THERE IS NO LEAVING TIME FOR A THING WITH NO TIME. A date with no
     // clock on it starts at midnight as far as the arithmetic is concerned, so
     // this answered "set off at midnight, you are already late" — about an
@@ -1041,7 +1057,10 @@
       // on time", and needs nothing else. Put minutes against a block in "set
       // up my week" and the leave-by job comes back — which is the case it was
       // written for.
-      .filter((b) => b.beThere && b.getThere > 0 && !b.blocksDay && !b.noLessons && !b.soft)
+      // mustBeThere, not b.beThere: a thing with no hour on it has no hour to
+      // set off before, and asked anyway it makes a job at midnight.
+      .filter((b) => mustBeThere(b) && b.beThere && b.getThere > 0 &&
+        !b.blocksDay && !b.noLessons && !b.soft)
       .forEach((b) => {
         occurrencesOf(b, today, c.prepHorizonDays).forEach((iso) => {
           const key = thereKey(b.id, iso);

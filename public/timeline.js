@@ -2965,7 +2965,7 @@
       ? `${escapeHtml(on.was.label)} <span class="dp-arrow" aria-label="replaced by">→</span> ${escapeHtml(b.label)}`
       : escapeHtml(b.label);
     el.innerHTML = `
-      <div class="dp-time">${escapeHtml(S().fmtSpan(b.start, b.end))}</div>
+      <div class="dp-time">${escapeHtml(S().whenWords(b))}</div>
       <div class="dp-main">
         ${marks.length ? `<div class="dp-marks">${marks
           .map((m) => `<span class="dp-mark">${escapeHtml(m)}</span>`).join("")}</div>` : ""}
@@ -3769,6 +3769,7 @@
   // plain reader had won, or whether the model had quietly failed and the plain
   // one had taken over — and "15 blocks read" reads identically in all four
   // cases. A reading you cannot account for is a reading you cannot trust.
+  let termAsked = false;
   let forEver = false;
   let dropOld = null;
   let readBy = null;
@@ -4272,10 +4273,36 @@
   // timetable somebody hasn't told us the term dates for. But it is asked, here,
   // where the timetable is being saved, instead of being a fact you find out in
   // December.
+  // WHEN THE TERM RUNS, TAKEN FROM WHAT THE CALENDAR ALREADY SAID.
+  //
+  // The dates are on the calendar that was read in an hour ago — "first semester
+  // ends January 22" — and asking for them again from memory is asking somebody
+  // to look something up that the app is already holding. Offered, not imposed:
+  // a timetable that runs a different span is a thing you say, and the boxes are
+  // there to say it in.
+  const termAlready = () => {
+    const spans = new Map();
+    S().normalise(schedule).filter((b) => b.days.length && (b.from || b.to)).forEach((b) => {
+      const key = `${b.from}|${b.to}`;
+      spans.set(key, (spans.get(key) || 0) + 1);
+    });
+    let best = "";
+    let n = 0;
+    spans.forEach((c, k) => { if (c > n) { n = c; best = k; } });
+    const [from, to] = best.split("|");
+    return from || to ? { from: from || "", to: to || "" } : null;
+  };
+
   function termOffer() {
     const box = document.createElement("div");
     box.className = "su-people";
     if (!pastedBlocks || !pastedBlocks.length) return box;
+    // Filled in once, from what is already known, and yours to change.
+    if (!termFrom && !termTo && !forEver && !termAsked) {
+      termAsked = true;
+      const had = termAlready();
+      if (had) { termFrom = had.from; termTo = had.to; }
+    }
     const p = document.createElement("p");
     p.className = "muted";
     // NOT A DEFAULT ANY MORE. "For ever" is the wrong answer for a timetable and
@@ -4382,7 +4409,7 @@
     if (!on.length) return box;
     const rows = [];
     on.forEach((b) => {
-      const when = S().fmtSpan(b.start, b.end);
+      const when = S().whenWords(b);
       let row = rows.find((r) => r.when === when);
       if (!row) rows.push((row = { when, at: S().toMin(b.start), cells: {} }));
       b.days.forEach((d) => { row.cells[d] = (row.cells[d] || []).concat([b]); });
@@ -4489,7 +4516,7 @@
     seen.innerHTML = `<summary>which ones</summary>` +
       old.slice(0, 40).map((b) =>
         `<div class="su-brow"><span class="su-bwhen">${escapeHtml(b.date)} ` +
-        `${escapeHtml(S().fmtSpan(b.start, b.end))}</span>` +
+        `${escapeHtml(S().whenWords(b))}</span>` +
         `<span class="su-blabel">${escapeHtml(b.label)}</span></div>`).join("") +
       (old.length > 40 ? `<p class="muted">…and ${old.length - 40} more.</p>` : "");
     box.appendChild(seen);
@@ -4733,6 +4760,7 @@
       jobPick = null;
       dropOld = null;
       forEver = false;
+      termAsked = false;
       thereMins = 0;
       persist();
       renderSetup();
@@ -4930,7 +4958,7 @@
     const row = document.createElement("div");
     row.className = "su-brow" + (b.soft ? " soft" : "");
     row.innerHTML = `
-      <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
+      <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().whenWords(b))}</span>
       <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.parity ? ` <span class="su-swaptag">${escapeHtml(b.parity)} weeks</span>` : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${S().mustBeThere(b) ? ` <span class="su-theretag">be there${b.where ? ` · ${escapeHtml(b.where)}` : ""}${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}${(b.extras || []).map((x) => ` <span class="su-extra">${escapeHtml(x.name)}: ${escapeHtml(x.value)}</span>`).join("")}</span>`;
     const edit = document.createElement("button");
     edit.type = "button";

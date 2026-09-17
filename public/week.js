@@ -133,7 +133,10 @@
     const changed = b.layer === "change";
     el.className = "item wk-item wk-block" + (there ? " needs-you-there" : "") +
       (changed ? " dp-changed" : "") + (b.block.protected ? " dp-held" : "");
-    const t = fmtTime(b.block.start);
+    // A THING WITH NO TIME HAS NO TIME TO PRINT — see whenWords. Drawn as
+    // "12:00 AM" it reads as a lesson before breakfast.
+    const untimed = b.block.timing === "sometime";
+    const t = untimed ? "" : fmtTime(b.block.start);
     const title = changed && b.how === "swapped" && b.was
       ? `${escapeHtml(b.was.label)} <span class="dp-arrow" aria-label="replaced by">→</span> ${escapeHtml(b.block.label || "Block")}`
       : escapeHtml(b.block.label || "Block");
@@ -145,7 +148,8 @@
           <span class="badge block">${there ? "BE THERE" : "ON"}</span>
           ${changed ? `<span class="dp-mark">${b.how === "swapped" ? "Changed" : "Added"}</span>` : ""}
           ${b.block.protected ? `<span class="dp-mark">Kept</span>` : ""}
-          ${b.block.end ? `<span class="when">till ${escapeHtml(fmtTime(b.block.end))}</span>` : ""}
+          ${untimed ? `<span class="when">sometime that day</span>`
+            : b.block.end ? `<span class="when">till ${escapeHtml(fmtTime(b.block.end))}</span>` : ""}
           ${b.block.where ? `<span class="where">${escapeHtml(b.block.where)}</span>` : ""}
         </div>
       </div>`;

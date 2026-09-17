@@ -167,6 +167,48 @@ worth keeping:
   are centred and drift, so Friday's lesson starts to the left of Friday's
   heading and a left-edge rule files it under Thursday.
 
+### A date is not an hour
+
+A calendar saying *"this happens on the sixteenth"* is not the same sentence as
+*"you are occupied from midnight until one minute to midnight"* — and the app was
+writing the second when it was told the first. A source that gives a date and no
+time had nowhere else to put it, so every PD day, exam week, report distribution
+and parents' meeting arrived as a 24-hour commitment you also had to attend.
+
+What that cost was not cosmetic. On a real Tuesday with two lessons on it:
+
+| | busy | free | leave by |
+|---|---|---|---|
+| **before** | 00:00–23:59 | **nothing at all** | 00:00 |
+| **after** | the two lessons | 500 min in 3 stretches | — |
+
+All three of this app's purposes run through those numbers. It cannot say when
+you may leave, it cannot find anywhere to prepare anything, and it cannot say
+*"enough has been done, stop"* about a day it believes is entirely spoken for.
+One fabricated span poisons all three.
+
+So a block says what the clock **on** it means, and there are four kinds of
+thing a calendar can be telling you. Three are blocks and one is not:
+
+- **A rule about the day** — `blocksDay`, `noLessons`, `runsAs`. These change
+  what the whole day *is*. A day off is busy all day (you are not there); a day
+  with no lessons is not busy at all (the lessons stop, the work does not); a
+  make-up day is not a commitment. A rule is drawn as *all day* and is never the
+  answer to "what am I doing at ten o'clock".
+- **A timed event** — a real start and end. Busy for exactly that, plus the
+  journey in front of it.
+- **An untimed event** (`timing: "sometime"`) — it happens that day and nobody
+  said when. It is still on the day and still yours; it occupies no hour, and it
+  has no leaving time, because that question needs one.
+- **A deadline** — must be *finished* by then. It does not occupy the day at
+  all, and it is not a block: it is a task with a date, planned into the days
+  before it. That is why there is no third timing for it.
+
+Already-saved data is **migrated, not merely defaulted**: a dated entry that
+fills the whole day and is not one of the day rules is that old importer's mark,
+and there is nothing else it can sensibly be. `tests/whenitis.mjs` is the table
+of how each of the four resolves, kept as a test so it goes on being true.
+
 ### Three layers, and one screen that shows the idea rather than the storage
 
 The setup screen had two jobs glued together: *import and check my weekly

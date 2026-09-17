@@ -59,6 +59,19 @@
   function fmtSpan(a, b) {
     return fmtTime(a) + "–" + fmtTime(b);
   }
+  // WHEN A BLOCK IS, IN WORDS — including when the answer is that nobody said.
+  // Asked here so the day, the week and the setup list cannot each invent their
+  // own way of drawing midnight to a minute to midnight.
+  function whenWords(b) {
+    if (!b) return "";
+    if (b.timing === "sometime") return "sometime that day";
+    // AND A RULE ABOUT THE DAY IS NOT AN APPOINTMENT EITHER. "No lessons" runs
+    // the length of the day because that is the SCOPE of the rule, not because
+    // anybody is occupied from midnight; drawn as a span it reads as the
+    // longest meeting in the world.
+    if (b.blocksDay || b.noLessons) return "all day";
+    return fmtSpan(b.start, b.end);
+  }
   function durationWords(mins) {
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
@@ -210,6 +223,34 @@
   // And the two halves of a fortnight, for the timetables that run on one.
   const PARITIES = ["odd", "even"];
 
+  // WHAT THE CLOCK ON THIS BLOCK MEANS.
+  //
+  // A calendar saying "this happens on the sixteenth" is not the same sentence
+  // as "you are occupied from midnight until one minute to midnight", and the
+  // app was writing the second when it was told the first. A source that gives
+  // a date and no time had nowhere else to put it, so every PD day, exam week,
+  // report distribution and parents' meeting arrived as a twenty-four hour
+  // commitment you had to be present at.
+  //
+  // What that costs is not cosmetic. Such a day has NO free time at all — so
+  // nothing can be prepared in it, the departure time comes out as midnight,
+  // and the one question this whole app is being built to answer ("have I done
+  // enough, can I stop") is being asked of a day the app thinks is entirely
+  // spoken for. One fabricated span poisons all three.
+  //
+  //   "at"       — the start and end are real clock times. Everything, always,
+  //                until now, and still the default.
+  //   "sometime" — it happens on this date and nobody has said when. It is
+  //                yours, it is on the day, and it occupies no particular hour.
+  //
+  // A DEADLINE IS NOT HERE ON PURPOSE. "Reports due on the second" does not
+  // occupy the second at all — it is work to be finished BY then, which is a
+  // task with a date, not a block. The calendar reader has always made those as
+  // tasks (see toTasks), and a task is planned into the days BEFORE its date.
+  // Adding a third timing for it would be a field nothing writes and nothing
+  // reads.
+  const TIMINGS = ["at", "sometime"];
+
   function normaliseBlock(b) {
     if (!b || typeof b !== "object") return null;
     const start = toMin(b.start);
@@ -322,6 +363,21 @@
       // UNKNOWN, which is deliberately not the same as "neither" — see
       // parityOn and appliesOn.
       weekOne: !!b.weekOne,
+      // AND WHETHER THE CLOCK ON IT IS A CLOCK — see TIMINGS.
+      //
+      // MIGRATED, not just defaulted. Blocks are already saved in people's
+      // files with midnight to a minute to midnight on them, written by an
+      // importer that had no way to say "no time given" — and left as they are
+      // they go on eating whole days. A dated entry that runs the entire day and
+      // is not one of the day RULES (a day off, no lessons, another day's
+      // timetable — those genuinely do last all day) is that importer's mark,
+      // and there is nothing else it can sensibly be.
+      timing: TIMINGS.indexOf(b.timing) >= 0
+        ? b.timing
+        : (start === 0 && end >= 23 * 60 + 59 && date && !b.blocksDay && !b.noLessons &&
+            (b.runsAs === undefined || b.runsAs === null))
+          ? "sometime"
+          : "at",
       // AND WHETHER A PLANNER MAY HAVE IT.
       //
       // A DIFFERENT QUESTION FROM WHAT IT IS, which is why it is a different
@@ -607,8 +663,13 @@
     // rather than a hunch. This is the whole of what protected does today, and
     // it is here so the constraint is in the data before anything optimises
     // against it, rather than being a thing the planner has to remember.
+    // AND A DATE IS NOT AN HOUR. A thing the calendar dated and never timed has
+    // no span to be busy for — see TIMINGS. Counted as busy it takes the whole
+    // day: no free time at all, nothing can be prepared in it, and the day the
+    // app most needs to reason about is the one it believes is entirely spoken
+    // for. It still happens, it is still on the day, and it occupies no hour.
     const fixed = blocksOn(schedule, iso)
-      .filter((b) => (!b.soft || b.protected) && !b.noLessons);
+      .filter((b) => (!b.soft || b.protected) && !b.noLessons && b.timing !== "sometime");
     // THE JOURNEY IS BUSY TOO. Without this the planner fills the time you
     // needed to travel in, and you arrive late having done everything it said.
     //
@@ -636,6 +697,12 @@
   // no leaving time, and showing one would be noise on every row.
   function leaveBy(b) {
     if (!b || !b.beThere) return null;
+    // AND THERE IS NO LEAVING TIME FOR A THING WITH NO TIME. A date with no
+    // clock on it starts at midnight as far as the arithmetic is concerned, so
+    // this answered "set off at midnight, you are already late" — about an
+    // event whose hour nobody has been told. Somewhere you have to be is still
+    // somewhere you have to be; when to leave is a question that needs an hour.
+    if (b.timing === "sometime") return null;
     return Math.max(0, toMin(b.start) - (b.getThere || 0));
   }
 
@@ -665,7 +732,8 @@
     const iso = isoOf(when);
     const mins = when.getHours() * 60 + when.getMinutes();
     return (
-      blocksOn(schedule, iso).find((b) => !b.soft && toMin(b.start) <= mins && mins < toMin(b.end)) || null
+      blocksOn(schedule, iso).find((b) => !b.soft && b.timing !== "sometime" &&
+      !b.noLessons && toMin(b.start) <= mins && mins < toMin(b.end)) || null
     );
   }
 
@@ -1059,6 +1127,8 @@
     toHM,
     fmtTime,
     fmtSpan,
+    TIMINGS,
+    whenWords,
     durationWords,
     dayWord,
     uid,

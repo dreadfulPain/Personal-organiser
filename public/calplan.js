@@ -2389,6 +2389,13 @@
           blocksDay: r.kind === "off",
           noLessons: r.kind === "noLessons",
           beThere: r.kind === "week",
+          // AND WHETHER THAT CLOCK IS A CLOCK — see TIMINGS in schedule.js.
+          // Without a time from the document this reads midnight to a minute to
+          // midnight, which is not what "it happens on the sixteenth" says and
+          // costs the whole day's free time to believe.
+          ...(timed || r.kind === "off" || r.kind === "noLessons" || r.runsAsDay !== undefined
+            ? {} : { timing: "sometime" }),
+
           // AND ANYTHING READ OFF THE LINE THAT NOTHING HERE HAS A FIELD FOR —
           // a room, a year group, who it is for. It reached the row and stopped
           // there, so a reader that could say "Example Building 109" was giving
@@ -2429,6 +2436,13 @@
           blocksDay: p.kind === "off",
           noLessons: p.kind === "noLessons",
           beThere: p.kind === "week",
+          // AND WHETHER THAT CLOCK IS A CLOCK — see TIMINGS in schedule.js.
+          // Without a time from the document this reads midnight to a minute to
+          // midnight, which is not what "it happens on the sixteenth" says and
+          // costs the whole day's free time to believe.
+          ...(timed || p.kind === "off" || p.kind === "noLessons" || p.runsAsDay !== undefined
+            ? {} : { timing: "sometime" }),
+
           // A MAKE-UP DAY: a Saturday that runs the Tuesday timetable, because
           // a holiday moved and this is the day standing in for it. The app has
           // always had somewhere to put that — see runsAs in schedule.js — and

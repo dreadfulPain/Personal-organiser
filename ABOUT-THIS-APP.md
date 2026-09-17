@@ -209,6 +209,61 @@ fills the whole day and is not one of the day rules is that old importer's mark,
 and there is nothing else it can sensibly be. `tests/whenitis.mjs` is the table
 of how each of the four resolves, kept as a test so it goes on being true.
 
+### Nothing scheduled is not the same as free
+
+This was the mistake, and the Day screen is what exposed it. A real Wednesday —
+the actual timetable PDF, read by the importer — came out as **7h 25m in 5
+stretches**, one of them three hours and twenty minutes straight through the
+middle of lunch. Every number was right about the data and wrong about the day.
+
+An official timetable lists lessons. It does not say that the ten minutes after
+English are spent in the corridor, that the hour after break is yours to mark
+in, that half twelve is lunch, or that you leave at ten to four to beat the
+traffic. So between the lessons there are stretches the app has been told
+nothing about, and calling them free is the app's own guess wearing the clothes
+of a fact: what it actually knows is *"you do not personally teach a lesson
+then"*.
+
+So a day has **four** states, not three:
+
+| | |
+|---|---|
+| **occupied** | something is using the time — lesson, duty, meeting, the walk to one |
+| **protected** | nothing is using it and the planner may not have it — lunch, after you leave |
+| **usable** | you have said this stretch really is yours to work in |
+| **unknown** | the timetable says nothing here, and that is not a claim to be free |
+
+*Time you could work in* counts only **usable**. Unknown time is listed
+underneath, marked *not said*, and never added in. One exception: a day with no
+timetable to be silent — a Saturday, a holiday you are working through — has no
+silence to misread, so its gaps are genuinely yours.
+
+**Classified once, not event by event.** These are properties of the week, not
+of a day: the same twenty minutes every Wednesday. So the panel finds the
+stretches the timetable is silent about, groups identical ones into a single
+question however many days they fall on, and answering one writes one repeating
+block — *on duty*, *mine to work in*, or *kept*. Leave one alone and it stays
+unknown, which is honest and is where the app starts. Recreating that as dozens
+of one-off entries is the admin burden this whole app exists to remove.
+
+**And leaving is a boundary, not an appointment.** *"Leave at 15:50"* is not a
+thing you do for zero minutes at ten to four; it is the edge of the working day.
+Written as a block it would be a commitment with a start, an end and a journey,
+none of which it has — so it lives in the config (`leaveAt`), nothing is planned
+past it, and the time after it is protected rather than empty. School-only work
+has to fit in front of it; the planner filling the hour after it would be the
+app quietly extending the day, which is the exact thing it exists to prevent.
+
+With the week classified, that same Wednesday reads **2 hours in 2 stretches ·
+2h 45m kept**, and names the 2h 30m it still has not been told about.
+
+`gapsOn` is deliberately left as it was — every minute not occupied and not
+protected, which is what the existing day planner uses. Narrowing it now would
+stop it placing anything for anyone who has not classified their week yet. When
+the planner is rebuilt it should ask `hoursOn` for *usable* and take the
+narrower answer knowingly. The invariant that keeps the two honest: **usable +
+unknown == gapsOn**, to the minute.
+
 ### Occupied is not the same as not-available-for-work
 
 `busyOn` answers one question — which minutes may the planner not have — and it
@@ -822,14 +877,6 @@ which one to try and exactly how.
 - **Student data:** it stays on your machine — but if the folder syncs, the notes
   sync too. Practice with fake IDs until you know what your school's policy
   allows outside their official system.
-- **The usable-time number counts what nobody has been told about.** An
-  official timetable lists lessons and nothing else — no lunch, no break, no
-  duty, no time you actually leave — so a real Wednesday spent at school came
-  out as *7h 25m in 5 stretches*, one of them three hours and twenty minutes
-  straight through the middle of lunch. The app cannot know what it was never
-  told; what it does is refuse to let the number pass as a promise. A day with
-  nothing marked as kept says so, because that is the tell. The fix is not code:
-  it is putting lunch, break, duties and departure time into the week.
 - **A gap is still only "nothing booked".** The Day page draws an empty stretch
   as free, and it isn't necessarily: a free period, a supervision duty, a lunch
   you keep and five minutes of walking between rooms are four different things

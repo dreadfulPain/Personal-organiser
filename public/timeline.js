@@ -3062,58 +3062,64 @@
     // than a timetable — see dayshape. Stretches of the clock are the wrong
     // answer for it.
     if (shape && shape.loose) return null;
-    const hours = S().hoursOn(schedule, (shape && shape.config) || cfg, iso);
+    // AND ON A DAY WITH NO TIMETABLE TO BE SILENT, an empty stretch is empty
+    // because there is nothing there — not because nobody has said.
+    const own = shape && shape.kind !== "work";
+    const hours = S().hoursOn(schedule, (shape && shape.config) || cfg, iso,
+      { gapsAreYours: own });
     if (!hours.length) return null;
-    const free = hours.filter((h) => h.use === "free" &&
-      h.to - h.from >= S().normaliseConfig(cfg).minGapMinutes);
+    const big = (h) => h.to - h.from >= S().normaliseConfig(cfg).minGapMinutes;
+    const use = hours.filter((h) => h.use === "usable" && big(h));
     const held = hours.filter((h) => h.use === "protected");
-    const mins = free.reduce((n, h) => n + (h.to - h.from), 0);
+    const dunno = hours.filter((h) => h.use === "unknown" && big(h));
+    const mins = (list) => list.reduce((n, h) => n + (h.to - h.from), 0);
     const box = document.createElement("section");
     box.className = "dp-usable";
-    if (!free.length) {
-      box.innerHTML = `<h3>Time you could work in</h3>` +
-        `<p class="muted">None today${held.length ? " — what isn't spoken for is protected" : ""}.</p>`;
-      return box;
-    }
+    const words = (n) => escapeHtml(S().durationWords(n));
     box.innerHTML = `<h3>Time you could work in</h3>` +
-      `<p class="muted">${escapeHtml(S().durationWords(mins))} in ` +
-      `${free.length} stretch${free.length === 1 ? "" : "es"}.` +
-      // PROTECTED TIME COUNTED SEPARATELY, and never added in. It is the
-      // difference between "you have four hours" and "you have four hours and
-      // the app has quietly included your lunch in them".
-      (held.length
-        ? ` ${escapeHtml(S().durationWords(held.reduce((n, h) => n + (h.to - h.from), 0)))} more is
-           spoken for and is not counted here.`
-        : "") + `</p>`;
-    // AND WHAT THIS IS COUNTING, WHERE IT IS PLAINLY COUNTING TOO MUCH.
-    //
-    // These stretches are every minute the schedule does not fill, and an
-    // official timetable lists lessons and nothing else: no lunch, no break, no
-    // duty, no time you actually leave. So a Wednesday at school all day came
-    // out as "7h 25m in 5 stretches", one of them three hours and twenty
-    // minutes long straight through the middle of lunch.
-    //
-    // The app cannot know what it was never told. What it can do is not let the
-    // number be read as a promise — and the tell is structural: a day with
-    // nothing protected on it anywhere is a day nobody has told about lunch.
-    if (!held.length) {
-      const warn = document.createElement("p");
-      warn.className = "muted dp-ucaveat";
-      warn.textContent =
-        "This is every stretch your timetable doesn't fill. Nothing today is marked as " +
-        "kept — so if lunch, break, a duty or the time you leave aren't in your week yet, " +
-        "they are being counted here as time you could work in.";
-      box.appendChild(warn);
-    }
+      `<p class="muted">` +
+      (use.length
+        ? `${words(mins(use))} in ${use.length} stretch${use.length === 1 ? "" : "es"}`
+        : `None confirmed today`) +
+      // PROTECTED TIME COUNTED SEPARATELY, and never added in — said whether or
+      // not anything is confirmed, because "none confirmed, and your lunch is
+      // still your lunch" are two different facts and both are wanted.
+      (held.length ? ` · ${words(mins(held))} kept` : "") + `.</p>`;
     const list = document.createElement("ul");
     list.className = "dp-usablelist";
-    free.forEach((h) => {
+    use.forEach((h) => {
       const li = document.createElement("li");
       li.innerHTML = `<span class="dp-utime">${escapeHtml(S().fmtSpan(S().toHM(h.from), S().toHM(h.to)))}</span>` +
-        `<span class="muted"> ${escapeHtml(S().durationWords(h.to - h.from))}</span>`;
+        `<span class="muted"> ${words(h.to - h.from)}</span>`;
       list.appendChild(li);
     });
     box.appendChild(list);
+    // AND WHAT IS STILL UNKNOWN, COUNTED APART FROM IT AND NEVER ADDED IN.
+    //
+    // This is the whole of the change: an official timetable lists lessons, so
+    // the stretches between them are stretches the app has been told nothing
+    // about. "You have 3h 20m to work" is a promise it cannot keep when what it
+    // actually knows is "you do not personally teach a lesson then" — and at
+    // half eleven on a Wednesday that stretch is lunch and a duty.
+    if (dunno.length) {
+      const q = document.createElement("p");
+      q.className = "muted dp-ucaveat";
+      q.innerHTML =
+        `${words(mins(dunno))} more in ${dunno.length} stretch${dunno.length === 1 ? "" : "es"} ` +
+        `your timetable says nothing about — a break, a duty, a free period, nobody has said. ` +
+        `It isn't counted above. ` +
+        `<a href="#setup" class="dp-usay">Say what they are, once</a>.`;
+      box.appendChild(q);
+      const rest = document.createElement("ul");
+      rest.className = "dp-usablelist dp-unknownlist";
+      dunno.forEach((h) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="dp-utime">${escapeHtml(S().fmtSpan(S().toHM(h.from), S().toHM(h.to)))}</span>` +
+          `<span class="muted"> ${words(h.to - h.from)} · not said</span>`;
+        rest.appendChild(li);
+      });
+      box.appendChild(rest);
+    }
     return box;
   }
 
@@ -3853,6 +3859,7 @@
       </div>
       <div id="ttReview"></div>
       <div id="blockAdd"></div>
+      <div id="weekGaps"></div>
       <div id="blockList" class="su-list"></div>
       <!-- TWO SETTINGS PANELS, AFTER THE WORK RATHER THAN THROUGH THE MIDDLE OF
            IT. They sat between the paste box and the rows it had just read —
@@ -3893,6 +3900,7 @@
     if (addingBlock) $("#blockAdd").appendChild(blockForm());
     if (unreadableRows.length) $("#ttReview").appendChild(unreadableBox());
     if (pastedBlocks) $("#ttReview").appendChild(reviewTable());
+    renderWeekGaps();
     renderBlockList();
   }
 
@@ -5200,6 +5208,94 @@
     });
     row.appendChild(del);
     return row;
+  }
+
+  // ---- THE STRETCHES YOUR WEEK SAYS NOTHING ABOUT --------------------------
+  //
+  // An official timetable lists lessons and nothing else. It does not say that
+  // the ten minutes after English are spent in the corridor, that the hour
+  // after break is yours to mark in, or that half twelve is lunch — so the app
+  // knows only where the lessons are, and everything between them is a stretch
+  // it has no business calling free. See hoursOn: unclassified is UNKNOWN.
+  //
+  // ONE PASS, NOT ONE EVENT EACH. These are properties of the week — the same
+  // twenty minutes every Wednesday — so identical stretches are one question
+  // however many days they fall on, and answering one writes a repeating block
+  // that every week inherits. It is not a form: leave one alone and it stays
+  // unknown, which is an honest answer and the one the app starts from.
+  const GAP_KINDS = [
+    ["duty", "on duty", { kind: "duty", label: "On duty" }],
+    ["work", "mine to work in", { kind: "other", label: "Prep time", workable: true }],
+    ["kept", "kept", { kind: "break", label: "Kept", protected: true }],
+  ];
+
+  function renderWeekGaps() {
+    const el = $("#weekGaps");
+    if (!el) return;
+    el.innerHTML = "";
+    const c = S().normaliseConfig(cfg);
+    const gaps = S().gapsInWeek(schedule, cfg);
+    // The boundary is asked for even when there are no gaps left: it is the
+    // other half of the same question and it is not a block — see leaveAt.
+    const box = document.createElement("details");
+    box.className = "su-layer su-gaps";
+    box.open = gaps.length > 0;
+    const head = document.createElement("summary");
+    head.innerHTML = gaps.length
+      ? `<h3>What the rest of your week is — ${gaps.length} stretch${gaps.length === 1 ? "" : "es"} unaccounted for</h3>`
+      : `<h3>What the rest of your week is</h3>`;
+    box.appendChild(head);
+    box.insertAdjacentHTML("beforeend",
+      `<p class="muted su-listnote">Your timetable lists lessons. It doesn't say what the time
+       between them is — a break you're supervising, a period that's yours to work in, or lunch.
+       Say it once here and every week inherits it. Anything you leave alone stays unknown,
+       and unknown time is never counted as time you could work in.</p>`);
+
+    // WHEN YOU LEAVE. A boundary, not an appointment — see leaveAt.
+    const bound = document.createElement("div");
+    bound.className = "su-row su-leaveat";
+    bound.innerHTML =
+      `<label>I leave at <input type="time" class="su-leave" value="${escapeHtml(c.leaveAt || "")}" /></label>` +
+      `<span class="muted">— work that has to be done at school is fitted in front of it, and
+       nothing is planned after it. Leave it blank and the day just runs to ${escapeHtml(S().fmtTime(c.dayEnd))}.</span>`;
+    bound.querySelector(".su-leave").addEventListener("change", (e) => {
+      const at = String(e.target.value || "").slice(0, 5);
+      cfg = { ...S().normaliseConfig(cfg), leaveAt: S().toMin(at) === null ? "" : at };
+      persist();
+      renderSetup();
+      render();
+    });
+    box.appendChild(bound);
+
+    gaps.forEach((g) => {
+      const row = document.createElement("div");
+      row.className = "su-brow su-gaprow";
+      row.innerHTML =
+        `<span class="su-bwhen">${escapeHtml(S().fmtSpan(S().toHM(g.from), S().toHM(g.to)))}</span>` +
+        `<span class="su-blabel">${escapeHtml(g.days.map((d) =>
+          ((window.OrganiserDates && OrganiserDates.DAY_NAMES[d]) || "?").slice(0, 3)).join(", "))}` +
+        `<span class="su-omeans"> · ${escapeHtml(S().durationWords(g.to - g.from))}</span></span>`;
+      GAP_KINDS.forEach(([, word, made]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "p-opt su-chip";
+        b.textContent = word;
+        b.addEventListener("click", () => {
+          schedule = S().normalise(schedule).concat([S().normaliseBlock({
+            ...made, id: uid(), start: S().toHM(g.from), end: S().toHM(g.to),
+            days: g.days.slice(), source: "hand",
+          })]).filter(Boolean);
+          persist();
+          renderSetup();
+          render();
+          setSuStatus(`${S().fmtSpan(S().toHM(g.from), S().toHM(g.to))} is ${word} — on ` +
+            `${g.days.length} day${g.days.length === 1 ? "" : "s"} a week.`);
+        });
+        row.appendChild(b);
+      });
+      box.appendChild(row);
+    });
+    el.appendChild(box);
   }
 
   function renderBlockList() {

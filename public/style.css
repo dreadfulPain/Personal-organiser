@@ -4714,3 +4714,14 @@ a.btn {
 /* "In my week" is not "be there" — so the two groups are named apart. */
 .dp-notime h3 + h3, .dp-notime ul + h3 { margin-top: 10px; }
 .dp-ntno { font-size: 0.78rem; }
+
+/* ---- WHAT THE REST OF YOUR WEEK IS --------------------------------------
+   The stretches an official timetable says nothing about. Not a form: leave
+   one alone and it stays unknown, which is the honest answer. */
+.su-gaps .su-gaprow { flex-wrap: wrap; gap: 8px; }
+.su-gaps .su-bwhen { min-width: 11em; }
+.su-leaveat { margin: 8px 0 12px; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.su-leaveat .muted { font-size: 0.8rem; flex: 1 1 18em; }
+/* Time the timetable says nothing about: shown, never counted. */
+.dp-unknownlist > li { color: var(--ink-soft); }
+.dp-usay { font-size: inherit; }

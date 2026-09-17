@@ -84,6 +84,17 @@
     // The window a day plan may use. Outside it the app plans nothing.
     dayStart: "07:30",
     dayEnd: "17:30",
+    // WHEN YOU LEAVE — A BOUNDARY, NOT AN APPOINTMENT.
+    //
+    // "Leave at 15:50" is not a thing you do for zero minutes at ten to four.
+    // It is the edge of the working day, and written as a block it would be a
+    // commitment with a start, an end and a journey — none of which it has.
+    //
+    // It is here rather than in the schedule because it is a property of the
+    // WEEK and not of a day: school-only work has to fit in front of it, and
+    // beyond it the day is not the app's to spend. Blank means the working day
+    // simply ends when the planning window does.
+    leaveAt: "",
     // Starting guesses at how long each effort level takes. These are the seed
     // values only — they are corrected by what actually happens (see learn()).
     effortMinutes: { quick: 10, medium: 30, draining: 75 },
@@ -193,6 +204,7 @@
       )];
     }
     if (typeof c.leaveTitle === "string" && c.leaveTitle.trim()) out.leaveTitle = c.leaveTitle.trim().slice(0, 80);
+    if (toMin(c.leaveAt) !== null) out.leaveAt = c.leaveAt;
     if (c.away && typeof c.away === "object" && c.away.startedAt) {
       out.away = { label: String(c.away.label || "").slice(0, 80), startedAt: String(c.away.startedAt) };
     }
@@ -379,6 +391,21 @@
       // UNKNOWN, which is deliberately not the same as "neither" — see
       // parityOn and appliesOn.
       weekOne: !!b.weekOne,
+      // AND WHETHER THE PLANNER MAY HAVE THIS TIME AFTER ALL.
+      //
+      // `protected` says the planner may NOT have a stretch. This is its
+      // mirror, and both are needed because the DEFAULT between them is not
+      // "yes": a stretch of the day with a block on it is occupied, and a
+      // stretch with nothing on it is UNKNOWN — see hoursOn. Nothing scheduled
+      // is not the same as free, and on a school day it is usually not free at
+      // all: the gap between two lessons is a break you are supervising far
+      // more often than it is an hour at your desk.
+      //
+      // So this is the one that says a stretch really is yours to work in: a
+      // free period, a non-contact hour, the twenty minutes you have always
+      // used for marking. Said once, on a repeating block, and every Wednesday
+      // inherits it.
+      workable: !!b.workable,
       // AND WHETHER THE CLOCK ON IT IS A CLOCK — see TIMINGS.
       //
       // MIGRATED, not just defaulted. Blocks are already saved in people's
@@ -685,7 +712,10 @@
     // app most needs to reason about is the one it believes is entirely spoken
     // for. It still happens, it is still on the day, and it occupies no hour.
     const fixed = blocksOn(schedule, iso)
-      .filter((b) => (!b.soft || b.protected) && !b.noLessons && b.timing !== "sometime");
+      .filter((b) => (!b.soft || b.protected) && !b.noLessons && b.timing !== "sometime" &&
+        // A stretch you have said is yours to work in is not a commitment. It
+        // is a block only so that it can be said at all — see workable.
+        !(b.workable && !b.protected));
     // THE JOURNEY IS BUSY TOO. Without this the planner fills the time you
     // needed to travel in, and you arrive late having done everything it said.
     //
@@ -753,8 +783,30 @@
   // have — and nothing downstream has to conflate the two in order to use it.
   // Where the two disagree they are wrong, so tests/whenitis.mjs checks that the
   // free stretches here are the same stretches gapsOn returns.
-  const USES = ["occupied", "protected", "free"];
-  function hoursOn(schedule, cfg, iso) {
+  // FOUR STATES, AND THE FOURTH IS THE ONE THAT WAS MISSING.
+  //
+  //   occupied   something is using the time.
+  //   protected  nothing is using it and the planner may not have it.
+  //   usable     you have said this stretch really is yours to work in.
+  //   unknown    the timetable says nothing here — and that is not the same as
+  //              saying you are free.
+  //
+  // NOTHING SCHEDULED IS NOT FREE. On a school day the stretch between two
+  // lessons is a break you are supervising far more often than it is an hour at
+  // your desk, and an official timetable lists neither. Counted as free, a real
+  // Wednesday came out as "7h 25m in 5 stretches", one of them three hours and
+  // twenty minutes straight through the middle of lunch — a number that reads
+  // as a promise and is the app's own guess.
+  //
+  // So a gap is unknown until something says otherwise, and "time you could
+  // work in" counts only what has been said. A day OF YOUR OWN is different:
+  // there is no timetable to be silent, so its gaps are genuinely yours.
+  const USES = ["occupied", "protected", "usable", "unknown"];
+  function hoursOn(schedule, cfg, iso, opts) {
+    // The one exception: on a day with no fixed shape to be silent about — a
+    // Saturday, a holiday you are working through — an empty stretch is empty
+    // because there is nothing, not because nobody has said.
+    const unknownGap = opts && opts.gapsAreYours ? "usable" : "unknown";
     const c = normaliseConfig(cfg);
     const open = toMin(c.dayStart);
     const shut = toMin(c.dayEnd);
@@ -770,7 +822,7 @@
         // A DAY YOU MARKED OFF IS PROTECTED, NOT OCCUPIED. That is the whole
         // distinction: there is no appointment on it and it is still not the
         // app's to spend.
-        use: b.blocksDay || b.protected ? "protected" : "occupied",
+        use: b.blocksDay || b.protected ? "protected" : b.workable ? "usable" : "occupied",
         block: b,
       }))
       .sort((a, b) => a.from - b.from || a.to - b.to);
@@ -785,18 +837,24 @@
       }
       out.push({ from, to, use, blocks: block ? [block] : [] });
     };
+    // THE BOUNDARY, BEFORE ANY BLOCK. Everything past the time you leave is not
+    // school time — protected, and not because anything is happening in it.
+    const goes = toMin(c.leaveAt);
+    if (goes !== null && goes > open && goes < shut)
+      claims.push({ from: goes, to: shut, use: "protected", block: null });
+    claims.sort((a, b) => a.from - b.from || a.to - b.to);
     let at = open;
     claims.forEach((cl) => {
       const from = Math.max(open, cl.from);
       const to = Math.min(shut, cl.to);
       if (to <= open || from >= shut) return;
-      if (from > at) add(at, from, "free", null);
+      if (from > at) add(at, from, unknownGap, null);
       // OCCUPIED WINS WHERE THEY OVERLAP. Lunch you keep is protected; a meeting
       // called over the top of it is something you are actually at.
-      add(Math.max(at, from), to, cl.use, cl.block);
+      add(Math.max(at, from), to, cl.use, cl.block || null);
       at = Math.max(at, to);
     });
-    if (at < shut) add(at, shut, "free", null);
+    if (at < shut) add(at, shut, unknownGap, null);
     return out;
   }
 
@@ -810,7 +868,11 @@
     // notBefore lets a rebuild plan only the time that's actually LEFT. Without
     // it, coming back at two o'clock would re-plan the whole morning.
     const from = Math.max(toMin(c.dayStart), Number.isFinite(notBefore) ? notBefore : 0);
-    const to = toMin(c.dayEnd);
+    // AND NOT PAST THE TIME YOU LEAVE. The boundary is the whole point of
+    // having one: work that has to be done at school has to fit in front of it,
+    // and the planner filling the hour after it is the app quietly extending
+    // the day — which is the exact thing it is meant to protect against.
+    const to = Math.min(toMin(c.dayEnd), toMin(c.leaveAt) === null ? Infinity : toMin(c.leaveAt));
     const gaps = [];
     let cursor = from;
     busyOn(schedule, iso).forEach((b) => {
@@ -819,6 +881,46 @@
     });
     if (cursor < to) gaps.push({ start: cursor, end: to });
     return gaps.filter((g) => g.end - g.start >= c.minGapMinutes && g.start < to).map((g) => ({ start: g.start, end: Math.min(g.end, to) }));
+  }
+
+  // ---- THE STRETCHES OF YOUR WEEK NOBODY HAS SAID ANYTHING ABOUT -----------
+  //
+  // An official timetable lists lessons. It does not list the break you spend
+  // in the corridor, the free period you mark in, the lunch you keep, or the
+  // time you actually leave — so between the lessons there are stretches the
+  // app knows nothing about, and guessing they are free is how a Wednesday
+  // spent at school comes out as seven and a half hours of working time.
+  //
+  // These are a property of the WEEK, not of a day: the same twenty minutes
+  // every Wednesday. So they are found once, across the repeating timetable
+  // only, and IDENTICAL STRETCHES ARE ONE QUESTION — a gap that falls at half
+  // twelve on all five days is one thing to answer, not five.
+  function gapsInWeek(schedule, cfg) {
+    const c = normaliseConfig(cfg);
+    const open = toMin(c.dayStart);
+    const shut = Math.min(toMin(c.dayEnd), toMin(c.leaveAt) === null ? Infinity : toMin(c.leaveAt));
+    const week = normalise(schedule).filter((b) =>
+      b.days.length && b.runsAs === null && !b.blocksDay && !b.noLessons && !b.soft);
+    if (!week.length) return [];
+    const found = [];
+    [...new Set(week.flatMap((b) => b.days))].sort((a, b) => a - b).forEach((d) => {
+      let at = open;
+      week.filter((b) => b.days.includes(d))
+        .map((b) => ({ from: toMin(b.start), to: toMin(b.end) }))
+        .sort((a, b) => a.from - b.from)
+        .forEach((x) => {
+          if (x.from > at) found.push({ day: d, from: at, to: Math.min(x.from, shut) });
+          at = Math.max(at, x.to);
+        });
+      if (at < shut) found.push({ day: d, from: at, to: shut });
+    });
+    const by = new Map();
+    found.filter((g) => g.to - g.from >= c.minGapMinutes).forEach((g) => {
+      const key = `${g.from}|${g.to}`;
+      if (!by.has(key)) by.set(key, { from: g.from, to: g.to, days: [] });
+      by.get(key).days.push(g.day);
+    });
+    return [...by.values()].sort((a, b) => a.from - b.from || a.days[0] - b.days[0]);
   }
 
   // The fixed block covering a moment, if any — this is what holds a reminder.
@@ -1205,6 +1307,7 @@
     gapsOn,
     USES,
     hoursOn,
+    gapsInWeek,
     dayIsBlocked,
     noTeachingOn,
     runsAsOn,

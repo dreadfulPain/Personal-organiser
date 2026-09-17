@@ -251,7 +251,12 @@ console.log("\nAnd occupied is not the same thing as not-available-for-work");
   ok("a lesson is time something is using", use("09:00") === "occupied", JSON.stringify(hours.map((h) => `${S.toHM(h.from)}:${h.use}`)));
   ok("  and a lunch you keep is time nothing may be put into",
      use("12:30") === "protected", JSON.stringify(use("12:30")));
-  ok("  and the rest is genuinely usable", use("09:50") === "free", JSON.stringify(use("09:50")));
+  // AND THE REST IS UNKNOWN, NOT USABLE — which is a correction to what this
+  // file used to claim. Nothing scheduled is not the same as free: on a school
+  // day that stretch is a break you are supervising at least as often as it is
+  // an hour at your desk, and nobody has said which.
+  ok("  and the rest is unknown until somebody says",
+     use("09:50") === "unknown", JSON.stringify(use("09:50")));
 
   // THE SATURDAY. No appointment on it anywhere — you could be shopping, or
   // asleep — and it is still not the app's time to spend. Read as "occupied"
@@ -263,15 +268,23 @@ console.log("\nAnd occupied is not the same thing as not-available-for-work");
      sat.length === 1 && sat[0].use === "protected",
      JSON.stringify(sat.map((h) => `${S.toHM(h.from)}-${S.toHM(h.to)}:${h.use}`)));
 
-  // AND THE TWO ANSWERS AGREE. The moment the reason and the arithmetic
-  // disagree about the same minute, one of them is lying.
-  const free = hours.filter((h) => h.use === "free")
+  // AND THE TWO ANSWERS STILL AGREE. gapsOn is every minute the planner MAY
+  // have — occupied and protected taken out — and hoursOn splits exactly that
+  // into the part somebody has vouched for and the part nobody has. Usable plus
+  // unknown must be gapsOn to the minute, or one of them is lying.
+  //
+  // gapsOn is deliberately NOT narrowed to the confirmed part today: the day
+  // planner already places work with it, and narrowing it would stop it placing
+  // anything at all for anybody who has not yet classified their week. When the
+  // planner is rebuilt (questions 4 to 6) it should ask hoursOn for "usable"
+  // and take the narrower answer knowingly.
+  const spare = hours.filter((h) => h.use === "usable" || h.use === "unknown")
     .filter((h) => h.to - h.from >= 10)
     .map((h) => `${S.toHM(h.from)}-${S.toHM(h.to)}`);
   const gaps = S.gapsOn(WEEK.concat([LUNCH]), CFG, DAY)
     .map((g) => `${S.toHM(g.start)}-${S.toHM(g.end)}`);
-  ok("and the reason and the arithmetic never disagree about a minute",
-     free.join() === gaps.join(), JSON.stringify({ free, gaps }));
+  ok("and usable plus unknown is exactly what the arithmetic calls free",
+     spare.join() === gaps.join(), JSON.stringify({ spare, gaps }));
 }
 
 // ---------------------------------------------------------------------------
@@ -391,6 +404,111 @@ console.log("\nAnd in my week is not be there");
   ok("while a thing with an hour on it is still somewhere you have to be",
      S.mustBeThere(meet) === true && S.toHM(S.leaveBy(meet)) === "07:50",
      JSON.stringify({ there: S.mustBeThere(meet), leave: S.leaveBy(meet) }));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd nothing scheduled is not the same as free");
+
+// THE FOURTH STATE. On a school day the stretch between two lessons is a break
+// you are supervising far more often than it is an hour at your desk, and an
+// official timetable lists neither. Counted as free, a real Wednesday came out
+// as "7h 25m in 5 stretches", one of them three hours and twenty minutes
+// straight through the middle of lunch — a number that reads as a promise and
+// is the app's own guess. So a gap is UNKNOWN until something says otherwise.
+{
+  const WED = "2026-11-18";
+  const day = [
+    { id: "a", label: "English", start: "08:40", end: "09:25", days: [3], kind: "teaching" },
+    { id: "b", label: "On duty", start: "09:25", end: "09:35", days: [3], kind: "duty" },
+    { id: "c", label: "Prep time", start: "09:35", end: "10:30", days: [3], kind: "other", workable: true },
+    { id: "d", label: "Lunch", start: "12:15", end: "13:20", days: [3], kind: "break", protected: true },
+  ];
+  const at = (from) => (S.hoursOn(day, CFG, WED).find((h) => S.toHM(h.from) === from) || {}).use;
+  ok("a lesson is occupied", at("08:40") === "occupied", String(at("08:40")));
+  ok("  a break you supervise is occupied too", at("08:40") === "occupied" &&
+     S.hoursOn(day, CFG, WED).find((h) => S.toHM(h.from) === "08:40").blocks.length === 2,
+     JSON.stringify(S.hoursOn(day, CFG, WED).map((h) => `${S.toHM(h.from)}:${h.use}`)));
+  ok("  a stretch you have said is yours is usable", at("09:35") === "usable", String(at("09:35")));
+  ok("  lunch is protected", at("12:15") === "protected", String(at("12:15")));
+  // AND THE ONE THAT WAS MISSING.
+  ok("  and a stretch nobody has said anything about is unknown, not free",
+     at("07:30") === "unknown" && at("10:30") === "unknown",
+     JSON.stringify(S.hoursOn(day, CFG, WED).map((h) => `${S.toHM(h.from)}:${h.use}`)));
+
+  // SAYING SO DOES NOT MAKE IT A COMMITMENT. The block exists only so that the
+  // thing can be said at all.
+  // MEASURED IN MINUTES, not by where a span starts: busyOn merges spans that
+  // touch, so the workable stretch sits directly against the duty before it and
+  // "does it start at 09:35" is answered no whether or not it is busy.
+  const busyMins = (list) => S.busyOn(list, WED).reduce((n, x) => n + (x.end - x.start), 0);
+  ok("and saying a stretch is yours does not make you busy in it",
+     busyMins(day) === busyMins(day.filter((b) => b.id !== "c")),
+     `${busyMins(day)} vs ${busyMins(day.filter((b) => b.id !== "c"))}`);
+
+  // A DAY WITH NO TIMETABLE TO BE SILENT is different: an empty stretch there is
+  // empty because there is nothing, not because nobody has said.
+  ok("but on a day with no timetable at all, an empty stretch is genuinely yours",
+     S.hoursOn([], CFG, "2026-11-21", { gapsAreYours: true })
+       .every((h) => h.use === "usable"),
+     JSON.stringify(S.hoursOn([], CFG, "2026-11-21", { gapsAreYours: true }).map((h) => h.use)));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd leaving is a boundary, not an appointment");
+
+// "Leave at 15:50" is not a thing you do for zero minutes at ten to four. It is
+// the edge of the working day: school-only work has to fit in front of it, and
+// the planner filling the hour after it is the app quietly extending the day —
+// which is the exact thing it exists to protect against.
+{
+  const WED = "2026-11-18";
+  const day = [{ id: "a", label: "English", start: "08:40", end: "09:25", days: [3], kind: "teaching" }];
+  const bound = { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" };
+  ok("nothing is planned after the time you leave",
+     S.gapsOn(day, bound, WED).every((g) => g.end <= S.toMin("15:50")),
+     JSON.stringify(S.gapsOn(day, bound, WED).map((g) => `${S.toHM(g.start)}-${S.toHM(g.end)}`)));
+  ok("  and the day says that time is protected rather than empty",
+     (S.hoursOn(day, bound, WED).find((h) => S.toHM(h.from) === "15:50") || {}).use === "protected",
+     JSON.stringify(S.hoursOn(day, bound, WED).map((h) => `${S.toHM(h.from)}:${h.use}`)));
+  // AND IT IS NOT A BLOCK. Written as one it would be a commitment with a
+  // start, an end and a journey, none of which it has.
+  ok("  and it is not an appointment — nothing is on the day at ten to four",
+     !S.blocksOn(day, WED).some((b) => S.toMin(b.start) === S.toMin("15:50")),
+     JSON.stringify(S.blocksOn(day, WED).map((b) => b.label)));
+  ok("and with no boundary set the day simply runs to the end of the window",
+     S.gapsOn(day, { dayStart: "07:30", dayEnd: "17:30" }, WED)
+       .some((g) => g.end === S.toMin("17:30")),
+     JSON.stringify(S.gapsOn(day, { dayStart: "07:30", dayEnd: "17:30" }, WED)
+       .map((g) => `${S.toHM(g.start)}-${S.toHM(g.end)}`)));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd the week's own gaps are one question each, not one per day");
+
+// These are properties of the WEEK — the same twenty minutes every Wednesday —
+// so classifying them must not mean creating dozens of one-off blocks. That is
+// the admin burden this app exists to remove.
+{
+  const week = [
+    { id: "a", label: "English", start: "08:40", end: "09:25", days: [1, 2, 3, 4, 5], kind: "teaching" },
+    { id: "b", label: "Science", start: "10:30", end: "11:05", days: [3], kind: "teaching" },
+  ];
+  const gaps = S.gapsInWeek(week, { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" });
+  const shown = gaps.map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}:${g.days.join("")}`);
+  ok("a gap that falls on all five days is one question, not five",
+     shown.includes("07:30-08:40:12345"), JSON.stringify(shown));
+  ok("  and a gap only one day has is its own question",
+     shown.includes("09:25-10:30:3"), JSON.stringify(shown));
+  ok("and nothing is looked for past the time you leave",
+     gaps.every((g) => g.to <= S.toMin("15:50")), JSON.stringify(shown));
+  // AND A STRETCH THAT HAS BEEN ANSWERED STOPS BEING A QUESTION.
+  const answered = week.concat([{ id: "p", label: "Prep time", start: "09:25", end: "10:30",
+    days: [3], kind: "other", workable: true }]);
+  ok("and answering one takes it off the list",
+     !S.gapsInWeek(answered, { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" })
+       .some((g) => S.toHM(g.from) === "09:25" && g.days.join() === "3"),
+     JSON.stringify(S.gapsInWeek(answered, { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" })
+       .map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}:${g.days.join("")}`)));
 }
 
 finish();

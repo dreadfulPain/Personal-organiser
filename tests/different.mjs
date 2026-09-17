@@ -618,29 +618,106 @@ console.log("\nAnd the Day screen, in the order a day is asked about");
   ok("and the usable time is said as stretches you could actually work in",
      !!use && /7:30 AM–8:40 AM/.test(inside(use)), inside(use).slice(0, 220));
   ok("  with protected time counted apart from it, never added in",
-     !!use && /spoken for/.test(inside(use)), inside(use).slice(0, 220));
+     !!use && /kept/.test(inside(use)), inside(use).slice(0, 220));
   // THE LUNCH IS NOT IN IT. This is the whole of the distinction: 12:30 to 1:15
   // is empty of appointments and is not available.
   ok("  and the hour you keep is not offered as time to work in",
      !!use && !/12:30 PM–1:15 PM/.test(inside(use)), inside(use).slice(0, 260));
-  // AND IT DOES NOT CAVEAT A DAY THAT HAS NOTHING TO CAVEAT. This day has a
-  // kept lunch on it, so the app has been told what fills the middle of it.
-  ok("  and a day that knows about its lunch is not warned about lunch",
-     !!use && !/aren.t in your week yet/.test(inside(use)), inside(use).slice(0, 300));
+  // NOTHING SCHEDULED IS NOT FREE. The stretches between the lessons are
+  // stretches the timetable says nothing about — a break you are supervising, a
+  // free period, lunch — and "you have 3h 20m to work" is a promise the app
+  // cannot keep when what it knows is "you do not teach a lesson then".
+  ok("  and time the timetable says nothing about is listed, not counted",
+     !!use && /says nothing about/.test(inside(use)) && /not said/.test(inside(use)),
+     inside(use).slice(0, 400));
+  ok("  with a way to say what those stretches are, once",
+     !!use && /Say what they are, once/.test(inside(use)), inside(use).slice(0, 400));
 
-  // BUT A DAY WITH NOTHING KEPT ON IT ANYWHERE IS A DAY NOBODY HAS TOLD ABOUT
-  // LUNCH. A real official timetable lists lessons and nothing else — no break,
-  // no duty, no time you leave — so "7h 25m free" on a Wednesday spent at
-  // school reads as a promise the app cannot keep. It cannot know what it was
-  // never told; it can refuse to let the number pass as a fact.
-  const bare = await open("timeline.html", {
-    schedule: DAY.filter((b) => b.id !== "lun"), items: [], goals: [],
-    scheduleConfig: { dayStart: "07:30", dayEnd: "17:30" } });
-  const bareUse = deep(bare.get("#timeline"))
+  // AND A STRETCH THAT HAS BEEN ACCOUNTED FOR IS COUNTED. Said once on the
+  // week, every day of it inherits the answer.
+  const told = await open("timeline.html", {
+    schedule: DAY.concat([{ id: "prep", label: "Prep time", start: "09:25", end: "10:30",
+      days: [DOW], kind: "other", workable: true }]),
+    items: [], goals: [], scheduleConfig: { dayStart: "07:30", dayEnd: "17:30" } });
+  const toldUse = deep(told.get("#timeline"))
     .filter((c) => String(c.className).split(/\s+/).includes("dp-usable"))[0];
-  ok("and a day with nothing kept on it says what it is counting",
-     !!bareUse && /aren.t in your week yet/.test(inside(bareUse)),
-     inside(bareUse).slice(0, 320));
+  ok("and a stretch you have said is yours to work in is counted",
+     !!toldUse && /9:25 AM–10:30 AM/.test(inside(toldUse)) && /1h 5m in 1 stretch/.test(inside(toldUse)),
+     inside(toldUse).slice(0, 300));
+  // AND IT IS NOT BUSY EITHER. It is a block only so that it can be said at all.
+  // Counted in minutes: busyOn merges spans that touch, so this stretch sitting
+  // against the lesson before it would pass a check about where a span starts
+  // whether or not it had been made busy.
+  const mins = (list) => S.busyOn(list, TODAY).reduce((n, x) => n + (x.end - x.start), 0);
+  ok("  and saying so does not make it a commitment",
+     mins(DAY.concat([{ id: "prep", label: "Prep time", start: "09:25", end: "10:30",
+       days: [DOW], kind: "other", workable: true }])) === mins(DAY),
+     `${mins(DAY.concat([{ id: "prep", label: "Prep time", start: "09:25", end: "10:30",
+       days: [DOW], kind: "other", workable: true }]))} vs ${mins(DAY)}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd saying what the rest of the week is, once");
+
+// THE ADMIN BURDEN THIS APP EXISTS TO REMOVE. The stretches between the lessons
+// are properties of the WEEK — the same twenty minutes every Wednesday — so
+// classifying them must not mean creating dozens of one-off blocks. One press
+// per stretch, however many days it falls on, and every week inherits it.
+{
+  const { open, deep, clickable } = await import("./_dom.mjs");
+  const WEEK2 = [
+    { id: "a", label: "English", start: "08:40", end: "09:25", days: [1, 2, 3, 4, 5], kind: "teaching" },
+    { id: "b", label: "Science", start: "10:30", end: "11:05", days: [3], kind: "teaching" },
+  ];
+  const r = await open("timeline.html", { schedule: WEEK2, items: [], goals: [],
+    scheduleConfig: { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" } });
+  r.get("#setupToggle").fire("click", { target: r.get("#setupToggle") });
+  await r.settle();
+  const panel = r.get("#weekGaps");
+  const said = deep(panel).map((c) => `${c.textContent || ""} ${c.innerHTML || ""}`).join(" ");
+  ok("the week says which stretches it has been told nothing about",
+     /unaccounted for/.test(said + String(panel.innerHTML)), said.slice(0, 200));
+  // ONE QUESTION, NOT FIVE. The morning gap falls on every day of the week.
+  ok("  with a stretch on five days asked about once",
+     /Mon, Tue, Wed, Thu, Fri/.test(said), said.slice(0, 400));
+  ok("  and three ways to answer it, none of them the default",
+     ["on duty", "mine to work in", "kept"].every((w) =>
+       clickable(r).some((c) => String(c.textContent) === w)),
+     JSON.stringify(clickable(r).map((c) => c.textContent).filter(Boolean).slice(0, 14)));
+
+  // ANSWERING ONE WRITES ONE REPEATING BLOCK, not five dated ones.
+  const before = (r.state.schedule || []).length;
+  const mine = clickable(r).find((c) => String(c.textContent) === "mine to work in");
+  mine.click();
+  await r.settle();
+  const made = (r.state.schedule || []).filter((b) => b.workable);
+  ok("answering one writes a single repeating block",
+     (r.state.schedule || []).length === before + 1 && made.length === 1,
+     JSON.stringify((r.state.schedule || []).map((b) => `${b.label}:${b.days}`)));
+  ok("  covering every day the stretch falls on",
+     made[0] && made[0].days.length === 5, JSON.stringify(made[0] && made[0].days));
+  ok("  and it is time you may work in, not a commitment",
+     made[0] && made[0].workable === true && made[0].protected === false,
+     JSON.stringify(made[0] && { workable: made[0].workable, protected: made[0].protected }));
+
+  // AND THE BOUNDARY IS ASKED FOR IN THE SAME PLACE, because it is the other
+  // half of the same question — and it is not a block.
+  const bound = deep(panel).find((c) => String(c.className).includes("su-leaveat"));
+  ok("and the time you leave is asked for as a time, not as an event",
+     !!bound && /type="time"/.test(String(bound.innerHTML)) &&
+       !!(bound.querySelector(".su-leave")._on || {}).change,
+     String(bound && bound.innerHTML).slice(0, 160));
+  // AND ANSWERING IT CHANGES THE DAY RATHER THAN ADDING SOMETHING TO IT.
+  const at = bound.querySelector(".su-leave");
+  at.value = "15:50";
+  at.fire("change", { target: at });
+  await r.settle();
+  ok("  and saying it puts no block on the day at ten to four",
+     !(r.state.schedule || []).some((b) => b.start === "15:50"),
+     JSON.stringify((r.state.schedule || []).map((b) => `${b.start} ${b.label}`)));
+  ok("  it is kept as the edge of the working day",
+     (r.state.scheduleConfig || {}).leaveAt === "15:50",
+     JSON.stringify((r.state.scheduleConfig || {}).leaveAt));
 }
 
 finish();

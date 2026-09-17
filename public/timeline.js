@@ -214,6 +214,7 @@
   // And which weekday a kind of marked day stands in for, when it is a make-up
   // day — see runsAs.
   let calMarkRuns = new Map();
+  let calMarkParity = new Map();
 
   // A PDF'S OWN COLUMNS, FOR THE CALENDAR READER TOO.
   //
@@ -1072,6 +1073,37 @@
         lab.appendChild(runs);
         when.appendChild(lab);
         when.appendChild(el("span", "muted", " — your timetable runs on them as if they were that day."));
+        // AND WHICH HALF OF THE FORTNIGHT, when your week has one.
+        //
+        // "Even week Tuesday schedule" is two facts and only one of them was
+        // being kept. On a Tuesday you have a memory to fall back on; on a
+        // Saturday standing in for one you have nothing but this, and getting
+        // it wrong puts you in the room for the wrong one of two lessons.
+        //
+        // Asked ONLY where the timetable actually alternates. A control about a
+        // fortnight, on a week that hasn't got one, is a question with no
+        // meaning and one more thing to read past.
+        if (S().normalise(schedule).some((b) => b.parity)) {
+          const par = el("label", "cal-mark-at", "in the ");
+          const pick = document.createElement("select");
+          pick.className = "cal-mark-parity";
+          [["", "week it falls in"]].concat(S().PARITIES.map((p) => [p, `${p} week`]))
+            .forEach(([v, word]) => {
+              const o = document.createElement("option");
+              o.value = v;
+              o.textContent = word;
+              pick.appendChild(o);
+            });
+          // What the entry itself says, where it says anything — the same two
+          // words the timetable reader knows, and yours to correct.
+          const TT = window.OrganiserTimetable;
+          const said = calMarkParity.get(i);
+          pick.value = said === undefined ? ((TT && TT.weekIn(m.name)) || "") : said;
+          if (said === undefined && pick.value) calMarkParity.set(i, pick.value);
+          pick.addEventListener("change", () => calMarkParity.set(i, pick.value));
+          par.appendChild(pick);
+          when.appendChild(par);
+        }
         wrap.appendChild(when);
       }
       if (kind) {
@@ -1081,7 +1113,7 @@
             : kind === "runsAs" ? `set ${n} days to run another day`
             : `mark ${n} days with no lessons`);
         add.type = "button";
-        add.addEventListener("click", () => addMarked(m, kind, at, be, runs));
+        add.addEventListener("click", () => addMarked(m, kind, at, be, runs, calMarkParity.get(i) || ""));
         wrap.appendChild(add);
       }
       box.appendChild(wrap);
@@ -1091,7 +1123,7 @@
     box.appendChild(said);
   }
 
-  function addMarked(mark, kind, at, be, runs) {
+  function addMarked(mark, kind, at, be, runs, parity) {
     const said = $("#calMarkWords");
     if (!mark || !kind) return;
     const label = mark.name || `the “${mark.symbol}” days`;
@@ -1128,8 +1160,11 @@
         id: uid(), label, date: d, start: "00:00", end: "23:59", days: [],
         blocksDay: kind === "off",
         noLessons: kind === "noLessons",
-        // A day standing in for another one — see runsAs in schedule.js.
+        // A day standing in for another one — see runsAs in schedule.js. And
+        // which half of the fortnight it runs as, where the week has one: the
+        // calendar said "even week Tuesday schedule" and that is two facts.
         ...(asDay === null ? {} : { runsAs: asDay }),
+        ...(asDay !== null && parity ? { parity } : {}),
         soft: false, source: "paste",
       }));
     }
@@ -4385,6 +4420,55 @@
 
   // NOTHING SAVES UNTIL THIS IS CHECKED. The model read a wall of text; a person
   // reads the result. Every cell is editable and every row can be dropped.
+  // THE GRID, PUT BACK TOGETHER, BEFORE ANYTHING IS SAVED.
+  //
+  // Nineteen rows in a list cannot be checked against a timetable. The paper in
+  // your hand is a grid, and the only way to see AT A GLANCE that a cell has
+  // gone missing is to look at the same grid — a list of nineteen right-looking
+  // rows and a list of eight right-looking rows read exactly the same, and the
+  // second one is a week with half the lessons gone.
+  //
+  // So the count is said too, in the shape you would count it in: how many
+  // squares of the grid have something in them. That is a number you can check
+  // against the page without reading a single row.
+  function gridPreview(blocks) {
+    const box = document.createElement("div");
+    box.className = "tt-grid-wrap";
+    const on = (blocks || []).filter((b) => b.keep !== false && (b.days || []).length);
+    if (!on.length) return box;
+    const rows = [];
+    on.forEach((b) => {
+      const when = S().fmtSpan(b.start, b.end);
+      let row = rows.find((r) => r.when === when);
+      if (!row) rows.push((row = { when, at: S().toMin(b.start), cells: {} }));
+      b.days.forEach((d) => { row.cells[d] = (row.cells[d] || []).concat([b]); });
+    });
+    rows.sort((a, b) => a.at - b.at);
+    const days = [...new Set(on.flatMap((b) => b.days))].sort((a, b) => a - b);
+    const filled = rows.reduce((n, r) => n + Object.keys(r.cells).length, 0);
+    const name = (d) => ((window.OrganiserDates && OrganiserDates.DAY_NAMES[d]) || "?").slice(0, 3);
+    // A slot that takes turns is one square of the grid holding two lessons —
+    // drawn as one square, because that is what the paper says.
+    const said = (list) => list
+      .map((b) => b.label + (b.parity ? ` — ${b.parity} weeks` : ""))
+      .join(" / ");
+    box.innerHTML =
+      `<h4>The week, as it was read</h4>` +
+      `<p class="muted">${rows.length} period${rows.length === 1 ? "" : "s"} × ` +
+      `${days.length} day${days.length === 1 ? "" : "s"}, ${filled} square${filled === 1 ? "" : "s"} ` +
+      `with something in ${filled === 1 ? "it" : "them"}. Count them against the page — ` +
+      `a square that should have a lesson in it and doesn't is the thing to look for.</p>` +
+      `<table class="tt-grid"><thead><tr><th></th>` +
+      days.map((d) => `<th>${escapeHtml(name(d))}</th>`).join("") +
+      `</tr></thead><tbody>` +
+      rows.map((r) =>
+        `<tr><th scope="row">${escapeHtml(r.when)}</th>` +
+        days.map((d) => `<td>${r.cells[d] ? escapeHtml(said(r.cells[d])) : ""}</td>`).join("") +
+        `</tr>`).join("") +
+      `</tbody></table>`;
+    return box;
+  }
+
   function reviewTable() {
     const box = document.createElement("div");
     box.className = "su-review";
@@ -4418,6 +4502,9 @@
            and you can keep whichever is better.`
              : ""}</p>`
         : "");
+    // THE GRID FIRST, THE ROWS UNDER IT. One is for seeing whether the reading
+    // is right; the other is for fixing it once you know it isn't.
+    box.appendChild(gridPreview(pastedBlocks));
     const table = document.createElement("div");
     table.className = "su-table";
     // GROUPED BY WHEN, WHICH IS HOW THE DOCUMENT IS LAID OUT.

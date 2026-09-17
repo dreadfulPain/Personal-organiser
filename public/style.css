@@ -4259,6 +4259,38 @@ a.btn {
 .dp-list.loose .no-clock .dp-at,
 .dp-list.loose .no-clock .when { display: none; }
 
+/* ---- THE WEEK, PUT BACK TOGETHER, BEFORE IT IS SAVED --------------------
+   A list of rows cannot be checked against a timetable. The paper in your hand
+   is a grid, so this is a grid: a missing square is visible at a glance where a
+   missing row in a list of nineteen is not. Scrolls sideways rather than
+   squeezing, because a five-column week on a phone is unreadable squeezed. */
+.tt-grid-wrap { margin: 0 0 18px; overflow-x: auto; }
+.tt-grid-wrap h4 { margin: 0 0 4px; font-size: 0.95rem; }
+.tt-grid {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 460px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.tt-grid th,
+.tt-grid td {
+  border: 1px solid var(--line);
+  padding: 5px 7px;
+  text-align: left;
+  vertical-align: top;
+}
+.tt-grid thead th { background: var(--accent-soft); font-size: 0.75rem; letter-spacing: 0.04em; }
+.tt-grid th[scope="row"] {
+  white-space: nowrap;
+  font-weight: normal;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+/* An empty square is a free period, and it has to LOOK empty — that is the
+   whole of what makes a missing lesson visible. */
+.tt-grid td:empty { background: var(--bg); }
+
 /* ---- A WALL TIMETABLE WITH PENCIL ON IT ---------------------------------
    Three layers and one state, and each of them says which it is in a way that
    survives being photocopied. Colour is the fast path, never the only one:

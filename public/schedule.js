@@ -207,6 +207,8 @@
 
   // The four the app knows, and "" for everything written before it asked.
   const KINDS = ["teaching", "duty", "break", "other"];
+  // And the two halves of a fortnight, for the timetables that run on one.
+  const PARITIES = ["odd", "even"];
 
   function normaliseBlock(b) {
     if (!b || typeof b !== "object") return null;
@@ -298,6 +300,28 @@
       // still plans and still counts; it just has one fewer thing to say about
       // itself until somebody says it.
       kind: KINDS.indexOf(b.kind) >= 0 ? b.kind : "",
+      // WHICH WEEK OF THE FORTNIGHT THIS ONE RUNS IN.
+      //
+      // Plenty of timetables run on a two-week cycle: the same slot carries one
+      // thing in odd weeks and another in even ones. Without this the app has to
+      // pick one and be wrong every other week, or hold both and have you
+      // standing in the wrong room — and the document said which, plainly, and
+      // the app threw it away.
+      //
+      // "" means every week, which is what nearly everything is. This is the
+      // app's own idea of the SHAPE of a schedule, the same kind of fact as
+      // "every Tuesday"; it is not a fact about anybody's school — see §0.2.
+      parity: PARITIES.indexOf(b.parity) >= 0 ? b.parity : "",
+      // AND WHICH WEEK IS WHICH, said once, on one date.
+      //
+      // Odd and even are only meaningful counted from somewhere, and nobody
+      // agrees where — some schools count from September, some from January,
+      // some from whenever the cycle happens to have started. So the app never
+      // decides: one date is marked as falling in an odd week and every other
+      // week is counted from it. Until that is done the parity of a date is
+      // UNKNOWN, which is deliberately not the same as "neither" — see
+      // parityOn and appliesOn.
+      weekOne: !!b.weekOne,
       // AND WHETHER A PLANNER MAY HAVE IT.
       //
       // A DIFFERENT QUESTION FROM WHAT IT IS, which is why it is a different
@@ -383,12 +407,19 @@
     return (Array.isArray(list) ? list : []).map(normaliseBlock).filter(Boolean);
   }
 
-  function appliesOn(b, iso, asDay) {
+  function appliesOn(b, iso, asDay, asParity) {
     if (b.from && iso < b.from) return false;
     if (b.to && iso > b.to) return false;
     // The exception beats the pattern. A lesson you swapped away isn't there
     // that week, however right the rest of the pattern is.
     if (b.skip && b.skip.indexOf(iso) >= 0) return false;
+    // THE WRONG HALF OF THE FORTNIGHT.
+    //
+    // Only ever asked when the parity in force is KNOWN. Unknown is not
+    // "neither": until somebody has said which week is which, BOTH halves of a
+    // fortnight slot are shown, because half a timetable quietly missing is a
+    // far worse answer than two lessons in one slot and a note saying so.
+    if (b.parity && asParity && b.parity !== asParity) return false;
     if (b.date) return b.date === iso;
     const dow = Number.isInteger(asDay) ? asDay : new Date(iso + "T12:00:00").getDay();
     return b.days.includes(dow);
@@ -408,15 +439,57 @@
     return normalise(schedule).find((b) => b.date === iso && b.runsAs !== null && !b.soft) || null;
   }
 
+  // WHICH HALF OF THE FORTNIGHT IS THIS DATE IN? "odd", "even", or "" for
+  // nobody has said — and "" is an answer, not a failure. See appliesOn.
+  //
+  // Asked in two places and answered here once, because the day it is asked
+  // twice is the day a Tuesday shows one lesson and the week shows the other.
+  const mondayOf = (iso) => {
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  };
+  function parityOn(schedule, iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
+    const all = normalise(schedule);
+    // A DAY THAT SAYS WHICH WEEK IT IS RUNNING AS beats the count.
+    //
+    // "Even week Tuesday schedule" is two facts, not one: which day's lessons
+    // are on, AND which half of the fortnight to take them from. Reduced to
+    // "Tuesday's timetable" it puts you in the room for the wrong one of two
+    // lessons — which is the entire point of keeping the fortnight.
+    const said = all.find((b) => b.date === iso && !b.soft && b.parity &&
+      (b.runsAs !== null || b.weekOne));
+    if (said) return said.parity;
+    // Otherwise counted from the one date somebody marked as an odd week.
+    const anchor = all.find((b) => b.weekOne && b.date && !b.soft);
+    if (!anchor) return "";
+    // Counts backwards as readily as forwards — term started before whichever
+    // week somebody happened to mark, and a negative count is still even or
+    // odd. (JavaScript's remainder keeps the sign, so -2 % 2 is -0, which
+    // equals 0. No wrapping is needed and adding some would be a line nothing
+    // could ever make fail.)
+    const weeks = Math.round((mondayOf(iso) - mondayOf(anchor.date)) / 604800000);
+    return weeks % 2 === 0 ? "odd" : "even";
+  }
+
   // Every block that applies on a date, earliest first.
   //
   // A make-up marker is not a block you have to sit through — it says which
   // day's pattern applies, and returning it as a 00:00–23:59 commitment would
   // swallow the day it is trying to describe.
+  // WHICH WEEK OF THE FORTNIGHT IT IS, ASKED HERE RATHER THAN BY THE CALLER.
+  //
+  // Twenty places ask this function what is on. Handing each of them a config to
+  // pass down would be the same question answered in twenty places, and the day
+  // one of them forgets is the day the Day page and the Week page disagree
+  // about a Tuesday. The anchor lives in the schedule, which is the one thing
+  // every caller already has.
   function blocksOn(schedule, iso) {
     const asDay = runsAsOn(schedule, iso);
+    const asParity = parityOn(schedule, iso);
     return normalise(schedule)
-      .filter((b) => b.runsAs === null && appliesOn(b, iso, asDay))
+      .filter((b) => b.runsAs === null && appliesOn(b, iso, asDay, asParity))
       .sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
   }
   // Did you mark this day off? Nothing is planned into it.
@@ -902,6 +975,8 @@
     noTeachingOn,
     runsAsOn,
     standingIn,
+    PARITIES,
+    parityOn,
     fixedBlockAt,
     nextFreeMoment,
     estimateMinutes,

@@ -91,6 +91,43 @@ nothing important becomes urgent tonight, stop"* unless it knows what was owed,
 what it was owed to, how ready counts as ready, and which of the remaining hours
 were never available to work in.
 
+### A timetable is a grid, and a fortnight is a shape it can have
+
+A page came back as eight blocks where it had eighteen cells, and nothing looked
+wrong: the times were right, the days were right, and a week with eighteen
+lessons read as a week with eight. Three things had to be true before the grid
+survived, and they are worth keeping true.
+
+**A cell belongs to a column; a run of text does not.** A PDF hands back one run
+per word. Placed in a column each on its own, a cell wider than its column is
+read as the next day's lesson and that day's real lesson is glued onto the end
+of it — one wide cell, two cells lost. A new cell needs *white space with a
+column boundary in it*. Not a gap on its own: a cell that nearly fills its
+column leaves a small one, and a word that has spilled leaves a large one.
+
+**A cell too long for its column is drawn on two lines,** and the second line
+has no time in it. Thrown out with the headings and the page numbers, every long
+subject came through cut off at the fold — "Science &", "Writing – Odd /" —
+which reads exactly like a reader that found one thing per row and stopped.
+
+**Each page is its own table.** A timetable arrives at the front of a pack with
+twelve pages of class lists behind it. Read as one table, the timetable's
+columns are decided partly by pages that have no columns. A page of names, asked
+on its own, produces nothing — which is the right answer.
+
+**And the check has to be a grid.** Nineteen rows in a list cannot be checked
+against a timetable; eight right-looking rows and nineteen right-looking rows
+read the same. Before anything is saved the week is drawn as a week, with the
+count of filled squares, so a missing lesson is visible without reading a row.
+
+**Parity is data, not a note in a name.** `parity` on a block says which half of
+the fortnight it runs in; `weekOne` on one date says which weeks are odd, and
+everything counts from there. Until somebody says, parity is **unknown — which
+is not "neither"**: both halves of a slot are shown, because half a timetable
+quietly missing is far worse than two lessons in one slot. And a make-up day
+carries its own parity, because *"even week Tuesday schedule"* is two facts and
+the week is the half you have no memory to fall back on.
+
 ### A wall timetable with pencil on it
 
 The Day and Week pages are drawn to one picture: **the printed timetable, the
@@ -567,6 +604,20 @@ which one to try and exactly how.
 - **Student data:** it stays on your machine — but if the folder syncs, the notes
   sync too. Practice with fake IDs until you know what your school's policy
   allows outside their official system.
+- **A gap is still only "nothing booked".** The Day page draws an empty stretch
+  as free, and it isn't necessarily: a free period, a supervision duty, a lunch
+  you keep and five minutes of walking between rooms are four different things
+  and only the last two can be told apart today (`kind`, `protected`). Until a
+  gap can say which it is, nothing should read an empty square as *work can go
+  here* — which is exactly what a planner would do with it.
+- **Only "odd" and "even".** A fortnight written as *Week 1 / Week 2* or *A week
+  / B week* is the same idea and just as common, and both spellings are also how
+  somebody writes a lesson called "Week 1 Review" or a set called "Set A". That
+  wants a real document in front of it rather than a guess.
+- **A class roster is not imported as a class.** Pages of names now correctly
+  produce no timetable at all, which is the fix — but they are also genuinely
+  useful, and reading them into People or a class list is a separate job nobody
+  has started.
 
 ---
 

@@ -280,9 +280,15 @@
     //
     //    A day with no lessons needs no such guard: its blocks are all still
     //    there, they are simply not taught, so nothing is missing to list.
+    //    AND NOT THE OTHER HALF OF A FORTNIGHT. A slot that carries Writing in
+    //    odd weeks and Show & Tell in even ones has not LOST Writing on an even
+    //    Tuesday — that is the timetable working. Said every other week it is
+    //    the loudest thing on the page and it is never once news.
+    const par = S.parityOn ? S.parityOn(schedule, iso) : "";
     const on = new Set(here.map((b) => b.id));
     const gone = asDay !== dow ? [] : normalWeek(schedule)
-      .filter((b) => b.days.includes(dow) && !on.has(b.id));
+      .filter((b) => b.days.includes(dow) && !on.has(b.id) &&
+        !(b.parity && par && b.parity !== par));
     // ONLY EVER A SWAP WHEN BOTH HALVES ARE TRUE. The lesson has to be off AND
     // something has to be on in its place. A meeting that merely clashes with a
     // lesson still running is a clash, and drawing it as a replacement would be

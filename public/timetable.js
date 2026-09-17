@@ -182,6 +182,70 @@
     return !!s && s.length <= 60 && FOR_WHOM.test(s);
   };
 
+  // ---- a slot that takes turns ----------------------------------------------
+  //
+  // A FORTNIGHT IS A SHAPE A TIMETABLE CAN HAVE, like "every Tuesday" is. Some
+  // schools run a two-week cycle and one slot then carries two lessons that
+  // take turns: "Writing – Odd / Show & Tell – Even". Read as a single lesson
+  // that is what its name becomes, and half of every fortnight you are in the
+  // wrong room holding the wrong books.
+  //
+  // §0.2 holds: these two words are the app's own vocabulary for the shape of a
+  // repeating schedule. Nothing here knows what Writing is, or that any school
+  // anywhere runs a fortnight — only that when a cell says a slot alternates,
+  // that is a thing a slot can do.
+  //
+  // ONLY ODD AND EVEN, for now. "Week 1 / Week 2" and "A week / B week" are the
+  // same idea and just as common, and both are also how somebody writes a
+  // lesson called "Week 1 Review" or a set called "Set A" — so they want a
+  // document in front of them before they go in, not a guess from here.
+  const SAYS_WEEK = [
+    ["odd", /\bodd\b/i],
+    ["even", /\beven\b/i],
+  ];
+  // Whatever is left once the parity word and its punctuation are taken out.
+  const withoutWeek = (s, re) =>
+    s.replace(re, " ")
+      .replace(/\bweeks?\b/gi, " ")
+      .replace(/[()[\]]/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s\-–—:,.]+|[\s\-–—:,.]+$/g, "")
+      .trim();
+
+  // WHICH HALF OF THE FORTNIGHT A LINE NAMES, if it names one. The same two
+  // words as takingTurns, asked of a whole line rather than a cell — "Even week
+  // Tuesday schedule" on a school calendar is two facts, and the second one was
+  // being thrown away.
+  //
+  // The word WEEK has to be there. Without it "Odd Socks Day" is a fortnight.
+  const weekIn = (text) => {
+    const s = String(text || "");
+    if (!/\bweeks?\b/i.test(s)) return "";
+    const hit = SAYS_WEEK.find(([, re]) => re.test(s));
+    return hit ? hit[0] : "";
+  };
+
+  function takingTurns(label) {
+    const parts = String(label || "").split(/\s*[/|;]\s*|\s*\n\s*/)
+      .map((p) => p.trim()).filter(Boolean);
+    const said = parts.map((p) => {
+      const hit = SAYS_WEEK.find(([, re]) => re.test(p));
+      return hit ? { parity: hit[0], label: withoutWeek(p, hit[1]), whole: p } : null;
+    });
+    // EVERY HALF HAS TO SAY WHICH WEEK IT IS, and no two may say the same. One
+    // half naming a week and the other not is a lesson with a slash in its name
+    // — "PE / Games" — and splitting that would invent a fortnight nobody has.
+    if (said.length > 1 && said.every(Boolean) &&
+        new Set(said.map((s) => s.parity)).size === said.length)
+      return said.filter((s) => s.label).map(({ parity, label: l }) => ({ parity, label: l }));
+    // A SLOT THAT ONLY RUNS EVERY OTHER WEEK, with nothing in the other half.
+    // Here the word WEEK has to be there as well, because "Even Numbers" is a
+    // lesson and "Odd Socks Day" is an event, and neither is a fortnight.
+    if (said.length === 1 && said[0] && /\bweeks?\b/i.test(said[0].whole) && said[0].label)
+      return [{ parity: said[0].parity, label: said[0].label }];
+    return null;
+  }
+
   // ---- splitting a pasted line into cells -----------------------------------
   //
   // Tabs if there are any — that is what a spreadsheet and a Word table both
@@ -298,23 +362,62 @@
       s.endGuessed = !next;
     });
 
+    // A CELL TOO LONG FOR ITS COLUMN IS DRAWN ON TWO LINES.
+    //
+    // The second line has no time in it, so it arrived here as a row with no
+    // period and was thrown out with the headings and the notes. What survived
+    // was every long subject cut off at its first line — "Science &", "Writing
+    // – Odd /" — and on a page where most cells are long that reads as though
+    // the reader found one thing per row and stopped. It had found all of them
+    // and dropped the second half of each.
+    //
+    // A row with no time of its own that has something sitting under a day
+    // column is the row above still going. Joined back on, column by column,
+    // before any block is made from either of them. Only under a DAY column: a
+    // section heading or a footnote lives in the left-hand margin, and this is
+    // what keeps it out.
+    const body = rows.map((cells) => cells.slice());
+    let carryInto = -1;
     rows.forEach((cells, i) => {
+      if (i === headRow) return;
+      if (spans[i]) { carryInto = i; return; }
+      // AND THE RUN ENDS WHERE THE TABLE DOES. A row with nothing under any day
+      // column is not a cell carrying on — it is a heading, a footnote, or the
+      // start of whatever comes after the timetable. Without this, everything
+      // below the last period on the page joins the last period.
+      const under = cols.filter(({ col }) => (cells[col] || "").trim());
+      if (!under.length) { carryInto = -1; return; }
+      if (carryInto < 0) return;
+      under.forEach(({ col }) => {
+        const more = (cells[col] || "").trim();
+        const was = (body[carryInto][col] || "").trim();
+        body[carryInto][col] = was ? `${was} ${more}` : more;
+      });
+    });
+
+    body.forEach((cells, i) => {
       if (i === headRow) return;
       const span = spans[i];
       if (!span || !span.end) return;
       cols.forEach(({ col, day }) => {
         const label = (cells[col] || "").trim();
         if (!label) return;              // an empty cell is a free period
-        out.blocks.push({
-          label: label.slice(0, 80),
-          start: span.start,
-          end: span.end,
-          days: [day],
-          // The last period of the day has no row under it to finish it, so an
-          // hour is filled in and said out loud — see words().
-          ...(span.endGuessed ? { endGuessed: true } : {}),
-          soft: false,
-          source: "paste",
+        // ONE CELL, TWO LESSONS THAT TAKE TURNS — see takingTurns. They are
+        // mutually exclusive rather than both on, which is what parity means.
+        const turns = takingTurns(label);
+        (turns || [{ label, parity: "" }]).forEach((t) => {
+          out.blocks.push({
+            label: t.label.slice(0, 80),
+            start: span.start,
+            end: span.end,
+            days: [day],
+            ...(t.parity ? { parity: t.parity } : {}),
+            // The last period of the day has no row under it to finish it, so
+            // an hour is filled in and said out loud — see words().
+            ...(span.endGuessed ? { endGuessed: true } : {}),
+            soft: false,
+            source: "paste",
+          });
         });
       });
     });
@@ -681,9 +784,39 @@
   // handed over the text alone — so a timetable dropped rather than picked lost
   // its columns before anything looked at it, and a grid that reads perfectly
   // came out as prose. The two ways in are the same way in now.
+  // EACH PAGE IS ITS OWN TABLE.
+  //
+  // A timetable does not arrive on its own. It arrives at the front of a pack,
+  // and behind it are twelve pages of class lists — and every row of all
+  // fourteen was being handed to the column reader as one table. So the columns
+  // of the timetable were decided partly by pages that have no columns, and a
+  // child's name on page nine sat under Wednesday as far as the reader could
+  // tell.
+  //
+  // A table does not continue across a page break. A second table starts, or
+  // something that is not a table at all starts — and a page of names produces
+  // no blocks, which is the right answer and the one it gives once it is asked
+  // on its own. A timetable really split across two pages still works: the
+  // blocks from each are kept and added together.
+  function eachPage(g) {
+    const pages = g.pages && g.pages.length
+      ? g.pages.map((p) => p.rows).filter((r) => r && r.length)
+      : [g.rows];
+    const read = pages.map((rows) => (rows && rows.length ? fromRows(rows) : null))
+      .filter((r) => r && r.blocks.length);
+    if (!read.length) return null;
+    return read.reduce((a, b) => ({
+      shape: a.shape,
+      blocks: a.blocks.concat(b.blocks),
+      days: [...new Set(a.days.concat(b.days))].sort((x, y) => x - y),
+      daysGuessed: a.daysGuessed || b.daysGuessed,
+      note: a.note || b.note,
+    }));
+  }
+
   function bestOf(got) {
     const g = got || {};
-    const byRows = g.rows && g.rows.length ? fromRows(g.rows) : null;
+    const byRows = eachPage(g);
     const byText = read(g.text || "");
     return merged(
       (byRows && byRows.blocks.length ? byRows : null) ||
@@ -839,12 +972,92 @@
           });
           return best;
         };
+    // A CELL BELONGS TO A COLUMN. A RUN DOES NOT.
+    //
+    // Every run was placed on its own, and that is not a small difference. A
+    // cell wider than its column spills into the next one — which real pages do
+    // constantly — and the run that spilled was then read as the next day's
+    // lesson, while the next day's actual lesson was glued onto the end of it.
+    // One wide cell, two cells lost, and nothing on screen looking wrong:
+    //
+    //   Tue "Writing – Odd / Show & Tell – Even", Wed "Science & Social Studies"
+    //     became  Tue "Writing – Odd / Show"
+    //             Wed "& Tell – Even Science & Social Studies"
+    //
+    // A NEW CELL NEEDS WHITE SPACE IN FRONT OF IT, and that is the whole test.
+    //
+    // Not "it starts at a column edge", which was the first try and is wrong for
+    // a reason worth writing down: a word that has spilled past its own column
+    // lands wherever it lands, and sooner or later that is exactly on an edge.
+    // Then the back half of Monday's cell opens Tuesday, and Tuesday is a day
+    // that is actually free. Position cannot tell those apart. The gap can:
+    // between two cells there is empty table, and between two words there is a
+    // space.
+    //
+    // And white space means a COLUMN BOUNDARY falls in it: the previous word
+    // ends, a column edge goes by, and only then does this one start. The gap
+    // on its own is not enough either way — a cell that nearly fills its column
+    // leaves a small one before the next cell, and a word that has spilled
+    // leaves a large one before the next word — so what is measured is where
+    // the boundary is, not how far apart two things are.
+    //
+    // Which column it then lands in is still colOf's question, and the edges
+    // still answer that. Where there are no edges — a grid whose header is a
+    // picture — the old run-by-run placement is the best guess there is.
+    const known = edges && edges.length > 1;
+    const steps = known ? edges.slice(1).map((e, i) => e - edges[i]).sort((a, b) => a - b) : [];
+    const colWide = steps.length ? steps[Math.floor(steps.length / 2)] : 0;
+    // DOES THIS DOCUMENT HAND BACK WORDS, OR WHOLE CELLS?
+    //
+    // Both exist and they want opposite treatment. Plenty of PDFs draw each
+    // cell as one run, and there every run IS a cell — nothing needs joining
+    // and any attempt to work out where the words end does harm. Others draw
+    // every word separately, and there the joining is the whole job.
+    //
+    // The tell is whether any two runs sit CLOSE together. A page of whole
+    // cells has nothing on it closer than a column; a page of words has a space
+    // between most of them. So: no close pairs, no joining.
+    const close = [];
+    list.forEach((r) => {
+      const byX = [...r.cells].sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0));
+      byX.forEach((c, i) => {
+        if (!i) return;
+        const gap = (Number(c.x) || 0) - (Number(byX[i - 1].x) || 0);
+        const n = String(byX[i - 1].text || "").length + 1;
+        if (gap > 0 && n > 1 && (!colWide || gap < colWide * 0.5)) close.push(gap / n);
+      });
+    });
+    // HOW WIDE A CHARACTER IS HERE, measured off the page rather than assumed:
+    // two runs inside one cell sit a single space apart, so gap ÷ (letters + 1)
+    // across those pairs is what one character costs. Read low down the range,
+    // because even among the close pairs some are the end of one short cell and
+    // the start of the next.
+    close.sort((a, b) => a - b);
+    const charWide = close.length
+      ? Math.min(20, Math.max(2, close[Math.floor(close.length * 0.2)]))
+      : 0;
+    const opens = (x, prev, text) => {
+      if (!known || prev === null || !charWide) return true;
+      const ends = prev + String(text || "").length * charWide;
+      // A boundary crossed between the two — or, for a table whose headings do
+      // not sit over the left edge of their columns, plainly more empty space
+      // than a cell would ever leave inside itself.
+      return edges.some((e) => e > ends && e <= x) || x - ends > colWide * 0.5;
+    };
     const rows = list.map((r) => {
       const cells = [];
-      r.cells.forEach((c) => {
-        const j = colOf(Number(c.x) || 0);
-        cells[j] = ((cells[j] ? cells[j] + " " : "") + String(c.text || "")).trim();
-      });
+      let at = 0;
+      let prev = null;
+      let was = "";
+      [...r.cells]
+        .sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0))
+        .forEach((c) => {
+          const x = Number(c.x) || 0;
+          if (opens(x, prev, was)) at = colOf(x);
+          cells[at] = ((cells[at] ? cells[at] + " " : "") + String(c.text || "")).trim();
+          prev = x;
+          was = String(c.text || "");
+        });
       for (let j = 0; j < cells.length; j++) if (cells[j] === undefined) cells[j] = "";
       return cells;
     });
@@ -925,6 +1138,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    read, readAgenda, fromPages, fromRows, tableOf, bestOf, merged, thin, words, anHourAfter, looksLikePlace,
+    takingTurns, weekIn, read, readAgenda, fromPages, fromRows, tableOf, bestOf, merged, thin, words, anHourAfter, looksLikePlace,
   };
 })();

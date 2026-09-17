@@ -209,6 +209,66 @@ fills the whole day and is not one of the day rules is that old importer's mark,
 and there is nothing else it can sensibly be. `tests/whenitis.mjs` is the table
 of how each of the four resolves, kept as a test so it goes on being true.
 
+### Occupied is not the same as not-available-for-work
+
+`busyOn` answers one question — which minutes may the planner not have — and it
+answers it correctly. What it cannot do is say **why**, and the two reasons are
+not the same thing:
+
+- **Occupied** — something is actually using the time. A lesson, a meeting, the
+  walk to one. You are in a room and you are doing a thing.
+- **Protected** — nothing is using it and the planner still may not have it. A
+  Saturday in the holidays has no appointment on it anywhere; you could be
+  shopping, or asleep, or painting models, and it is still not time for the app
+  to spend. So is lunch. So is the hour after you leave.
+
+**Empty is not the same as available**, and a busy/free binary cannot tell them
+apart. Two sentences this app exists to say need the difference:
+
+> *"You have 10:20 to 11:30 free at school. Do the thing that can only be done
+> here, so you can leave straight after work."*
+>
+> *"You have done enough. The rest of tonight is protected — you do not need to
+> use it."*
+
+The first needs to know a gap is genuinely usable. The second needs to be able to
+**make** time protected without pretending it is occupied, which would be the app
+inventing a six-hour appointment called "rest".
+
+So the reason is kept beside the arithmetic rather than inside it:
+`OrganiserSchedule.hoursOn` returns the day as ordered spans each saying
+*occupied*, *protected* or *free*. `busyOn` stays exactly what it is, and
+nothing downstream has to conflate the two in order to use it. Where the two
+disagree one of them is lying, so the free stretches from `hoursOn` are checked
+against `gapsOn`.
+
+### The Day screen answers three questions, in the order they are asked
+
+Nothing here places any work. This is the day, not the plan — and until it can be
+looked at and believed, a planner built on top of it is guesswork with a
+confident voice.
+
+1. **What is unusual about today?** — `differsOn`. Silent on an ordinary day.
+2. **What do I actually have to attend, in time order?** — `layersOn`, with the
+   printed timetable quiet and the pencil on top of it loud.
+3. **What time is genuinely usable?** — `hoursOn`. Stretches you could actually
+   work in, with protected time counted separately and never added in.
+
+And between 1 and 2, the question that is neither: **Needs a time.** A thing the
+calendar dated and never timed consumes no minutes, so a day drawn by the clock
+drops it entirely — and it is the one thing on the day nothing else can be
+planned around. It gets a box, at the top, with somewhere to say when it is.
+
+Two false alarms fell out of the same root: an untimed event was overlapping
+every job on the day ("at the same time as Parents' Meeting", which is not known
+to be true), and *"Leave for the observation"* was reported as clashing with the
+observation — a job made for a block cannot clash with that block. A warning that
+is wrong every day is a warning nobody reads.
+
+Questions 4–6 — what work should go in those gaps, when can I leave, and have I
+done enough to stop — are deliberately **not built**. They are the point of the
+app, and they are worth nothing on a day you cannot yet trust.
+
 ### Three layers, and one screen that shows the idea rather than the storage
 
 The setup screen had two jobs glued together: *import and check my weekly

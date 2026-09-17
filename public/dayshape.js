@@ -300,7 +300,11 @@
       out.push(was
         ? { how: "swapped", block: b, was, words: `${was.label} → ${b.label}` }
         : { how: "added", block: b,
-            words: `${b.label}${b.start ? ` ${S.fmtTime(b.start)}` : ""}` });
+            // A DATE THE CALENDAR NEVER TIMED SAYS SO, rather than saying
+            // midnight. "Parents' Meeting 12:00 AM" is a time nobody gave.
+            words: b.timing === "sometime"
+              ? `${b.label} — sometime today`
+              : `${b.label}${b.start ? ` ${S.fmtTime(b.start)}` : ""}` });
     });
     gone.filter((b) => !took.has(b.id))
       .forEach((b) => out.push({ how: "gone", block: b, words: `no ${b.label}` }));

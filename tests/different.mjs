@@ -137,6 +137,17 @@ ok("a day standing in for another says whose timetable it is running",
    JSON.stringify(words("2026-09-19")));
 // THE QUIET ONE. Nothing on the screen is wrong; something is simply absent,
 // and absence is the one thing looking at a timetable cannot show you.
+// AND A DATE THE CALENDAR NEVER TIMED SAYS SO, rather than saying midnight.
+// The week reads this too, and "Parents' Meeting 12:00 AM" is a time nobody
+// gave — which on a Week page is the only thing said about that day.
+ok("a one-off with no hour on it says so rather than saying midnight",
+   D.differsOn(WEEK.concat([{ id: "nt", label: "Report Distribution", date: "2026-09-16",
+     start: "00:00", end: "23:59", days: [] }]), "2026-09-16", {})
+     .map((x) => x.words).join() === "Report Distribution — sometime today",
+   JSON.stringify(D.differsOn(WEEK.concat([{ id: "nt", label: "Report Distribution",
+     date: "2026-09-16", start: "00:00", end: "23:59", days: [] }]), "2026-09-16", {})
+     .map((x) => x.words)));
+
 ok("and a week where something normally on is not on says that too",
    words("2026-09-22").join(" ") === "no Read Aloud", JSON.stringify(words("2026-09-22")));
 
@@ -519,6 +530,87 @@ console.log("\nAnd none of it done with colour alone");
   ok("and nothing is given a night colour the app has no night for",
      !/prefers-color-scheme: dark\s*\)\s*\{[\s\S]{0,300}--changed/.test(css),
      "a colour was given a dark value while the page stays light");
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd the Day screen, in the order a day is asked about");
+
+// A DAY HAS TO ANSWER THREE QUESTIONS BEFORE ANY WORK IS PLACED INTO IT, and
+// they are asked in this order because that is the order a person asks them:
+//
+//   1. What is unusual about today?
+//   2. What do I actually have to attend, in time order?
+//   3. What time is genuinely usable?
+//
+// The third is the one a busy/free binary cannot answer — see hoursOn. Nothing
+// here places any work; this is the day, not the plan.
+{
+  const { open, deep } = await import("./_dom.mjs");
+  const now = new Date();
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const TODAY = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  const DOW = now.getDay();
+  const DAY = [
+    { id: "eng", label: "English", start: "08:40", end: "09:25", days: [DOW], kind: "teaching", where: "111" },
+    { id: "lun", label: "Lunch", start: "12:30", end: "13:15", days: [DOW], kind: "break", protected: true },
+    { id: "p5", label: "P5 English", start: "14:10", end: "15:00", days: [DOW], kind: "teaching" },
+    // a one-off, which IS unusual about today
+    { id: "obs", label: "Lesson observation", date: TODAY, start: "10:30", end: "11:05", days: [], where: "B204" },
+    // and two the calendar dated and never timed
+    { id: "pm", label: "Parents' Meeting", date: TODAY, start: "00:00", end: "23:59", days: [], beThere: true },
+    { id: "rd", label: "Report Distribution", date: TODAY, start: "00:00", end: "23:59", days: [], beThere: true },
+  ];
+  const r = await open("timeline.html", { schedule: DAY, items: [], goals: [],
+    scheduleConfig: { dayStart: "07:30", dayEnd: "17:30" } });
+  ok("the day opens", r.errs.length === 0, r.errs.join("; "));
+  const day = r.get("#timeline");
+  const has = (cls) => deep(day).filter((c) => String(c.className).split(/\s+/).includes(cls));
+  const said = deep(day).map((c) => `${c.textContent || ""} ${c.innerHTML || ""}`).join(" ");
+
+  // 1. WHAT IS UNUSUAL.
+  ok("what is unusual about today is said first",
+     has("dp-diff").length === 1 && /Lesson observation/.test(has("dp-diff")[0].innerHTML +
+       deep(has("dp-diff")[0]).map((c) => c.textContent).join(" ")),
+     JSON.stringify(deep(day).map((c) => c.className).filter(Boolean).slice(0, 8)));
+
+  // 2. WHAT HAS NO HOUR ON IT — which is a question, not news, and is the one
+  // thing nothing else on the day can be planned around.
+  const nt = has("dp-notime")[0];
+  const inside = (el) => String((el && el.innerHTML) || "") + " " +
+    deep(el || {}).map((c) => `${c.innerHTML || ""} ${c.textContent || ""}`).join(" ");
+  ok("and what has a date but no hour is asked about, not dropped",
+     !!nt && /Parents.{0,6}Meeting/.test(inside(nt)), inside(nt).slice(0, 200));
+  ok("  and there is somewhere to say when it is",
+     !!nt && deep(nt).some((c) => c.type === "time"),
+     JSON.stringify(deep(nt || {}).map((c) => c.tagName + ":" + c.type)));
+  // AND NOT TWICE. It is a difference and it is a question; the question says
+  // more and can be answered, so it is asked once.
+  ok("  and it is not also listed as a difference",
+     !/Parents.{0,6}Meeting/.test(inside(has("dp-diff")[0])),
+     inside(has("dp-diff")[0]).slice(0, 200));
+  // NOR DRAWN AS MIDNIGHT. Sorted by its start it lands at the top of the
+  // morning, reading like the first thing that happens.
+  ok("  and nothing on the day is drawn as starting at midnight",
+     !/12:00 AM/.test(said), (said.match(/.{30}12:00 AM.{20}/) || [""])[0]);
+  // NOR AT THE TOP OF THE MORNING. Sorted by its start — which is midnight — an
+  // untimed event is the first thing in a list that runs by the clock, reading
+  // like the first thing that happens.
+  const first = has("dp-block")[0];
+  ok("  nor first in a list that runs by the clock",
+     !!first && /English/.test(String(first.innerHTML)),
+     String(first && first.innerHTML).slice(0, 120));
+
+  // 3. WHAT IS GENUINELY USABLE. Not what is empty: lunch is empty of
+  // appointments and none of it is time the app may have.
+  const use = has("dp-usable")[0];
+  ok("and the usable time is said as stretches you could actually work in",
+     !!use && /7:30 AM–8:40 AM/.test(inside(use)), inside(use).slice(0, 220));
+  ok("  with protected time counted apart from it, never added in",
+     !!use && /spoken for/.test(inside(use)), inside(use).slice(0, 220));
+  // THE LUNCH IS NOT IN IT. This is the whole of the distinction: 12:30 to 1:15
+  // is empty of appointments and is not available.
+  ok("  and the hour you keep is not offered as time to work in",
+     !!use && !/12:30 PM–1:15 PM/.test(inside(use)), inside(use).slice(0, 260));
 }
 
 finish();

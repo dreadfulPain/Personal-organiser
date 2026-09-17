@@ -220,4 +220,85 @@ rows.forEach(([name, extra]) => {
 });
 console.log("  " + "─".repeat(72));
 
+// ---------------------------------------------------------------------------
+console.log("\nAnd occupied is not the same thing as not-available-for-work");
+
+// busyOn answers one question — which minutes may the planner not have — and it
+// answers it correctly. What it cannot do is say WHY, and the two reasons are
+// not the same:
+//
+//   OCCUPIED   something is actually using the time. You are in a room.
+//   PROTECTED  nothing is using it and the planner still may not have it. A
+//              Saturday in the holidays has no appointment on it anywhere.
+//
+// Two sentences this app exists to say need the difference — "you have 10:20 to
+// 11:30 free at school, do the thing that can only be done here" and "you have
+// done enough, the rest of tonight is protected". A busy/free binary can say
+// neither, and the second would have to invent a six-hour appointment.
+{
+  const LUNCH = { id: "l", label: "Lunch", start: "12:30", end: "13:15", days: [2],
+    kind: "break", protected: true };
+  const hours = S.hoursOn(WEEK.concat([LUNCH]), CFG, DAY);
+  const use = (from) => (hours.find((h) => S.toHM(h.from) === from) || {}).use;
+  ok("a lesson is time something is using", use("09:00") === "occupied", JSON.stringify(hours.map((h) => `${S.toHM(h.from)}:${h.use}`)));
+  ok("  and a lunch you keep is time nothing may be put into",
+     use("12:30") === "protected", JSON.stringify(use("12:30")));
+  ok("  and the rest is genuinely usable", use("09:50") === "free", JSON.stringify(use("09:50")));
+
+  // THE SATURDAY. No appointment on it anywhere — you could be shopping, or
+  // asleep — and it is still not the app's time to spend. Read as "occupied"
+  // the arithmetic is right and the meaning is wrong, and the meaning is what
+  // has to be said out loud later.
+  const sat = S.hoursOn(WEEK.concat([{ id: "h", label: "Half term", date: DAY,
+    start: "00:00", end: "23:59", days: [], blocksDay: true }]), CFG, DAY);
+  ok("a holiday is protected and not occupied — nothing is happening on it",
+     sat.length === 1 && sat[0].use === "protected",
+     JSON.stringify(sat.map((h) => `${S.toHM(h.from)}-${S.toHM(h.to)}:${h.use}`)));
+
+  // AND THE TWO ANSWERS AGREE. The moment the reason and the arithmetic
+  // disagree about the same minute, one of them is lying.
+  const free = hours.filter((h) => h.use === "free")
+    .filter((h) => h.to - h.from >= 10)
+    .map((h) => `${S.toHM(h.from)}-${S.toHM(h.to)}`);
+  const gaps = S.gapsOn(WEEK.concat([LUNCH]), CFG, DAY)
+    .map((g) => `${S.toHM(g.start)}-${S.toHM(g.end)}`);
+  ok("and the reason and the arithmetic never disagree about a minute",
+     free.join() === gaps.join(), JSON.stringify({ free, gaps }));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd a thing with no hour cannot clash with anything");
+
+// Read as midnight to a minute to midnight, an untimed event overlapped every
+// job on the day — so every one of them came back "at the same time as Parents'
+// Meeting", which is not known to be true. A warning that is wrong every day is
+// a warning nobody reads.
+{
+  const pm = { id: "pm", label: "Parents' Meeting", date: DAY, start: "00:00",
+    end: "23:59", days: [], beThere: true };
+  const job = [{ id: "j", title: "Mark books", type: "task", date: DAY, time: "11:00",
+    effort: "medium", importance: "normal", done: false, createdAt: "2026-11-01T09:00:00Z" }];
+  const plan = DP.build(job, WEEK.concat([pm]), CFG, DAY,
+    { ctx: { today: DAY, goalTitle: () => "" } });
+  const slot = plan.slots.find((x) => x.itemId === "j");
+  ok("a job at eleven does not clash with a thing that has no time",
+     slot && (slot.clashWith || []).length === 0, JSON.stringify(slot && slot.clashWith));
+
+  // AND A JOB MADE FOR A BLOCK DOES NOT CLASH WITH THAT BLOCK. "Leave for the
+  // observation" overlaps the observation by construction; reported as a
+  // double-booking it is the app warning you about itself.
+  const obs = { id: "obs", label: "Observation", date: DAY, start: "10:30", end: "11:15",
+    days: [], beThere: true, getThere: 10 };
+  // 10:25, so the ten minutes of walking really do run into the observation —
+  // ending exactly as it starts would overlap nothing and prove nothing.
+  const leave = [{ id: "L", title: "Leave for Observation", type: "task", date: DAY,
+    time: "10:25", prepFor: S.thereKey("obs", DAY), autoPrep: true, effort: "quick",
+    importance: "normal", done: false, createdAt: "2026-11-01T09:00:00Z" }];
+  const p2 = DP.build(leave, WEEK.concat([obs]), CFG, DAY,
+    { ctx: { today: DAY, goalTitle: () => "" } });
+  const s2 = p2.slots.find((x) => x.itemId === "L");
+  ok("and the journey to a thing does not clash with the thing",
+     s2 && !(s2.clashWith || []).includes("Observation"), JSON.stringify(s2 && s2.clashWith));
+}
+
 finish();

@@ -2817,11 +2817,19 @@
       return;
     }
 
+    // AND WHAT HAS A DATE BUT NO HOUR — see TIMINGS. It is on today and nobody
+    // said when, so it has no place in a list that runs by the clock: sorted by
+    // its start it lands at midnight, at the top of the morning, reading like
+    // the first thing that happens. It gets its own line above the day instead.
+    const noHour = (layers || []).filter((r) => r.block.timing === "sometime");
+
     // One list, in time order: fixed blocks and planned tasks interleaved, so
     // the day reads top to bottom the way it will actually happen.
     const rows = [];
-    (layers || blocks.map((b) => ({ block: b, layer: "standing" }))).forEach((r) =>
-      rows.push({ kind: "block", at: S().toMin(r.block.start), block: r.block, on: r }));
+    (layers || blocks.map((b) => ({ block: b, layer: "standing" })))
+      .filter((r) => r.block.timing !== "sometime")
+      .forEach((r) =>
+        rows.push({ kind: "block", at: S().toMin(r.block.start), block: r.block, on: r }));
     plan.slots.forEach((s) => {
       const it = itemById(s.itemId);
       if (it && !it.done) rows.push({ kind: "task", at: s.start, slot: s, item: it });
@@ -2832,7 +2840,18 @@
     // you have taught it thirty times. The one thing worth reading before the
     // list is the part of today that isn't one — and on an ordinary day there
     // is nothing here at all, which is the point. See differsOn.
-    if (diffs.length) wrap.appendChild(differentBox(diffs));
+    // NOT THE ONES THE BOX BELOW IS ABOUT. An untimed event is a difference and
+    // it is also a question, and the question says more and can be answered —
+    // so it is asked once rather than listed twice.
+    const strip = diffs.filter((d) => !(d.block && d.block.timing === "sometime"));
+    if (strip.length) wrap.appendChild(differentBox(strip));
+
+    // AND WHAT IS ON TODAY WITHOUT AN HOUR ON IT. Second, because it is a
+    // question rather than news: the calendar gave a date and no time, so the
+    // app cannot place it and will not pretend to. Left out of the day it
+    // vanishes for consuming no minutes, which is the worst of both — it is on
+    // today and it is the one thing nothing else can plan around.
+    if (noHour.length) wrap.appendChild(needsATimeBox(noHour, iso));
 
     // WHAT KIND OF DAY THIS IS, said before the list rather than left to be
     // inferred from it looking odd.
@@ -2875,6 +2894,12 @@
       });
     }
     wrap.appendChild(list);
+
+    // WHAT IS GENUINELY USABLE, said once and plainly — see hoursOn. Not the
+    // gaps between rows, which is arithmetic about the drawing; the stretches
+    // the app would actually be allowed to put work into.
+    const spare = usableBox(iso, shape);
+    if (spare) wrap.appendChild(spare);
 
     const heads = troubleBox(iso);
     if (heads) wrap.appendChild(heads);
@@ -2932,6 +2957,100 @@
   // other row already is, and a word repeated down the page stops being read.
   // "Other" is the app saying it doesn't know, which is not worth a chip either.
   const KIND_WORDS = { duty: "on duty", break: "break" };
+
+  // ---- WHAT IS ON TODAY WITHOUT AN HOUR ON IT ------------------------------
+  //
+  // "Parents' Meeting, the twentieth" is all the calendar said, and that is a
+  // real state rather than a failure: the school has not published a time yet,
+  // or the sheet simply did not carry one. The app must not invent one — see
+  // TIMINGS — and it must not quietly drop it either, which is what happens to
+  // anything that consumes no minutes in a day drawn by the clock.
+  //
+  // So it is a question, at the top, where a question belongs. It is the one
+  // thing on the day that nothing else can be planned around.
+  function needsATimeBox(rows, iso) {
+    const box = document.createElement("section");
+    box.className = "dp-notime";
+    box.innerHTML = `<h3>Needs a time</h3>`;
+    const list = document.createElement("ul");
+    list.className = "dp-notimelist";
+    rows.forEach((r) => {
+      const b = r.block;
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="dp-ntlabel">${escapeHtml(b.label)}</span>` +
+        `<span class="muted"> — sometime today</span>` +
+        (b.where ? `<span class="dp-where"> ${escapeHtml(b.where)}</span>` : "");
+      // SAYING WHEN IS THE WHOLE POINT OF THE BOX, so the way to say it is in
+      // it. One box, one time, and the day rearranges itself around the answer.
+      const at = document.createElement("input");
+      at.type = "time";
+      at.className = "dp-ntat";
+      at.addEventListener("change", () => {
+        const T = window.OrganiserTimetable;
+        const start = String(at.value || "").slice(0, 5);
+        if (!S().toMin(start)) return;
+        const end = (T && T.anHourAfter ? T.anHourAfter(start) : "") || "";
+        schedule = S().normalise(schedule).map((x) =>
+          x.id === b.id ? { ...x, start, end: end || x.end, timing: "at" } : x);
+        persist();
+        render();
+        setTlStatus(`“${b.label}” is at ${S().fmtTime(start)} now.`);
+      });
+      li.appendChild(at);
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    return box;
+  }
+
+  // ---- AND WHAT IS GENUINELY USABLE ----------------------------------------
+  //
+  // The third question a day has to answer, and the one a busy/free binary
+  // cannot: not "what is empty" but "what may actually be worked in". A
+  // holiday is empty all day and none of it is usable; lunch is spoken for and
+  // none of that is either. See hoursOn, which keeps the reason beside the
+  // arithmetic.
+  //
+  // No work is placed here and none is suggested. This says what there IS.
+  function usableBox(iso, shape) {
+    // A day of your own runs to its own hours and is planned as an order rather
+    // than a timetable — see dayshape. Stretches of the clock are the wrong
+    // answer for it.
+    if (shape && shape.loose) return null;
+    const hours = S().hoursOn(schedule, (shape && shape.config) || cfg, iso);
+    if (!hours.length) return null;
+    const free = hours.filter((h) => h.use === "free" &&
+      h.to - h.from >= S().normaliseConfig(cfg).minGapMinutes);
+    const held = hours.filter((h) => h.use === "protected");
+    const mins = free.reduce((n, h) => n + (h.to - h.from), 0);
+    const box = document.createElement("section");
+    box.className = "dp-usable";
+    if (!free.length) {
+      box.innerHTML = `<h3>Time you could work in</h3>` +
+        `<p class="muted">None today${held.length ? " — what isn't spoken for is protected" : ""}.</p>`;
+      return box;
+    }
+    box.innerHTML = `<h3>Time you could work in</h3>` +
+      `<p class="muted">${escapeHtml(S().durationWords(mins))} in ` +
+      `${free.length} stretch${free.length === 1 ? "" : "es"}.` +
+      // PROTECTED TIME COUNTED SEPARATELY, and never added in. It is the
+      // difference between "you have four hours" and "you have four hours and
+      // the app has quietly included your lunch in them".
+      (held.length
+        ? ` ${escapeHtml(S().durationWords(held.reduce((n, h) => n + (h.to - h.from), 0)))} more is
+           spoken for and is not counted here.`
+        : "") + `</p>`;
+    const list = document.createElement("ul");
+    list.className = "dp-usablelist";
+    free.forEach((h) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="dp-utime">${escapeHtml(S().fmtSpan(S().toHM(h.from), S().toHM(h.to)))}</span>` +
+        `<span class="muted"> ${escapeHtml(S().durationWords(h.to - h.from))}</span>`;
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    return box;
+  }
 
   function blockRow(b, on) {
     const el = document.createElement("div");

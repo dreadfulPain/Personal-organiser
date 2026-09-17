@@ -706,6 +706,84 @@
     return Math.max(0, toMin(b.start) - (b.getThere || 0));
   }
 
+  // ---- WHAT EACH PART OF THE DAY IS FOR ------------------------------------
+  //
+  // busyOn answers one question — which minutes may the planner not have — and
+  // it answers it correctly. What it cannot do is say WHY, and the two reasons
+  // are not the same thing:
+  //
+  //   OCCUPIED   something is actually using the time. A lesson, a meeting, the
+  //              walk to one. You are in a room and you are doing a thing.
+  //   PROTECTED  nothing is using it, and the planner still may not have it. A
+  //              Saturday in the holidays has no appointment on it anywhere —
+  //              you could be shopping, or asleep, or painting models — and it
+  //              is still not time for the app to spend. So is lunch. So is the
+  //              hour after you leave.
+  //
+  // EMPTY IS NOT THE SAME AS AVAILABLE, and a busy/free binary cannot tell them
+  // apart. Two sentences this app exists to say need the difference:
+  //
+  //   "You have 10:20 to 11:30 free at school. Do the thing that can only be
+  //    done here, so you can leave straight after work."
+  //   "You have done enough. The rest of tonight is protected — you do not need
+  //    to use it."
+  //
+  // The first needs to know that a gap is genuinely usable. The second needs to
+  // be able to MAKE time protected without pretending it is occupied, which
+  // would be the app inventing a six-hour appointment called "rest".
+  //
+  // So the reason is kept here, beside the arithmetic rather than inside it.
+  // busyOn stays exactly what it is — the union of minutes the planner may not
+  // have — and nothing downstream has to conflate the two in order to use it.
+  // Where the two disagree they are wrong, so tests/whenitis.mjs checks that the
+  // free stretches here are the same stretches gapsOn returns.
+  const USES = ["occupied", "protected", "free"];
+  function hoursOn(schedule, cfg, iso) {
+    const c = normaliseConfig(cfg);
+    const open = toMin(c.dayStart);
+    const shut = toMin(c.dayEnd);
+    if (open === null || shut === null || shut <= open) return [];
+    const claims = blocksOn(schedule, iso)
+      // The same three the arithmetic leaves out: a guess, a rule that says the
+      // lessons are off, and a thing with a date and no hour.
+      .filter((b) => (!b.soft || b.protected) && !b.noLessons && b.timing !== "sometime")
+      .map((b) => ({
+        // The journey is part of what uses the time — see busyOn.
+        from: Math.max(0, toMin(b.start) - (b.beThere ? b.getThere : 0)),
+        to: toMin(b.end),
+        // A DAY YOU MARKED OFF IS PROTECTED, NOT OCCUPIED. That is the whole
+        // distinction: there is no appointment on it and it is still not the
+        // app's to spend.
+        use: b.blocksDay || b.protected ? "protected" : "occupied",
+        block: b,
+      }))
+      .sort((a, b) => a.from - b.from || a.to - b.to);
+    const out = [];
+    const add = (from, to, use, block) => {
+      if (to <= from) return;
+      const last = out[out.length - 1];
+      if (last && last.use === use && last.to >= from) {
+        last.to = Math.max(last.to, to);
+        if (block && last.blocks.indexOf(block) < 0) last.blocks.push(block);
+        return;
+      }
+      out.push({ from, to, use, blocks: block ? [block] : [] });
+    };
+    let at = open;
+    claims.forEach((cl) => {
+      const from = Math.max(open, cl.from);
+      const to = Math.min(shut, cl.to);
+      if (to <= open || from >= shut) return;
+      if (from > at) add(at, from, "free", null);
+      // OCCUPIED WINS WHERE THEY OVERLAP. Lunch you keep is protected; a meeting
+      // called over the top of it is something you are actually at.
+      add(Math.max(at, from), to, cl.use, cl.block);
+      at = Math.max(at, to);
+    });
+    if (at < shut) add(at, shut, "free", null);
+    return out;
+  }
+
   // The free stretches of a day, in minutes-from-midnight.
   function gapsOn(schedule, cfg, iso, notBefore) {
     const c = normaliseConfig(cfg);
@@ -1106,6 +1184,8 @@
     blocksOn,
     busyOn,
     gapsOn,
+    USES,
+    hoursOn,
     dayIsBlocked,
     noTeachingOn,
     runsAsOn,

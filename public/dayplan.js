@@ -77,13 +77,25 @@
     // It is NOT moved. You may know something the app doesn't: the class is out
     // on a trip, someone is covering. But it is named, on the row, so the
     // double-booking is a thing you decided rather than a thing that happened.
-    const onNow = S.blocksOn(schedule, iso).filter((b) => !b.soft && !b.noLessons && !b.blocksDay);
+    // AND A THING WITH NO HOUR ON IT CANNOT CLASH WITH ANYTHING. A date the
+    // calendar never timed reads as midnight to a minute to midnight, so every
+    // job on the day came back "at the same time as Parents' Meeting" — which
+    // is not known to be true, and is the kind of false alarm that teaches
+    // somebody to stop reading the warnings. See TIMINGS in schedule.js.
+    const onNow = S.blocksOn(schedule, iso)
+      .filter((b) => !b.soft && !b.noLessons && !b.blocksDay && b.timing !== "sometime");
     const pinned = items.filter((i) => !i.done && i.date === iso && i.time);
     const slots = pinned.map((i) => {
       const start = S.toMin(i.time);
       const est = S.estimateMinutes(i, c);
       const end = Math.min(start + est.minutes, 24 * 60 - 1);
-      const hit = onNow.filter((b) => start < S.toMin(b.end) && end > S.toMin(b.start));
+      // AND A JOB MADE FOR A BLOCK CANNOT CLASH WITH THAT BLOCK. "Leave for the
+      // observation" overlaps the observation by construction — that is what it
+      // is for — and reported as a double-booking it is the app warning you
+      // about itself. See thereKey: the job carries which block it belongs to.
+      const its = String(i.prepFor || "").split("|")[0];
+      const hit = onNow.filter((b) => b.id !== its &&
+        start < S.toMin(b.end) && end > S.toMin(b.start));
       return {
         itemId: i.id, start, end, pinned: true, soft: false,
         clashWith: hit.map((b) => b.label).slice(0, 3),

@@ -4676,3 +4676,37 @@ a.btn {
 .su-old p { margin: 0 0 8px; font-size: 0.88rem; }
 .su-oldlist { margin-top: 8px; font-size: 0.8rem; }
 .su-oldlist > summary { cursor: pointer; color: var(--ink-soft); }
+
+/* ---- THE TWO QUESTIONS A DAY HAS TO ANSWER BEFORE ANY WORK IS PLACED -----
+   What is on today without an hour on it, and what time is genuinely usable.
+   Neither consumes a minute of the clock, so neither can be drawn as a row of
+   the day — and left out of the day the first one disappears entirely. */
+.dp-notime, .dp-usable {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.dp-notime { border-left: 5px solid var(--changed); background: var(--changed-soft); }
+.dp-notime h3, .dp-usable h3 {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.dp-notime h3 { color: var(--changed); }
+.dp-notime p, .dp-usable p { margin: 0 0 6px; font-size: 0.85rem; }
+.dp-notimelist, .dp-usablelist { margin: 0; padding: 0; list-style: none; }
+.dp-notimelist > li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 3px 0;
+}
+.dp-ntlabel { font-size: 1rem; }
+.dp-ntat { font-size: 0.85rem; }
+.dp-usablelist > li { padding: 2px 0; font-variant-numeric: tabular-nums; }
+.dp-utime { font-size: 0.95rem; }

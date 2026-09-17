@@ -225,7 +225,46 @@
     return hit ? hit[0] : "";
   };
 
+  // A SLOT THAT TAKES TURNS, WRITTEN DOWN THE SQUARE INSTEAD OF ACROSS IT.
+  //
+  // "Writing – Odd / Show & Tell – Even" is the tidy way. A real page stacks it:
+  // the lesson, its class code, the word Odd, then the department and the room —
+  // and then the same five lines again for the even week. Split at the word, the
+  // second alternative starts with the first one's department.
+  //
+  // The two halves are the same shape, which is the whole of what is needed: the
+  // last one is followed by however many lines of detail, and so is the first.
+  // Counted off the end, where there is nothing else it could be, that detail
+  // goes back to the lesson it belongs to. No vocabulary, no guess about what
+  // "Primary" or "111" mean — only that a thing written twice is written the
+  // same way twice.
+  function stacked(lines) {
+    const marks = [];
+    lines.forEach((l, i) => {
+      const hit = SAYS_WEEK.find(([, re]) => re.test(l));
+      // The word ON ITS OWN. A lesson with "odd" inside its name has not
+      // announced a fortnight, and a line with anything else on it is a label.
+      if (hit && withoutWeek(l, hit[1]) === "") marks.push({ at: i, parity: hit[0] });
+    });
+    if (marks.length < 2 || new Set(marks.map((m) => m.parity)).size !== marks.length) return null;
+    const trail = lines.length - 1 - marks[marks.length - 1].at;
+    if (trail < 0) return null;
+    const out = [];
+    marks.forEach((m, i) => {
+      const from = i === 0 ? 0 : marks[i - 1].at + trail + 1;
+      const said = lines.slice(from, m.at).concat(lines.slice(m.at + 1, m.at + 1 + trail));
+      const label = downWords(said.join("\n"));
+      if (label) out.push({ parity: m.parity, label });
+    });
+    return out.length === marks.length ? out : null;
+  }
+
   function takingTurns(label) {
+    const lines = String(label || "").split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length > 2) {
+      const down = stacked(lines);
+      if (down) return down;
+    }
     const parts = String(label || "").split(/\s*[/|;]\s*|\s*\n\s*/)
       .map((p) => p.trim()).filter(Boolean);
     const said = parts.map((p) => {
@@ -1064,13 +1103,203 @@
     return rows;
   }
 
+  // ---- a page that has no rows at all ---------------------------------------
+  //
+  // THE SHAPE THAT DEFEATED EVERYTHING ABOVE, and it is a common one: a real
+  // timetable whose every cell is drawn as four or five separate fragments,
+  // scattered up and down inside the square. "English(G1" at one height, "\N)"
+  // thirty points below it, "Primary", "Section", "111" below that — and the
+  // period's own time sitting in the middle of them rather than at the top.
+  //
+  // There is no row to read. Lining the fragments up by height gives twenty
+  // rows per period, nineteen of which have no time in them, and the reader
+  // above then treats each as a heading or a stray note. What comes out is one
+  // lesson per period, cut off at its first fragment — which is exactly what
+  // was saved: eight blocks, no weekdays, "Science & So".
+  //
+  // So the grid is rebuilt from its ANCHORS instead. A timetable has two sets:
+  // the day names across the top give the columns, and the times down the side
+  // give the rows. Every fragment on the page belongs to the nearest anchor of
+  // each kind — which is how a person reads it, and it needs no rows at all.
+  //
+  // NEAREST, NOT "THE LAST EDGE BEFORE IT". These cells are centred in their
+  // columns and drift by twenty or thirty points, so Friday's lesson starts to
+  // the left of Friday's heading and a left-edge rule files it under Thursday.
+  function anchorsOf(list) {
+    const xs = [];
+    let head = null;
+    // The day names, wherever they are — one row with two or more of them.
+    list.forEach((r) => {
+      const found = r.cells
+        .map((c) => ({ x: Number(c.x) || 0, day: dayOf(String(c.text || "").trim()) }))
+        .filter((c) => c.day >= 0);
+      if (found.length >= 2 && (!head || found.length > head.found.length))
+        head = { y: Number(r.y) || 0, found };
+    });
+    if (!head) return null;
+    // ONE ANCHOR PER DAY. A name split in two — "W" and "ednesday" — is two
+    // anchors for Wednesday, and the second of them steals half the column.
+    const byDay = new Map();
+    head.found.forEach((c) => {
+      const had = byDay.get(c.day);
+      if (had === undefined || c.x < had) byDay.set(c.day, c.x);
+    });
+    byDay.forEach((x, day) => xs.push({ x, day }));
+    xs.sort((a, b) => a.x - b.x);
+    if (xs.length < 2) return null;
+    // The times down the side: a row carrying a span, to the left of the first
+    // day. Its height is where that period sits.
+    const ys = [];
+    list.forEach((r) => {
+      const y = Number(r.y) || 0;
+      r.cells.forEach((c) => {
+        if ((Number(c.x) || 0) >= xs[0].x) return;
+        const s = spanIn(String(c.text || ""));
+        if (s && !ys.some((p) => Math.abs(p.y - y) < 1)) ys.push({ y, span: s });
+      });
+    });
+    if (!ys.length) return null;
+    ys.sort((a, b) => a.y - b.y);
+    return { head, xs, ys };
+  }
+
+  // A CELL READ DOWN THE SQUARE, PUT BACK INTO WORDS.
+  //
+  // A column an inch wide breaks a subject wherever it runs out of room, and the
+  // break is in the middle of a word as often as not: "Science & So" and then
+  // "cial Studies". Joined with a space that is what the lesson is called, on the
+  // day, in the week and in every list after it.
+  //
+  // Typography, not vocabulary — the same kind of mending the text reader already
+  // does a line at a time. A line that begins in lower case is the rest of the
+  // one above it, and so is one that follows a bracket nobody has closed.
+  const downWords = (said) =>
+    String(said || "").split("\n").reduce((out, l) => {
+      const line = l.trim();
+      if (!out) return line;
+      const open = (out.match(/\(/g) || []).length > (out.match(/\)/g) || []).length;
+      return out + (/^[a-zà-ÿ]/.test(line) || open ? "" : " ") + line;
+    }, "").replace(/\s+/g, " ").trim();
+
+  // WHERE ONE ROW OF THE TABLE ENDS AND THE NEXT BEGINS.
+  //
+  // Not halfway between two times, which was the first attempt and is wrong for
+  // a reason worth keeping: the time sits in the MIDDLE of its row, and rows are
+  // not the same height — the one carrying two alternating lessons is twice as
+  // tall as the rest. Halfway therefore lands inside the taller of them, and
+  // that period's first lesson is filed under the period above it.
+  //
+  // Nor "a gap bigger than a line", which was the second and is worse: it needs
+  // a number, and on a real page the space between two rows is barely half again
+  // the space between two lines inside one cell. Any number that separates them
+  // on one document merges them on the next.
+  //
+  // What is actually true is simpler than either. Between two times there is
+  // exactly one place where the page goes blank for longer than anywhere else
+  // between them, and that is the line between the rows. No threshold, nothing
+  // to tune: the WIDEST blank strip, wherever it happens to fall.
+  function cutBetween(heights, lo, hi) {
+    const all = [lo].concat(heights.filter((h) => h > lo && h < hi), [hi]);
+    let at = (lo + hi) / 2;
+    let widest = -1;
+    all.slice(1).forEach((h, i) => {
+      const gap = h - all[i];
+      if (gap > widest) { widest = gap; at = all[i] + gap / 2; }
+    });
+    return at;
+  }
+
+  function fromScatter(list) {
+    const a = anchorsOf(list);
+    if (!a || a.ys.length < 2) return null;
+    const { xs, ys } = a;
+    // One row per time, reaching to the blank strip on either side of it. The
+    // day names mark the top of the table; below the last row the page simply
+    // ends, and anything printed down there — a key, a footnote — is cut off by
+    // the same rule that cuts the rows apart.
+    const heights = [...new Set(list.map((r) => Math.round(Number(r.y) || 0)))].sort((a, b) => a - b);
+    const last = heights[heights.length - 1] + 1;
+    const rows = ys.map((at, i) => ({
+      at,
+      from: cutBetween(heights, i === 0 ? a.head.y : ys[i - 1].y, at.y),
+      to: cutBetween(heights, at.y, i === ys.length - 1 ? last : ys[i + 1].y),
+    }));
+    // How far left of the first day the table's own columns reach. Half a column
+    // keeps the time column out without needing to know where it starts.
+    const steps = xs.slice(1).map((c, i) => c.x - xs[i].x);
+    const edge = xs[0].x - Math.min(...steps) / 2;
+    const near = (v, list2, get) => {
+      let best = null, gap = Infinity;
+      list2.forEach((p) => {
+        const d = Math.abs(get(p) - v);
+        if (d < gap) { gap = d; best = p; }
+      });
+      return best;
+    };
+    const cells = new Map();   // "band|day" → [{ y, x, text }]
+    list.forEach((r) => {
+      const y = Math.round(Number(r.y) || 0);
+      const row = rows.find((b) => y > b.from && y <= b.to);
+      if (!row) return;
+      r.cells.forEach((c) => {
+        const x = Number(c.x) || 0;
+        const text = String(c.text || "").trim();
+        if (!text || x < edge) return;                      // the time column
+        const col = near(x, xs, (p) => p.x);
+        const key = `${row.at.y}|${col.day}`;
+        if (!cells.has(key)) cells.set(key, []);
+        cells.get(key).push({ y, x, text });
+      });
+    });
+    if (!cells.size) return null;
+    const out = { shape: "grid", days: xs.map((c) => c.day), blocks: [], daysGuessed: false, note: "" };
+    rows.forEach((p) => {
+      xs.forEach((c) => {
+        const got = cells.get(`${p.at.y}|${c.day}`);
+        if (!got || !got.length) return;
+        // Read the way it is written: down the square, then across it. Kept as
+        // separate lines rather than run together, because the lines are what
+        // says where one thing ends and the next begins — see takingTurns.
+        const said = got.slice().sort((m, n) => m.y - n.y || m.x - n.x)
+          .map((m) => m.text).join("\n");
+        (takingTurns(said) || [{ label: downWords(said), parity: "" }])
+          .forEach((t) => out.blocks.push({
+            label: t.label.slice(0, 80),
+            start: p.at.span.start,
+            end: p.at.span.end,
+            days: [c.day],
+            ...(t.parity ? { parity: t.parity } : {}),
+            soft: false,
+            source: "paste",
+          }));
+      });
+    });
+    return out.blocks.length ? out : null;
+  }
+
   function fromRows(pdfRows, opts) {
     const list = (Array.isArray(pdfRows) ? pdfRows : []).filter((r) => r && r.cells && r.cells.length);
     if (!list.length) return NOTHING;
     if (!looksLikeColumns(list)) return { ...NOTHING, note: "glyphs" };
     const rows = columnsOf(pdfRows, opts);
     if (!rows) return NOTHING;
+    // THE ORDINARY WAY FIRST: a page with real rows on it reads as a table.
+    // Where it has none — every cell drawn as scattered fragments — the grid is
+    // rebuilt from its day and time anchors instead. See fromScatter.
     const grid = readGrid(rows);
+    // WHICH READER, DECIDED BY THE SHAPE OF THE PAGE AND NOT BY WHICH FOUND MORE.
+    //
+    // "More blocks wins" was the first try and it is a bad rule: a page the
+    // ordinary reader handles perfectly well can still be pulled apart by the
+    // scattered one into more, smaller, wronger pieces. Counting is not knowing.
+    //
+    // The tell is how many pieces of text the page holds against how many cells
+    // the table has. A page whose cells are drawn whole has about one piece per
+    // cell. A page that draws each cell in five scattered fragments has five —
+    // and that, not the block count, is the thing the scattered reader is for.
+    const inPieces = !grid || list.length > grid.blocks.length * 3;
+    const scattered = inPieces ? fromScatter(list) : null;
+    if (scattered && scattered.blocks.length) return scattered;
     return grid || read(asTable(rows));
   }
 

@@ -3761,7 +3761,21 @@
   // number anybody needs three decimal places of.
   const took = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : ms >= 1 ? `${Math.round(ms)}ms` : "under 1ms");
 
+  // WHO READ THIS, AND WHAT EACH OF THEM GOT.
+  //
+  // The panel offers two readers and a tick box saying which goes first, and
+  // then said nothing at all about what happened. After a run there was no way
+  // to tell whether the model had answered, which model it was, whether the
+  // plain reader had won, or whether the model had quietly failed and the plain
+  // one had taken over — and "15 blocks read" reads identically in all four
+  // cases. A reading you cannot account for is a reading you cannot trust.
+  let readBy = null;
+  const clearRead = () => { readBy = { here: null, model: null, shown: "" }; };
+  clearRead();
+
   function showRead(got, from, thin, ms) {
+    readBy.here = { n: got.blocks.length, ms: typeof ms === "number" ? ms : null };
+    readBy.shown = "here";
     pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true, beThere: b.beThere !== false }));
     // How it was come by, and what is doubtful about it — both set here so
     // neither can carry over from the last document onto this one.
@@ -3903,6 +3917,7 @@
         // ASKED FIRST AND FOUND NOTHING is not an answer, it is a turn taken.
         // The plain reader hasn't had its go, and on a clean grid it is the one
         // that was always going to get it.
+        readBy.model = { n: 0, ms: modelMs, by: d.by || "", via: d.via || "" };
         if (already) return fallBack(already, `The model found nothing in ${took(modelMs)}, so:`);
         unreadableRows = Array.isArray(d.unreadable) ? d.unreadable : [];
         // WHAT WAS ON SCREEN STAYS ON SCREEN when there was something. A second
@@ -3927,6 +3942,8 @@
         );
         return;
       }
+      readBy.model = { n: d.blocks.length, ms: modelMs, by: d.by || "", via: d.via || "" };
+      readBy.shown = "model";
       pastedBlocks = d.blocks.map((b) => ({ ...b, id: uid(), keep: true, beThere: b.beThere !== false }));
       // The model's own reading — so nothing is left saying the plain one looked
       // thin, because the plain one is no longer what is on screen.
@@ -3987,15 +4004,18 @@
       const r = said.pdf || { text: said.text };
       // Three ways in, strongest first — worked out in timetable.js so that a
       // file dropped on the box and a file chosen with the button cannot be
-      // read two different ways.
+      // read two different ways. Timed, because the panel promises both readers
+      // say how long they took and this one was the half that never did.
+      const t0 = msNow();
       const got = T.bestOf(r);
+      const readMs = msNow() - t0;
       if (!got.blocks.length) {
         if ($("#ttText")) $("#ttText").value = r.text || said.text;
         setSuStatus("Nothing in there looked like a timetable — the text is in the box " +
           "above so you can see what came out, and tidy it.");
         return;
       }
-      showRead(got);
+      showRead(got, "", "", readMs);
       // The caution belongs to a PDF; a Word file or a paste has its own note or
       // none. Said either way rather than printing "undefined" in front of the
       // reading, which is what taking it off a PDF-only path used to guarantee.
@@ -4119,122 +4139,20 @@
     return b.days.slice().sort().map((d) => DAY_NAMES[d]).join(" ");
   }
 
-  // ---- who's running these -------------------------------------------------
+  // WHO IS NAMED ON A TIMETABLE — A QUESTION THIS PAGE NO LONGER ASKS.
   //
-  // A schedule says who is taking each session, and those people are the ones
-  // you are about to spend two days with. Read out of a PDF their names arrive
-  // mixed into one run of words with the rooms and the groups, so something has
-  // to pick them out — and then STOP.
+  // It offered to make People out of the names it found beside a lesson, which
+  // was right for a schedule of meetings and wrong for a timetable. A real one
+  // came back proposing "Primary", "English", "Section", "Story Telling", "Odd",
+  // "Reading", "Personal Grow" and "Homework" as eight people — because on a
+  // timetable the words beside a lesson are a department, a room and a subject,
+  // and a name-finder asked to read them has nothing to go on.
   //
-  // Never added silently. That rule is written at the top of names.js and it is
-  // right: a wrong guess becomes a permanent contact you then have to find and
-  // delete, and a right one you never confirmed is a contact you don't trust.
-  // So they are offered, unticked, and the ones you tick get added AND linked to
-  // the sessions their name appeared in.
-  //
-  // Anyone already in People is matched and linked without asking, because that
-  // is not a guess — it is a look-up.
-  let peoplePick = null;
-
-  function candidates() {
-    const N = window.OrganiserNames;
-    if (!N || !N.peopleIn || !pastedBlocks) return [];
-    const seen = new Map();
-    pastedBlocks.forEach((b) => {
-      if (!b.note) return;
-      N.peopleIn(b.note).forEach((c) => {
-        const found = N.look(c.name, contacts);
-        const key = found.state === "matched" ? found.contact.id : "new:" + c.name.toLowerCase();
-        const had = seen.get(key);
-        if (had) { had.on.push(b.id); return; }
-        seen.set(key, {
-          key, name: found.state === "matched" ? found.contact.name : c.name,
-          known: found.state === "matched" ? found.contact : null,
-          nearly: found.state === "nearly" ? found.suggestions : null,
-          listed: c.listed, on: [b.id],
-        });
-      });
-    });
-    return [...seen.values()];
-  }
-
-  function peopleOffer() {
-    const box = document.createElement("div");
-    box.className = "su-people";
-    const list = candidates();
-    if (!list.length) return box;
-    if (!peoplePick) {
-      // Anyone you already have is on, because linking a person you already
-      // know is a look-up. Anyone new is off, because adding one is a decision.
-      peoplePick = new Set(list.filter((c) => c.known).map((c) => c.key));
-    }
-    const known = list.filter((c) => c.known).length;
-    const p = document.createElement("p");
-    p.className = "muted";
-    p.textContent =
-      `${list.length} name${list.length === 1 ? "" : "s"} in these — tick whoever is a person and ` +
-      `they'll go in People, linked to the sessions they're named on.` +
-      (known ? ` ${known} ${known === 1 ? "is" : "are"} already there.` : "") +
-      " It only finds the ones written as a list, so add anyone it missed.";
-    box.appendChild(p);
-    const row = document.createElement("div");
-    row.className = "su-chips";
-    list.forEach((c) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "p-opt su-chip" + (peoplePick.has(c.key) ? " on" : "") + (c.known ? " known" : "");
-      b.textContent = c.name + (c.known ? " ✓" : "") + (c.on.length > 1 ? ` ·${c.on.length}` : "");
-      if (c.nearly && c.nearly.length)
-        b.title = `You already have ${c.nearly.map((x) => x.name).join(" or ")} — same person?`;
-      b.addEventListener("click", () => {
-        if (peoplePick.has(c.key)) peoplePick.delete(c.key);
-        else peoplePick.add(c.key);
-        renderSetup();
-      });
-      row.appendChild(b);
-    });
-    box.appendChild(row);
-    const add = document.createElement("div");
-    add.className = "su-row";
-    add.innerHTML = `<label>someone it missed <input type="text" class="pp-new" maxlength="60" /></label>
-      <button type="button" class="link pp-add">add them</button>`;
-    add.querySelector(".pp-add").addEventListener("click", () => {
-      const name = add.querySelector(".pp-new").value.trim();
-      if (!name) return;
-      const N = window.OrganiserNames;
-      const found = N ? N.look(name, contacts) : { state: "new" };
-      if (found.state === "matched") { peoplePick.add(found.contact.id); renderSetup(); return; }
-      contacts = contacts.concat([{ id: uid(), name, group: "", details: {},
-        createdAt: new Date().toISOString() }]);
-      persistPeople();
-      renderSetup();
-    });
-    box.appendChild(add);
-    return box;
-  }
-
-  // Turn the ticks into People, and hand back which block gets which id.
-  function applyPeople() {
-    const byBlock = new Map();
-    if (!peoplePick || !peoplePick.size) return byBlock;
-    let changed = false;
-    candidates().forEach((c) => {
-      if (!peoplePick.has(c.key)) return;
-      let id = c.known ? c.known.id : "";
-      if (!id) {
-        id = uid();
-        contacts = contacts.concat([{ id, name: c.name, group: "", details: {},
-          createdAt: new Date().toISOString() }]);
-        changed = true;
-      }
-      c.on.forEach((blockId) => {
-        if (!byBlock.has(blockId)) byBlock.set(blockId, []);
-        byBlock.get(blockId).push(id);
-      });
-    });
-    if (changed) persistPeople();
-    return byBlock;
-  }
+  // Offering eight wrong answers costs more than offering none: every one has to
+  // be read and refused, and the one time it is right is the time somebody ticks
+  // all eight. Class lists ARE worth reading — pages of them come in the same
+  // pack — but that is a job where the input really is a list of names, and it
+  // is not this one.
 
   // ---- things a schedule tells you to DO -----------------------------------
   //
@@ -4469,6 +4387,34 @@
     return box;
   }
 
+  // WHAT EACH READER GOT, AND WHICH ANSWER IS ON THE SCREEN.
+  //
+  // Both readers named, both counts, both times, and the one that won said out
+  // loud. The alternative is a number with no account behind it: fifteen blocks
+  // read, and no way to tell whether that was the grid reader doing its job or
+  // the model covering for it having failed.
+  function whoRead() {
+    const box = document.createElement("p");
+    box.className = "su-who";
+    const said = [];
+    if (readBy.here)
+      said.push(`read here: ${readBy.here.n} block${readBy.here.n === 1 ? "" : "s"}` +
+        (readBy.here.ms === null ? "" : ` in ${took(readBy.here.ms)}`));
+    // A MODEL THAT WAS NEVER ASKED AND A MODEL THAT ANSWERED NOTHING ARE NOT THE
+    // SAME THING, and the tick box above makes both of them possible.
+    if (readBy.model)
+      said.push(`${readBy.model.by || "the model"}${readBy.model.via ? ` via ${readBy.model.via}` : ""}: ` +
+        `${readBy.model.n} block${readBy.model.n === 1 ? "" : "s"} in ${took(readBy.model.ms)}`);
+    else if (aiHere && S().normaliseConfig(cfg).modelFirst)
+      said.push("the model wasn't asked, or didn't answer");
+    if (!said.length) { box.hidden = true; return box; }
+    const shown = readBy.here && readBy.model
+      ? ` · showing the ${readBy.shown === "model" ? "model's" : "one read here"}`
+      : "";
+    box.textContent = said.join(" · ") + shown + ".";
+    return box;
+  }
+
   function reviewTable() {
     const box = document.createElement("div");
     box.className = "su-review";
@@ -4502,6 +4448,8 @@
            and you can keep whichever is better.`
              : ""}</p>`
         : "");
+    // WHO READ IT, BEFORE ANYTHING ELSE — see readBy.
+    box.appendChild(whoRead());
     // THE GRID FIRST, THE ROWS UNDER IT. One is for seeing whether the reading
     // is right; the other is for fixing it once you know it isn't.
     box.appendChild(gridPreview(pastedBlocks));
@@ -4648,7 +4596,6 @@
     if (second) second.addEventListener("click", () => askTheModel(pastedText, false));
     box.appendChild(termOffer());
     box.appendChild(thereOffer());
-    box.appendChild(peopleOffer());
     box.appendChild(jobOffer());
     const actions = document.createElement("div");
     actions.className = "su-row";
@@ -4658,13 +4605,10 @@
     save.textContent = "Save these blocks";
     save.addEventListener("click", () => {
       const wanted = pastedBlocks.filter((b) => b.keep);
-      // Who runs what, worked out before the blocks are made so each one can
-      // carry the ids of the people named on it.
-      const who = applyPeople();
       const kept = wanted
         .map((b) => S().normaliseBlock({
           ...b,
-          about: (b.about || []).concat(who.get(b.id) || []),
+          about: b.about || [],
           // Per row now — see thereOffer. It was one answer for the whole
           // document, which meant lunch was a place you had to be.
           beThere: !!b.beThere,
@@ -4693,7 +4637,6 @@
       const linked = fresh.filter((b) => b.about.length).length;
       const jobs = applyJobs();
       pastedBlocks = null;
-      peoplePick = null;
       jobPick = null;
       thereMins = 0;
       persist();

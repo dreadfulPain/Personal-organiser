@@ -322,6 +322,39 @@
     let line = "";
     let font = null;
     let size = 12;
+    // HOW WIDE THE TEXT DRAWN SINCE THE LAST MOVE IS, roughly.
+    //
+    // Needed because "did the document jump sideways" is the wrong question on
+    // its own. A page that positions every glyph — and plenty do — moves
+    // sideways before each one BY THE WIDTH OF THE ONE BEFORE IT, which is not
+    // a jump at all. Measured against the point size alone, that reads as a
+    // column break at every letter, and a whole timetable arrives as "S", "ch",
+    // "e", "d", "u", "le". Nothing downstream can recover columns from that:
+    // the grid reader correctly refuses a page of two-letter fragments, so the
+    // positions are thrown away and a table is read as a run of sentences.
+    //
+    // A PDF does not say how wide a character is — that means the font's own
+    // width table — but six tenths of the point size is close enough for the
+    // only question being asked here: did the document step OVER what it had
+    // just drawn, or did it leave a gap you could see?
+    // Six tenths of the point size is the average of a font and not the width of
+    // any particular letter, and the difference matters at the two ends: a
+    // capital W is very nearly a full em and an i is barely a third of one. A
+    // single W stepped over at its real width therefore looked like a gap, and
+    // "Wednesday" came back as "W" and "ednesday" — which is only harmless
+    // because the reader happens to know that W is a day. Three rough classes
+    // are still rough, and they are right where it counts.
+    let drewAt = 0;
+    const WIDE_CH = /[A-Z0-9@#%&MWmw]/;
+    const THIN_CH = /[ijlt.,:;'!|()[\]]/;
+    const drawn = () => {
+      let w = 0;
+      for (let i = drewAt; i < line.length; i++) {
+        const ch = line[i];
+        w += WIDE_CH.test(ch) ? 0.72 : THIN_CH.test(ch) ? 0.34 : 0.56;
+      }
+      return w * size;
+    };
     let y = null;
 
     const put = (raw) => {
@@ -350,6 +383,7 @@
       const t = line.slice(cellStart).trim();
       if (t) rowCells.push({ x: cellX, text: t });
       cellStart = line.length;
+      drewAt = line.length;
       cellX = nextX;
     };
     // THE LINE AND ITS CELLS ARE THE SAME LINE, so they are kept or dropped
@@ -362,6 +396,7 @@
       rowCells = [];
       line = "";
       cellStart = 0;
+      drewAt = 0;
       cellX = x;
     };
 
@@ -392,19 +427,34 @@
         // A fixed threshold splits "8:00" into "8" and ":00" the moment a
         // document nudges a character a fraction of a point, which real ones do
         // constantly. Measured against the font size, that stops happening.
-        x += Number(m[3]) || 0;
+        const dx = Number(m[3]) || 0;
+        x += dx;
         if (Math.abs(Number(m[4])) > Math.max(2, size * 0.4)) br();
-        // AND A COLUMN BREAK IS A SIDEWAYS MOVE BIGGER THAN A SPACE. Same
-        // reasoning in the other direction: a document that nudges a character
-        // is not starting a new column, and one that jumps half an inch is.
-        else if ((Number(m[3]) || 0) > Math.max(1, size * 0.6)) closeCell(x);
+        // AND A COLUMN BREAK IS A SIDEWAYS MOVE THAT CLEARS WHAT WAS JUST
+        // DRAWN, by more than a space. Measured against the point size alone
+        // this fired on every glyph of a page that positions them one at a
+        // time — see `drawn` above.
+        else if (dx - drawn() > Math.max(1, size * 0.4)) closeCell(x);
+        drewAt = line.length;
         continue;
       }
       if (m[5] !== undefined) {
         const ny = Number(m[10]);
         const nx = Number(m[9]);
         const broke = y !== null && Math.abs(ny - y) > Math.max(2, size * 0.4);
-        const jumped = !broke && Number.isFinite(nx) && nx - x > Math.max(1, size * 0.6);
+        // Measured from where the ink actually ended, not from where the last
+        // move left the pen — see `drawn`. Otherwise a column break is judged
+        // against a position several words back.
+        // FORWARDS PAST THE INK, OR BACKWARDS AT ALL.
+        //
+        // Backwards was missing, and a document is free to draw its marks in
+        // any order — one drew Friday before Monday. A move to the left was not
+        // counted as starting a cell, so Monday was stamped with Friday's
+        // position, and a row of day names came back in a jumble that no column
+        // could be read from.
+        const jumped = !broke && Number.isFinite(nx) &&
+          (nx - (x + drawn()) > Math.max(1, size * 0.4) ||
+            x - nx > Math.max(1, size * 0.4));
         // MOVED BEFORE THE BREAK, not after. Closing a cell stamps the NEXT
         // one's position, so a row that ends at the right-hand edge would give
         // the next row's first cell that same edge — and the time column would
@@ -412,6 +462,7 @@
         if (Number.isFinite(nx)) x = nx;
         if (broke) br();
         else if (jumped) closeCell(x);
+        drewAt = line.length;
         y = ny;
         continue;
       }
@@ -569,7 +620,62 @@
         }
         keep(l, at);
       });
-    return { text: out.join("\n"), rows: outRows };
+
+    // AND A PDF HAS NO ROWS EITHER.
+    //
+    // Everything above mends a line that was cut in the middle. This mends the
+    // opposite: text that is plainly on ONE line of the page arriving as
+    // several, because a line here ends wherever the document ends a text
+    // object — and some documents wrap every single fragment in one.
+    //
+    // A real timetable did exactly that, and the cost was the whole grid: its
+    // five day names came back as five rows of one word each, so nothing could
+    // find a row of day names, so the table had no header, so every lesson was
+    // placed by guesswork. Two pieces of text at the same height are on the same
+    // line of the page, however the document chose to draw them.
+    //
+    // THE ROWS ONLY, AND NOT THE TEXT — which is the opposite of the rule above
+    // it and for a reason worth being precise about.
+    //
+    // The mending above is about WORDS: a word cut in half is cut in half in
+    // both answers, so both have to be repaired or the same document says two
+    // different things. This is about LAYOUT, and there the two answers are
+    // asked different questions. `rows` means "where each piece of text sat", so
+    // two pieces at the same height belong to the same row and always did.
+    // `text` means "the words in reading order", and a page with two columns of
+    // prose side by side really does have two runs of writing on it — joined by
+    // height they interleave into nonsense, sentence by alternating sentence.
+    //
+    // Joining the text as well broke eighteen checks in the calendar reader,
+    // which reads the text. Nothing was wrong with those documents; the answer
+    // they are asked for is simply not this one.
+    const at = new Map();
+    const bandRows = [];
+    outRows.forEach((r) => {
+      // A DOCUMENT THAT NEVER SAID ITS HEIGHTS HAS NONE TO COMPARE.
+      //
+      // Height is only recorded where a document positions text absolutely. One
+      // that walks down the page with relative nudges never sets it at all, and
+      // reading "no height" as height nought put every line of such a page on
+      // one row — so a whole document collapsed into a single line.
+      if (r.y === null || r.y === undefined) { bandRows.push(r); return; }
+      // Rounded, because "the same height" in a PDF is the same number give or
+      // take the last decimal place.
+      const key = Math.round(Number(r.y));
+      const seen = at.get(key);
+      if (seen === undefined) {
+        at.set(key, bandRows.length);
+        bandRows.push({ y: r.y, cells: r.cells.slice() });
+        return;
+      }
+      bandRows[seen].cells = bandRows[seen].cells.concat(r.cells);
+    });
+    // AND READ ACROSS THE PAGE, whatever order the marks were put on it in. A
+    // document may draw Friday before Monday — nothing says it must not — and
+    // the mending above shuffles cells as it joins them, so the order a row
+    // arrives in is not the order it reads in.
+    bandRows.forEach((r) => r.cells.sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0)));
+    return { text: out.join("\n"), rows: bandRows };
   }
 
   // ---- what is on the page that isn't words --------------------------------

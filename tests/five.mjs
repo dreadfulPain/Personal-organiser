@@ -1289,80 +1289,19 @@ sec("Who is running each of these");
   ok("an empty note offers nobody", N.peopleIn("").length === 0);
 }
 
-sec("And on the page: ticked, added, linked");
-{
-  const r = await open("timeline.html", {
-    schedule: [], config: {}, items: [], goals: [],
-    // Dave is someone you already know. He must be linked without being asked.
-    contacts: [{ id: "p-dave", name: "Dave", group: "", details: {}, createdAt: "2026-01-01T00:00:00Z" }],
-  });
-  ok("the page opens", r.errs.length === 0, r.errs.join("; "));
-  r.get("#setupToggle").click();
-  await r.settle();
-  r.get("#ttText").value = [
-    "Induction day  24 August 2026",
-    "9:00-10:00", "School Culture Talk", "Jack D, Joshua K", "Xianmian Building 109",
-    "11:00-12:00", "Field Trip", "Dave", "TBA",
-  ].join("\n");
-  r.get("#ttRead").click();
-  await r.settle();
-
-  const rows = r.created.filter((e) => String(e.className).includes("su-trow"));
-  ok("two sessions came out", rows.length === 2, String(rows.length));
-  // Each one gets a date box of its own, because a one-off with no day on it is
-  // thrown away when it's saved — silently, until now.
-  ok("each one-off is shown with a date to check",
-     r.created.filter((e) => /\bsu-date\b/.test(String(e.className))).length >= 2,
-     String(r.created.filter((e) => /\bsu-date\b/.test(String(e.className))).length));
-  const chips = r.created.filter((e) => /\bsu-chip\b/.test(String(e.className)));
-  ok("and it offers the people it found", chips.length >= 3,
-     JSON.stringify(chips.map((c) => c.textContent)));
-  const dave = chips.find((c) => /^Dave/.test(String(c.textContent)));
-  // TBA IS NOT A SURNAME. An acronym anywhere in the run spoils it.
-  ok("a placeholder next to a name doesn't become part of it",
-     dave && !/TBA/.test(dave.textContent), dave && dave.textContent);
-  ok("someone you already know is marked as known and already ticked",
-     dave && /✓/.test(dave.textContent) && /\bon\b/.test(dave.className),
-     dave && `${dave.textContent} / ${dave.className}`);
-  const jack = chips.find((c) => /^Jack D/.test(String(c.textContent)));
-  ok("and someone new is offered but NOT ticked",
-     jack && !/\bon\b/.test(jack.className), jack && jack.className);
-
-  jack.click();
-  await r.settle();
-  const put = r.created.find((e) => String(e.textContent) === "Save these blocks");
-  put.click();
-  await r.settle();
-
-  const people = r.state.contacts || [];
-  ok("Jack went into People", people.some((c) => c.name === "Jack D"),
-     JSON.stringify(people.map((c) => c.name)));
-  ok("Joshua did not, because you didn't tick him",
-     !people.some((c) => c.name === "Joshua K"), JSON.stringify(people.map((c) => c.name)));
-  ok("and Dave wasn't added a second time",
-     people.filter((c) => c.name === "Dave").length === 1, JSON.stringify(people.map((c) => c.name)));
-
-  const sched = S.normalise(r.state.schedule || []);
-  const talk = sched.find((b) => /Culture Talk/.test(b.label));
-  const trip = sched.find((b) => /Field Trip/.test(b.label));
-  // A DATE IN THE PASTE IS THE DATE THEY HAPPEN ON. Without it they have no day
-  // to be on, and something with no day is thrown away when it is saved.
-  ok("both took the date off the top of the paste",
-     talk.date === "2026-08-24" && trip.date === "2026-08-24",
-     JSON.stringify([talk.date, trip.date]));
-  ok("and neither became a weekly pattern",
-     !talk.days.length && !trip.days.length, JSON.stringify([talk.days, trip.days]));
-  const jackId = people.find((c) => c.name === "Jack D").id;
-  ok("the session Jack runs is linked to him", talk.about.includes(jackId),
-     JSON.stringify(talk.about));
-  ok("the one Dave runs is linked to him without being asked",
-     trip.about.includes("p-dave"), JSON.stringify(trip.about));
-  ok("and Jack isn't linked to the trip he has nothing to do with",
-     !trip.about.includes(jackId), JSON.stringify(trip.about));
-  ok("it says how many now say who's running them",
-     /say who's running it/.test(String(r.get("#ttStatus").textContent)),
-     String(r.get("#ttStatus").textContent));
-}
+// AND THE PEOPLE A TIMETABLE NAMES — A FEATURE THAT HAS BEEN TAKEN OUT, so its
+// checks come out with it rather than being left to pass against nothing.
+//
+// It offered to make People out of the names beside a lesson, which is right for
+// a schedule of meetings and wrong for a timetable. A real one came back
+// proposing "Primary", "English", "Section", "Story Telling", "Odd", "Reading",
+// "Personal Grow" and "Homework" as eight people, because on a timetable the
+// words beside a lesson are a department, a room and a subject. Eight wrong
+// answers cost more than none: each has to be read and refused, and the one time
+// it is right is the time somebody ticks all eight.
+//
+// Class lists are worth reading and arrive in the same pack. That is a job where
+// the input really is a list of names, and it is not this one.
 
 // ---------------------------------------------------------------------------
 sec("And the things it tells you to bring");

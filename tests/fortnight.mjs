@@ -429,6 +429,205 @@ console.log("\nAnd the week is shown as a week before it is saved");
 }
 
 // ---------------------------------------------------------------------------
+console.log("\nAnd a page that has no rows on it at all");
+
+// THE SHAPE THAT DEFEATED EVERYTHING ABOVE, and the fixtures above could not
+// have found it, because they are built the way a tidy document is built.
+//
+// A real timetable draws every cell as four or five fragments scattered up and
+// down inside its square, each in its own text object, with the period's own
+// time sitting in the MIDDLE of them rather than at the top. There is no row to
+// read. Lining the fragments up by height gives twenty rows per period,
+// nineteen of which have no time in them, and every one of those was thrown out
+// as a heading — so what was saved was eight blocks with no weekday on any of
+// them and every subject cut off at its first fragment: "Science & So".
+//
+// Three things had to be true before any of it worked, and each is checked here
+// because each one alone leaves the page unreadable.
+{
+  // Cells centred in their columns and drifting, as a real one does.
+  const DAY_X = { 1: 222, 2: 377, 3: 521, 4: 699, 5: 874 };
+  const CELL = [
+    [0, { 1: ["English(G1", "\\N)", "Primary", "Section 111"],
+            3: ["English(G1\\N)", "Primary", "Section 111"] }],
+    [0, { 2: ["English(G1", "\\N)", "Primary", "Section 111"],
+            4: ["Story Telling", "(G1\\N)", "Primary", "Section 111"],
+            5: ["Science & So", "cial Studies", "(G1\\N)", "Primary", "Section 111"] }],
+    // The tall one: two lessons taking turns, stacked, each followed by its own
+    // department and room. This is the row that "halfway between two times"
+    // gets wrong, because it is twice the height of the others.
+    [0, { 2: ["Writing(E)(E)", "(G1\\N)", "Odd", "Primary", "Section 111",
+                "Show &Tell", "(E)(E)(G1\\N)", "Even", "Primary", "Section 111"],
+            3: ["Science & Soc", "ial Studies(G1", "\\N)", "Primary", "Section 111"] }],
+    [0, { 1: ["Activity(G1", "\\N)", "Primary", "Section 111"] }],
+  ];
+  const scatter = [];
+  // The title and the day names, each name its own text object — which is how
+  // five day names became five rows and the table lost its header.
+  scatter.push({ y: 52, cells: [{ x: 49, text: "Schedule" }] });
+  scatter.push({ y: 146, cells: [{ x: 62, text: "Periods /" }] });
+  scatter.push({ y: 170, cells: [{ x: 84, text: "Time" }] });
+  [1, 2, 3, 4, 5].forEach((d) => scatter.push({ y: 158,
+    cells: [{ x: DAY_X[d], text: ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"][d] }] }));
+  const TIMES = ["08:40-09:25", "09:35-10:15", "10:30-11:05", "12:15-12:35"];
+  // LAID OUT LIKE A TABLE: each row as tall as its fullest cell, a clear strip
+  // between one row and the next, and the period's time centred in its row
+  // rather than sitting at the top of it. All three are true of the real page
+  // and each one of them is what broke a different attempt at reading it.
+  const LINE = 30, STRIP = 49;
+  let top = 210;
+  const anchors = [];
+  CELL.forEach(([, cells], i) => {
+    const deep = Math.max(...Object.keys(cells).map((d) => cells[d].length));
+    const at = Math.round(top + ((deep - 1) * LINE) / 2);
+    anchors.push(at);
+    scatter.push({ y: at - 20, cells: [{ x: 65, text: `Period ${i + 1}` }] });
+    scatter.push({ y: at, cells: [{ x: 48, text: `G1(${TIMES[i]})` }] });
+    Object.keys(cells).forEach((d) => cells[d].forEach((text, j) => scatter.push({
+      y: top + j * LINE, cells: [{ x: DAY_X[d] - 12, text }] })));
+    top += (deep - 1) * LINE + STRIP;
+  });
+  // BANDED BY HEIGHT FIRST, which is what the PDF reader now hands over: two
+  // pieces of text at the same height are on the same line of the page, however
+  // many text objects the document wrapped them in. Without that step the five
+  // day names are five rows of one word and the table has no header at all —
+  // which is exactly how this page used to arrive.
+  const banded = [];
+  const seen = new Map();
+  scatter.forEach((r) => {
+    const at = seen.get(r.y);
+    if (at === undefined) { seen.set(r.y, banded.length); banded.push({ y: r.y, cells: r.cells.slice() }); return; }
+    banded[at].cells = banded[at].cells.concat(r.cells).sort((a, b) => a.x - b.x);
+  });
+  const got = T.fromRows(banded, {});
+  const say = (time, day) => got.blocks
+    .filter((b) => `${b.start}-${b.end}` === time && b.days.indexOf(Number(day)) >= 0)
+    .map((b) => (b.parity ? `(${b.parity}) ` : "") + b.label);
+
+  ok("a page drawn in fragments is read at all", got.blocks.length > 0,
+     JSON.stringify(got.blocks.map((b) => b.label)));
+  // ONE: the rows are found by where the page is blank, not by nearest time.
+  // Halfway between two times lands INSIDE the tall row, and its first lesson
+  // is then filed under the period above it.
+  ok("the tall row keeps its own lessons",
+     say("10:30-11:05", 2).length === 2 && say("09:35-10:15", 2).join() === "English(G1\\N) Primary Section 111",
+     JSON.stringify({ tall: say("10:30-11:05", 2), above: say("09:35-10:15", 2) }));
+  // TWO: columns by the NEAREST day, not by the last edge before it. These
+  // cells are centred and drift left of their own heading, so a left-edge rule
+  // files Friday's lesson under Thursday.
+  ok("a cell that drifts left of its heading stays in its own day",
+     say("09:35-10:15", 5).join() === "Science & Social Studies (G1\\N) Primary Section 111",
+     JSON.stringify({ fri: say("09:35-10:15", 5), thu: say("09:35-10:15", 4) }));
+  // THREE: a subject broken across the column's edge is one word again.
+  ok("and a subject broken mid-word is put back together",
+     !got.blocks.some((b) => /\bSo cial\b|\bSoc ial\b|\bGro wth\b/.test(b.label)),
+     JSON.stringify(got.blocks.map((b) => b.label).filter((l) => / (cial|ial|wth)/.test(l))));
+
+  // AND THE FORTNIGHT, STACKED DOWN THE SQUARE INSTEAD OF WRITTEN ACROSS IT.
+  // Split at the word alone, the second alternative begins with the first one's
+  // department — "Primary Section 111 Show &Tell". The two halves are written
+  // the same way, and that is enough to give each its own detail back.
+  ok("a fortnight written down the square is still two lessons",
+     say("10:30-11:05", 2).join(" | ") ===
+       "(odd) Writing(E)(E) (G1\\N) Primary Section 111 | (even) Show &Tell (E)(E)(G1\\N) Primary Section 111",
+     JSON.stringify(say("10:30-11:05", 2)));
+
+  // AND EVERY SQUARE OF IT, WHICH IS THE COUNT THAT WAS WRONG.
+  const cellsIn = CELL.reduce((n, [, c]) => n + Object.keys(c).length, 0);
+  ok("every square of the page comes back",
+     got.blocks.reduce((n, b) => n + b.days.length, 0) === cellsIn + 1,
+     `${got.blocks.reduce((n, b) => n + b.days.length, 0)} of ${cellsIn + 1}`);
+}
+
+// AND A TIDY PAGE IS NOT READ THAT WAY. The scattered reader is for pages whose
+// cells are drawn in pieces; turned loose on one whose cells are drawn whole it
+// pulls them apart into more, smaller, wronger blocks — and "more blocks wins"
+// would let it.
+{
+  const tidy = T.fromRows(ROWS, {});
+  ok("a page whose cells are drawn whole is still read the ordinary way",
+     tidy.blocks.length === 19, String(tidy.blocks.length));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd the PDF reader handing the page over in one piece");
+
+// THE TWO FAULTS UNDERNEATH ALL OF IT, and neither is in the grid reader. They
+// are in what the grid reader is given, so they need a real PDF to find.
+//
+// A document may position every glyph itself, stepping sideways before each one
+// by the width of the one before it. Measured against the point size alone that
+// is a column break at every letter, and a whole timetable arrives as "S",
+// "ch", "e", "d", "u", "le" — fragments the grid reader correctly refuses,
+// which is how a table came to be read as a run of sentences.
+//
+// And a document may wrap every fragment in its own text object. A line ends
+// wherever a text object does, so five day names at the same height arrive as
+// five rows of one word, and the table has no header at all.
+{
+  const zlib = await import("node:zlib");
+  // A page drawn the awkward way: each word placed with its own Tm, each glyph
+  // cluster stepped over with Td, and every one of them in its own BT/ET.
+  const draw = (x, y, bits) =>
+    `BT /F1 20 Tf 1 0 0 1 ${x} ${y} Tm ` +
+    bits.map(([dx, t], i) => `${i ? `${dx} 0 Td ` : ""}(${t}) Tj `).join("") + "ET ";
+  const content =
+    // "Schedule", one glyph cluster at a time, each step the width of the last.
+    draw(49, 760, [[0, "S"], [14, "ch"], [26, "e"], [14, "d"], [14, "u"], [14, "le"]]) +
+    // Five day names at the same height, each its own text object.
+    // Drawn out of order on purpose: a document may put its marks on the page
+    // in any order it likes, and only their positions say what the row reads.
+    draw(874, 700, [[0, "Friday"]]) + draw(222, 700, [[0, "Monday"]]) +
+    draw(521, 700, [[0, "W"], [21, "ednesday"]]) +
+    draw(699, 700, [[0, "Thursday"]]) + draw(377, 700, [[0, "Tuesday"]]) +
+    draw(48, 640, [[0, "G1(08:40-09:25)"]]) +
+    draw(210, 640, [[0, "English"]]) + draw(513, 640, [[0, "English"]]) +
+    draw(48, 560, [[0, "G1(09:35-10:15)"]]) + draw(367, 560, [[0, "Reading"]]);
+  const comp = zlib.deflateSync(Buffer.from(content));
+  const objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    null,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let out = Buffer.from("%PDF-1.4\n");
+  objs.forEach((o, i) => {
+    const body = o === null
+      ? Buffer.concat([Buffer.from(`<< /Length ${comp.length} /Filter /FlateDecode >>\nstream\r\n`), comp, Buffer.from("\r\nendstream")])
+      : Buffer.from(o);
+    out = Buffer.concat([out, Buffer.from(`${i + 1} 0 obj\n`), body, Buffer.from("\nendobj\n")]);
+  });
+  out = Buffer.concat([out, Buffer.from("trailer\n<< /Root 1 0 R >>\n%%EOF")]);
+
+  const box = { console, Date, Math, JSON, Set, Map, Object, Number, String, Array, RegExp,
+    Intl, Uint8Array, ArrayBuffer, TextDecoder, DecompressionStream, Response, Blob,
+    Promise, Error, isNaN, parseInt, parseFloat, setTimeout };
+  box.window = box; box.globalThis = box;
+  vm.createContext(box);
+  ["dates.js", "pdftext.js"].forEach((f) =>
+    vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), box, { filename: f }));
+  const read = await box.OrganiserPdfText.read(new Uint8Array(out).buffer);
+  const rows = (read.pages[0] || {}).rows || [];
+  const words = rows.flatMap((r) => r.cells.map((c) => c.text));
+
+  ok("a page that positions every glyph still comes back as words",
+     words.includes("Schedule"), JSON.stringify(words));
+  ok("  and not as the letters it was drawn from",
+     !words.some((w) => w.length <= 2 && /[A-Za-z]/.test(w)), JSON.stringify(words));
+  // AND THE ROW OF DAY NAMES IS A ROW. Five text objects at one height are five
+  // rows here and nowhere else; without this the table has no header, and every
+  // lesson on it is placed by guesswork.
+  const header = rows.find((r) => r.cells.filter((c) => /day$/i.test(c.text)).length >= 2);
+  ok("five day names at one height are one row",
+     !!header && header.cells.length === 5,
+     JSON.stringify(rows.map((r) => r.cells.map((c) => c.text))));
+  ok("  in the order they are written across the page, not the order they were drawn",
+     !!header && header.cells.map((c) => c.text).join() === "Monday,Tuesday,Wednesday,Thursday,Friday",
+     JSON.stringify(header && header.cells.map((c) => c.text)));
+}
+
+// ---------------------------------------------------------------------------
 console.log("\nAnd a calendar that names a week is not reduced to a day");
 
 // "EVEN WEEK TUESDAY SCHEDULE" IS TWO FACTS. The day was kept and the week was

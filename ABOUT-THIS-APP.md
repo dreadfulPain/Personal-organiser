@@ -128,6 +128,45 @@ quietly missing is far worse than two lessons in one slot. And a make-up day
 carries its own parity, because *"even week Tuesday schedule"* is two facts and
 the week is the half you have no memory to fall back on.
 
+### And a PDF has no rows, no columns and no words
+
+Everything above assumed the reader was handed lines of text with cells in them.
+A real timetable is handed over as none of those, and each of the three had to be
+rebuilt before a single lesson was read correctly.
+
+**No words.** A document may position every glyph itself, stepping sideways
+before each one by the width of the one before it. Measured against the point
+size alone that is a column break at every letter, and the page arrives as "S",
+"ch", "e", "d", "u", "le" — fragments the grid reader correctly refuses, which
+is how a table came to be read as a run of sentences. A break is now a move that
+*clears what was just drawn*, by more than a space.
+
+**No rows.** A line ends wherever a text object ends, and some documents wrap
+every fragment in one. Five day names at the same height arrived as five rows of
+one word, so the table had no header and every lesson was placed by guesswork.
+Two pieces of text at the same height are one line of the page. (Only where the
+document said the height: one that walks down the page with relative nudges
+never sets it, and reading "no height" as height nought collapses a whole
+document into one line.)
+
+**No cells.** A cell may be drawn as five fragments scattered up and down inside
+its square, with the period's own time sitting in the middle of them rather than
+at the top. There is no row to read at all, so the grid is rebuilt from its
+anchors: the day names give the columns, the times give the rows, and everything
+else belongs to the nearest of each.
+
+Two rules there were got wrong twice before they were got right, and both are
+worth keeping:
+
+- **A row's boundary is the widest blank strip between two times** — not halfway
+  between them. The time sits in the *middle* of its row and rows are not the
+  same height, so halfway lands inside the taller one. Not "a gap bigger than a
+  line" either: that needs a number, and on a real page the space between rows is
+  barely half again the space between lines inside a cell.
+- **A column is the nearest day, not the last heading before it.** These cells
+  are centred and drift, so Friday's lesson starts to the left of Friday's
+  heading and a left-edge rule files it under Thursday.
+
 ### A wall timetable with pencil on it
 
 The Day and Week pages are drawn to one picture: **the printed timetable, the
@@ -617,7 +656,22 @@ which one to try and exactly how.
 - **A class roster is not imported as a class.** Pages of names now correctly
   produce no timetable at all, which is the fix — but they are also genuinely
   useful, and reading them into People or a class list is a separate job nobody
-  has started.
+  has started. The timetable importer no longer guesses at people either: it used
+  to offer "Primary", "English", "Section" and "Homework" as eight names to add,
+  because beside a lesson those words are a department, a room and a subject.
+- **A lesson's room is still part of its name.** "English(G1\\N) Primary Section
+  111" is the whole of what the cell says, and all of it is kept rather than
+  guessed at — but the room belongs in `where`, where the day can use it. Nothing
+  splits it yet.
+- **THE BIG ONE: a timetable, a holiday and a one-off are all just dated blocks.**
+  A vacation is stored as one all-day block per day, so half-term is sixty-odd
+  rows to scroll past in the setup list, and a PD day becomes an appointment from
+  midnight to 23:59 rather than a day that says "working, no normal lessons".
+  What it should be is a weekly template, then date and range overrides on top of
+  it, then one-off changes — resolved into a day when a day is asked for. The
+  recurring week should be bounded by the term rather than running for ever and
+  being suppressed sixty times. This is the next piece of work and it is a real
+  redesign, not a tidy-up.
 
 ---
 

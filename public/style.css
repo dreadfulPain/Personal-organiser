@@ -4640,3 +4640,8 @@ a.btn {
 /* WHOSE IT IS, AND WHY. The one judgement the app makes with nobody asked, so
    it shows its working on its own line rather than asking to be trusted. */
 .cal-whose { flex: 1 1 100%; }
+
+/* WHO READ THIS, AND WHAT EACH OF THEM GOT. Small, because it is an account
+   rather than news — but present after every run, because a reading you cannot
+   account for is a reading you cannot trust. */
+.su-who { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 10px; }

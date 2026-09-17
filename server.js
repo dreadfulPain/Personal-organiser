@@ -2900,7 +2900,11 @@ async function handleTimetable(res, body) {
       }
       blocks.push({ label, start, end, days, date, where, note, extras, soft: false, source: "paste" });
     });
-    return sendJson(res, 200, { blocks, unreadable });
+    // WHICH MODEL, ON WHICH ENGINE — the same two facts the calendar reader
+    // already sends back. Without them the page can say the model took nine
+    // seconds and not which model, which is the half that matters when the
+    // answer looks wrong.
+    return sendJson(res, 200, { blocks, unreadable, by: await modelHere(cfg), via: cfg.engine });
   } catch (err) {
     console.warn("[timetable] failed:", err?.message || err);
     const why = offlineReason(cfg, err);

@@ -167,6 +167,55 @@ worth keeping:
   are centred and drift, so Friday's lesson starts to the left of Friday's
   heading and a left-edge rule files it under Thursday.
 
+### Three layers, and one screen that shows the idea rather than the storage
+
+The setup screen had two jobs glued together: *import and check my weekly
+timetable*, and *inspect the entire schedule database*. The second destroys the
+first. A person opened it to set up a week and found Monday's English sitting
+between the twenty-sixth day of Winter Vacation and the twenty-seventh, with
+sixty-two rows of Summer Vacation under it.
+
+Nobody needs to look at the seventeenth of July to know the summer holiday runs
+July to the end of August. So the panel names the three layers a schedule
+actually holds, and a run of days is one fact:
+
+- **Your normal week** — what repeats. What the import is for, and the only
+  layer open by default.
+- **What changes it** — a vacation, a day with no lessons, a Saturday running
+  another day. `Winter Vacation — Jan 23 – Feb 17 — no timetable`, with one
+  *remove all 26*. Honest about gaps: a name on scattered days says how many
+  days it really covers rather than drawing a solid fortnight.
+- **One-off events** — an observation at half ten, a meeting, cover.
+
+Asked of `OrganiserSchedule.groupsOf`, not of the panel, because the planner
+needs the same three. *"Don't build the normal week during this range"* is an
+immediate answer if a range is a range, and something to reverse-engineer out of
+sixty all-day appointments if it isn't.
+
+**What every cell says is not what any lesson is called.** A real cell reads
+`English(G1\N) Primary Section 111`, and three of those four things are identical
+in all eighteen squares — so they tell the lessons apart not at all. They are
+the heading of the timetable, reprinted in every square by the software that
+made it, and stored as the lesson's *name* they follow it into the day, the week
+and every list after. Text common to nearly every cell is removed from the
+names, the room goes where a room goes, and the rest is said once rather than
+taken off eighteen lessons in silence. Nearly every cell, not every: one square
+of a real page was cut off by the page edge, and asked what *all* of them share
+the answer is nothing.
+
+**And a timetable that runs for ever is a decision, not a blank.** Left blank it
+ran every week through every holiday — which is why sixty-two days of Summer
+Vacation had to exist, purely to switch off lessons that should never have been
+made. The panel now refuses to save a repeating block until it is told when the
+timetable stops, or told plainly that it never does.
+
+**Nor does the last attempt get to haunt the next one.** A timetable that failed
+to read as a week was saved as dated one-offs instead. Save the real week on top
+and the day shows both — Monday's English and the seventh of September's copy of
+it, at the same hour, looking like a clash. Those copies are found by shape (a
+one-off sitting in exactly one of this document's periods), counted, and offered
+for removal before the new week is saved.
+
 ### A wall timetable with pencil on it
 
 The Day and Week pages are drawn to one picture: **the printed timetable, the

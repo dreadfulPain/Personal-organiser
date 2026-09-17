@@ -312,7 +312,7 @@ sec("Make-up days — a Saturday that runs another day's timetable");
 // ---------------------------------------------------------------------------
 sec("And all of it on the page, not just in the modules");
 {
-  const { open } = await import("./_dom.mjs");
+  const { open, saveBlocks } = await import("./_dom.mjs");
   const r = await open("timeline.html", { schedule: [], config: {}, items: [], goals: [] });
   ok("the timeline page opens without error", r.errs.length === 0, r.errs.join("; "));
 
@@ -345,9 +345,18 @@ sec("And all of it on the page, not just in the modules");
      /run on more than one day/.test(String(r.get("#ttStatus").textContent)),
      String(r.get("#ttStatus").textContent));
 
-  const save = r.created.find((e) => String(e.textContent) === "Save these blocks");
-  ok("there is a way to keep them", !!save);
-  save.click();
+  // A REPEATING BLOCK WITH NO END DATE IS A DECISION, NOT A BLANK, so the panel
+  // asks before it will save one — see saveBlocks.
+  const gate = r.created.find((e) => String(e.textContent) === "Save these blocks");
+  ok("there is a way to keep them", !!gate);
+  gate.click();
+  await r.settle();
+  ok("but not until it is told when the timetable stops",
+     !(r.state.schedule || []).length &&
+       /when this timetable stops/.test(String(r.get("#ttStatus").textContent)),
+     String(r.get("#ttStatus").textContent).slice(0, 120));
+  ok("  and there is a way to say it never does",
+     saveBlocks(r), "nothing said the timetable runs all year");
   await r.settle();
   const kept = r.state.schedule || [];
   ok("11 blocks are saved", kept.length === 11, String(kept.length));

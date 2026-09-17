@@ -1218,12 +1218,22 @@
     // ends, and anything printed down there — a key, a footnote — is cut off by
     // the same rule that cuts the rows apart.
     const heights = [...new Set(list.map((r) => Math.round(Number(r.y) || 0)))].sort((a, b) => a - b);
-    const last = heights[heights.length - 1] + 1;
-    const rows = ys.map((at, i) => ({
-      at,
-      from: cutBetween(heights, i === 0 ? a.head.y : ys[i - 1].y, at.y),
-      to: cutBetween(heights, at.y, i === ys.length - 1 ? last : ys[i + 1].y),
-    }));
+    const rows = ys.map((at, i) => {
+      const from = cutBetween(heights, i === 0 ? a.head.y : ys[i - 1].y, at.y);
+      return {
+        at,
+        from,
+        // THE LAST ROW HAS NOTHING BELOW IT TO BE SEPARATED FROM, so there is no
+        // blank strip to find and looking for one finds the widest gap INSIDE
+        // it — which cuts its own last line off. A time sits in the middle of
+        // its row, so the last row reaches as far below its time as it does
+        // above: its own shape, rather than the page's. That also keeps a
+        // footnote printed under the grid out of it.
+        to: i === ys.length - 1
+          ? at.y + (at.y - from)
+          : cutBetween(heights, at.y, ys[i + 1].y),
+      };
+    });
     // How far left of the first day the table's own columns reach. Half a column
     // keeps the time column out without needing to know where it starts.
     const steps = xs.slice(1).map((c, i) => c.x - xs[i].x);
@@ -1264,7 +1274,7 @@
           .map((m) => m.text).join("\n");
         (takingTurns(said) || [{ label: downWords(said), parity: "" }])
           .forEach((t) => out.blocks.push({
-            label: t.label.slice(0, 80),
+            label: t.label,
             start: p.at.span.start,
             end: p.at.span.end,
             days: [c.day],
@@ -1274,7 +1284,94 @@
           }));
       });
     });
-    return out.blocks.length ? out : null;
+    if (!out.blocks.length) return null;
+    // AND THEN WHAT THEY ALL SAY IS TAKEN OUT OF WHAT EACH OF THEM IS CALLED.
+    const shared = sharedIn(out.blocks.map((b) => b.label));
+    const put = splitShared(shared.common);
+    out.blocks.forEach((b, i) => {
+      b.label = (shared.clean[i] || b.label).slice(0, 80);
+      if (put.where) b.where = put.where;
+      if (put.note) b.note = put.note;
+    });
+    // Said once at the top of the check, because taking words off eighteen
+    // lessons without saying so is the app quietly editing the document.
+    out.shared = shared.common;
+    return out;
+  }
+
+  // ---- WHAT EVERY CELL SAYS IS NOT WHAT ANY LESSON IS CALLED ----------------
+  //
+  // A real cell reads "English(G1\N) Primary Section 111". Three of those four
+  // things are the same in all eighteen squares of the page — the class, the
+  // department and the room — and a thing that is identical everywhere is not
+  // telling the lessons apart. It is the heading of the whole timetable,
+  // reprinted in every square because that is what the software that made it
+  // does. Stored as the lesson's NAME it follows the lesson into the day, the
+  // week and every list after that.
+  //
+  // §0.2 holds all the way through: nothing here knows what "Primary" or "111"
+  // mean, or that a school has departments. It knows that text common to every
+  // cell distinguishes nothing, which is true of any table anywhere.
+  //
+  // Two passes, because the repetition takes two shapes. A bracketed code is
+  // glued to different words in different cells — "English(G1\N)" and "Story
+  // Telling (G1\N)" — so it is matched as a group wherever it sits. Everything
+  // else repeats as a run of words at the end.
+  const bracketsIn = (s) => (String(s).match(/\([^()]*\)/g) || []);
+  // NEARLY EVERY CELL, NOT EVERY CELL. One square of a real page was cut off by
+  // the page edge — "Homework(G" — and asked for text common to ALL of them the
+  // answer is nothing at all, so eighteen good cells keep their boilerplate
+  // because one is damaged. A run of words ending three quarters of the cells
+  // is telling them apart no better than one ending all of them.
+  const ENOUGH = (n) => Math.max(3, Math.ceil(n * 0.75));
+  // The value that turns up most often in a list, and how often.
+  function commonest(all) {
+    const count = new Map();
+    all.forEach((v) => count.set(v, (count.get(v) || 0) + 1));
+    let best = "";
+    let n = 0;
+    count.forEach((c, v) => { if (c > n) { n = c; best = v; } });
+    return { value: best, n };
+  }
+  function sharedIn(labels) {
+    const said = labels.map(String);
+    if (said.length < 3) return { common: "", clean: said };
+    const enough = ENOUGH(said.length);
+    // 1. Bracketed codes, wherever in the cell they sit — they are glued to
+    //    different words in different cells: "English(G1\N)", "Story Telling
+    //    (G1\N)".
+    const seen = [...new Set(said.flatMap(bracketsIn))];
+    const everywhere = seen.filter((g) => said.filter((l) => l.indexOf(g) >= 0).length >= enough);
+    const without = said.map((l) =>
+      everywhere.reduce((t, g) => t.split(g).join(" "), l).replace(/\s+/g, " ").trim());
+    // 2. And the longest run of words at the end that nearly all of them share.
+    //    Never a cell's whole name: a column where every lesson has the same
+    //    name is a column of that lesson, not a column of blanks.
+    const words = without.map((l) => l.split(" ").filter(Boolean));
+    let tail = "";
+    for (let k = 1; ; k++) {
+      const ends = words.filter((w) => w.length > k).map((w) => w.slice(w.length - k).join(" "));
+      if (ends.length < enough) break;
+      const most = commonest(ends);
+      if (most.n < enough) break;
+      tail = most.value;
+    }
+    const drop = tail ? " " + tail : "";
+    return {
+      common: everywhere.concat(tail ? [tail] : []).join(" ").replace(/\s+/g, " ").trim(),
+      clean: without.map((l) =>
+        drop && l.length > drop.length && l.slice(-drop.length) === drop
+          ? l.slice(0, -drop.length).trim() : l),
+    };
+  }
+
+  // And of the part they all share, the bit that is a room goes where a room
+  // goes — see looksLikePlace, which this app has had all along.
+  function splitShared(common) {
+    const words = String(common || "").split(" ").filter(Boolean);
+    if (words.length > 1 && roomCode(words[words.length - 1]))
+      return { where: words[words.length - 1], note: words.slice(0, -1).join(" ") };
+    return { where: "", note: words.join(" ") };
   }
 
   function fromRows(pdfRows, opts) {
@@ -1367,6 +1464,6 @@
 
   window.OrganiserTimetable = {
     DAYS, dayOf, timeOf, spanIn, cellsOf, daysIn, headerIn, readGrid, readLines,
-    takingTurns, weekIn, read, readAgenda, fromPages, fromRows, tableOf, bestOf, merged, thin, words, anHourAfter, looksLikePlace,
+    takingTurns, weekIn, sharedIn, read, readAgenda, fromPages, fromRows, tableOf, bestOf, merged, thin, words, anHourAfter, looksLikePlace,
   };
 })();

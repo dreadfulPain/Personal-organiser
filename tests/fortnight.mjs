@@ -510,13 +510,13 @@ console.log("\nAnd a page that has no rows on it at all");
   // Halfway between two times lands INSIDE the tall row, and its first lesson
   // is then filed under the period above it.
   ok("the tall row keeps its own lessons",
-     say("10:30-11:05", 2).length === 2 && say("09:35-10:15", 2).join() === "English(G1\\N) Primary Section 111",
+     say("10:30-11:05", 2).length === 2 && say("09:35-10:15", 2).join() === "English",
      JSON.stringify({ tall: say("10:30-11:05", 2), above: say("09:35-10:15", 2) }));
   // TWO: columns by the NEAREST day, not by the last edge before it. These
   // cells are centred and drift left of their own heading, so a left-edge rule
   // files Friday's lesson under Thursday.
   ok("a cell that drifts left of its heading stays in its own day",
-     say("09:35-10:15", 5).join() === "Science & Social Studies (G1\\N) Primary Section 111",
+     say("09:35-10:15", 5).join() === "Science & Social Studies",
      JSON.stringify({ fri: say("09:35-10:15", 5), thu: say("09:35-10:15", 4) }));
   // THREE: a subject broken across the column's edge is one word again.
   ok("and a subject broken mid-word is put back together",
@@ -528,9 +528,35 @@ console.log("\nAnd a page that has no rows on it at all");
   // department — "Primary Section 111 Show &Tell". The two halves are written
   // the same way, and that is enough to give each its own detail back.
   ok("a fortnight written down the square is still two lessons",
-     say("10:30-11:05", 2).join(" | ") ===
-       "(odd) Writing(E)(E) (G1\\N) Primary Section 111 | (even) Show &Tell (E)(E)(G1\\N) Primary Section 111",
+     say("10:30-11:05", 2).join(" | ") === "(odd) Writing(E)(E) | (even) Show &Tell (E)(E)",
      JSON.stringify(say("10:30-11:05", 2)));
+
+  // AND WHAT EVERY SQUARE SAID IS NOT WHAT ANY LESSON IS CALLED. "Primary
+  // Section 111" in all of them tells none of them apart; it is the heading of
+  // the timetable reprinted in every square, and stored as the name it follows
+  // the lesson into the day and the week and every list after.
+  ok("what every square says is taken out of the names",
+     !got.blocks.some((b) => /Primary|Section|111|G1/.test(b.label)),
+     JSON.stringify(got.blocks.map((b) => b.label)));
+  ok("  and kept — the room where a room goes, the rest as a note",
+     got.blocks.every((b) => b.where === "111") && /Primary Section/.test(got.blocks[0].note || ""),
+     JSON.stringify({ where: got.blocks[0].where, note: got.blocks[0].note }));
+  ok("  and said once, rather than taken off eighteen lessons in silence",
+     /Primary Section 111/.test(got.shared || ""), JSON.stringify(got.shared));
+  // NEARLY EVERY SQUARE, NOT EVERY SQUARE. One cell of a real page was cut off
+  // by the page edge; asked for what ALL of them share the answer is nothing,
+  // and eighteen good cells keep their boilerplate because one is damaged.
+  ok("and one damaged square does not stop the other seventeen being cleaned",
+     T.sharedIn(["A x y", "B x y", "C x y", "D"]).clean.join(" | ") === "A | B | C | D",
+     JSON.stringify(T.sharedIn(["A x y", "B x y", "C x y", "D"])));
+  // AND A COLUMN WHERE EVERY LESSON HAS THE SAME NAME IS A COLUMN OF THAT
+  // LESSON, not a column of blanks.
+  ok("and a name every cell shares entirely is left alone",
+     T.sharedIn(["Homework", "Homework", "Homework"]).clean.join() === "Homework,Homework,Homework",
+     JSON.stringify(T.sharedIn(["Homework", "Homework", "Homework"])));
+  ok("  and is not announced as boilerplate either",
+     T.sharedIn(["Homework", "Homework", "Homework"]).common === "",
+     JSON.stringify(T.sharedIn(["Homework", "Homework", "Homework"]).common));
 
   // AND EVERY SQUARE OF IT, WHICH IS THE COUNT THAT WAS WRONG.
   const cellsIn = CELL.reduce((n, [, c]) => n + Object.keys(c).length, 0);
@@ -694,6 +720,93 @@ ok("  and neither does a day that only sounds like one",
      picks(cycle)[0] &&
        picks(cycle)[0].children.map((o) => o.value).join() === ",odd,even",
      JSON.stringify(picks(cycle)[0] && picks(cycle)[0].children.map((o) => o.value)));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd a schedule shown as what it means, not as what it stores");
+
+// SIXTY-TWO ROWS SAYING "SUMMER VACATION" IS THE APP SHOWING ITS WORKINGS.
+//
+// A person knows one fact — the first of July to the end of August — and the
+// setup screen was listing every day of it, interleaved with Monday's English,
+// because that is how the calendar importer stores a holiday. Reading the
+// storage is not something anybody should have to do to set up a timetable.
+{
+  const day = (iso, n) => {
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const run = (label, from, n, flags) => Array.from({ length: n }, (_, i) => ({
+    id: `${label}-${i}`, label, date: day(from, i), start: "00:00", end: "23:59",
+    days: [], ...flags }));
+  const kept = [
+    { id: "eng", label: "English", start: "08:40", end: "09:25", days: [1, 3] },
+    { id: "hw", label: "Homework", start: "15:10", end: "15:50", days: [1, 2, 3, 4] },
+    ...run("Summer Vacation", "2027-07-01", 62, { blocksDay: true }),
+    ...run("National Day", "2026-10-01", 7, { blocksDay: true }),
+    ...run("Midterm — Exam Time", "2026-11-10", 3, { noLessons: true }),
+    { id: "obs", label: "Lesson observation", date: "2026-09-24",
+      start: "10:30", end: "11:15", days: [] },
+  ];
+  const g = S.groupsOf(kept);
+  ok("seventy-five stored rows are three things", kept.length === 75 &&
+     g.week.length === 2 && g.overrides.length === 3 && g.oneOffs.length === 1,
+     JSON.stringify({ week: g.week.length, overrides: g.overrides.length, oneOffs: g.oneOffs.length }));
+  const summer = g.overrides.find((x) => x.label === "Summer Vacation");
+  ok("  and a holiday is one run of days, not sixty-two rows",
+     summer && summer.from === "2027-07-01" && summer.to === "2027-08-31" && summer.days === 62,
+     JSON.stringify(summer && { from: summer.from, to: summer.to, days: summer.days }));
+  ok("  which says it really is every day in between",
+     summer && summer.solid === true, JSON.stringify(summer && summer.solid));
+  // AND A NAME ON SCATTERED DAYS IS NOT DRAWN AS A SOLID FORTNIGHT.
+  const gappy = S.spansOf(S.normalise(run("Study Leave", "2027-03-01", 1, { blocksDay: true })
+    .concat(run("Study Leave", "2027-03-15", 1, { blocksDay: true }))));
+  ok("and a name on two far-apart days says how many days it really covers",
+     gappy[0].days === 2 && gappy[0].solid === false, JSON.stringify(gappy[0]));
+  // A ONE-OFF EVENT IS NOT A CALENDAR RULE. An observation at half ten changes
+  // nothing about what the week MEANS; a holiday changes all of it.
+  ok("and an event on a date is not filed as a rule about the week",
+     g.oneOffs[0].label === "Lesson observation", JSON.stringify(g.oneOffs.map((b) => b.label)));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd the wreckage of the last attempt at the same document");
+
+// A timetable that failed to read as a week was saved as dated one-offs
+// instead. Save the real recurring week on top and the day gets both: Monday's
+// English AND the seventh of September's copy of it, at the same hour.
+{
+  const { open, deep, saveBlocks } = await import("./_dom.mjs");
+  const OLD = [
+    { id: "o1", label: "English(G1", date: "2026-09-07", start: "08:40", end: "09:25", days: [] },
+    { id: "o2", label: "Writing(E)(E", date: "2026-09-08", start: "10:30", end: "11:05", days: [] },
+    // AND A GENUINE ONE-OFF, at an hour no period of this timetable has. It is
+    // not a copy of anything and must survive.
+    { id: "keep", label: "Lesson observation", date: "2026-09-24",
+      start: "10:30", end: "11:15", days: [] },
+  ];
+  const r = await open("timeline.html", { schedule: OLD, scheduleConfig: {}, items: [], goals: [] });
+  r.get("#setupToggle").fire("click", { target: r.get("#setupToggle") });
+  await r.settle();
+  r.get("#ttText").value = "Period\tMonday\tTuesday\n08:40-09:25\tEnglish\t\n10:30-11:05\t\tWriting\n";
+  r.get("#ttRead").fire("click", { target: r.get("#ttRead") });
+  await r.settle();
+  const box = deep(r.get("#ttReview"))
+    .filter((c) => String(c.className).split(/\s+/).includes("su-old"))[0];
+  ok("the leftovers are noticed before anything is saved", !!box && !box.hidden,
+     JSON.stringify(deep(r.get("#ttReview")).map((c) => c.className).filter(Boolean).slice(0, 10)));
+  ok("  and counted, rather than left to be found",
+     /2 dated copies/.test(String(box.innerHTML)), String(box.innerHTML).slice(0, 200));
+  saveBlocks(r);
+  await r.settle();
+  const after = (r.state.schedule || []).map((b) => b.label);
+  ok("saving the week takes the copies of it out",
+     !after.some((l) => /English\(G1|Writing\(E\)\(E/.test(l)), JSON.stringify(after));
+  ok("  and leaves the one-off that was never a copy",
+     after.includes("Lesson observation"), JSON.stringify(after));
+  ok("  and the week itself goes in", after.includes("English") && after.includes("Writing"),
+     JSON.stringify(after));
 }
 
 finish();

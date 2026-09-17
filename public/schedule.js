@@ -434,6 +434,73 @@
     const m = normalise(schedule).find((b) => b.date === iso && b.runsAs !== null && !b.soft);
     return m ? m.runsAs : new Date(iso + "T12:00:00").getDay();
   }
+  // ---- THREE LAYERS, AND THEY ARE NOT THE SAME KIND OF THING ---------------
+  //
+  // A schedule is one list of blocks, and it was shown as one list of blocks:
+  // Monday's English sitting between the twenty-sixth day of Winter Vacation and
+  // the twenty-seventh. That is the storage, not the idea, and reading the
+  // storage is not something anybody should have to do to set up a timetable.
+  //
+  // There are three ideas in there and a person holds them quite separately:
+  //
+  //   the normal week   — what repeats. The timetable.
+  //   what overrides it — a vacation, a day with no lessons, a Saturday running
+  //                       another day. These say what the normal week MEANS on
+  //                       particular dates.
+  //   one-off events    — an observation at half ten, a meeting, cover.
+  //
+  // Said here rather than in the panel that draws them, because the planner
+  // needs the same three: "don't build the normal week during this range" is an
+  // immediate answer if a range is a range, and a thing to reverse-engineer out
+  // of sixty all-day appointments if it isn't.
+  //
+  // A RUN OF DAYS IS ONE THING. Sixty-two rows saying "Summer Vacation" is the
+  // app showing its workings. A person knows one fact — July the first to the
+  // thirty-first of August — and the app should say the fact and keep the
+  // workings. Gaps are kept honestly: a range that misses a week says how many
+  // days it actually covers rather than pretending to be solid.
+  function spansOf(list) {
+    const by = new Map();
+    list.forEach((b) => {
+      // What makes two of these the same thing: the same name, the same kind of
+      // day, and the same hours. Nothing else — two holidays with one name are
+      // one holiday however many rows the calendar drew them as.
+      const key = [b.label, b.blocksDay, b.noLessons, b.runsAs, b.parity, b.start, b.end].join("|");
+      if (!by.has(key)) by.set(key, { label: b.label, blocks: [], dates: [],
+        blocksDay: b.blocksDay, noLessons: b.noLessons, runsAs: b.runsAs, parity: b.parity });
+      const at = by.get(key);
+      at.blocks.push(b);
+      at.dates.push(b.date);
+    });
+    return [...by.values()].map((s) => {
+      s.dates.sort();
+      s.from = s.dates[0];
+      s.to = s.dates[s.dates.length - 1];
+      // Whether it really is a solid run, or a name that turns up on scattered
+      // days. Said, rather than smoothed over.
+      const span = Math.round(
+        (new Date(s.to + "T12:00:00") - new Date(s.from + "T12:00:00")) / 86400000) + 1;
+      s.solid = span === s.dates.length;
+      s.days = s.dates.length;
+      return s;
+    }).sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  }
+
+  function groupsOf(schedule) {
+    const all = normalise(schedule);
+    const dated = all.filter((b) => b.date && !b.days.length);
+    // A day-wide marker is one that says something about the DAY rather than
+    // occupying an hour of it: the teaching is off, you are away, or today runs
+    // another day's timetable.
+    const marks = (b) => b.blocksDay || b.noLessons || b.runsAs !== null;
+    return {
+      week: all.filter((b) => b.days.length),
+      overrides: spansOf(dated.filter(marks)),
+      oneOffs: dated.filter((b) => !marks(b)).sort((a, b) => (a.date < b.date ? -1 : 1)),
+      all,
+    };
+  }
+
   // Is this date standing in for a different one? The marker itself, or null.
   function standingIn(schedule, iso) {
     return normalise(schedule).find((b) => b.date === iso && b.runsAs !== null && !b.soft) || null;
@@ -977,6 +1044,11 @@
     standingIn,
     PARITIES,
     parityOn,
+    // THE THREE LAYERS A SCHEDULE ACTUALLY HOLDS — see groupsOf. Asked here so
+    // the panel that shows them and the planner that resolves them cannot come
+    // to different answers about what a vacation is.
+    spansOf,
+    groupsOf,
     fixedBlockAt,
     nextFreeMoment,
     estimateMinutes,

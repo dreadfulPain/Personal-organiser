@@ -12,7 +12,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { open, calRowsOf, within, deep, withAI } from "./_dom.mjs";
+import { open, calRowsOf, within, deep, withAI, saveBlocks } from "./_dom.mjs";
 
 const PUB = join(REPO_ROOT, "public");
 const UPLOAD = "/root/.claude/uploads/2a3fbe32-10e5-5444-988f-643a421d1a40/" +
@@ -619,12 +619,8 @@ sec("And reading the same week in twice does not give you two of it");
     const b = r.get("#ttRead");
     b.fire("click", { target: b });
     await r.settle();
-    const box = [...(r.get("#ttReview").children || [])]
-      .filter((c) => String(c.className || "").includes("su-review")).pop();
-    const save = [...(box.children || [])].concat(
-      ...[...(box.children || [])].map((c) => [...(c.children || [])]))
-      .find((c) => String(c.textContent || "") === "Save these blocks");
-    save.fire("click", { target: save });
+    // Answering the end-date question and pressing save — see A.saveBlocks.
+    saveBlocks(r);
     await r.settle();
   };
   await readAndSave();
@@ -648,12 +644,7 @@ sec("And reading the same week in twice does not give you two of it");
   const b2 = r.get("#ttRead");
   b2.fire("click", { target: b2 });
   await r.settle();
-  const box2 = [...(r.get("#ttReview").children || [])]
-    .filter((c) => String(c.className || "").includes("su-review")).pop();
-  const save2 = [...(box2.children || [])].concat(
-    ...[...(box2.children || [])].map((c) => [...(c.children || [])]))
-    .find((c) => String(c.textContent || "") === "Save these blocks");
-  save2.fire("click", { target: save2 });
+  saveBlocks(r);
   await r.settle();
   ok("the same lesson on another day still goes in", (r.state.schedule || []).length === 4,
      JSON.stringify((r.state.schedule || []).map((b) => `${b.label} ${b.days}`)));
@@ -1339,7 +1330,7 @@ sec("And the things it tells you to bring");
 
   jobs.find((c) => /passport/.test(String(c.textContent))).click();
   await r.settle();
-  r.created.find((e) => String(e.textContent) === "Save these blocks").click();
+  saveBlocks(r);
   await r.settle();
 
   const items = r.state.items || [];
@@ -1492,7 +1483,7 @@ sec("And the imported sessions become that, by default");
   mins.value = "30";
   mins.fire("change", { target: mins });
   await r.settle();
-  r.created.find((e) => String(e.textContent) === "Save these blocks").click();
+  saveBlocks(r);
   await r.settle();
   const sched = S.normalise(r.state.schedule || []);
   ok("both went in as places to be on time",
@@ -4200,9 +4191,7 @@ sec("Seventeen things found by using the timetable panel rather than reading it"
        / on\b/.test(String(there.className)), there.className);
     there.fire("click", { target: there });
     await r.settle();
-    const save = A.within(r.get("#ttReview"), "Save these blocks")[0] ||
-      A.clickable(r).find((c) => String(c.textContent) === "Save these blocks");
-    save.fire("click", { target: save });
+    saveBlocks(r);
     await r.settle();
     const kept = (r.state.schedule || []);
     const brkB = kept.find((b) => b.label === "Break");

@@ -4645,3 +4645,34 @@ a.btn {
    rather than news — but present after every run, because a reading you cannot
    account for is a reading you cannot trust. */
 .su-who { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 10px; }
+
+/* ---- THE THREE LAYERS A SCHEDULE HOLDS ----------------------------------
+   The normal week, what overrides it, and one-off events. They were one flat
+   list of stored rows — Monday's English between the twenty-sixth day of
+   Winter Vacation and the twenty-seventh — which is the storage rather than
+   the idea. See OrganiserSchedule.groupsOf. */
+.su-layer { margin: 0 0 18px; }
+.su-layer > h3,
+.su-layer > summary > h3 { margin: 0 0 6px; font-size: 0.95rem; display: inline; }
+.su-layer > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.su-layer > summary::-webkit-details-marker { display: none; }
+.su-layer > summary::before { content: "▸ "; color: var(--ink-soft); }
+.su-layer[open] > summary::before { content: "▾ "; }
+/* A calendar rule is a run of days, said once. */
+.su-override .su-bwhen { min-width: 15em; }
+.su-omeans { color: var(--ink-soft); font-size: 0.85rem; }
+
+/* WHAT AN EARLIER GO AT THE SAME DOCUMENT LEFT BEHIND. A timetable that failed
+   to read as a week was saved as dated one-offs, and the real week saved on top
+   of it gives the day both. */
+.su-old { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--changed);
+  border-left-width: 5px; border-radius: var(--radius); background: var(--changed-soft); }
+.su-old p { margin: 0 0 8px; font-size: 0.88rem; }
+.su-oldlist { margin-top: 8px; font-size: 0.8rem; }
+.su-oldlist > summary { cursor: pointer; color: var(--ink-soft); }

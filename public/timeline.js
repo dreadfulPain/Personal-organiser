@@ -3769,12 +3769,18 @@
   // plain reader had won, or whether the model had quietly failed and the plain
   // one had taken over — and "15 blocks read" reads identically in all four
   // cases. A reading you cannot account for is a reading you cannot trust.
+  let forEver = false;
+  let dropOld = null;
   let readBy = null;
-  const clearRead = () => { readBy = { here: null, model: null, shown: "" }; };
+  const clearRead = () => { readBy = { here: null, model: null, shown: "", shared: "" }; };
   clearRead();
 
   function showRead(got, from, thin, ms) {
     readBy.here = { n: got.blocks.length, ms: typeof ms === "number" ? ms : null };
+    // What every square of the page also said — taken out of the names and said
+    // once, because removing words from eighteen lessons without mentioning it
+    // is the app quietly editing the document. See sharedIn.
+    readBy.shared = got.shared || "";
     readBy.shown = "here";
     pastedBlocks = got.blocks.map((b) => ({ ...b, id: uid(), keep: true, beThere: b.beThere !== false }));
     // How it was come by, and what is doubtful about it — both set here so
@@ -4272,9 +4278,17 @@
     if (!pastedBlocks || !pastedBlocks.length) return box;
     const p = document.createElement("p");
     p.className = "muted";
+    // NOT A DEFAULT ANY MORE. "For ever" is the wrong answer for a timetable and
+    // it was what you got by not answering: a week that runs through every
+    // holiday, so sixty-two days of Summer Vacation exist only to switch off a
+    // lesson that should never have been generated. A term has an end and the
+    // document it came from usually says when — so this asks, and the save
+    // refuses until it has an answer either way.
     p.textContent = termFrom || termTo
       ? "These run between those dates and nowhere else."
-      : "Left blank, these run every week for ever — through the holidays too. Put the term's dates in and they stop at the end of it.";
+      : forEver
+        ? "These will run every week with no end date — through the holidays too, unless a calendar rule switches them off."
+        : "When does this timetable stop? A term has an end, and without one these run every week for ever — through the holidays too.";
     box.appendChild(p);
     const row = document.createElement("div");
     row.className = "su-row";
@@ -4285,6 +4299,18 @@
     lab.querySelector(".tm-from").addEventListener("change", (e) => { termFrom = e.target.value || ""; renderSetup(); });
     lab.querySelector(".tm-to").addEventListener("change", (e) => { termTo = e.target.value || ""; renderSetup(); });
     row.appendChild(lab);
+    // AND THE OTHER HONEST ANSWER, said out loud rather than got by silence.
+    // Some things really do run all year: a standing duty, a weekly meeting.
+    const all = document.createElement("button");
+    all.type = "button";
+    all.className = "p-opt su-chip" + (forEver ? " on" : "");
+    all.textContent = forEver ? "no end date ✓" : "no end date";
+    all.addEventListener("click", () => {
+      forEver = !forEver;
+      if (forEver) { termFrom = ""; termTo = ""; }
+      renderSetup();
+    });
+    row.appendChild(all);
     box.appendChild(row);
     return box;
   }
@@ -4407,11 +4433,66 @@
         `${readBy.model.n} block${readBy.model.n === 1 ? "" : "s"} in ${took(readBy.model.ms)}`);
     else if (aiHere && S().normaliseConfig(cfg).modelFirst)
       said.push("the model wasn't asked, or didn't answer");
-    if (!said.length) { box.hidden = true; return box; }
+    if (!said.length && !readBy.shared) { box.hidden = true; return box; }
+    if (readBy.shared)
+      said.push(`every square also said “${readBy.shared}” — kept, but not as part of any name`);
     const shown = readBy.here && readBy.model
       ? ` · showing the ${readBy.shown === "model" ? "model's" : "one read here"}`
       : "";
     box.textContent = said.join(" · ") + shown + ".";
+    return box;
+  }
+
+  // THE WRECKAGE OF THE LAST ATTEMPT.
+  //
+  // A timetable that failed to read as a week was saved as dated one-offs
+  // instead — "2026-09-07 08:40–09:25 English(G1" — one copy per lesson per
+  // day, sitting in the schedule alongside nothing. Save the real recurring
+  // week on top and the Day view gets both: Monday's English AND the seventh of
+  // September's copy of it, at the same hour, looking like a clash.
+  //
+  // Found by SHAPE and not by name: a one-off, on a date, in exactly one of the
+  // periods this document has. A genuine one-off at half ten for forty-five
+  // minutes is not in any period and is left alone; a lesson copied out of this
+  // very timetable is in one by construction.
+  function oldCopies() {
+    if (!pastedBlocks || !pastedBlocks.length) return [];
+    const periods = new Set(pastedBlocks
+      .filter((b) => b.keep && (b.days || []).length)
+      .map((b) => `${b.start}-${b.end}`));
+    if (!periods.size) return [];
+    return S().normalise(schedule).filter((b) =>
+      b.date && !b.days.length && !b.blocksDay && !b.noLessons && b.runsAs === null &&
+      periods.has(`${b.start}-${b.end}`));
+  }
+
+  function oldImportBox() {
+    const box = document.createElement("div");
+    box.className = "su-old";
+    const old = oldCopies();
+    if (!old.length) { box.hidden = true; return box; }
+    if (dropOld === null) dropOld = true;
+    const days = new Set(old.map((b) => b.date)).size;
+    box.innerHTML =
+      `<p><strong>${old.length} dated cop${old.length === 1 ? "y" : "ies"} of these same periods
+       ${old.length === 1 ? "is" : "are"} already saved</strong>, across ${days}
+       day${days === 1 ? "" : "s"} — an earlier go at this document that came out as one-off
+       events instead of a week. Left in, the day would show both.</p>`;
+    const tick = document.createElement("button");
+    tick.type = "button";
+    tick.className = "p-opt su-chip" + (dropOld ? " on" : "");
+    tick.textContent = dropOld ? `remove them when I save ✓` : "keep them";
+    tick.addEventListener("click", () => { dropOld = !dropOld; renderSetup(); });
+    box.appendChild(tick);
+    const seen = document.createElement("details");
+    seen.className = "su-oldlist";
+    seen.innerHTML = `<summary>which ones</summary>` +
+      old.slice(0, 40).map((b) =>
+        `<div class="su-brow"><span class="su-bwhen">${escapeHtml(b.date)} ` +
+        `${escapeHtml(S().fmtSpan(b.start, b.end))}</span>` +
+        `<span class="su-blabel">${escapeHtml(b.label)}</span></div>`).join("") +
+      (old.length > 40 ? `<p class="muted">…and ${old.length - 40} more.</p>` : "");
+    box.appendChild(seen);
     return box;
   }
 
@@ -4450,6 +4531,8 @@
         : "");
     // WHO READ IT, BEFORE ANYTHING ELSE — see readBy.
     box.appendChild(whoRead());
+    // AND WHAT AN EARLIER GO AT THE SAME DOCUMENT LEFT BEHIND.
+    box.appendChild(oldImportBox());
     // THE GRID FIRST, THE ROWS UNDER IT. One is for seeing whether the reading
     // is right; the other is for fixing it once you know it isn't.
     box.appendChild(gridPreview(pastedBlocks));
@@ -4604,7 +4687,17 @@
     save.className = "btn";
     save.textContent = "Save these blocks";
     save.addEventListener("click", () => {
+      // ASKED ONCE, AND IT HAS TO BE ANSWERED. A repeating block with no end is
+      // a decision, not a blank.
+      if (!termFrom && !termTo && !forEver && pastedBlocks.some((b) => b.keep && (b.days || []).length)) {
+        setSuStatus("Say when this timetable stops — or tick “no end date” if it really doesn't.");
+        return;
+      }
       const wanted = pastedBlocks.filter((b) => b.keep);
+      // OUT WITH THE OLD COPIES FIRST, so the week that replaces them is not
+      // saved alongside them for even one render.
+      const scrap = dropOld ? new Set(oldCopies().map((b) => b.id)) : new Set();
+      if (scrap.size) schedule = S().normalise(schedule).filter((b) => !scrap.has(b.id));
       const kept = wanted
         .map((b) => S().normaliseBlock({
           ...b,
@@ -4638,12 +4731,15 @@
       const jobs = applyJobs();
       pastedBlocks = null;
       jobPick = null;
+      dropOld = null;
+      forEver = false;
       thereMins = 0;
       persist();
       renderSetup();
       render();
       setSuStatus(
         `Saved ${fresh.length} block${fresh.length === 1 ? "" : "s"}. ✓` +
+        (scrap.size ? ` ${scrap.size} dated cop${scrap.size === 1 ? "y" : "ies"} left over from an earlier read of it ${scrap.size === 1 ? "was" : "were"} taken out.` : "") +
         // SAID, NOT SWALLOWED. "Saved 32" when you were looking at 40 is the
         // failure you cannot see, and the eight that went are the eight you
         // would want to know about.
@@ -4803,70 +4899,155 @@
     [String(b.label || "").trim().toLowerCase(), b.start, b.end,
      (b.days || []).slice().sort().join(","), b.date || ""].join("|");
 
+  // ---- WHAT IS ALREADY SET UP, IN THE THREE SHAPES IT ACTUALLY HAS ---------
+  //
+  // This was one flat list of every stored block, and it was the storage rather
+  // than the idea: Monday's English sitting between the twenty-sixth day of
+  // Winter Vacation and the twenty-seventh, with sixty-two rows of Summer
+  // Vacation under it. Nobody needs to look at the seventeenth of July to know
+  // that the summer holiday runs from July to the end of August.
+  //
+  // So this screen has one job again — set up the week — and the three layers
+  // are named rather than interleaved. See OrganiserSchedule.groupsOf.
+  const rangeWords = (s2) => {
+    const D = window.OrganiserDates;
+    const day = (iso) => (D ? D.dayWords(iso, { year: true, relative: false }) : iso);
+    const when = s2.from === s2.to ? day(s2.from) : `${day(s2.from)} – ${day(s2.to)}`;
+    // Honest about a name that turns up on scattered days rather than drawing a
+    // solid block over a fortnight it does not cover.
+    return when + (s2.solid || s2.days === 1 ? "" : ` · ${s2.days} days`);
+  };
+  const overrideMeans = (s2) =>
+    s2.blocksDay ? "no timetable — a day off"
+      : s2.noLessons ? "no timetable — the lessons are off"
+        : s2.runsAs !== null
+          ? `runs ${(window.OrganiserDates && OrganiserDates.DAY_NAMES[s2.runsAs]) || "another day"}'s timetable` +
+            (s2.parity ? ` · ${s2.parity} week` : "")
+          : "";
+
+  function blockRowEl(b, el) {
+    if (editingBlockId === b.id) return blockForm(b);
+    const row = document.createElement("div");
+    row.className = "su-brow" + (b.soft ? " soft" : "");
+    row.innerHTML = `
+      <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
+      <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.parity ? ` <span class="su-swaptag">${escapeHtml(b.parity)} weeks</span>` : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${S().mustBeThere(b) ? ` <span class="su-theretag">be there${b.where ? ` · ${escapeHtml(b.where)}` : ""}${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}${(b.extras || []).map((x) => ` <span class="su-extra">${escapeHtml(x.name)}: ${escapeHtml(x.value)}</span>`).join("")}</span>`;
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "link";
+    edit.textContent = "edit";
+    edit.addEventListener("click", () => { editingBlockId = b.id; renderSetup(); });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "link";
+    del.textContent = "remove";
+    del.addEventListener("click", () => {
+      schedule = S().normalise(schedule).filter((x) => x.id !== b.id);
+      persist();
+      renderSetup();
+      render();
+      setSuStatus(`Removed “${b.label}”.`);
+    });
+    // NOT THIS WEEK. A swap, a cover, a trip — the pattern is still right for
+    // every other week, and deleting the lesson to record one Tuesday would be
+    // throwing away the term to fix a day.
+    const swap = document.createElement("button");
+    swap.type = "button";
+    swap.className = "link su-swapbtn";
+    swap.textContent = swappingId === b.id ? "never mind" : "not on…";
+    swap.addEventListener("click", () => {
+      swappingId = swappingId === b.id ? "" : b.id;
+      renderSetup();
+    });
+    row.append(edit, swap, del);
+    el.appendChild(row);
+    if (swappingId === b.id) el.appendChild(swapForm(b));
+    return null;
+  }
+
+  function overrideRow(s2) {
+    const row = document.createElement("div");
+    row.className = "su-brow su-override";
+    row.innerHTML =
+      `<span class="su-bwhen">${escapeHtml(rangeWords(s2))}</span>` +
+      `<span class="su-blabel">${escapeHtml(s2.label)}` +
+      `<span class="su-omeans"> — ${escapeHtml(overrideMeans(s2))}</span></span>`;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "link";
+    del.textContent = s2.days === 1 ? "remove" : `remove all ${s2.days}`;
+    del.addEventListener("click", () => {
+      // ONE FACT, REMOVED ONCE. Taking a holiday out a day at a time is
+      // twenty-six presses to undo one mistake.
+      const ids = new Set(s2.blocks.map((b) => b.id));
+      schedule = S().normalise(schedule).filter((x) => !ids.has(x.id));
+      persist();
+      renderSetup();
+      render();
+      setSuStatus(`Removed “${s2.label}” — ${s2.days} day${s2.days === 1 ? "" : "s"}.`);
+    });
+    row.appendChild(del);
+    return row;
+  }
+
   function renderBlockList() {
     const el = $("#blockList");
     if (!el) return;
-    const list = S().normalise(schedule).sort((a, b) => (a.days[0] ?? 9) - (b.days[0] ?? 9) || S().toMin(a.start) - S().toMin(b.start));
     el.innerHTML = "";
-    if (!list.length) {
+    const g = S().groupsOf(schedule);
+    if (!g.all.length) {
       el.innerHTML = `<p class="empty">No blocks yet.</p>`;
       return;
     }
-    // SAID WHERE THE THING IT DESCRIBES IS. "Blocks marked fixed are facts and
-    // hold reminders back; soft ones are guesses and never silence anything"
-    // was the second sentence on the panel, above an empty page, about a word
-    // that appears on no block until you have some.
-    const soft = document.createElement("p");
-    soft.className = "muted su-listnote";
-    soft.textContent = "Anything marked guess is a soft block — it never silences a reminder " +
-      "and the planner may move work through it. The rest are treated as facts.";
-    el.appendChild(soft);
-    list.forEach((b) => {
-      if (editingBlockId === b.id) {
-        el.appendChild(blockForm(b));
-        return;
-      }
-      const row = document.createElement("div");
-      row.className = "su-brow" + (b.soft ? " soft" : "");
-      row.innerHTML = `
-        <span class="su-bwhen">${escapeHtml(daysWords(b))} ${escapeHtml(S().fmtSpan(b.start, b.end))}</span>
-        <span class="su-blabel">${escapeHtml(b.label)}${b.soft ? ' <span class="su-softtag">guess</span>' : ""}${b.swappable ? ' <span class="su-swaptag">could swap</span>' : ""}${S().mustBeThere(b) ? ` <span class="su-theretag">be there${b.where ? ` · ${escapeHtml(b.where)}` : ""}${b.getThere ? ` · ${b.getThere}m away` : ""}</span>` : ""}${b.skip.length ? ` <span class="su-skiptag">off ${b.skip.length} day${b.skip.length === 1 ? "" : "s"}</span>` : ""}${b.prep && b.prep.on ? ` <span class="su-preptag">gets ready ${b.prep.leadDays === 0 ? "same day" : b.prep.leadDays + "d before"}</span>` : ""}${(b.extras || []).map((x) => ` <span class="su-extra">${escapeHtml(x.name)}: ${escapeHtml(x.value)}</span>`).join("")}</span>`;
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "link";
-      edit.textContent = "edit";
-      edit.addEventListener("click", () => {
-        editingBlockId = b.id;
-        renderSetup();
-      });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "link";
-      del.textContent = "remove";
-      del.addEventListener("click", () => {
-        const kept = S().normalise(schedule).filter((x) => x.id !== b.id);
-        const gone = b;
-        schedule = kept;
-        persist();
-        renderSetup();
-        render();
-        setSuStatus(`Removed “${gone.label}”.`);
-      });
-      // NOT THIS WEEK. A swap, a cover, a trip — the pattern is still right for
-      // every other week, and deleting the lesson to record one Tuesday would
-      // be throwing away the term to fix a day.
-      const swap = document.createElement("button");
-      swap.type = "button";
-      swap.className = "link su-swapbtn";
-      swap.textContent = swappingId === b.id ? "never mind" : "not on…";
-      swap.addEventListener("click", () => {
-        swappingId = swappingId === b.id ? "" : b.id;
-        renderSetup();
-      });
-      row.append(edit, swap, del);
-      el.appendChild(row);
-      if (swappingId === b.id) el.appendChild(swapForm(b));
-    });
+
+    // ONE: THE NORMAL WEEK. What this screen is for, so it comes first and it
+    // is the only layer opened by default.
+    const week = document.createElement("div");
+    week.className = "su-layer";
+    week.innerHTML = `<h3>Your normal week</h3>`;
+    if (!g.week.length) week.insertAdjacentHTML("beforeend", `<p class="empty">Nothing repeating yet.</p>`);
+    else {
+      // SAID WHERE THE THING IT DESCRIBES IS. "Blocks marked fixed are facts"
+      // was once the second sentence on the panel, above an empty page, about a
+      // word that appears on no block until you have some.
+      if (g.week.some((b) => b.soft))
+        week.insertAdjacentHTML("beforeend",
+          `<p class="muted su-listnote">Anything marked guess is a soft block — it never silences a
+           reminder and the planner may move work through it. The rest are treated as facts.</p>`);
+      g.week
+        .slice()
+        .sort((a, b) => (a.days[0] ?? 9) - (b.days[0] ?? 9) || S().toMin(a.start) - S().toMin(b.start))
+        .forEach((b) => { const form = blockRowEl(b, week); if (form) week.appendChild(form); });
+    }
+    el.appendChild(week);
+
+    // TWO: WHAT OVERRIDES IT. Ranges, not days — see spansOf.
+    if (g.overrides.length) {
+      const box = document.createElement("details");
+      box.className = "su-layer";
+      box.open = g.overrides.length <= 6;
+      const head = document.createElement("summary");
+      head.innerHTML = `<h3>What changes it — ${g.overrides.length} calendar ` +
+        `rule${g.overrides.length === 1 ? "" : "s"}</h3>`;
+      box.appendChild(head);
+      box.insertAdjacentHTML("beforeend",
+        `<p class="muted su-listnote">These say what your normal week means on particular
+         dates. Each one is a whole run of days, however many the calendar listed.</p>`);
+      g.overrides.forEach((s2) => box.appendChild(overrideRow(s2)));
+      el.appendChild(box);
+    }
+
+    // THREE: ONE-OFFS. Folded, because they are a long tail by nature.
+    if (g.oneOffs.length) {
+      const box = document.createElement("details");
+      box.className = "su-layer";
+      box.open = g.oneOffs.length <= 6;
+      const head = document.createElement("summary");
+      head.innerHTML = `<h3>One-off events — ${g.oneOffs.length}</h3>`;
+      box.appendChild(head);
+      g.oneOffs.forEach((b) => { const form = blockRowEl(b, box); if (form) box.appendChild(form); });
+      el.appendChild(box);
+    }
   }
 
   // The dates one block doesn't run on, and adding another.

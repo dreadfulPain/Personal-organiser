@@ -340,3 +340,22 @@ export const clickable = (r) => {
 // Find a control by what it says on it.
 export const saying = (r, re) =>
   clickable(r).filter((e) => re.test(String(e.textContent || "")));
+
+// PRESSING SAVE ON THE TIMETABLE PANEL, which now asks one question first.
+//
+// A repeating block with no end date is a decision rather than a blank — left
+// blank it ran every week for ever, through every holiday, so sixty-two days of
+// Summer Vacation existed only to switch off lessons that should never have
+// been made. The panel refuses to save until it has an answer either way.
+//
+// Said here once, because every suite that saves a timetable has to answer it
+// and they must all answer it the same way.
+export const saveBlocks = (r) => {
+  const noEnd = clickable(r).find((c) => /^no end date/.test(String(c.textContent || "")));
+  if (noEnd) noEnd.click();
+  // Found again AFTER the answer: answering rebuilds the panel, so the button
+  // held from before is one that is no longer on the page.
+  const save = clickable(r).find((c) => String(c.textContent || "") === "Save these blocks");
+  if (save) save.click();
+  return !!save;
+};

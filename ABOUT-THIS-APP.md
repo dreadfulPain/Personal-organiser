@@ -209,6 +209,78 @@ fills the whole day and is not one of the day rules is that old importer's mark,
 and there is nothing else it can sensibly be. `tests/whenitis.mjs` is the table
 of how each of the four resolves, kept as a test so it goes on being true.
 
+### A day rule changes the schedule; an overlay sits on top of it
+
+Two kinds of thing arrive from a calendar and they are not variants of each
+other:
+
+- **A day rule** alters the base week — *no timetable*, *I'm away*, *runs
+  Tuesday's lessons*. Afterwards the day is a different day.
+- **An overlay** is additional — a meeting, an observation, an assembly, a
+  professional development session. The normal day is still underneath it, with
+  all its lessons and all its gaps, and this is one more thing in it.
+
+Getting it wrong is expensive in one direction. A development day read as a day
+rule **suppresses the whole timetable** — every lesson, every duty, every free
+period — when what actually happened is that one extra thing was added to an
+ordinary working day. Plenty of schools run PD alongside a normal timetable, or
+after it. Nothing here knows what "PD" means and nothing should: what it knows is
+that *"something is on today"* and *"today is not a normal day"* are different
+sentences. `isDayRule` / `isOverlay` name it; the two are exclusive by
+construction, and behavioural tests hold them apart.
+
+An untimed overlay is therefore a **question**, not a change: PD with no time
+given lands in *Needs a time* and the day is otherwise untouched.
+
+### A school calendar cannot tell you that you are away
+
+It can say the school is shut. Whether you are somewhere else, or at your desk
+getting ahead of the term, is not on the sheet and never was — and the
+difference is the whole fortnight.
+
+So the words a school calendar actually prints — *holiday*, *vacation*, *closed*,
+*no school* — now mean the **timetable does not apply**, not that you are away.
+A fortnight of that is a fortnight of time you could use, and often the best
+chance there is to be ready for the term after it. Read as "away" it was a
+fortnight the app refused to plan one minute into.
+
+*"I'm away"* stays, because it is a real and useful state — but it is **your**
+answer to give, and no document can give it for you. The panel's two answers now
+say what they do to the week rather than being near-synonyms: *no timetable* and
+*I'm away*.
+
+One consequence, chosen deliberately: **"working day" now vetoes *no timetable*
+as well as *away*.** "Autumn break — is a working day", inside a list of
+closures, is the exception that list is announcing, and settling it without
+anybody asking is the worst case there is — nobody proposed it, and what is lost
+is a day of teaching. A staff-only working day with no classes does exist and
+now costs one question. That is the trade this reader is biased towards on
+purpose.
+
+### Available is not the same as how much to do there — the layer after this one
+
+**Not built, and the data model is being kept clear for it.** Availability and
+workload are different axes:
+
+- `occupied / protected / usable / unknown` answers **when work could happen**.
+- A capacity or work-budget layer will answer **how much work should go there**.
+
+A holiday may hold a great deal of usable time while the planner should normally
+use very little of it — and then, seeing reports, marking and parents' meetings
+converging on one week, deliberately pull two suitable jobs forward into the
+break so the crunch week is 90 minutes lighter. *"The week of Nov 9 is
+overloaded; doing these two 45-minute tasks over the break takes about 90 minutes
+out of it."*
+
+That is the app's original purpose — smoothing work across time rather than
+reacting to today — and it is only possible if a holiday is **available but
+low-budget** rather than untouchable. Making it unavailable answers the budget
+question wrongly, for ever, and takes that chance away with it.
+
+It is also the same mechanism as *"you have done enough"*: once the day's budget
+is met and nothing ahead is at risk, the remaining usable time simply **is** rest.
+Not a silence where the list ran out — a budget that has been satisfied.
+
 ### Nothing scheduled is not the same as free
 
 This was the mistake, and the Day screen is what exposed it. A real Wednesday —

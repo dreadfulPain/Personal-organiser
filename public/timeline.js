@@ -978,7 +978,12 @@
     // marked day arrived as an hour in your week, ticked "somewhere you have to
     // be", so a calendar with fifteen holidays on it offered to book you in for
     // all fifteen. That is not a wrong guess so much as a question never asked.
-    const KINDS = [["off", "day off"], ["noLessons", "no lessons"],
+    // WHAT EACH ANSWER DOES, rather than what it is called. "Day off" and "no
+    // lessons" read as near-synonyms and are not: the first means the app plans
+    // nothing at all, the second means the timetable does not apply and the day
+    // is still yours. A school holiday is the second — a fortnight the app
+    // refuses to plan a minute into is a fortnight you lose.
+    const KINDS = [["noLessons", "no timetable"], ["off", "I'm away"],
                    ["week", "in my week"], ["runsAs", "runs another day"], ["", "ignore"]];
     box.appendChild(el("p", "muted",
       "Marked on the calendar itself, and nowhere else in it. " +
@@ -1755,8 +1760,13 @@
   function meansWords(r) {
     const day = r.runsAsDay === undefined ? "" : DAY_WORDS[r.runsAsDay];
     return {
-      off: "day off",
-      noLessons: "in, but no lessons",
+      // WHAT IT WILL DO TO THE WEEK, which is the sentence being read. "Day
+      // off" and "no lessons" read as near-synonyms and are not — one plans
+      // nothing at all, the other suspends the timetable and leaves the day
+      // yours, which for a fortnight of holiday is the difference between a
+      // fortnight you could use and a fortnight the app refuses to touch.
+      off: "you're away — nothing planned",
+      noLessons: "no timetable, the day is still yours",
       week: r.start ? `in your week at ${r.start}` : "in your week",
       runsAs: day ? `runs ${day}'s timetable` : "runs another day's timetable",
       due: r.start ? `due by ${r.start}` : "due that day",
@@ -1862,7 +1872,7 @@
       // your own deadline or thrown away, and this app has had tasks with
       // deadlines since the beginning — the calendar just had no way to reach
       // them. See toTasks.
-      [["noLessons", "no lessons"], ["off", "day off"], ["week", "in my week"],
+      [["noLessons", "no timetable"], ["off", "I'm away"], ["week", "in my week"],
        ["runsAs", "runs another day"], ["due", "due that day"],
        ["lessons", "lessons start"], ["", "ignore"]].forEach(([k, lab]) => {
         const b = document.createElement("button");

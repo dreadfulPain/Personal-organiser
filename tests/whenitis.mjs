@@ -511,4 +511,90 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
        .map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}:${g.days.join("")}`)));
 }
 
+// ---------------------------------------------------------------------------
+console.log("\nA day rule changes the schedule; an overlay sits on top of it");
+
+// GETTING THIS WRONG IS EXPENSIVE IN ONE DIRECTION. A development day read as a
+// day rule SUPPRESSES THE WHOLE TIMETABLE — every lesson, every duty, every
+// free period — when what actually happened is that one extra thing was added
+// to an otherwise ordinary working day. Plenty of schools run development
+// sessions alongside a normal timetable, or after it.
+//
+// Nothing here knows what "PD" means and nothing should. What it knows is that
+// "something is on today" and "today is not a normal day" are different
+// sentences.
+{
+  const PD = "2026-10-16";   // a Friday
+  const week = [
+    { id: "a", label: "English", start: "08:40", end: "09:25", days: [5], kind: "teaching" },
+    { id: "b", label: "P5 English", start: "14:10", end: "15:00", days: [5], kind: "teaching" },
+  ];
+  const overlay = week.concat([{ id: "pd", label: "Professional Development", date: PD,
+    start: "00:00", end: "23:59", days: [] }]);
+  const rule = week.concat([{ id: "pd", label: "Professional Development", date: PD,
+    start: "00:00", end: "23:59", days: [], noLessons: true }]);
+
+  ok("an extra thing on a normal day is an overlay, not a rule",
+     S.isOverlay(S.normaliseBlock(overlay[2])) && !S.isDayRule(S.normaliseBlock(overlay[2])),
+     JSON.stringify({ overlay: S.isOverlay(S.normaliseBlock(overlay[2])) }));
+  const asRule = (o) => S.normaliseBlock({ label: "x", date: PD, start: "00:00",
+    end: "23:59", days: [], ...o });
+  ok("  while no timetable, away and runs-another-day are rules",
+     [{ noLessons: true }, { blocksDay: true }, { runsAs: 2, end: "00:01" }]
+       .every((o) => S.isDayRule(asRule(o))),
+     "a rule was read as an overlay");
+  // AND NOTHING IS BOTH. The two are exclusive by construction, which is what
+  // makes them a distinction rather than two adjectives.
+  ok("  and nothing is both at once",
+     [{ noLessons: true }, { blocksDay: true }, { runsAs: 2, end: "00:01" }]
+       .every((o) => !S.isOverlay(asRule(o))),
+     JSON.stringify([{ noLessons: true }, { blocksDay: true }, { runsAs: 2, end: "00:01" }]
+       .map((o) => S.isOverlay(asRule(o)))));
+
+  // THE WHOLE POINT: the ordinary day survives underneath the overlay.
+  ok("the day keeps every lesson underneath an overlay",
+     S.blocksOn(overlay, PD).filter((b) => /English/.test(b.label)).length === 2,
+     JSON.stringify(S.blocksOn(overlay, PD).map((b) => b.label)));
+  ok("  and every gap of it too",
+     S.gapsOn(overlay, CFG, PD).reduce((n, g) => n + (g.end - g.start), 0) ===
+       S.gapsOn(week, CFG, PD).reduce((n, g) => n + (g.end - g.start), 0),
+     JSON.stringify(S.gapsOn(overlay, CFG, PD).map((g) => `${S.toHM(g.start)}-${S.toHM(g.end)}`)));
+  // AND THE SAME LINE AS A RULE TAKES THE TIMETABLE OFF THE DAY, which is what
+  // it is for — and what must not happen by accident.
+  ok("while the same thing as a rule suspends the timetable",
+     S.noTeachingOn(rule, PD) === true && S.noTeachingOn(overlay, PD) === false,
+     JSON.stringify({ rule: S.noTeachingOn(rule, PD), overlay: S.noTeachingOn(overlay, PD) }));
+
+  // AND AN UNTIMED OVERLAY IS A QUESTION, not a change to the day.
+  ok("and an overlay with no hour on it is something to be given a time",
+     S.normaliseBlock(overlay[2]).timing === "sometime" &&
+       S.whenWords(S.normaliseBlock(overlay[2])) === "sometime that day",
+     S.whenWords(S.normaliseBlock(overlay[2])));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd a school calendar cannot tell you that you are away");
+
+// A sheet can say the school is shut. Whether you are somewhere else, or at
+// your desk getting ahead of the term, is not on it and never was — and the
+// difference is the whole fortnight. Read as "away", a holiday was time the app
+// refused to plan a single minute into.
+{
+  const HOL = "2027-01-25";
+  const shut = [{ id: "h", label: "Winter Vacation", date: HOL, start: "00:00",
+    end: "23:59", days: [], noLessons: true }];
+  const away = [{ id: "h", label: "Winter Vacation", date: HOL, start: "00:00",
+    end: "23:59", days: [], blocksDay: true }];
+  const mins = (list) => S.gapsOn(list, CFG, HOL).reduce((n, g) => n + (g.end - g.start), 0);
+  ok("a holiday is time you could use", mins(shut) > 0, `${mins(shut)} minutes`);
+  // HOW MUCH OF IT SHOULD BE USED IS A DIFFERENT QUESTION, and not this one.
+  // A budget layer answers that later; making it unavailable answers it wrongly
+  // and for ever, and takes the app's best chance to get ahead of a crunch week
+  // away with it.
+  ok("  and how much of it to use is a separate question, not answered here",
+     mins(shut) === 600, `${mins(shut)} minutes`);
+  ok("while a day you say you are away is still yours to refuse",
+     mins(away) === 0, `${mins(away)} minutes`);
+}
+
 finish();

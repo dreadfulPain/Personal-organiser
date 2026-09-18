@@ -1483,7 +1483,7 @@ You are asked for this so that they do not have to answer the same question thir
 
 - "means" is what the entry does to their working week. Exactly one of:
     "off"       — they are not working: a holiday, a public holiday, a break.
-    "noLessons" — a working day with no teaching: a training day, a staff-only day, an exam day with no classes.
+    "noLessons" — a working day where THE TIMETABLE DOES NOT RUN, and the line says so: "no lessons", "no classes", "classes suspended", "student-free", or a closure/holiday. A training day, a development day or an INSET day is NOT automatically one of these: plenty of schools run PD alongside a normal timetable, or after it. Unless the line says the lessons stop, a training day is "week" — something ON the day, not instead of it.
     "week"      — something that happens AT A TIME on a working day they should turn up to: a meeting, a parents' evening, a ceremony.
     "runsAs"    — a working day that follows a DIFFERENT day's timetable, which is how a school pays for a holiday. Put the weekday it follows in "runsAsDay" (0=Sunday … 6=Saturday).
     "due"       — something has to be finished by then: papers in, marks in, reports out.
@@ -1532,7 +1532,7 @@ For each number:
 
 - "means" is what it does to their working week. Exactly one of:
     "off"       — they are not working: a holiday, a public holiday, a break.
-    "noLessons" — a working day with no teaching: a training day, a staff-only day, an exam day with no classes.
+    "noLessons" — a working day where THE TIMETABLE DOES NOT RUN, and the line says so: "no lessons", "no classes", "classes suspended", "student-free", or a closure/holiday. A training day, a development day or an INSET day is NOT automatically one of these: plenty of schools run PD alongside a normal timetable, or after it. Unless the line says the lessons stop, a training day is "week" — something ON the day, not instead of it.
     "week"      — something that happens AT A TIME on a working day they should turn up to: a meeting, a parents' evening, a ceremony.
     "runsAs"    — a working day that follows a DIFFERENT day's timetable, which is how a school pays for a holiday. Put the weekday it follows in "runsAsDay" (0=Sunday … 6=Saturday).
     "due"       — something has to be finished by then: papers in, marks in, reports out.
@@ -1930,19 +1930,39 @@ function ofItsOwn(context, said) {
 // and deliberately biased towards asking: a phrase missing from "for" costs a
 // question, and a wrong phrase in it costs somebody a day of their term.
 const SAYS_SO = {
+  // A SCHOOL CALENDAR CANNOT TELL YOU THAT YOU ARE AWAY.
+  //
+  // It can say the school is shut. Whether you are somewhere else, or at your
+  // desk getting ahead of the term, is not on the sheet and never was — and the
+  // difference is the whole day. "Off" here means YOU are away and the app is to
+  // plan nothing; that is your answer to give, not a document's.
+  //
+  // So the words a school calendar actually prints — holiday, vacation, closed,
+  // no school — say the TIMETABLE does not apply, which is what noLessons
+  // means. A fortnight of that is a fortnight of time you could use, and very
+  // often the best chance you get to be ready for the term that follows it.
+  // Read as "away" it was a fortnight the app refused to plan a minute into.
   off: {
-    for: [/\bclos(ed|ure|ures|ing)\b/, /\bholidays?\b/, /\bvacations?\b/,
-          /\bno school\b/, /\bnon-?working\b/, /\bday off\b/, /\bdays off\b/,
-          /\bnot open\b/, /\bshut\b/],
+    for: [/\bday off\b/, /\bdays off\b/, /\bannual leave\b/, /\bon leave\b/],
     against: [/\bworking day\b/, /\bopen as usual\b/, /\bnormal timetable\b/,
               /\bas usual\b/, /\bstaff on site\b/],
   },
   noLessons: {
     for: [/\bno lessons?\b/, /\bno classes?\b/, /\bno teaching\b/,
           /\bclasses (are )?(cancelled|canceled|suspended)\b/, /\bstudent-free\b/,
-          /\bno students\b/, /\bstaff[- ]only\b/],
+          /\bno students\b/, /\bstaff[- ]only\b/,
+          // The words a closed school prints on its own calendar.
+          /\bclos(ed|ure|ures|ing)\b/, /\bholidays?\b/, /\bvacations?\b/,
+          /\bno school\b/, /\bnon-?working\b/, /\bnot open\b/, /\bshut\b/],
     against: [/\blessons as (usual|normal)\b/, /\bnormal timetable\b/,
-              /\bclasses (run|continue)\b/],
+              /\bclasses (run|continue)\b/,
+              // "Autumn break — is a working day" inside a list of closures is
+              // the exception that list is announcing, and settling it without
+              // anybody asking is the worst case there is: nobody proposed it,
+              // and what is lost is a day of teaching. A staff-only working day
+              // with no classes does exist and now costs one question — which
+              // is the trade this file is biased towards on purpose.
+              /\bworking day\b/],
   },
   runsAs: {
     for: [/\btimetables?\b/, /\bschedules?\b/, /\bruns? as\b/],

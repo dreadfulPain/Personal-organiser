@@ -662,7 +662,7 @@ sec("And the page lets you say it, rather than only offering its guess");
   const mid = rowFor("Mid-Autumn");
   ok("the one-day holiday is on the page", !!mid,
      calRowsOf(r).map((x) => x.children[0].textContent).join(" | "));
-  press(mid, "day off");
+  press(mid, "I'm away");
   await r.settle();
 
   // NOTHING TO SEE UNTIL IT IS GOING IN, and then the length is a box.
@@ -736,8 +736,8 @@ sec("And a marked day is asked what it is, not assumed to be a meeting");
   // fifteen, and there was no other answer anywhere on the page.
   const hol = markFor("Holiday");
   const opts = (m) => kidsOf(m, "cal-mark-kind").map((b) => String(b.textContent));
-  ok("a holiday is offered as a day off", hol && opts(hol).includes("day off"), hol && opts(hol).join(" / "));
-  ok("and as a day without lessons", hol && opts(hol).includes("no lessons"), hol && opts(hol).join(" / "));
+  ok("a holiday is offered as a day you are away", hol && opts(hol).includes("I'm away"), hol && opts(hol).join(" / "));
+  ok("and as a day without lessons", hol && opts(hol).includes("no timetable"), hol && opts(hol).join(" / "));
   ok("and as something in your week", hol && opts(hol).includes("in my week"), hol && opts(hol).join(" / "));
   ok("and can be left alone", hol && opts(hol).includes("ignore"), hol && opts(hol).join(" / "));
   // NOT ASKED UNTIL IT IS THE QUESTION. A start time and "somewhere you have to
@@ -750,7 +750,7 @@ sec("And a marked day is asked what it is, not assumed to be a meeting");
   ok("and nothing is offered to keep until one is chosen",
      hol && kidsOf(hol, "cal-mark-add").length === 0, "offering to keep an unanswered question");
 
-  const off = kidsOf(hol, "cal-mark-kind").find((b) => String(b.textContent) === "day off");
+  const off = kidsOf(hol, "cal-mark-kind").find((b) => String(b.textContent) === "I'm away");
   off.fire("click", { target: off });
   await r.settle();
   const hol2 = markFor("Holiday");

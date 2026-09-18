@@ -506,6 +506,30 @@
     return (Array.isArray(list) ? list : []).map(normaliseBlock).filter(Boolean);
   }
 
+  // ---- A DAY RULE CHANGES THE SCHEDULE. AN OVERLAY SITS ON TOP OF IT. ------
+  //
+  // Two kinds of thing arrive from a calendar and they are not variants of each
+  // other:
+  //
+  //   A DAY RULE alters the base week. "No timetable", "I'm away", "runs
+  //   Tuesday's lessons" — afterwards the day is a different day.
+  //
+  //   AN OVERLAY is additional. A meeting, an observation, an assembly, a
+  //   professional development session. The normal day is still underneath it,
+  //   with all its lessons and all its gaps, and this is one more thing in it.
+  //
+  // The distinction is generic and it matters because getting it wrong is
+  // expensive in one direction: a development day read as a day rule SUPPRESSES
+  // THE WHOLE TIMETABLE — every lesson, every duty, every free period gone —
+  // when what actually happened is that one extra thing was added to an
+  // otherwise ordinary working day. Plenty of schools run development sessions
+  // alongside a normal timetable, or after it. Nothing here knows what "PD"
+  // means, and nothing should: what it knows is that "something is on today" and
+  // "today is not a normal day" are different sentences.
+  const isDayRule = (b) =>
+    !!(b && (b.blocksDay || b.noLessons || (b.runsAs !== null && b.runsAs !== undefined)));
+  const isOverlay = (b) => !!(b && b.date && !(b.days || []).length && !isDayRule(b));
+
   function appliesOn(b, iso, asDay, asParity) {
     if (b.from && iso < b.from) return false;
     if (b.to && iso > b.to) return false;
@@ -1314,6 +1338,11 @@
     standingIn,
     PARITIES,
     parityOn,
+    // THE TWO KINDS OF THING A CALENDAR SENDS — see isDayRule. Named here so
+    // that "something is on today" and "today is not a normal day" cannot come
+    // to mean the same thing by accident.
+    isDayRule,
+    isOverlay,
     // THE THREE LAYERS A SCHEDULE ACTUALLY HOLDS — see groupsOf. Asked here so
     // the panel that shows them and the planner that resolves them cannot come
     // to different answers about what a vacation is.

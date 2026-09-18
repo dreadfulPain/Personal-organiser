@@ -420,9 +420,9 @@ sec("And the tick is on the page, not just in the model");
     if (b) b.click();
   };
   // 0 staff return, 1 students return, 2 INSET, 3 break begins, 4 break ends, 5 term ends
-  say(2, "no lessons");
-  say(3, "no lessons");
-  say(4, "no lessons");
+  say(2, "no timetable");
+  say(3, "no timetable");
+  say(4, "no timetable");
   await r.settle();
 
   const rows2 = calRowsOf(r);
@@ -482,7 +482,7 @@ sec("And the tick is on the page, not just in the model");
   paste.fire("input", { target: paste });
   await r.settle();
   const again = calRowsOf(r);
-  const inset = again[2].children.find((c) => c.textContent === "no lessons");
+  const inset = again[2].children.find((c) => c.textContent === "no timetable");
   if (inset) inset.click();
   await r.settle();
   r.get("#calAdd").click();

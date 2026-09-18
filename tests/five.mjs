@@ -2232,9 +2232,12 @@ sec("A calendar can be handed to the model too, and it still never says what a d
     // replaced this one, and a model that stopped after the first entry took the
     // rest of the calendar off the screen with it.
     ok("and its answer lands on what was already read", rows(r).length === 2, String(rows(r).length));
+    // "you're away — nothing planned" is what the "off" answer now says it will
+    // do to the week, rather than the near-synonym it used to be called.
+    const away = /you're away/;
     ok("with what it said about each one on the row",
-       calRowsOf(r).every((n) => /day off/.test(String(n.textContent || "")) ||
-         [...(n.children || [])].some((c) => /day off/.test(String(c.textContent || "")))),
+       calRowsOf(r).every((n) => away.test(String(n.textContent || "")) ||
+         [...(n.children || [])].some((c) => away.test(String(c.textContent || "")))),
        calRowsOf(r).map((n) => String(n.textContent)).join(" | ").slice(0, 200));
   }
 
@@ -2453,9 +2456,9 @@ sec("Nineteen things found by using the calendar panel, and not one of them a cr
     ok("no answer is filled in before you give one", lit.length === 0, JSON.stringify(lit));
     ok("and a row still waiting says so", calRowsOf(r).every((x) => /cal-waiting/.test(x.className)),
        calRowsOf(r).map((x) => x.className).join(" | "));
-    await press(r, "Staff return", "day off");
+    await press(r, "Staff return", "I'm away");
     const first = rowFor(r, "Staff return");
-    ok("answering one lights that one", A.within(first, "day off")
+    ok("answering one lights that one", A.within(first, "I'm away")
        .some((c) => / on\b/.test(String(c.className))), first.className);
     ok("and it stops looking like it is waiting", !/cal-waiting/.test(first.className), first.className);
     ok("while the one you haven't answered still is",
@@ -2519,14 +2522,14 @@ sec("Nineteen things found by using the calendar panel, and not one of them a cr
     await paste(r, "Mid-Autumn Festival\t14 Sept 2027\nSports Day\t22 Sept 2027");
     const known = rowFor(r, "Mid-Autumn");
     ok("a line you have answered before comes back answered",
-       A.within(known, "day off").some((c) => / on\b/.test(String(c.className))), known.className);
+       A.within(known, "I'm away").some((c) => / on\b/.test(String(c.className))), known.className);
     ok("and says where that answer came from",
        A.within(known, /what you said last time/).length > 0,
        A.deep(known).map((c) => c.textContent).join(" | "));
     ok("while a line you have never seen is still waiting",
        /cal-waiting/.test(rowFor(r, "Sports Day").className));
     // AND ANSWERING IT MAKES IT YOURS NOW rather than a recollection.
-    await press(r, "Mid-Autumn", "no lessons");
+    await press(r, "Mid-Autumn", "no timetable");
     ok("changing it drops the note", A.within(rowFor(r, "Mid-Autumn"), /what you said last time/).length === 0);
     // AND WHAT YOU SAY IS KEPT.
     const add = r.get("#calAdd");
@@ -2941,7 +2944,7 @@ sec("A calendar you check three things on, not thirty");
      ready.map((n) => A.deep(n).map((c) => c.className).join(",")).join(" | "));
   const holiday = ready.find((n) => /Mid-Autumn/.test(A.deep(n).map((c) => c.textContent).join(" ")));
   ok("saying what each will do to the week",
-     holiday && A.deep(holiday).some((c) => String(c.textContent) === "day off"),
+     holiday && A.deep(holiday).some((c) => /no timetable, the day is still yours|you're away/.test(String(c.textContent))),
      holiday && A.deep(holiday).map((c) => c.textContent).join(" | "));
   ok("and why it thinks so, in the reader's own words",
      holiday && A.deep(holiday).some((c) => /listed under Holidays/.test(String(c.textContent))),
@@ -3067,7 +3070,7 @@ sec("A calendar you check three things on, not thirty");
        (said().match(/one of 3 on one line of the document/g) || []).length === 3,
        said().slice(0, 400));
     const pick = A.deep(rows()[0]).find((c) => c.tagName === "BUTTON" &&
-      String(c.textContent) === "no lessons");
+      String(c.textContent) === "no timetable");
     pick.fire("click", { target: pick });
     await many.settle();
     ok("answering one answers all three",
@@ -3768,7 +3771,7 @@ sec("And the things marked on the grid are asked about too");
   ok("and says that is why", theirs && /isn't yours/.test(theirs.why), JSON.stringify(theirs));
   // AND IT IS STILL A QUESTION YOU CAN ANSWER DIFFERENTLY, in one press.
   const pick = A.deep(marks()[1] || {}).find((c) =>
-    String(c.className || "").includes("cal-mark-kind") && String(c.textContent) === "day off");
+    String(c.className || "").includes("cal-mark-kind") && String(c.textContent) === "I'm away");
   ok("with every choice still there to change it", !!pick, JSON.stringify(said[1]));
 }
 
@@ -3844,7 +3847,7 @@ sec("And the days a holiday is paid for with come out of the brackets");
   {
     const r = await openCal();
     for (const [day, kind] of [["Sep 20", "runs another day"], ["Oct 10", "runs another day"],
-                               ["Oct 1,", "day off"]]) {
+                               ["Oct 1,", "I'm away"]]) {
       const b = A.within(rowOn(r, day), kind)[0];
       b.fire("click", { target: b });
       await r.settle();
@@ -3887,7 +3890,7 @@ sec("And the days a holiday is paid for with come out of the brackets");
        A.within(sun, /runs on to/).length === 0,
        A.deep(sun).map((c) => c.textContent).join(" | ").slice(0, 200));
     // WHILE THE HOLIDAY BESIDE IT STILL HAS BOTH.
-    const off = A.within(rowOn(r, "Oct 1,"), "day off")[0];
+    const off = A.within(rowOn(r, "Oct 1,"), "I'm away")[0];
     off.fire("click", { target: off });
     await r.settle();
     ok("a holiday still says how long it is",

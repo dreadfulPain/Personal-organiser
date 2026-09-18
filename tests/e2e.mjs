@@ -112,7 +112,12 @@ const ol = http.createServer((req, res) => {
       // AND WHETHER THE DOCUMENT SAYS IT. The stand-in points at a word that is
       // really in the line; the markers below make it misbehave in each of the
       // ways a real model does.
-      const one = (c) => ({ n: c.n, means: "off", runsAsDay: 0, sure: 0.9,
+      // "noLessons", NOT "off". A document saying "Holidays" says the timetable
+      // does not run; it does not say you are away, and only you can say that.
+      // So the word the stand-in points at has to be one that supports the
+      // answer it gives, or every check below is testing the gate rejecting a
+      // pairing rather than the thing it is about. See SAYS_SO.
+      const one = (c) => ({ n: c.n, means: "noLessons", runsAsDay: 0, sure: 0.9,
         why: "it looks like a holiday", mine: "yes", said: c.line,
         // POINTING AT THE HEADING THE LIST IS UNDER, which is both a real
         // phrase in what the entry rests on and a phrase that says the thing.
@@ -872,7 +877,7 @@ const askCal = async (body) => {
      !("rows" in all) && !("entries" in all), JSON.stringify(Object.keys(all)));
   ok("and nothing left unanswered", (all.missed || []).length === 0, JSON.stringify(all.missed));
   ok("what it thinks each one means is carried",
-     (all.answers || []).every((a) => a.means === "off" && a.why), JSON.stringify(all.answers[0]));
+     (all.answers || []).every((a) => a.means === "noLessons" && a.why), JSON.stringify(all.answers[0]));
   // THE EVIDENCE GATE IS STILL THE GATE. The dates are this app's now, so a date
   // cannot be invented — but a model can still annotate from the general sense
   // of the page rather than from the entry in front of it, and that is checked
@@ -903,7 +908,7 @@ const askCal = async (body) => {
   const twice = await mark("dup");
   ok("and a number answered twice keeps the first answer",
      (twice.answers || []).filter((a) => a.n === 1).length === 1 &&
-     (twice.answers || []).find((a) => a.n === 1).means === "off",
+     (twice.answers || []).find((a) => a.n === 1).means === "noLessons",
      JSON.stringify((twice.answers || []).filter((a) => a.n === 1)));
 
   // ---- AND WHETHER THE MEANING FITS THE ROW ------------------------------
@@ -1090,7 +1095,7 @@ const askCal = async (body) => {
     // AND A MEANING THAT DESCRIBES THE DAY NEEDS NO "mustBy" — it needs its own
     // words instead, which is the same rule wearing different clothes.
     const SHUT = "Offices closed Friday 13 November 2026";
-    const off = await askCal({ year: 2026, text: `MARKS:says\nMEANS:off\nSAYS:closed\n${SHUT}`,
+    const off = await askCal({ year: 2026, text: `MARKS:says\nMEANS:noLessons\nSAYS:closed\n${SHUT}`,
       candidates: [{ n: 1, date: "2026-11-13", endsOn: "", label: nameOf(SHUT),
         line: SHUT, context: [SHUT] }] });
     ok("while a meaning that describes the day needs no such thing",
@@ -1371,8 +1376,10 @@ const askCal = async (body) => {
       label, line, context: [over, line] }]);
 
     const off = await decide(one("Closures:", "Autumn break", "13 November 2026"));
+    // A CLOSURE SUSPENDS THE TIMETABLE. It does not say you are away — that is
+    // your answer to give and no sheet can give it for you. See SAYS_SO.
     ok("an entry under a heading that says closed is settled without asking",
-       ((off.answers || [])[0] || {}).means === "off",
+       ((off.answers || [])[0] || {}).means === "noLessons",
        JSON.stringify((off.answers || [])[0]));
     ok("  and says it is the document talking, not a reader thinking",
        /the document says so, in as many words/.test(((off.answers || [])[0] || {}).why || ""),
@@ -1498,7 +1505,7 @@ const askCal = async (body) => {
                   "Induction morning, 13 November 2026", "lessons", "Induction morning");
     // WHILE A DOCUMENT THAT SAYS IT, SAYS IT.
     await allowed("a document that says the place is closed says it",
-                  "Site closed, 13 November 2026", "off", "closed");
+                  "Site closed, 13 November 2026", "noLessons", "closed");
     await allowed("  and one that says there are no classes says that",
                   "No classes, 13 November 2026", "noLessons", "No classes");
     // AND WHAT A LINE SAYS ABOUT ITSELF BEATS THE LIST IT IS FILED UNDER.
@@ -1509,11 +1516,14 @@ const askCal = async (body) => {
     // outrank the words on it.
     {
       const clash = await askCal({ year: 2026, about: "Pod 1 group leader",
-        text: "MARKS:says\nMEANS:off\nSAYS:Closures\nClosures\n13 Nov is a working day, even week Wednesday schedule",
+        // "Days off" rather than "Closures": a closure says the timetable is
+        // not running, which a working day can live with; being AWAY is what a
+        // working day contradicts, and that is the pairing this is about.
+        text: "MARKS:says\nMEANS:off\nSAYS:Days off\nDays off\n13 Nov is a working day, even week Wednesday schedule",
         candidates: [{ n: 1, date: "2026-11-13", endsOn: "",
           label: "Autumn break — is a working day, even week Wednesday schedule",
           line: "13 Nov is a working day, even week Wednesday schedule",
-          context: ["Closures", "13 Nov is a working day, even week Wednesday schedule"] }] });
+          context: ["Days off", "13 Nov is a working day, even week Wednesday schedule"] }] });
       ok("a day the document calls a working day cannot be a day off",
          /says the opposite/.test(((clash.answers || [])[0] || {}).checked || ""),
          JSON.stringify((clash.answers || [])[0]));
@@ -1536,19 +1546,19 @@ const askCal = async (body) => {
     // is the head of its phrase; in "Holiday concert" it is modifying the noun
     // after it, and the sentence is about a concert.
     for (const [line, means, says] of [
-      ["Holiday concert, 13 November 2026", "off", "Holiday concert"],
-      ["Vacation programme, 13 November 2026", "off", "Vacation programme"],
+      ["Holiday concert, 13 November 2026", "noLessons", "Holiday concert"],
+      ["Vacation programme, 13 November 2026", "noLessons", "Vacation programme"],
       ["Deadline guidance meeting, 13 November 2026", "due", "Deadline guidance"],
       ["Timetable review meeting, 13 November 2026", "runsAs", "Timetable review"],
     ]) await refused(`"${says}" does not say it, it mentions it`, line, means, says);
     // WHILE THE SAME WORD AT THE HEAD OF ITS PHRASE DOES SAY IT.
     await allowed("but the same word heading its own phrase does",
-                  "Winter Holiday, 13 November 2026", "off", "Winter Holiday");
+                  "Winter Holiday, 13 November 2026", "noLessons", "Winter Holiday");
     // AND A THING CLOSED TO SOMEBODY ELSE IS NOT YOUR DAY OFF. "Closed to
     // students" is closed to THEM, and whoever reads this is still working.
     // Costs a question on "closed to the public", which is the right way round.
     await refused("and closed to somebody else is not closed to you",
-                  "Site closed to students, 13 November 2026", "off", "closed to students");
+                  "Site closed to students, 13 November 2026", "noLessons", "closed to students");
     // AND WHERE THE SENTENCE NAMES WHOSE IT IS, THE NUMBERS STILL DECIDE — so a
     // day with no classes for a year group this person does not teach is set
     // aside rather than taken out of their week. Same rule as everywhere else;
@@ -1637,7 +1647,7 @@ const askCal = async (body) => {
     // point at; this is not a rule about marks, it is a rule about having
     // nothing but a name.
     const more = await askCal({ year: 2026, about: "Pod 1 group leader",
-      text: "MARKS:says\nMEANS:off\nSAYS:Closed all day\nClosed all day\nWhole-Staff Briefing",
+      text: "MARKS:says\nMEANS:noLessons\nSAYS:Closed all day\nClosed all day\nWhole-Staff Briefing",
       candidates: [{ n: 1, date: "", endsOn: "", label: "Whole-Staff Briefing",
         line: "Whole-Staff Briefing", context: ["Closed all day", "Whole-Staff Briefing"] }] });
     ok("while an entry with a heading over it still has something to point at",

@@ -281,6 +281,50 @@ It is also the same mechanism as *"you have done enough"*: once the day's budget
 is met and nothing ahead is at risk, the remaining usable time simply **is** rest.
 Not a silence where the list ran out — a budget that has been satisfied.
 
+### And the answers already saved under the old meaning
+
+Changing the code does not repair data already written. Two of the meanings above
+moved after entries had been stored under the old one, and both cost in the same
+direction — a fortnight or a day quietly taken off the calendar:
+
+| Saved as | Meant then | Means now |
+| --- | --- | --- |
+| A holiday from a calendar, `blocksDay` | you are away — no usable minute in it | **no timetable, and the day is still yours** |
+| A development day from a calendar, `noLessons` | the timetable is replaced | **something extra on an ordinary working day** |
+
+**Nothing is rewritten.** A silent migration of somebody's decision is
+indistinguishable from a bug — and the app cannot know which readings were
+wrong, only which ones were *never yours to begin with*. So the setup screen
+shows a list: the affected entries grouped as ranges (*Winter Vacation — 26
+days*, not 26 rows), what the old reading did to the day, and one button per
+group. Six presses covered 99 stored days in the file this was built against.
+
+Which entries get asked about, without knowing a word of anybody's vocabulary:
+the ones a **document** gave (`source: paste` or `ics`). Time you booked off
+yourself was your own answer and was never in doubt. Answering either way marks
+the entry as yours, and it is never asked about again — including "I really was
+away", which is a real answer and not a postponement.
+
+One consequence worth naming: converting a day rule to an overlay has to ask the
+clock question again. Midnight to a minute to midnight was honest while the
+entry was a *rule* — a rule really does last all day. The moment it stops being
+one, that span is the importer's mark for "no time was given", and left alone it
+would sit on the day as a 24-hour appointment. So a converted entry re-decides
+its `timing` from what it now is: a whole-day one becomes `sometime` and lands in
+*Needs a time*; one that came with real hours keeps them.
+
+Pinned by `tests/whenitis.mjs` (the resolution table) and `tests/different.mjs`
+(the panel on screen, and one press converting a whole group). Six deliberate
+breaks of the migration were tried against those tests and all six were caught.
+
+One of them was not, at first: deleting the panel's `<div>` from the page left
+all 107 page checks passing, because `tests/_dom.mjs` invents an element for any
+id asked of it — it has to, since it does not parse `innerHTML`. That is the
+broken-stylesheet failure again in a new place: green tests over a feature that
+does not reach the screen. `tests/hidden.mjs` now reads the pages as text
+and checks that **every panel the code fills exists on a page** — 362 ids, none
+missing.
+
 ### Nothing scheduled is not the same as free
 
 This was the mistake, and the Day screen is what exposed it. A real Wednesday —

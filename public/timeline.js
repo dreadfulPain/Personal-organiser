@@ -3869,6 +3869,7 @@
       </div>
       <div id="ttReview"></div>
       <div id="blockAdd"></div>
+      <div id="oldMeanings"></div>
       <div id="weekGaps"></div>
       <div id="blockList" class="su-list"></div>
       <!-- TWO SETTINGS PANELS, AFTER THE WORK RATHER THAN THROUGH THE MIDDLE OF
@@ -3910,6 +3911,7 @@
     if (addingBlock) $("#blockAdd").appendChild(blockForm());
     if (unreadableRows.length) $("#ttReview").appendChild(unreadableBox());
     if (pastedBlocks) $("#ttReview").appendChild(reviewTable());
+    renderOldMeanings();
     renderWeekGaps();
     renderBlockList();
   }
@@ -5238,6 +5240,91 @@
     ["work", "mine to work in", { kind: "other", label: "Prep time", workable: true }],
     ["kept", "kept", { kind: "break", label: "Kept", protected: true }],
   ];
+
+  // ---- ANSWERS GIVEN UNDER A MEANING THAT HAS SINCE MOVED ------------------
+  //
+  // Code changing does not repair data already written. Two of the answers this
+  // app stores meant something else when these were saved, and both of them
+  // cost a lot in the same direction — a fortnight or a day quietly taken off
+  // the calendar.
+  //
+  // NOTHING IS REWRITTEN HERE. A silent migration of somebody's decision is
+  // indistinguishable from a bug, and the one thing that makes this safe is
+  // that it is a list you can read with a button on each row. Answering one —
+  // either way — makes it yours, and it is never asked about again.
+  const OLD_MEANINGS = [
+    {
+      at: "away",
+      head: "Days a calendar said you were away",
+      why: "These came off a school calendar, which said “holiday”, “vacation” or “closed” — and " +
+        "a sheet can only say the school is shut, not that you are somewhere else. Read as days " +
+        "away they have no usable time in them at all, so a fortnight of half term is a fortnight " +
+        "the app won't plan a minute into.",
+      does: "no timetable — the day is still yours",
+      how: "noTimetable",
+      then: "no timetable, and the day is yours",
+      keep: "I really was away",
+    },
+    {
+      at: "noTimetable",
+      head: "Days a calendar said the timetable stops",
+      why: "A development day, a training session or a staff meeting often runs ALONGSIDE an " +
+        "ordinary working day rather than replacing it. Saved as a rule it takes every lesson, " +
+        "every duty and every free period off the day with it.",
+      does: "something extra on a normal day",
+      how: "overlay",
+      then: "the normal day, with this added to it",
+      keep: "the lessons really do stop",
+    },
+  ];
+
+  function renderOldMeanings() {
+    const el = $("#oldMeanings");
+    if (!el) return;
+    el.innerHTML = "";
+    const stale = S().staleRules(schedule);
+    if (!stale.away.length && !stale.noTimetable.length) return;
+    OLD_MEANINGS.forEach((m) => {
+      const groups = stale[m.at];
+      if (!groups.length) return;
+      const box = document.createElement("section");
+      box.className = "su-old su-moved";
+      box.innerHTML = `<h3>${escapeHtml(m.head)} — ${groups.length} of them</h3>` +
+        `<p>${escapeHtml(m.why)}</p>` +
+        `<p class="muted">Say which each one is. Nothing changes until you do.</p>`;
+      groups.forEach((g) => {
+        const row = document.createElement("div");
+        row.className = "su-brow su-movedrow";
+        row.innerHTML =
+          `<span class="su-bwhen">${escapeHtml(rangeWords(g))}</span>` +
+          `<span class="su-blabel">${escapeHtml(g.label)}</span>`;
+        // THE ANSWERS GO ON THEIR OWN LINE, always — not flowed after the label,
+        // where a long name puts one chip beside it and pushes the other under.
+        // Every row the same shape: when and what, then the two answers.
+        const pair = document.createElement("div");
+        pair.className = "su-moveans";
+        row.appendChild(pair);
+        const answer = (how, word, said) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "p-opt su-chip";
+          b.textContent = word;
+          b.addEventListener("click", () => {
+            schedule = S().settle(schedule, g.blocks.map((x) => x.id), how);
+            persist();
+            renderSetup();
+            render();
+            setSuStatus(`“${g.label}” — ${said}. ${g.days} day${g.days === 1 ? "" : "s"}.`);
+          });
+          pair.appendChild(b);
+        };
+        answer(m.how, m.does, m.then);
+        answer("keep", m.keep, "left as it was");
+        box.appendChild(row);
+      });
+      el.appendChild(box);
+    });
+  }
 
   function renderWeekGaps() {
     const el = $("#weekGaps");

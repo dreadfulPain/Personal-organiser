@@ -609,6 +609,73 @@
     }).sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
   }
 
+  // ---- DAY RULES A DOCUMENT GAVE US, UNDER MEANINGS THAT HAVE CHANGED -------
+  //
+  // Two of the answers this app stores changed what they mean, and code changing
+  // does not repair data already written under the old reading:
+  //
+  //   "I'M AWAY" came from any calendar printing the word holiday, vacation or
+  //   closed. A sheet cannot say that — it can only say the school is shut —
+  //   and read as "away" a fortnight of half term was a fortnight with zero
+  //   available minutes in it.
+  //
+  //   "NO TIMETABLE" was given to development days, on the assumption they
+  //   replace the day. Where they run alongside an ordinary working day they
+  //   are an overlay, and read as a rule they take every lesson, every duty and
+  //   every free period off the day with them.
+  //
+  // WHICH ONES, WITHOUT KNOWING A WORD OF ANYBODY'S VOCABULARY: the ones a
+  // DOCUMENT gave. Time you booked off yourself is your own answer and was
+  // never in doubt; a rule read off a sheet is exactly the thing whose meaning
+  // moved. Confirming or converting one makes it yours — see settle — and it is
+  // never asked about again.
+  //
+  // NOTHING IS REWRITTEN. This finds them and groups them; the answering is
+  // somebody pressing a button, because a silent migration of a decision is
+  // indistinguishable from a bug.
+  const FROM_DOC = ["paste", "ics"];
+  function staleRules(schedule) {
+    const mine = normalise(schedule).filter((b) =>
+      b.date && !b.days.length && FROM_DOC.indexOf(b.source) >= 0 &&
+      (b.blocksDay || b.noLessons));
+    const groups = spansOf(mine);
+    return {
+      // A document said you were away. It cannot have.
+      away: groups.filter((g) => g.blocksDay),
+      // A document said the timetable stops. It may have — and it may instead
+      // have named something that happens ON an ordinary day.
+      noTimetable: groups.filter((g) => !g.blocksDay && g.noLessons),
+    };
+  }
+
+  // The answer, applied to every block of one group. "mine" is what makes it
+  // stop being a question: it is no longer the document's reading, it is yours.
+  function settle(schedule, ids, how) {
+    const want = new Set(ids || []);
+    return normalise(schedule).map((b) => {
+      if (!want.has(b.id)) return b;
+      const said = { ...b, source: "hand" };
+      if (how === "noTimetable") return { ...said, blocksDay: false, noLessons: true };
+      // AN OVERLAY IS NOT A RULE AT ALL. Both flags come off and what is left is
+      // a thing on the day — which, with no hour on it, is a thing to be given
+      // one. See TIMINGS.
+      //
+      // AND THE CLOCK ON IT HAS TO BE ASKED AGAIN. Midnight to midnight was an
+      // honest answer while this was a rule: a rule really does last all day.
+      // The moment it stops being one, that span is the importer's mark for "no
+      // time given" and nothing else, and a block still carrying timing "at"
+      // would sit on the day as a twenty-four-hour appointment. Dropping the
+      // field hands the question back to normaliseBlock, which re-decides it
+      // from what the block now is — so a whole-day one becomes "sometime" and
+      // lands in Needs a time, while one that came with real hours keeps them.
+      if (how === "overlay") {
+        const { timing, ...rest } = said;   // eslint-disable-line no-unused-vars
+        return normaliseBlock({ ...rest, blocksDay: false, noLessons: false });
+      }
+      return said;   // "keep": the reading was right, and now you have said so.
+    });
+  }
+
   function groupsOf(schedule) {
     const all = normalise(schedule);
     const dated = all.filter((b) => b.date && !b.days.length);
@@ -1348,6 +1415,9 @@
     // to different answers about what a vacation is.
     spansOf,
     groupsOf,
+    // AND THE ONES WHOSE MEANING MOVED UNDER THEM — see staleRules.
+    staleRules,
+    settle,
     fixedBlockAt,
     nextFreeMoment,
     estimateMinutes,

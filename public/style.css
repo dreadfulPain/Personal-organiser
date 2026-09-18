@@ -4725,3 +4725,15 @@ a.btn {
 /* Time the timetable says nothing about: shown, never counted. */
 .dp-unknownlist > li { color: var(--ink-soft); }
 .dp-usay { font-size: inherit; }
+
+/* ---- ANSWERS GIVEN UNDER A MEANING THAT HAS SINCE MOVED -----------------
+   Code changing does not repair data already written. Nothing here is
+   rewritten without a press: a silent migration of somebody's decision is
+   indistinguishable from a bug. */
+.su-moved { margin-bottom: 16px; }
+.su-moved h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.su-movedrow { flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.su-movedrow .su-bwhen { min-width: 15em; }
+/* The two answers always sit on their own line, so every row reads the same way
+   however long the name above it is. */
+.su-moveans { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; }

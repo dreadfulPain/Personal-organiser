@@ -720,4 +720,79 @@ console.log("\nAnd saying what the rest of the week is, once");
      JSON.stringify((r.state.scheduleConfig || {}).leaveAt));
 }
 
+// ---------------------------------------------------------------------------
+console.log("\nAnd the answers that were saved under the old meaning");
+
+// A MIGRATION YOU CAN READ. Two of the answers this app stores meant something
+// else when they were written, and both cost in the same direction — a
+// fortnight or a day quietly taken off the calendar. Repairing that silently is
+// indistinguishable from a bug, so it has to arrive as a list with a button on
+// each row, and this is the test that it arrives at all.
+{
+  const { open, deep, clickable } = await import("./_dom.mjs");
+  const day = (iso, n) => {
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const run = (label, from, n, f) => Array.from({ length: n }, (_, i) => ({
+    id: `${label}-${i}`, label, date: day(from, i), start: "00:00", end: "23:59",
+    days: [], ...f }));
+  const OLD = [].concat(
+    run("Spring Break", "2027-04-05", 12, { blocksDay: true, source: "paste" }),
+    run("Staff Development", "2026-11-20", 1, { noLessons: true, source: "paste" }),
+    // AND ONE OF YOUR OWN, which no document ever read and which must not be
+    // put on the list.
+    run("Away — hospital", "2026-12-08", 1, { blocksDay: true, source: "hand" }));
+
+  const r = await open("timeline.html", { schedule: OLD, items: [], goals: [],
+    scheduleConfig: { dayStart: "07:30", dayEnd: "17:30" } });
+  r.get("#setupToggle").fire("click", { target: r.get("#setupToggle") });
+  await r.settle();
+  const panel = r.get("#oldMeanings");
+  const words = () => deep(panel)
+    .map((c) => `${c.textContent || ""} ${c.innerHTML || ""}`).join(" ") +
+    String(panel.innerHTML || "");
+  ok("the setup screen says which saved answers no longer mean what they did",
+     /said you were away/.test(words()) && /the timetable stops/.test(words()),
+     words().slice(0, 240));
+  ok("  naming the days, as a range rather than twelve rows",
+     /Spring Break/.test(words()) && !/Spring Break[\s\S]*Spring Break/.test(words()),
+     words().slice(0, 400));
+  ok("  and not the time you booked off yourself",
+     !/hospital/.test(words()), words().slice(0, 400));
+  // BOTH ANSWERS OFFERED, neither of them taken for you.
+  const saying = (w) => clickable(r).find((c) => String(c.textContent) === w);
+  ok("  with both readings offered and neither one already applied",
+     !!saying("no timetable — the day is still yours") && !!saying("I really was away") &&
+       (r.state.schedule || []).filter((b) => b.blocksDay).length === 13,
+     JSON.stringify(clickable(r).map((c) => c.textContent).filter(Boolean).slice(0, 10)));
+
+  // ONE PRESS, TWELVE DAYS. The holiday becomes a fortnight of time again.
+  saying("no timetable — the day is still yours").click();
+  await r.settle();
+  const spring = (r.state.schedule || []).filter((b) => /Spring/.test(b.label));
+  ok("answering the holiday gives all twelve days back in one press",
+     spring.length === 12 && spring.every((b) => !b.blocksDay && b.noLessons),
+     JSON.stringify(spring.map((b) => `${b.blocksDay}/${b.noLessons}`).slice(0, 4)));
+  ok("  and it is your answer now, so it is never asked about again",
+     !/Spring Break/.test(words()) && spring.every((b) => b.source === "hand"),
+     words().slice(0, 240));
+  // AND THE OTHER GROUP IS STILL THERE, because it is a different question.
+  ok("  while the development day is still asked about separately",
+     /Staff Development/.test(words()), words().slice(0, 240));
+
+  // AND THE DEVELOPMENT DAY BECOMES A THING ON A NORMAL DAY — with no hour on
+  // it, which is a thing to be given one rather than a day-long appointment.
+  saying("something extra on a normal day").click();
+  await r.settle();
+  const pd = (r.state.schedule || []).find((b) => /Staff Development/.test(b.label));
+  ok("answering the development day leaves it on top of a normal day",
+     !!pd && !pd.blocksDay && !pd.noLessons && pd.timing === "sometime",
+     JSON.stringify(pd && { blocksDay: pd.blocksDay, noLessons: pd.noLessons, timing: pd.timing }));
+  ok("  and with nothing left to answer the list goes away",
+     !String(panel.innerHTML || "").trim() && !deep(panel).length,
+     String(panel.innerHTML || "").slice(0, 160));
+}
+
 finish();

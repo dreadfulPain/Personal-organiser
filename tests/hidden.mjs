@@ -98,5 +98,52 @@ ok(
 );
 console.log(`\n  (${offenders.length} classes set a display and rely on the global rule: ${offenders.map((o) => o.split(" ")[0]).join(", ")})`);
 
+// ---------------------------------------------------------------------------
+// AND: DOES EVERY PANEL THE CODE FILLS HAVE SOMEWHERE ON SCREEN TO GO?
+//
+// The other way a whole feature can be invisible while the tests are green. A
+// panel is built by finding its box — $("#thing") — and filling it, so if the
+// box is missing from the markup the code runs, finds nothing, and returns; the
+// feature simply does not exist, and nothing anywhere throws.
+//
+// AND THE PAGE TESTS CANNOT CATCH THIS ONE, which is why it is here and not
+// there: tests/_dom.mjs invents an element for any id asked of it — it has to,
+// because it does not parse innerHTML — so a page test goes on passing against
+// a box that only exists inside the test. Found by deleting a div that had just
+// been added and watching all 107 checks pass.
+//
+// Read as text, from the files a browser would load: every id the scripts reach
+// for must be written SOMEWHERE — in a page, in a template string, or onto an
+// element as it is created.
+{
+  const files = fs.readdirSync(PUB);
+  const pages = files.filter((f) => f.endsWith(".html"))
+    .map((f) => fs.readFileSync(path.join(PUB, f), "utf8")).join("\n");
+  const scripts = files.filter((f) => f.endsWith(".js"))
+    .map((f) => [f, fs.readFileSync(path.join(PUB, f), "utf8")]);
+  const made = new Set();
+  for (const m of pages.matchAll(/id="([^"]+)"/g)) made.add(m[1]);
+  for (const [, s] of scripts) {
+    // Written into a template string, assigned onto an element, or handed to a
+    // helper that makes one. Anything holding ${...} is dynamic and is not a
+    // fixed name to look for.
+    for (const m of s.matchAll(/id="([^"${]+)"/g)) made.add(m[1]);
+    for (const m of s.matchAll(/\.id\s*=\s*["`]([^"`${]+)["`]/g)) made.add(m[1]);
+    for (const m of s.matchAll(/id:\s*["`]([^"`${]+)["`]/g)) made.add(m[1]);
+  }
+  const lost = new Map();
+  for (const [f, s] of scripts) {
+    for (const m of s.matchAll(/(?:\$|getElementById)\(\s*["`]#?([A-Za-z][\w-]*)["`]\s*\)/g)) {
+      if (made.has(m[1])) continue;
+      if (!lost.has(m[1])) lost.set(m[1], new Set());
+      lost.get(m[1]).add(f);
+    }
+  }
+  ok("the audit found panels to check", made.size > 100, String(made.size));
+  ok("every panel the code fills exists on a page",
+     lost.size === 0,
+     [...lost].map(([id, where]) => `#${id} filled by ${[...where].join(", ")}`).join("; "));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

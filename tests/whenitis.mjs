@@ -597,4 +597,101 @@ console.log("\nAnd a school calendar cannot tell you that you are away");
      mins(away) === 0, `${mins(away)} minutes`);
 }
 
+// ---------------------------------------------------------------------------
+console.log("\nAnd answers given under a meaning that has since moved");
+
+// CODE CHANGING DOES NOT REPAIR DATA ALREADY WRITTEN. Two of the answers this
+// app stores meant something else when they were saved, and both cost in the
+// same direction — a fortnight or a day quietly taken off the calendar.
+{
+  const day = (iso, n) => {
+    const d = new Date(iso + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const run = (label, from, n, f) => Array.from({ length: n }, (_, i) => ({
+    id: `${label}-${i}`, label, date: day(from, i), start: "00:00", end: "23:59",
+    days: [], ...f }));
+  const saved = [].concat(
+    run("Winter Vacation", "2027-01-23", 26, { blocksDay: true, source: "paste" }),
+    run("Professional Development", "2026-10-16", 1, { noLessons: true, source: "paste" }),
+    // AND ONE CARRYING BOTH FLAGS, which is a shape saved files can hold: the
+    // two are separate booleans and always were. It has to be offered once, as
+    // one question, because a day cannot be answered twice with two buttons
+    // saying opposite things.
+    run("Staff Retreat", "2026-11-09", 2, { blocksDay: true, noLessons: true, source: "paste" }),
+    // AND TIME YOU BOOKED OFF YOURSELF, which was never in doubt and must not be
+    // asked about: a document did not tell us this one.
+    run("Away — dentist", "2026-12-01", 1, { blocksDay: true, source: "hand" }));
+
+  const stale = S.staleRules(saved);
+  const asked = [].concat(stale.away, stale.noTimetable)
+    .filter((g) => /Retreat/.test(g.label));
+  ok("a day saved as both is one question, not two",
+     asked.length === 1 && asked[0].days === 2,
+     JSON.stringify([].concat(stale.away, stale.noTimetable).map((g) => g.label)));
+  const winter = stale.away.find((g) => /Winter/.test(g.label));
+  ok("a holiday a document called a day away is offered for what it is",
+     !!winter && winter.days === 26,
+     JSON.stringify(stale.away.map((g) => `${g.label}:${g.days}`)));
+  ok("  and a development day saved as a rule is offered as an overlay",
+     stale.noTimetable.length === 1 && stale.noTimetable[0].label === "Professional Development",
+     JSON.stringify(stale.noTimetable.map((g) => `${g.label}:${g.days}`)));
+  // THE ONE THAT MUST NOT BE TOUCHED. Your own answer was never the document's
+  // reading, so its meaning never moved.
+  ok("  while time you booked off yourself is not questioned",
+     !stale.away.some((g) => /dentist/.test(g.label)),
+     JSON.stringify(stale.away.map((g) => g.label)));
+
+  // NOTHING MOVES WITHOUT AN ANSWER. Finding them is not changing them, and a
+  // silent migration of somebody's decision is indistinguishable from a bug.
+  ok("and finding them changes nothing at all",
+     saved.filter((b) => b.blocksDay).length === 29 &&
+       saved.filter((b) => b.source === "hand").length === 1,
+     JSON.stringify({ away: saved.filter((b) => b.blocksDay).length,
+       mine: saved.filter((b) => b.source === "hand").length }));
+
+  // THE HOLIDAY, ANSWERED. A fortnight with no usable minute in it becomes a
+  // fortnight of time — which is the whole point of asking.
+  const HOL = "2027-01-25";
+  const before = S.gapsOn(saved, CFG, HOL).reduce((n, g) => n + (g.end - g.start), 0);
+  const after = S.settle(saved, winter.blocks.map((b) => b.id), "noTimetable");
+  const now = S.gapsOn(after, CFG, HOL).reduce((n, g) => n + (g.end - g.start), 0);
+  ok("answering a holiday gives the fortnight its time back",
+     before === 0 && now === 600, `${before} → ${now}`);
+  ok("  all twenty-six days of it, from one press",
+     S.normalise(after).filter((b) => /Winter/.test(b.label))
+       .every((b) => b.noLessons && !b.blocksDay), "some days were left behind");
+  // AND IT STOPS BEING A QUESTION, because it is now your answer and not a
+  // document's reading.
+  ok("  and it is never asked about again",
+     !S.staleRules(after).away.some((g) => /Winter/.test(g.label)),
+     JSON.stringify(S.staleRules(after).away.map((g) => g.label)));
+
+  // THE DEVELOPMENT DAY, ANSWERED. The rule comes off and what is left is a
+  // thing ON the day — with no hour given, a thing to be given one.
+  const PD = "2026-10-16";
+  const week = [{ id: "w", label: "English", start: "08:40", end: "09:25", days: [5],
+    kind: "teaching" }];
+  const asRule = week.concat(saved);
+  const asOverlay = S.settle(asRule, stale.noTimetable[0].blocks.map((b) => b.id), "overlay");
+  ok("and answering a development day gives the day its timetable back",
+     S.noTeachingOn(asRule, PD) === true && S.noTeachingOn(asOverlay, PD) === false,
+     JSON.stringify({ before: S.noTeachingOn(asRule, PD), after: S.noTeachingOn(asOverlay, PD) }));
+  const pdNow = S.normalise(asOverlay).find((b) => /Professional/.test(b.label));
+  ok("  leaving it as something on the day, with no hour on it",
+     S.isOverlay(pdNow) && !S.isDayRule(pdNow) && pdNow.timing === "sometime",
+     JSON.stringify({ overlay: S.isOverlay(pdNow), timing: pdNow.timing }));
+  ok("  and the lesson is back on the day",
+     S.blocksOn(asOverlay, PD).some((b) => b.label === "English"),
+     JSON.stringify(S.blocksOn(asOverlay, PD).map((b) => b.label)));
+
+  // AND SAYING THE OLD READING WAS RIGHT IS ALSO AN ANSWER.
+  const kept = S.settle(saved, winter.blocks.map((b) => b.id), "keep");
+  ok("and saying it really was a day away keeps it, and stops the question",
+     S.normalise(kept).filter((b) => /Winter/.test(b.label)).every((b) => b.blocksDay) &&
+       !S.staleRules(kept).away.some((g) => /Winter/.test(g.label)),
+     JSON.stringify(S.staleRules(kept).away.map((g) => g.label)));
+}
+
 finish();

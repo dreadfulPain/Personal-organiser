@@ -4,6 +4,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // Something takes the day over; the app steps back, then rebuilds around it.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
 import vm from "node:vm"; import { spawn } from "node:child_process";
+import { asUser } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const REPO = REPO_ROOT;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass=0, fail=0;
@@ -121,7 +122,7 @@ sec("Nothing pings you mid-crisis");
     items:[{id:"a",title:"Ring a parent",remindAt:dt,remindedAt:null,createdAt:new Date().toISOString()}]}));
   const run=async()=>{
     const nf=path.join(dir,"notes.jsonl"); fs.writeFileSync(nf,"");
-    const kid=spawn(process.execPath,["server.js"],{cwd:dir,env:{...process.env,NOTIFY_FILE:nf,PORT:String(3690+Math.floor(Math.random()*40)),REMIND_INTERVAL_MS:"5000",NO_OPEN:"1"},stdio:"ignore"});
+    const kid=spawn(process.execPath,["server.js"],{cwd:dir,env:asUser(dir,{NOTIFY_FILE:nf,PORT:String(3690+Math.floor(Math.random()*40)),REMIND_INTERVAL_MS:"5000"}),stdio:"ignore"});
     await sleep(6500); kid.kill(); await sleep(200);
     return fs.readFileSync(nf,"utf8").split("\n").filter(Boolean);
   };

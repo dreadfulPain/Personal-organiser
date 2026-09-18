@@ -37,6 +37,7 @@ ol.close();
 ok("working: nothing to show", up.hasAI === true && up.engineNote === "");
 
 import fs from "node:fs";
+import "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const app = fs.readFileSync(`${REPO_ROOT}/public/app.js`, "utf8");
 const html = fs.readFileSync(`${REPO_ROOT}/public/index.html`, "utf8");
 ok("the banner only shows when there's a reason", /banner\.hidden = !engineNote/.test(app));

@@ -19,6 +19,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { spawn } from "node:child_process";
 import { codeOf } from "./_check.mjs";
+import { DATA } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 
 const REPO = REPO_ROOT;
 let pass = 0, fail = 0, gaps = [];
@@ -104,7 +105,7 @@ sec("And there is somewhere to type them");
 
 sec("Do the codes actually survive being saved?");
 {
-  const dataDir = path.join(REPO, "data");
+  const dataDir = DATA;
   const port = 8000 + Math.floor(Math.random() * 900);
   const srv = spawn("node", [path.join(REPO, "server.js")],
     { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });

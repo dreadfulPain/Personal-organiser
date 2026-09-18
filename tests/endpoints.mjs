@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { checker } from "./_check.mjs";
+import { DATA } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const { ok, done, sec } = checker();
 
 const PORT = 3961;
@@ -103,7 +104,7 @@ sec("Taking a file in");
   // WHAT MATTERS IS WHERE IT LANDS, not whether the name still has dots in it.
   // "_.._server.js" looks alarming and is a perfectly flat filename: the
   // slashes were replaced, so there is no path left to climb.
-  const FILES = path.join(REPO_ROOT, "data", "files");
+  const FILES = path.join(DATA, "files");
   const landed = path.resolve(FILES, String(climb.j.id));
   ok("a name that climbs out of the folder is answered, not obeyed", climb.status === 200,
      JSON.stringify(climb.j));
@@ -121,7 +122,7 @@ sec("Taking a file in");
   ok("and keeps a name you would recognise", /reading check/.test(String(fine.j.id)), String(fine.j.id));
 
   [climb.j && climb.j.id, fine.j && fine.j.id].filter(Boolean).forEach((id) => {
-    try { fs.unlinkSync(path.join(REPO_ROOT, "data", "files", String(id))); } catch { /* already gone */ }
+    try { fs.unlinkSync(path.join(DATA, "files", String(id))); } catch { /* already gone */ }
   });
 }
 

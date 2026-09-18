@@ -4,6 +4,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // The gap the double-check found: splitting is pure code but was gated behind
 // the AI, so a laptop with no model got a whole pasted thread as one title.
 import { spawn } from "node:child_process";
+import "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 let pass=0,fail=0;
 const ok=(n,c,e)=>{if(c){pass++;console.log("  ok  "+n);}else{fail++;console.log("FAIL  "+n+(e?"\n      "+String(e).slice(0,300):""));}};

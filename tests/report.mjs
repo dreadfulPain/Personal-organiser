@@ -5,6 +5,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // Tested by filling the app with distinctive secrets and searching the output.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
 import http from "node:http"; import { spawn } from "node:child_process";
+import { asUser } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const REPO = REPO_ROOT;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass=0, fail=0;
@@ -50,7 +51,7 @@ fs.writeFileSync(path.join(dir, "data", "organiser-data.json"), JSON.stringify({
 const ol = http.createServer((req, res) => { res.writeHead(500); res.end("boom " + SECRETS.taskTitle); }).listen(11777);
 const port = 3733;
 const srv = spawn(process.execPath, ["server.js"], { cwd: dir,
-  env: { ...process.env, NO_OPEN: "1", PORT: String(port), AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b", AI_BASE_URL: "http://localhost:11777" }, stdio: "ignore" });
+  env: asUser(dir, { PORT: String(port), AI_ENGINE: "ollama", AI_MODEL: "qwen3:14b", AI_BASE_URL: "http://localhost:11777" }), stdio: "ignore" });
 await sleep(2200);
 const B = `http://localhost:${port}`;
 // Make a failing call so there's something in the flight recorder.

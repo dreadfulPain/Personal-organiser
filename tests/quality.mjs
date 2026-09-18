@@ -3,6 +3,7 @@ import { dirname as __d, join as __j } from "node:path";
 const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
 import { spawn } from "node:child_process";
+import { asUser } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const REPO = REPO_ROOT;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass=0, fail=0;
@@ -16,7 +17,7 @@ fs.writeFileSync(path.join(dir,"package.json"), JSON.stringify({type:"module"}))
 fs.mkdirSync(path.join(dir,"data"),{recursive:true});
 fs.writeFileSync(path.join(dir,"data","organiser-data.json"), JSON.stringify({savedAt:new Date().toISOString(),items:[]}));
 const port = 3755;
-const srv = spawn(process.execPath,["server.js"],{cwd:dir,env:{...process.env,NO_OPEN:"1",PORT:String(port)},stdio:"ignore"});
+const srv = spawn(process.execPath,["server.js"],{cwd:dir,env:asUser(dir,{PORT:String(port)}),stdio:"ignore"});
 await sleep(2200);
 const B = `http://localhost:${port}`;
 const send = (b) => fetch(B+"/api/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});

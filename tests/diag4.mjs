@@ -5,6 +5,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // pointed once there is.
 import fs from "node:fs";
 import { spawn } from "node:child_process";
+import { DATA } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, c, e) => { if (c) { pass++; console.log(`  ok  ${n}`); } else { fail++; console.log(`FAIL  ${n}${e ? "\n      " + String(e).slice(0,300) : ""}`); } };
@@ -40,13 +41,13 @@ ok("a connected folder just says so", connected.state === "ok" && /connected/.te
 // Hide .git to simulate an unzipped folder.
 fs.renameSync(`${REPO}/.git`, `${REPO}/.git-hidden`);
 try {
-  fs.rmSync(`${REPO}/data`, { recursive: true, force: true });
+  fs.rmSync(DATA, { recursive: true, force: true });
   const empty = await diag();
   ok("an empty unzipped folder is only INFO", empty.state === "info", empty.state);
   ok("and still says how to connect it", /Double-click “Update”/.test(empty.fix));
 
-  fs.mkdirSync(`${REPO}/data`, { recursive: true });
-  fs.writeFileSync(`${REPO}/data/organiser-data.json`, JSON.stringify({
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(`${DATA}/organiser-data.json`, JSON.stringify({
     items: Array.from({ length: 13 }, (_, i) => ({ id: String(i), title: "t" + i })),
     goals: [{ id: "g1" }, { id: "g2" }], records: [], contacts: [], schedule: [], savedAt: new Date().toISOString(),
   }));
@@ -57,7 +58,7 @@ try {
   ok("it doesn't tell you to re-download", !/download/i.test(risky.fix));
 } finally {
   fs.renameSync(`${REPO}/.git-hidden`, `${REPO}/.git`);
-  fs.rmSync(`${REPO}/data`, { recursive: true, force: true });
+  fs.rmSync(DATA, { recursive: true, force: true });
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

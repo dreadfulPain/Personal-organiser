@@ -1141,11 +1141,84 @@ data/files/students/<ID>/  ← a student's attached work
 data/files/portfolio/<TS>/ ← evidence for each standard
 data/exports/              ← spreadsheets and pages you can open without the app
 data/backups/              ← automatic safety copies
+data/.this-is-real-data    ← marks this folder as yours; tests refuse to open it
 .env                       ← switches the AI on (and later, dictation)
 ```
 
 **A full backup is a copy of the whole `data` folder** — that's your writing and
 your files together.
+
+### And nothing but the app writes there
+
+A screenshot script wrote its own fixture into `data/organiser-data.json`.
+Nothing failed and nothing could have: that path is the one the app opens, so it
+is the path a script types. The fixture was then read back off the screen and
+reported as a real saved timetable, and the only thing that caught it was tracing
+one wrong date. **6,064 passing checks had nothing to say about it** — every one
+of them was about what the code computes and none about where it wrote.
+
+The suite already moved the live file aside while it ran, which protects exactly
+one command: not `node tests/e2e.mjs` on its own, and not any script somebody
+writes to look at a screen. Ten of the suites finish by *deleting* the data
+directory.
+
+So the directory is now decided in one place, and who is asking is part of it:
+
+| | |
+| --- | --- |
+| `ORGANISER_ROLE` | `user` (the default) · `test` · `demo` |
+| `ORGANISER_DATA_DIR` | which directory — **required** for `test` and `demo` |
+
+A `test` or `demo` run with no directory named **refuses to start**, and says
+why: there is no default on purpose, because the default is somebody's real file.
+The rule that actually protects the data is not about paths, though, because a
+path can be mistyped — a directory the app has used for real carries
+`.this-is-real-data`, and nothing running as `test` or `demo` will open a
+directory that has one, however it was pointed there. A run that is not a
+person's also says so on startup, on the line that names the file:
+
+```
+NOT REAL DATA (demo run):   /tmp/organiser-test-V5qTii/demo-migration-2/organiser-data.json
+```
+
+Tests get a temporary directory each from `tests/_where.mjs`, and screenshot
+scripts get `fixture()`, which makes the safe way the short way. The four suites
+that copy the whole app somewhere disposable and run it *as a person* say so out
+loud with `asUser()`, because "this one runs as a user" is exactly the claim that
+should be visible.
+
+`tests/apart.mjs` holds three checks, because two of them are about arrangement
+and only the third is proof:
+
+1. the server refuses — no directory named, or a directory holding real data;
+2. no suite in the repository names `<repo>/data`, and every suite that starts a
+   server goes through the one place;
+3. **the proof**: a real file is put where yours lives, the suites that start
+   servers are run for real, and it has to come back byte for byte with nothing
+   added beside it.
+
+Six deliberate breaks were tried against it — including putting back the exact
+line that caused the incident — and all six were caught, the original one by the
+sentinel.
+
+**What this does not do.** A script that bypasses all of it and writes bytes to a
+path can still do damage; nothing in a program can stop that. What changed is
+that the correct way is now shorter than the wrong one, anything inside the
+repository is checked mechanically, the suite is proved clean against a real
+file, and a run that is not yours says so on screen.
+
+### And the one write nobody asked for
+
+The semantics stamp (above) is a change to a file you own, made without being
+asked. It keeps a copy first — `data/backups/before-meaning-<n>.json`.
+
+Neither existing backup covers this. `previous.json` is overwritten by the very
+next save, and the save right after a migration is the one you make while
+answering it; the daily snapshot is written once a day, so if the app was used
+that morning it holds the morning rather than the state before the change. The
+pre-migration copy is written once per generation crossed, is never overwritten —
+including when you restore a backup and the stamp runs again, which is precisely
+when you are relying on it — and pruning does not know its name.
 
 ---
 

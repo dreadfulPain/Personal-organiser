@@ -34,10 +34,68 @@ function dirname(p) {
 
 // --- where things live -----------------------------------------------------
 const PUBLIC_DIR = path.join(__dirname, "public");
-const DATA_DIR = path.join(__dirname, "data");
+
+// WHOSE DATA THIS IS, DECIDED IN ONE PLACE.
+//
+// A screenshot script wrote its own fixture into the ordinary data directory.
+// Nothing failed. Nothing could have: it typed the path, and the path is the
+// same one the app opens. The fixture was then read back off the screen and
+// described as somebody's real saved timetable, and only a line-by-line trace
+// of a wrong date showed otherwise.
+//
+// The suite already knew about this and moved the live file aside while it ran
+// — which protects one command and nothing else. A single test run on its own,
+// or any script somebody writes to look at a screen, wrote straight into it.
+//
+// So: ONE resolution, and a name for who is asking.
+//
+//   ORGANISER_ROLE   user (default) — a person, with their real file
+//                    test | demo    — a suite or a screenshot script, which must
+//                                     name its own directory and may not be
+//                                     pointed at anybody's real one
+//   ORGANISER_DATA_DIR   which directory. Required for test and demo.
+//
+// The rule that actually protects the data is not about paths, because a path
+// can be mistyped: a directory the app has used for real carries a marker, and
+// nothing running as test or demo will open a directory that has one. See
+// MINE_FILE.
+const HOME_DATA = path.join(__dirname, "data");
+const ROLE = String(process.env.ORGANISER_ROLE || "user").trim().toLowerCase();
+const MINE = ".this-is-real-data";
+
+function refuseToStart(why, fix) {
+  console.error(`\n  STOPPING — ${why}\n`);
+  if (fix) console.error(`  ${fix}\n`);
+  process.exit(1);
+}
+
+function whereData() {
+  const asked = String(process.env.ORGANISER_DATA_DIR || "").trim();
+  if (ROLE === "user") return asked ? path.resolve(asked) : HOME_DATA;
+  if (ROLE !== "test" && ROLE !== "demo")
+    refuseToStart(`ORGANISER_ROLE is "${ROLE}", which is not one of user, test or demo.`);
+  if (!asked)
+    refuseToStart(
+      `ORGANISER_ROLE=${ROLE} but ORGANISER_DATA_DIR is not set.`,
+      "A test or a screenshot run has to name its own directory. It is not " +
+      "given a default on purpose: the default is somebody's real file.");
+  const dir = path.resolve(asked);
+  // THE ONE THAT SURVIVES A TYPO. Whatever the path looks like, if the app has
+  // kept real data there it is not a scratch directory.
+  try {
+    if (fs.existsSync(path.join(dir, MINE)))
+      refuseToStart(
+        `ORGANISER_ROLE=${ROLE} was pointed at ${dir}, which holds real saved data.`,
+        `That directory carries ${MINE}. Point it somewhere disposable.`);
+  } catch { /* unreadable is not proof of anything */ }
+  return dir;
+}
+
+const DATA_DIR = whereData();
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const DATA_FILE = path.join(DATA_DIR, "organiser-data.json");
 const PREV_FILE = path.join(BACKUP_DIR, "previous.json");
+const MINE_FILE = path.join(DATA_DIR, MINE);
 
 const PORT = process.env.PORT || 3000;
 // How big your own saved document may get. Deliberately far larger than the
@@ -73,6 +131,17 @@ function ensureDirs() {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   fs.mkdirSync(FILES_DIR, { recursive: true });
   fs.mkdirSync(EXPORT_DIR, { recursive: true });
+  // AND SAY SO, ONCE. A directory a person's app has actually used is marked as
+  // theirs, and from then on nothing running as a test or a demo will open it
+  // however it was pointed there. See whereData.
+  if (ROLE !== "user") return;
+  try {
+    if (!fs.existsSync(MINE_FILE))
+      fs.writeFileSync(MINE_FILE,
+        "This folder holds real saved data for the Organiser.\n" +
+        "Its presence stops test and screenshot runs opening this folder.\n" +
+        "Delete it only if this folder holds nothing you would miss.\n");
+  } catch { /* marking is best-effort; it must never stop you saving */ }
 }
 
 function readData() {
@@ -234,6 +303,17 @@ function writeData(input, opts) {
       fs.writeFileSync(PREV_FILE, current);
       const daily = path.join(BACKUP_DIR, `organiser-${todayStamp()}.json`);
       if (!fs.existsSync(daily)) fs.writeFileSync(daily, current);
+      // AND ONE THAT IS NOT A ROLLING COPY, when the file is about to be
+      // stamped with a meaning it did not have.
+      //
+      // Neither of the two above is good enough for that. previous.json is
+      // overwritten by the very next save — and the save right after a
+      // migration is the one somebody makes while answering it. The daily
+      // snapshot is written once a day, so if the app was already used this
+      // morning it holds this morning, not the state before the change. A
+      // schema write is the one write nobody chose, so it gets a copy that
+      // says what it is, is never pruned, and is never overwritten.
+      beforeMeaning(input, current, json);
       pruneBackups();
     } catch (e) {
       console.warn("[data] backup warning:", e.message);
@@ -246,6 +326,41 @@ function writeData(input, opts) {
   fs.writeFileSync(tmp, json);
   fs.renameSync(tmp, DATA_FILE);
   return doc.savedAt;
+}
+
+// A COPY OF WHAT WAS THERE BEFORE THE APP CHANGED THE MEANING OF IT.
+//
+// The one write on this file nobody asked for: the app opens somebody's data,
+// sees it was written under an older reading of its own answers, and stamps it
+// so it knows not to ask twice. That is a good thing to do and it is still a
+// change to a file somebody owns, made without being asked — so it leaves
+// something to go back to, under a name that says what happened and when.
+//
+// Written once per generation crossed. It is not a rolling copy and pruning
+// does not touch it: see pruneBackups, which only knows dated and conflict
+// copies.
+function beforeMeaning(input, was, willBe) {
+  const asked = input && typeof input === "object" ? input.scheduleMeaning : null;
+  const to = Number(asked && asked.wrote) || 0;
+  if (!to) return;
+  let from = 0;
+  try {
+    const had = JSON.parse(String(was)).scheduleMeaning;
+    from = Number(had && had.wrote) || 0;
+  } catch { /* unreadable counts as never stamped */ }
+  if (to <= from) return;
+  // AND ONLY IF THERE IS SOMETHING TO KEEP. A file the stamp is the first thing
+  // ever written to does not need rescuing from it.
+  if (String(was) === String(willBe)) return;
+  const at = path.join(BACKUP_DIR, `before-meaning-${to}.json`);
+  try {
+    if (!fs.existsSync(at)) {
+      fs.writeFileSync(at, was);
+      logEvent("save", { ok: true, why: "kept a copy before the meaning was stamped" });
+    }
+  } catch (e) {
+    console.warn("[data] pre-migration copy warning:", e.message);
+  }
 }
 
 function pruneBackups() {
@@ -4589,7 +4704,15 @@ ensureDirs();
 server.listen(PORT, () => {
   const url = `http://localhost:${PORT}`;
   console.log(`\n  Your organiser is running:  ${url}`);
-  console.log(`  Your data is saved to:      ${DATA_FILE}`);
+  // AND WHOSE FILE THAT IS, when it isn't yours.
+  //
+  // The screenshot that started all this looked exactly like a screenshot of
+  // somebody's real week, because nothing on it or around it said otherwise. A
+  // run that is not a person's now says so on the line that names the file, so
+  // the difference is visible in the place anybody would already be looking.
+  console.log(ROLE === "user"
+    ? `  Your data is saved to:      ${DATA_FILE}`
+    : `  NOT REAL DATA (${ROLE} run):   ${DATA_FILE}`);
   const aiCfg = aiConfig();
   if (!aiCfg) {
     console.log("\n  (AI sorting is off — add things by hand. See .env.example to switch it on.)");

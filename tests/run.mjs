@@ -57,9 +57,18 @@ const run = (f) =>
 // timetable, your class lists and your term's records go with them. That
 // happened here, mid-session, to a real set-up week.
 //
-// Fixed in ONE place rather than ten, and rather than in the ten that will be
-// eleven next month. A suite can delete whatever it likes; the file it would
-// have destroyed isn't there while it runs, and is put back afterwards.
+// SO THEY DO NOT GO THERE AT ALL ANY MORE. Every suite now names its own
+// directory — see tests/_where.mjs — and a server started as a test refuses to
+// open a directory holding real data, whatever path it was handed. This is the
+// prevention; what follows is the belt to its braces.
+//
+// KEPT, BECAUSE IT IS THE SECOND OF TWO. The first version of this fix was this
+// move-aside alone, and it is not enough: it protects one command. `node
+// tests/e2e.mjs` on its own was never covered by it, and neither was any script
+// somebody writes to look at a screen — one of which duly wrote its fixture
+// into the real file, which was then read back and reported as somebody's real
+// timetable. Two independent things now have to fail before data is lost.
+process.env.ORGANISER_ROLE = "test";
 const LIVE = join(HERE, "..", "data", "organiser-data.json");
 // OUTSIDE data/, because that is the directory the suites delete — put the copy
 // in there and the very thing meant to protect it goes with it.

@@ -11,6 +11,7 @@ import fs from "node:fs"; import os from "node:os"; import path from "node:path"
 // stays an impression instead of a number.
 import http from "node:http"; import { spawn } from "node:child_process";
 import { checker } from "./_check.mjs";
+import { asUser } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const { ok, done } = checker();
 const REPO = REPO_ROOT;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -25,7 +26,7 @@ const ol = http.createServer((req,res)=>{
   if(/tags/.test(req.url)){res.writeHead(200,{"Content-Type":"application/json"});return res.end(JSON.stringify({models:[{name:"qwen3:14b"}]}));}
   res.writeHead(200,{"Content-Type":"application/json"});res.end(JSON.stringify({message:{content:JSON.stringify({entries:[]})}}));
 }).listen(11778);
-const srv = spawn(process.execPath,["server.js"],{cwd:dir,env:{...process.env,NO_OPEN:"1",PORT:"3734",AI_ENGINE:"ollama",AI_MODEL:"qwen3:14b",AI_BASE_URL:"http://localhost:11778"},stdio:"ignore"});
+const srv = spawn(process.execPath,["server.js"],{cwd:dir,env:asUser(dir,{PORT:"3734",AI_ENGINE:"ollama",AI_MODEL:"qwen3:14b",AI_BASE_URL:"http://localhost:11778"}),stdio:"ignore"});
 await sleep(2200);
 for (let i=0;i<3;i++) await fetch("http://localhost:3734/api/route",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:"a thing"})});
 await sleep(300);

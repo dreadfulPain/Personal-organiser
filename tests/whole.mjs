@@ -24,6 +24,7 @@ import { spawn } from "node:child_process";
 // "0 failed". A list that can empty itself is worse than one that is wrong.
 import { STORES as TABLE } from "./_store.mjs";
 import { codeOf } from "./_check.mjs";
+import { DATA } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 
 const REPO = REPO_ROOT;
 const PUB = path.join(REPO, "public");
@@ -350,7 +351,7 @@ sec("OUT — what a page with data actually shows");
 // ---------------------------------------------------------------------------
 sec("DOWN — all 22 stores through a real server, at once");
 {
-  const dataDir = path.join(REPO, "data");
+  const dataDir = DATA;
   // NEVER DESTROY WHAT WAS ALREADY THERE. This used to delete the whole data
   // directory when it finished — on the machine somebody actually uses the app
   // on, that is their file. Running the tests wiped a timetable and a class

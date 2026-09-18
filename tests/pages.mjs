@@ -12,6 +12,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { checker } from "./_check.mjs";
+import "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const { ok, done } = checker();
 
 const PORT = 3948;

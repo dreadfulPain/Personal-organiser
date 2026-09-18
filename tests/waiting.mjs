@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
 import { spawn } from "node:child_process";
+import { asUser } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const REPO = REPO_ROOT;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -86,7 +87,7 @@ section("The server re-arms it — and stops on its own");
     const nf = path.join(dir, "notes.jsonl");
     fs.writeFileSync(nf, "");
     const kid = spawn(process.execPath, ["server.js"], { cwd: dir,
-      env: { ...process.env, NOTIFY_FILE: nf, PORT: String(3560 + Math.floor(Math.random() * 60)), REMIND_INTERVAL_MS: "5000", NO_OPEN: "1", ...env }, stdio: "ignore" });
+      env: asUser(dir, { NOTIFY_FILE: nf, PORT: String(3560 + Math.floor(Math.random() * 60)), REMIND_INTERVAL_MS: "5000", ...env }), stdio: "ignore" });
     await sleep(6500); kid.kill(); await sleep(200);
     return {
       notes: fs.readFileSync(nf, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)),

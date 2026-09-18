@@ -21,6 +21,7 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { checker } from "./_check.mjs";
+import "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const { ok, done, sec } = checker();
 
 // ---- a stand-in for Ollama ------------------------------------------------

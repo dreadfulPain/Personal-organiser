@@ -5,11 +5,12 @@ const REPO_ROOT = __j(__d(__f(import.meta.url)), "..");
 // read them back, and make sure nothing else got trampled on the way.
 import fs from "node:fs"; import os from "node:os"; import path from "node:path";
 import { spawn } from "node:child_process";
+import { DATA } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 let pass=0, fail=0;
 const ok=(n,c,e)=>{ if(c){pass++;console.log("  ok  "+n);} else {fail++;console.log("FAIL  "+n+(e?"\n      "+String(e).slice(0,300):""));} };
 // The data dir isn't configurable, so this runs against the real one — there
 // was no file there, and it's removed again at the end.
-const dir = `${REPO_ROOT}/data`;
+const dir = DATA;
 const port = 8000 + Math.floor(Math.random()*900);
 const srv = spawn("node", [`${REPO_ROOT}/server.js`],
   { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });

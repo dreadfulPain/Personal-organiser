@@ -32,6 +32,7 @@ import { checker } from "./_check.mjs";
 import { browser, STORES, fullDoc } from "./_store.mjs";
 import { open } from "./_dom.mjs";
 import { DATA as PAGE_DATA } from "./_data.mjs";
+import { DATA as SCRATCH } from "./_where.mjs";   // a test never opens your data — see tests/_where.mjs
 const { ok, done, sec } = checker();
 
 const KEYS = STORES.map((s) => s.key);
@@ -419,7 +420,7 @@ sec("And every page that writes anything down can say when it didn't");
 // ---------------------------------------------------------------------------
 sec("Through the real server, onto the real disk");
 {
-  const DATA = path.join(REPO_ROOT, "data");
+  const DATA = SCRATCH;
   const FILE = path.join(DATA, "organiser-data.json");
   const BACKUPS = path.join(DATA, "backups");
   // Never destroy what was already there — somebody runs the tests on the

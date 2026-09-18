@@ -624,20 +624,69 @@
   //   are an overlay, and read as a rule they take every lesson, every duty and
   //   every free period off the day with them.
   //
-  // WHICH ONES, WITHOUT KNOWING A WORD OF ANYBODY'S VOCABULARY: the ones a
-  // DOCUMENT gave. Time you booked off yourself is your own answer and was
-  // never in doubt; a rule read off a sheet is exactly the thing whose meaning
-  // moved. Confirming or converting one makes it yours — see settle — and it is
-  // never asked about again.
+  // WHICH ONES — AND THIS IS THE PART THAT IS EASY TO GET WRONG.
   //
-  // NOTHING IS REWRITTEN. This finds them and groups them; the answering is
-  // somebody pressing a button, because a silent migration of a decision is
-  // indistinguishable from a bug.
+  // The obvious test is "a document gave it": source paste or ics, carrying a
+  // day rule. That is a test for WHERE AN ENTRY CAME FROM, and what is wanted is
+  // WHEN IT WAS WRITTEN. They are not the same question and they come apart
+  // immediately: a calendar imported tomorrow, read correctly under the new
+  // meaning, is also document-sourced and also says the timetable stops — and
+  // would be put on the list and asked whether that perfectly good holiday
+  // ought to be an overlay. A migration that cannot end is not a migration, it
+  // is a permanent accusation against your own data.
+  //
+  // SO THE FILE CARRIES WHICH MEANING IT WAS WRITTEN UNDER. SEMANTICS is the
+  // generation this code writes; a file stamped lower than that was written
+  // before the meanings moved. The FIRST time such a file is opened, the
+  // entries in it that the change affects are listed ONCE — see upgrade — and
+  // that list is what is asked about, for ever. Nothing imported afterwards can
+  // join it, because it was not there.
+  //
+  // The list is frozen rather than recomputed on purpose: recomputing is how
+  // "have you dealt with this" turns back into "does this look suspicious",
+  // which is the thing that cannot ever be switched off.
+  //
+  // NOTHING IS REWRITTEN. The upgrade writes down which questions to ask and
+  // changes no entry at all; the answering is somebody pressing a button,
+  // because a silent migration of a decision is indistinguishable from a bug.
+  const SEMANTICS = 1;
   const FROM_DOC = ["paste", "ics"];
-  function staleRules(schedule) {
+
+  // What the change affects, asked once. Time you booked off yourself is your
+  // own answer and was never the document's reading, so it is not in doubt and
+  // is not on the list.
+  const wouldAsk = (schedule) => normalise(schedule)
+    .filter((b) => b.date && !b.days.length && FROM_DOC.indexOf(b.source) >= 0 &&
+      (b.blocksDay || b.noLessons))
+    .map((b) => b.id);
+
+  // Called once, when a file is opened. Returns the meaning record to store —
+  // and says whether it changed, so a file already up to date is not written
+  // back for no reason.
+  //
+  // TWO LISTS, NOT ONE. "ask" is every entry the change affected and never
+  // changes again; "done" is the ones you have answered. Striking answers off
+  // "ask" instead would lose the fact that they were ever questions — and a
+  // converted development day stops being a day rule, so it would then vanish
+  // from the accounting altogether, which is precisely the disappearance the
+  // accounting exists to make impossible.
+  function upgrade(schedule, meaning) {
+    const had = meaning && typeof meaning === "object" ? meaning : {};
+    const wrote = Number(had.wrote) || 0;
+    const kept = { wrote: SEMANTICS, ask: (had.ask || []).slice(), done: (had.done || []).slice() };
+    if (wrote >= SEMANTICS) return { meaning: kept, changed: false };
+    return { meaning: { wrote: SEMANTICS, ask: wouldAsk(schedule), done: [] }, changed: true };
+  }
+
+  const stillAsking = (meaning) => {
+    const done = new Set(((meaning && meaning.done) || []));
+    return new Set(((meaning && meaning.ask) || []).filter((id) => !done.has(id)));
+  };
+
+  function staleRules(schedule, meaning) {
+    const ask = stillAsking(meaning);
     const mine = normalise(schedule).filter((b) =>
-      b.date && !b.days.length && FROM_DOC.indexOf(b.source) >= 0 &&
-      (b.blocksDay || b.noLessons));
+      ask.has(b.id) && (b.blocksDay || b.noLessons));
     const groups = spansOf(mine);
     return {
       // A document said you were away. It cannot have.
@@ -646,6 +695,57 @@
       // have named something that happens ON an ordinary day.
       noTimetable: groups.filter((g) => !g.blocksDay && g.noLessons),
     };
+  }
+
+  // A QUESTION ANSWERED IS OFF THE LIST, whichever way it was answered.
+  //
+  // The only thing that decides whether you are asked again. Kept apart from
+  // what settle does to the entries, because "what this day is" and "have you
+  // been asked about it" are different facts and folding them together is how
+  // one of them starts speaking for the other.
+  function answered(meaning, ids) {
+    const had = meaning && typeof meaning === "object" ? meaning : {};
+    const done = new Set((had.done || []).concat(ids || []));
+    return { wrote: Number(had.wrote) || SEMANTICS,
+      ask: (had.ask || []).slice(),
+      done: (had.ask || []).filter((id) => done.has(id)) };
+  }
+
+  // EVERY DAY RULE A DOCUMENT PUT IN THE FILE, and where each one stands.
+  //
+  // The list above is only the part still in question. This is the whole of it,
+  // including the entries nobody needs to do anything about — because "the
+  // migration found two" is not an answer to "what happened to the other four",
+  // and a migration you cannot reconcile against your own data is one you have
+  // to take on trust.
+  function ruleAudit(schedule, meaning) {
+    const open = stillAsking(meaning);
+    const was = new Set(((meaning && meaning.ask) || []));
+    // EVERY DAY RULE, PLUS EVERYTHING THE CHANGE EVER ASKED ABOUT. The second
+    // half is not redundant: answering a development day stops it being a rule
+    // at all, and a row that leaves the accounting the moment you deal with it
+    // cannot be reconciled against the calendar it came from.
+    const rules = normalise(schedule).filter((b) =>
+      b.date && !b.days.length && (isDayRule(b) || was.has(b.id)));
+    return spansOf(rules).map((g) => {
+      const doc = FROM_DOC.indexOf(g.blocks[0].source) >= 0;
+      const asking = g.blocks.some((b) => open.has(b.id));
+      return {
+        ...g,
+        fromDocument: doc,
+        // What it does to a day, in the app's own terms.
+        is: g.blocksDay ? "away" : g.noLessons ? "noTimetable"
+          : g.runsAs !== null && g.runsAs !== undefined ? "runsAs" : "overlay",
+        // AND WHERE IT STANDS, which is the column the audit exists for.
+        //
+        //   asking  — on the list, not answered yet.
+        //   current — a document gave it, and it was not on the list, so it was
+        //             written since the meanings moved and is already right.
+        //   yours   — you said so: either you entered it, or you answered the
+        //             question about it, which makes it yours either way.
+        stands: asking ? "asking" : doc ? "current" : "yours",
+      };
+    });
   }
 
   // The answer, applied to every block of one group. "mine" is what makes it
@@ -1416,7 +1516,11 @@
     spansOf,
     groupsOf,
     // AND THE ONES WHOSE MEANING MOVED UNDER THEM — see staleRules.
+    SEMANTICS,
+    upgrade,
     staleRules,
+    answered,
+    ruleAudit,
     settle,
     fixedBlockAt,
     nextFreeMoment,

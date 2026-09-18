@@ -47,6 +47,13 @@
     ["contactConfig", "organiser.contactconfig.v1", null],
     ["schedule", "organiser.schedule.v1", []],
     ["scheduleConfig", "organiser.scheduleconfig.v1", null],
+    // WHICH MEANING THIS FILE'S SCHEDULE WAS WRITTEN UNDER — see SEMANTICS in
+    // schedule.js. Two of the app's own answers changed meaning after entries
+    // had been stored under the old one, and the app has to be able to tell
+    // "written before that" from "written since", or it goes on asking about
+    // correct new data for ever. Holds the generation number and the frozen
+    // list of entries that were in the file at the moment the meaning moved.
+    ["scheduleMeaning", "organiser.schedulemeaning.v1", null],
     // What you know about people besides their marks, and what you've told whom.
     // Ordinary storage — the "never leaves" promise is enforced where the data is
     // USED (no export path, no fetch), not by hiding it from the save file, which

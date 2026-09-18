@@ -282,6 +282,10 @@ const FULL = {
   contactConfig: { groups: ["9A"], fields: [] },
   schedule: [{ id: "sl1", label: "9A period 3", start: "11:00", end: "12:00", days: [1, 2, 3, 4, 5] }],
   scheduleConfig: { dayStart: "08:00", dayEnd: "17:00", minGapMinutes: 10 },
+  // Which meaning the schedule was written under, and the frozen list of
+  // entries the change to it affected — see SEMANTICS in schedule.js. It has to
+  // survive a round trip or the migration starts over on every save.
+  scheduleMeaning: { wrote: 1, ask: ["sl9"], done: [] },
   pastoralTopics: [{ id: "t:soc", label: "how they get on socially", staysFreshDays: 30, options: [] },
     { id: "t:learn", label: "how they answer in class", staysFreshDays: 60, options: ["hand up", "if asked", "rarely"] }],
   pastoralNotes: [{ id: "n1", who: "p1", topicId: "t:soc", said: "settled", choice: "", date: TODAY, at: TODAY + "T09:00:00Z" },

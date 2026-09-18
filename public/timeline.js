@@ -189,6 +189,11 @@
   // next term. See the store: this is recall of your own answer, not the app
   // acquiring a vocabulary — it never fills one in without saying it did.
   let calSaid = {};
+  // WHICH MEANING THIS FILE'S SCHEDULE WAS WRITTEN UNDER, and the frozen list of
+  // entries that were in it when two of those meanings moved. See SEMANTICS in
+  // schedule.js: without this the migration cannot tell a holiday saved under
+  // the old reading from one imported correctly tomorrow, and never ends.
+  let meaning = null;
   // IS THERE ANYTHING TO ASK. Five other pages in this app check before they
   // offer the model; this one offered it and found out by trying. So the button
   // promised a reader that might not exist, and the only way to discover that
@@ -2412,7 +2417,7 @@
 
   function persist() {
     OrganiserStore.save({ items, waiting, schedule, scheduleConfig: cfg, worked, areas: areaList, rotas,
-      calendarSaid: calSaid });
+      calendarSaid: calSaid, scheduleMeaning: meaning });
   }
 
   // People are saved SEPARATELY, and only when this page actually changed them.
@@ -5282,8 +5287,7 @@
     const el = $("#oldMeanings");
     if (!el) return;
     el.innerHTML = "";
-    const stale = S().staleRules(schedule);
-    if (!stale.away.length && !stale.noTimetable.length) return;
+    const stale = S().staleRules(schedule, meaning);
     OLD_MEANINGS.forEach((m) => {
       const groups = stale[m.at];
       if (!groups.length) return;
@@ -5310,7 +5314,10 @@
           b.className = "p-opt su-chip";
           b.textContent = word;
           b.addEventListener("click", () => {
-            schedule = S().settle(schedule, g.blocks.map((x) => x.id), how);
+            const ids = g.blocks.map((x) => x.id);
+            schedule = S().settle(schedule, ids, how);
+            // OFF THE LIST, whichever way it was answered — see answered().
+            meaning = S().answered(meaning, ids);
             persist();
             renderSetup();
             render();
@@ -5324,6 +5331,56 @@
       });
       el.appendChild(box);
     });
+    // AND THE WHOLE OF IT UNDERNEATH, questions or no questions.
+    renderRuleAudit();
+  }
+
+  // ---- AND THE WHOLE OF IT, so nothing has to be taken on trust --------------
+  //
+  // "The migration found two" is not an answer to "what happened to the other
+  // four". A list of only the entries still in question is impossible to
+  // reconcile against a calendar you remember importing: every name missing
+  // from it is either already right or quietly lost, and the list cannot tell
+  // you which. So this is every day rule in the file — asked about or not — and
+  // what each one is doing to your days.
+  const STANDS = {
+    asking: ["needs an answer", "on the list above"],
+    current: ["already right", "imported since the meanings moved"],
+    yours: ["yours", "you said so"],
+  };
+  const DOES = {
+    away: "no usable time at all",
+    noTimetable: "no timetable, day still yours",
+    runsAs: "runs another day's timetable",
+    overlay: "something on an ordinary day",
+  };
+  function renderRuleAudit() {
+    const el = $("#oldMeanings");
+    if (!el) return;
+    const rows = S().ruleAudit(schedule, meaning);
+    if (!rows.length) return;
+    const box = document.createElement("details");
+    box.className = "su-layer su-audit";
+    const head = document.createElement("summary");
+    const asking = rows.filter((r) => r.stands === "asking").length;
+    head.innerHTML = `<h3>Every day a document changed — ${rows.length}` +
+      `${asking ? `, ${asking} still to answer` : ", all answered"}</h3>`;
+    box.appendChild(head);
+    box.insertAdjacentHTML("beforeend",
+      `<p class="muted">Each one, and what it does to that day. Nothing here is a ` +
+      `question — it is so you can check the list above against the calendar you imported.</p>`);
+    rows.forEach((r) => {
+      const [word, why] = STANDS[r.stands] || ["", ""];
+      const row = document.createElement("div");
+      row.className = `su-brow su-auditrow su-${r.stands}`;
+      row.innerHTML =
+        `<span class="su-bwhen">${escapeHtml(rangeWords(r))}</span>` +
+        `<span class="su-blabel">${escapeHtml(r.label)}</span>` +
+        `<span class="su-adoes">${escapeHtml(DOES[r.is] || r.is)}</span>` +
+        `<span class="su-astands">${escapeHtml(word)} <span class="muted">· ${escapeHtml(why)}</span></span>`;
+      box.appendChild(row);
+    });
+    el.appendChild(box);
   }
 
   function renderWeekGaps() {
@@ -5545,6 +5602,15 @@
     cfg = data.scheduleConfig || null;
     worked = data.worked || {};
     calSaid = data.calendarSaid || {};
+    // THE ONE-TIME UPGRADE, and it changes no entry at all — it writes down
+    // which questions this file is owed, once, so that they can end. Saved
+    // straight away: a list that is recomputed every time the page opens is a
+    // list that grows as you import, which is the thing this exists to stop.
+    {
+      const up = S().upgrade(schedule, data.scheduleMeaning);
+      meaning = up.meaning;
+      if (up.changed) OrganiserStore.save({ scheduleMeaning: meaning });
+    }
     areaList = data.areas || [];
     rotas = data.rotas || [];
     contacts = data.contacts || [];

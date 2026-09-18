@@ -624,7 +624,18 @@ console.log("\nAnd answers given under a meaning that has since moved");
     // asked about: a document did not tell us this one.
     run("Away — dentist", "2026-12-01", 1, { blocksDay: true, source: "hand" }));
 
-  const stale = S.staleRules(saved);
+  // THE FILE SAYS WHICH MEANING IT WAS WRITTEN UNDER, and the questions it is
+  // owed are worked out ONCE, from what was in it at that moment. See SEMANTICS.
+  const first = S.upgrade(saved, null);
+  const M = first.meaning;
+  ok("a file written before the change is upgraded once, and says so",
+     first.changed === true && M.wrote === S.SEMANTICS && M.ask.length === 29,
+     JSON.stringify({ changed: first.changed, wrote: M.wrote, ask: M.ask.length }));
+  ok("  and opening it again asks nothing new",
+     S.upgrade(saved, M).changed === false,
+     JSON.stringify(S.upgrade(saved, M)));
+
+  const stale = S.staleRules(saved, M);
   const asked = [].concat(stale.away, stale.noTimetable)
     .filter((g) => /Retreat/.test(g.label));
   ok("a day saved as both is one question, not two",
@@ -656,6 +667,7 @@ console.log("\nAnd answers given under a meaning that has since moved");
   const HOL = "2027-01-25";
   const before = S.gapsOn(saved, CFG, HOL).reduce((n, g) => n + (g.end - g.start), 0);
   const after = S.settle(saved, winter.blocks.map((b) => b.id), "noTimetable");
+  const afterM = S.answered(M, winter.blocks.map((b) => b.id));
   const now = S.gapsOn(after, CFG, HOL).reduce((n, g) => n + (g.end - g.start), 0);
   ok("answering a holiday gives the fortnight its time back",
      before === 0 && now === 600, `${before} → ${now}`);
@@ -665,8 +677,8 @@ console.log("\nAnd answers given under a meaning that has since moved");
   // AND IT STOPS BEING A QUESTION, because it is now your answer and not a
   // document's reading.
   ok("  and it is never asked about again",
-     !S.staleRules(after).away.some((g) => /Winter/.test(g.label)),
-     JSON.stringify(S.staleRules(after).away.map((g) => g.label)));
+     !S.staleRules(after, afterM).away.some((g) => /Winter/.test(g.label)),
+     JSON.stringify(S.staleRules(after, afterM).away.map((g) => g.label)));
 
   // THE DEVELOPMENT DAY, ANSWERED. The rule comes off and what is left is a
   // thing ON the day — with no hour given, a thing to be given one.
@@ -688,10 +700,67 @@ console.log("\nAnd answers given under a meaning that has since moved");
 
   // AND SAYING THE OLD READING WAS RIGHT IS ALSO AN ANSWER.
   const kept = S.settle(saved, winter.blocks.map((b) => b.id), "keep");
+  const keptM = S.answered(M, winter.blocks.map((b) => b.id));
   ok("and saying it really was a day away keeps it, and stops the question",
      S.normalise(kept).filter((b) => /Winter/.test(b.label)).every((b) => b.blocksDay) &&
-       !S.staleRules(kept).away.some((g) => /Winter/.test(g.label)),
-     JSON.stringify(S.staleRules(kept).away.map((g) => g.label)));
+       !S.staleRules(kept, keptM).away.some((g) => /Winter/.test(g.label)),
+     JSON.stringify(S.staleRules(kept, keptM).away.map((g) => g.label)));
+
+  // ---- AND THE MIGRATION HAS TO END ---------------------------------------
+  //
+  // THE FAULT THIS IS HERE TO STOP. "A document gave it" is a test for where an
+  // entry came from, not for when it was written, and a calendar imported after
+  // the meanings moved is document-sourced too. Under the old test the app
+  // would have gone on asking, for ever, whether each correctly-read new
+  // holiday ought to be an overlay — a migration that cannot end, which is not
+  // a migration at all.
+  const newImport = [].concat(
+    run("Spring Festival", "2027-02-15", 7, { noLessons: true, source: "paste" }),
+    run("Staff Development", "2027-03-05", 1, { noLessons: true, source: "paste" }));
+  const later = saved.concat(newImport);
+  ok("a calendar imported after the change is not put on the list",
+     S.upgrade(later, M).changed === false &&
+       !S.staleRules(later, S.upgrade(later, M).meaning).noTimetable
+         .some((g) => /Spring Festival|Staff Development/.test(g.label)),
+     JSON.stringify(S.staleRules(later, S.upgrade(later, M).meaning)
+       .noTimetable.map((g) => g.label)));
+  // AND THE LIST EMPTIES, WHICH IS THE POINT OF IT. Answer everything it asked
+  // and there is nothing left, however much has been imported since.
+  const allDone = S.answered(M, M.ask);
+  const done = S.staleRules(later, allDone);
+  ok("  and once every question is answered the list is empty",
+     done.away.length === 0 && done.noTimetable.length === 0,
+     JSON.stringify({ away: done.away.length, noTimetable: done.noTimetable.length,
+       left: allDone.ask.length }));
+
+  // ---- AND EVERY RULE ACCOUNTS FOR ITSELF ----------------------------------
+  //
+  // A list of only what is still in question cannot be reconciled against a
+  // calendar you remember importing: every name missing from it is either
+  // already right or quietly lost, and the list cannot say which.
+  const audit = S.ruleAudit(later, M);
+  const at = (name) => audit.find((r) => new RegExp(name).test(r.label)) || {};
+  ok("every day rule in the file says where it stands",
+     audit.length === 6, JSON.stringify(audit.map((r) => `${r.label}:${r.stands}`)));
+  ok("  the ones written under the old meaning are asking",
+     at("Winter").stands === "asking" && at("Staff Retreat").stands === "asking",
+     JSON.stringify([at("Winter").stands, at("Staff Retreat").stands]));
+  ok("  the ones imported since are already right",
+     at("Spring Festival").stands === "current" && at("Staff Development").stands === "current",
+     JSON.stringify([at("Spring Festival").stands, at("Staff Development").stands]));
+  ok("  and the one you entered yourself is yours",
+     at("dentist").stands === "yours" && at("dentist").fromDocument === false,
+     JSON.stringify(at("dentist")));
+  ok("  with what each does to the day said in the app's own terms",
+     at("Winter").is === "away" && at("Spring Festival").is === "noTimetable",
+     JSON.stringify([at("Winter").is, at("Spring Festival").is]));
+  // AND ANSWERING MOVES A ROW FROM ASKING TO YOURS, rather than removing it —
+  // an audit that drops what it has dealt with cannot be reconciled either.
+  const auditAfter = S.ruleAudit(kept, keptM);
+  const winterAfter = auditAfter.find((r) => /Winter/.test(r.label)) || {};
+  ok("  and answering one moves it to yours rather than hiding it",
+     auditAfter.length === 4 && winterAfter.stands === "yours",
+     JSON.stringify(auditAfter.map((r) => `${r.label}:${r.stands}`)));
 }
 
 finish();

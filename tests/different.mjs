@@ -750,17 +750,44 @@ console.log("\nAnd the answers that were saved under the old meaning");
   r.get("#setupToggle").fire("click", { target: r.get("#setupToggle") });
   await r.settle();
   const panel = r.get("#oldMeanings");
-  const words = () => deep(panel)
-    .map((c) => `${c.textContent || ""} ${c.innerHTML || ""}`).join(" ") +
-    String(panel.innerHTML || "");
+  const said = (c) => `${c.textContent || ""} ${c.innerHTML || ""}`;
+  // THE QUESTIONS AND THE ACCOUNTING ARE READ SEPARATELY, because they are
+  // different things: one is what is still open, the other is every day rule in
+  // the file including the ones nobody needs to do anything about.
+  const partOf = (cls) => {
+    const box = deep(panel).find((c) => String(c.className || "").split(/\s+/).includes(cls));
+    return box ? deep(box).map(said).join(" ") + String(box.innerHTML || "") : "";
+  };
+  const asking = () => deep(panel)
+    .filter((c) => String(c.className || "").split(/\s+/).includes("su-moved"))
+    .map((c) => deep(c).map(said).join(" ") + String(c.innerHTML || "")).join(" ");
+  const audit = () => partOf("su-audit");
   ok("the setup screen says which saved answers no longer mean what they did",
-     /said you were away/.test(words()) && /the timetable stops/.test(words()),
-     words().slice(0, 240));
+     /said you were away/.test(asking()) && /the timetable stops/.test(asking()),
+     asking().slice(0, 240));
   ok("  naming the days, as a range rather than twelve rows",
-     /Spring Break/.test(words()) && !/Spring Break[\s\S]*Spring Break/.test(words()),
-     words().slice(0, 400));
-  ok("  and not the time you booked off yourself",
-     !/hospital/.test(words()), words().slice(0, 400));
+     /Spring Break/.test(asking()) && !/Spring Break[\s\S]*Spring Break/.test(asking()),
+     asking().slice(0, 400));
+  ok("  and not asking about the time you booked off yourself",
+     !/hospital/.test(asking()), asking().slice(0, 400));
+  // THOUGH THE ACCOUNTING SHOWS IT, because "what happened to the other four"
+  // is a question a list of only the open ones cannot answer.
+  ok("  while the accounting underneath shows every day rule, yours included",
+     /hospital/.test(audit()) && /Spring Break/.test(audit()) &&
+       /Staff Development/.test(audit()),
+     audit().slice(0, 400));
+  ok("  saying where each one stands",
+     /needs an answer/.test(audit()) && /yours/.test(audit()),
+     audit().slice(0, 500));
+  // AND THE QUESTIONS ARE WRITTEN DOWN THE MOMENT THE FILE IS OPENED, before
+  // anybody presses anything. Left until the first answer, somebody who opens
+  // the app, reads the list and imports next term's calendar instead comes back
+  // to a longer list — which is the failure this whole mechanism is for.
+  const stamped = r.state.scheduleMeaning;
+  ok("  and the file records the questions it is owed without being touched",
+     !!stamped && stamped.wrote === 1 && stamped.ask.length === 13 &&
+       (stamped.done || []).length === 0,
+     JSON.stringify(stamped));
   // BOTH ANSWERS OFFERED, neither of them taken for you.
   const saying = (w) => clickable(r).find((c) => String(c.textContent) === w);
   ok("  with both readings offered and neither one already applied",
@@ -776,11 +803,14 @@ console.log("\nAnd the answers that were saved under the old meaning");
      spring.length === 12 && spring.every((b) => !b.blocksDay && b.noLessons),
      JSON.stringify(spring.map((b) => `${b.blocksDay}/${b.noLessons}`).slice(0, 4)));
   ok("  and it is your answer now, so it is never asked about again",
-     !/Spring Break/.test(words()) && spring.every((b) => b.source === "hand"),
-     words().slice(0, 240));
+     !/Spring Break/.test(asking()) && spring.every((b) => b.source === "hand"),
+     asking().slice(0, 240));
+  // AND IT IS STILL ACCOUNTED FOR, as yours rather than as a question.
+  ok("  though the accounting still lists it, now as yours",
+     /Spring Break/.test(audit()), audit().slice(0, 400));
   // AND THE OTHER GROUP IS STILL THERE, because it is a different question.
   ok("  while the development day is still asked about separately",
-     /Staff Development/.test(words()), words().slice(0, 240));
+     /Staff Development/.test(asking()), asking().slice(0, 240));
 
   // AND THE DEVELOPMENT DAY BECOMES A THING ON A NORMAL DAY — with no hour on
   // it, which is a thing to be given one rather than a day-long appointment.
@@ -790,9 +820,28 @@ console.log("\nAnd the answers that were saved under the old meaning");
   ok("answering the development day leaves it on top of a normal day",
      !!pd && !pd.blocksDay && !pd.noLessons && pd.timing === "sometime",
      JSON.stringify(pd && { blocksDay: pd.blocksDay, noLessons: pd.noLessons, timing: pd.timing }));
-  ok("  and with nothing left to answer the list goes away",
-     !String(panel.innerHTML || "").trim() && !deep(panel).length,
-     String(panel.innerHTML || "").slice(0, 160));
+  ok("  and with nothing left to answer the questions go away",
+     !asking().trim(), asking().slice(0, 160));
+  ok("  leaving the accounting, with nothing on it still asking",
+     /Spring Break/.test(audit()) && /Staff Development/.test(audit()) &&
+       !/needs an answer/.test(audit()),
+     audit().slice(0, 400));
+
+  // AND IT STAYS GONE. The file now says which meaning it was written under, so
+  // a calendar imported tomorrow — document-sourced, no timetable, exactly the
+  // shape the old test looked for — is not put back on the list.
+  const before = r.state.scheduleMeaning;
+  r.state.schedule = (r.state.schedule || []).concat(
+    run("Spring Festival", "2027-02-15", 7, { noLessons: true, source: "paste" }));
+  const again = await open("timeline.html", { ...r.state });
+  again.get("#setupToggle").fire("click", { target: again.get("#setupToggle") });
+  await again.settle();
+  const back = deep(again.get("#oldMeanings"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("su-moved"))
+    .map(said).join(" ");
+  ok("a calendar imported afterwards is not put back on the list",
+     !back.trim() && !!before && before.wrote >= 1,
+     JSON.stringify({ asking: back.slice(0, 120), wrote: before && before.wrote }));
 }
 
 finish();

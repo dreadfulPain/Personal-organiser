@@ -297,13 +297,63 @@ indistinguishable from a bug — and the app cannot know which readings were
 wrong, only which ones were *never yours to begin with*. So the setup screen
 shows a list: the affected entries grouped as ranges (*Winter Vacation — 26
 days*, not 26 rows), what the old reading did to the day, and one button per
-group. Six presses covered 99 stored days in the file this was built against.
+group. Nine presses cover 105 stored days in a file holding the six holidays and
+two development days a real school calendar prints.
 
-Which entries get asked about, without knowing a word of anybody's vocabulary:
-the ones a **document** gave (`source: paste` or `ics`). Time you booked off
-yourself was your own answer and was never in doubt. Answering either way marks
-the entry as yours, and it is never asked about again — including "I really was
-away", which is a real answer and not a postponement.
+#### Which entries get asked about, and why the obvious answer is wrong
+
+The obvious test is *"a document gave it"* — `source: paste` or `ics`, carrying a
+day rule. That is a test for **where an entry came from**, and what is wanted is
+**when it was written**. The two come apart immediately: a calendar imported
+tomorrow, read correctly under the new meaning, is also document-sourced and also
+says the timetable stops. Under that test the app would go on asking, for ever,
+whether each perfectly good new holiday ought to be an overlay. A migration that
+cannot end is not a migration; it is a permanent accusation against your own data.
+
+So **the file records which meaning it was written under**. `SEMANTICS` in
+`schedule.js` is the generation this code writes; `scheduleMeaning` in the saved
+file holds `{ wrote, ask, done }`. The first time a file stamped lower than
+`SEMANTICS` is opened, the entries the change affects are listed **once** and
+that list is frozen. Nothing imported afterwards can join it, because it was not
+there. The list is frozen rather than recomputed on purpose: recomputing is how
+*"have you dealt with this"* turns back into *"does this look suspicious"*, which
+is the thing that can never be switched off.
+
+`ask` and `done` are two lists rather than one. Striking an answered entry off
+`ask` would lose the fact that it was ever a question — and a converted
+development day stops being a day rule, so it would then vanish from the
+accounting below, which is exactly the disappearance that accounting exists to
+make impossible.
+
+Time you booked off yourself is not on the list at all: it was never a
+document's reading, so its meaning never moved. Answering either way marks the
+entry as yours and it is never asked again — including *"I really was away"*,
+which is a real answer and not a postponement.
+
+**The one round of questions this cannot avoid.** A file written after the
+ontology changed but before the stamp existed has correct `noLessons` holidays in
+it, and they are indistinguishable from old development-day readings — same flag,
+same source, no stamp either way. They go on the list once and one press of *"the
+lessons really do stop"* settles each. There is no marker from before the marker
+existed.
+
+#### And every rule accounts for itself
+
+*"The migration found two"* is not an answer to *"what happened to the other
+four"*. A list of only the entries still in question cannot be reconciled against
+a calendar you remember importing: every name missing from it is either already
+right or quietly lost, and the list cannot tell you which. So underneath the
+questions is **every day rule in the file** — asked about or not — with what each
+one does to that day and where it stands:
+
+| Stands | Means |
+| --- | --- |
+| **needs an answer** | on the list above, not settled yet |
+| **already right** | a document gave it, and it was not on the list — so it was written since the meanings moved |
+| **yours** | you said so: either you entered it, or you answered the question about it |
+
+Answering a row moves it from *needs an answer* to *yours*. It does not leave the
+table.
 
 One consequence worth naming: converting a day rule to an overlay has to ask the
 clock question again. Midnight to a minute to midnight was honest while the
@@ -314,16 +364,27 @@ its `timing` from what it now is: a whole-day one becomes `sometime` and lands i
 *Needs a time*; one that came with real hours keeps them.
 
 Pinned by `tests/whenitis.mjs` (the resolution table) and `tests/different.mjs`
-(the panel on screen, and one press converting a whole group). Six deliberate
-breaks of the migration were tried against those tests and all six were caught.
+(the panel on screen, one press converting a whole group, and a calendar imported
+afterwards staying off the list). Fifteen deliberate breaks were tried against
+those tests — including reverting the frozen list to the source test, refreshing
+it on every open, and striking answers off instead of marking them done — and all
+fifteen were caught.
 
-One of them was not, at first: deleting the panel's `<div>` from the page left
-all 107 page checks passing, because `tests/_dom.mjs` invents an element for any
-id asked of it — it has to, since it does not parse `innerHTML`. That is the
-broken-stylesheet failure again in a new place: green tests over a feature that
-does not reach the screen. `tests/hidden.mjs` now reads the pages as text
-and checks that **every panel the code fills exists on a page** — 362 ids, none
-missing.
+Two were not, at first, and both are worth keeping:
+
+*Deleting the panel's `<div>` from the page left all 107 page checks passing*,
+because `tests/_dom.mjs` invents an element for any id asked of it — it has to,
+since it does not parse `innerHTML`. That is the broken-stylesheet failure again
+in a new place: green tests over a feature that does not reach the screen.
+`tests/hidden.mjs` now reads the pages as text and checks that **every panel the
+code fills exists on a page** — 362 ids, none missing.
+
+*Removing the save that stamps the file at load left everything passing*, because
+by then a button had been pressed and the ordinary save had written it anyway. It
+matters for the person who opens the app, reads the list, and imports next term's
+calendar instead of answering: without the stamp they come back to a longer list.
+There is now a check that the file records what it is owed **before anything is
+pressed**.
 
 ### Nothing scheduled is not the same as free
 

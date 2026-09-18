@@ -121,6 +121,8 @@ const STORES = [
   ["contactConfig", null],
   ["schedule", []],
   ["scheduleConfig", null],
+  // Which meaning the schedule was written under — see SEMANTICS in schedule.js.
+  ["scheduleMeaning", null],
   ["pastoralTopics", []],
   ["pastoralNotes", []],
   ["toldLog", []],

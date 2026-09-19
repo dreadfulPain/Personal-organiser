@@ -502,6 +502,19 @@
           return true;
         });
       }
+      // AND WHICH HALF OF THE FORTNIGHT IT IS, WHICH WAS BEING THROWN AWAY.
+      //
+      // "Sep. 20 is a working day, even week Tuesday schedule" is TWO facts.
+      // The weekday was read, above, and the word EVEN was dropped on the floor
+      // — and it is the only thing in the whole document that says which weeks
+      // are which. Without it the fortnight has no anchor at all, so a slot that
+      // takes turns shows BOTH of its lessons every single week: read right,
+      // stored right, and resolved into the wrong room half the time.
+      //
+      // weekIn already existed for exactly this, with a comment saying so, and
+      // nothing ever called it. Asked of the whole clause, not of the words
+      // above, because "even" and "week" can sit either side of the weekday.
+      const halfOfTwo = T && typeof T.weekIn === "function" ? T.weekIn(clause) : "";
       const t = timeOnLine(clause);
       // A DATE LISTED AFTER A LATER ONE HAS CROSSED A NEW YEAR.
       //
@@ -534,6 +547,7 @@
         label: label || "(no name)",
         ...(t ? { start: t.start, end: t.end } : {}),
         ...(runsAsDay === undefined ? {} : { runsAsDay }),
+        ...(halfOfTwo ? { parity: halfOfTwo } : {}),
         line,
         yearAssumed: !hasYearOnIt(clause),
         kind: "",
@@ -2459,6 +2473,10 @@
           ...(p.kind === "runsAs" && p.row && p.row.runsAsDay !== undefined
             ? { runsAs: p.row.runsAsDay }
             : {}),
+          // AND THE HALF OF THE FORTNIGHT IT NAMED — see parityOn. One of these
+          // dates is the only thing in a whole school calendar that says which
+          // weeks are odd and which are even.
+          ...(p.row && p.row.parity ? { parity: p.row.parity } : {}),
           ...((p.row && p.row.extras || []).length ? { extras: p.row.extras } : {}),
           soft: false,
           source: "paste",

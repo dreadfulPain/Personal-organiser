@@ -719,6 +719,57 @@
       done: ask.filter((id) => done.has(id)) };
   }
 
+  // DATED COPIES OF YOUR OWN TIMETABLE, which is what an earlier read of the
+  // same document leaves behind when it comes out as one-off events.
+  //
+  // Eight rows saying English(G1 on four dates in September, at the same hours
+  // as the English in your week. The day then shows both, the week's hours are
+  // counted twice, and every one of them has to be deleted by hand.
+  //
+  // WHAT MAKES ONE: a DATED entry at EXACTLY a period your week has, on a
+  // weekday your week teaches that period. An observation you booked at half
+  // ten is not a copy — it does not run to the minute of a lesson.
+  //
+  // AND ONE CONDITION MORE WHEN NOBODY IS IMPORTING: that a document gave it.
+  // During an import you have just said which document this is and ticked the
+  // offer, so a row saved before this app recorded sources is fair game.
+  // Standing on its own, with no import to justify it, only a row a document
+  // actually put there is offered — because a block with no source recorded
+  // reads as hand-entered, and deleting something somebody typed is the one
+  // outcome worth being strict about.
+  //
+  // It is a proposal with the list attached and a button on it. Nothing here
+  // deletes anything.
+  //
+  // ONE RULE, ASKED FROM TWO PLACES — the import, which knows the periods it is
+  // about to save, and the setup screen, which knows the periods already in the
+  // week. Two copies of this would drift the day one of them learned something.
+  function strayCopies(schedule, alsoPeriods) {
+    const all = normalise(schedule);
+    const importing = Array.isArray(alsoPeriods) && alsoPeriods.length > 0;
+    const lesson = (b) => !b.blocksDay && !b.noLessons && b.runsAs === null && !b.soft;
+    const when = new Map();
+    (alsoPeriods || []).forEach((p) => {
+      const key = typeof p === "string" ? p : `${p.start}-${p.end}`;
+      const days = typeof p === "string" ? null : (p.days || []);
+      when.set(key, days === null ? null : (when.get(key) || []).concat(days));
+    });
+    all.filter((b) => b.days.length && lesson(b)).forEach((b) => {
+      const key = `${b.start}-${b.end}`;
+      const had = when.has(key) ? when.get(key) : [];
+      when.set(key, had === null ? null : had.concat(b.days));
+    });
+    if (!when.size) return [];
+    return all.filter((b) => {
+      if (!b.date || b.days.length || !lesson(b)) return false;
+      if (!importing && FROM_DOC.indexOf(b.source) < 0) return false;
+      const days = when.get(`${b.start}-${b.end}`);
+      if (days === undefined) return false;
+      if (days === null) return true;
+      return days.indexOf(new Date(b.date + "T12:00:00").getDay()) >= 0;
+    });
+  }
+
   // EVERY DAY RULE A DOCUMENT PUT IN THE FILE, and where each one stands.
   //
   // The list above is only the part still in question. This is the whole of it,
@@ -1643,6 +1694,8 @@
     staleRules,
     answered,
     ruleAudit,
+    // Dated copies of your own timetable, left by an earlier read of it.
+    strayCopies,
     settle,
     fixedBlockAt,
     nextFreeMoment,

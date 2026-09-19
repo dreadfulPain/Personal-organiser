@@ -881,6 +881,35 @@ console.log("\nAnd the answers that were saved under the old meaning");
   ok("  and it is still on the list, so it can be changed again",
      !!rowFor("Spring Break"),
      "the row left the accounting the moment it was changed");
+
+  // AND THE SECTION STAYS OPEN WHILE YOU WORK IN IT.
+  //
+  // Answering one row rebuilds the whole panel, which throws away every
+  // <details> and builds new ones — closed. So working down a list of eight
+  // was: press, section shuts, scroll back, reopen, find your place, press.
+  // Eight times. For somebody who has to read carefully that is not a small
+  // annoyance, it is what makes a job not get done.
+  const section = () => deep(again.get("#oldMeanings"))
+    .find((c) => String(c.className || "").split(/\s+/).includes("su-audit"));
+  const box = section();
+  box.open = true;
+  box.fire("toggle", { target: box });
+  const row2 = auditRows(again).find((c) => /Staff Development/.test(String(c.innerHTML || "")));
+  const press = deep(row2).find((c) =>
+    String(c.tagName) === "BUTTON" && String(c.textContent) === "I'm away");
+  press.click();
+  await again.settle();
+  ok("answering a row leaves the section open where it was",
+     !!section() && section().open === true,
+     JSON.stringify({ there: !!section(), open: section() && section().open }));
+  // AND IT IS NAMED FOR WHAT IT IS TO YOU. "Every day a document changed"
+  // describes the app's bookkeeping, not the thing you are looking at.
+  // The heading lives on the summary, which is a child of the details.
+  const named = deep(section()).map((c) => String(c.innerHTML || "")).join(" ");
+  ok("  under a name that says what it is rather than how it is stored",
+     /Calendar changes to your normal week/.test(named) &&
+       !/Every day a document changed/.test(named),
+     named.slice(0, 140));
 }
 
 finish();

@@ -141,6 +141,16 @@ The document had already said it, twice, in its own words: *"Sep. 20 is a workin
 day, even week Tuesday schedule"*, and the same for Oct. 10. **A date that says
 which half of the fortnight it is in is an anchor**, whatever else it is doing.
 
+**And the calendar reader was throwing the word away.** Fixing the anchor rule
+was not enough, and a first round of this was declared working on the strength of
+a fixture with `parity: "even"` typed into it by hand — which proved only that
+the resolver worked on data the app never produced. On the real file the screen
+still said *"nothing has said which week is which"*. The reader read the weekday
+out of "even week **Tuesday** schedule" and dropped `even` on the floor; `weekIn`
+had existed for exactly this, with a comment saying so, and nothing called it.
+The lesson is narrower than "test end to end": **a fixture you wrote the answer
+into tests your belief about the format, not the format.**
+
 **And the day the week turns over on is worked out, not assumed.** It used to be
 Monday, written in. On a school whose weeks run Sunday to Saturday that puts
 every date in the wrong half — the fortnight resolving perfectly and being wrong
@@ -188,6 +198,43 @@ document states it. The weeks you have crossed off, whether a block is protected
 what you have written on it — untouched. And what changed is said out loud:
 *"3 were already in your week, so they weren't added again — they have been
 brought up to date with these dates."*
+
+#### And the copies it leaves behind can be cleared at any time
+
+An earlier read of the same timetable that came out as one-off events leaves
+dated copies of your own lessons: eight rows saying `English(G1` on four dates in
+September, at the same hours as the English in your week. The day then shows
+both. The import offers to remove them **while it is running**, which is no help
+at all once the import is over — and on a real file eight survived a save that
+had offered to take them out. So the offer now also lives where the rows are, in
+*One-off events*, available whenever they are there.
+
+What makes one, in one place for both callers: a **dated** entry at **exactly** a
+period your week has, on a **weekday your week teaches that period**. An
+observation you booked at half ten is not a copy — it does not run to the minute
+of a lesson. Standing on its own there is one condition more, that a **document**
+put it there: during an import you have just named the document and ticked the
+offer, but with no import to justify it, deleting something somebody typed is the
+one outcome worth being strict about. Nothing is ever removed without the list
+being shown and a button being pressed.
+
+### And a section you are working in stays open
+
+Answering one row rebuilds the whole setup panel, which throws away every
+`<details>` and builds new ones — closed, and scrolled to the top. So working
+down a list of eight was: press, section shuts, scroll back, reopen, find your
+place, press. Eight times. For somebody who has to read carefully that is not a
+small annoyance; it is what makes a job not get done.
+
+Open sections are now remembered by name rather than by element, because the
+element does not survive, and only what somebody has actually opened or closed is
+stored — a section nobody has touched keeps whatever default it was built with.
+The scroll position is restored too: rebuilding a panel is not navigation, and
+nobody asked to be taken back to the top of it.
+
+The accounting is also named for what it is to you — **Calendar changes to your
+normal week** — rather than for what it is to the data, which is what *"Every day
+a document changed"* was.
 
 ### And a PDF has no rows, no columns and no words
 

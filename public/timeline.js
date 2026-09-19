@@ -3832,10 +3832,34 @@
     }
   }
 
+  // WHICH FOLDED SECTIONS ARE OPEN, KEPT ACROSS THE REBUILD THAT EVERY EDIT
+  // CAUSES.
+  //
+  // Answering one row of a list rebuilds this whole panel, which throws away
+  // every <details> element and builds new ones — closed. So working down a
+  // list of eight was: press, section shuts, scroll back, reopen, find the row
+  // you were on, press. Eight times. For somebody who has to read carefully
+  // that is not a small annoyance, it is the thing that makes a job not get
+  // done.
+  //
+  // Remembered by name rather than by element, because the element does not
+  // survive. Only what somebody has actually opened or closed is stored — a
+  // section nobody has touched keeps whatever default it was built with.
+  const folded = new Map();
+  function fold(key, openByDefault) {
+    const d = document.createElement("details");
+    d.open = folded.has(key) ? folded.get(key) : !!openByDefault;
+    d.addEventListener("toggle", () => folded.set(key, !!d.open));
+    return d;
+  }
+
   function renderSetup() {
     const panel = $("#setup");
     const toggle = $("#setupToggle");
     if (!panel || !toggle) return;
+    // AND WHERE YOU WERE ON THE PAGE. Rebuilding the panel is not navigation —
+    // nobody asked to be taken back to the top of it.
+    const wasAt = typeof window !== "undefined" && window.scrollY;
     const n = S().normalise(schedule).length;
     toggle.textContent = setupOpen ? "close" : n ? `my week (${n} block${n === 1 ? "" : "s"})` : "set up my week";
     panel.hidden = !setupOpen;
@@ -3919,6 +3943,9 @@
     renderOldMeanings();
     renderWeekGaps();
     renderBlockList();
+    // BACK WHERE YOU WERE. After the new sections exist, or there is nothing
+    // of that height to scroll to yet.
+    if (typeof window !== "undefined" && window.scrollTo && wasAt) window.scrollTo(0, wasAt);
   }
 
   // THE WORDS THAT MEAN "THIS HAPPENS AT A TIME", shown so they can be changed.
@@ -4691,15 +4718,17 @@
   // periods this document has. A genuine one-off at half ten for forty-five
   // minutes is not in any period and is left alone; a lesson copied out of this
   // very timetable is in one by construction.
+  // ASKED OF THE ONE RULE — see strayCopies. The import knows something the
+  // setup screen does not: the periods it is ABOUT to save, which are not in
+  // the week yet. Everything else about what makes a copy a copy is answered in
+  // one place, so the two cannot drift.
   function oldCopies() {
     if (!pastedBlocks || !pastedBlocks.length) return [];
-    const periods = new Set(pastedBlocks
+    const about = pastedBlocks
       .filter((b) => b.keep && (b.days || []).length)
-      .map((b) => `${b.start}-${b.end}`));
-    if (!periods.size) return [];
-    return S().normalise(schedule).filter((b) =>
-      b.date && !b.days.length && !b.blocksDay && !b.noLessons && b.runsAs === null &&
-      periods.has(`${b.start}-${b.end}`));
+      .map((b) => ({ start: b.start, end: b.end, days: b.days }));
+    if (!about.length) return [];
+    return S().strayCopies(schedule, about);
   }
 
   function oldImportBox() {
@@ -5428,11 +5457,15 @@
     if (!el) return;
     const rows = S().ruleAudit(schedule, meaning);
     if (!rows.length) return;
-    const box = document.createElement("details");
+    // NAMED FOR WHAT IT IS TO YOU, not for what it is to the data. "Every day a
+    // document changed" describes the app's own bookkeeping; what you are
+    // actually looking at is the days your calendar does something to your
+    // ordinary week.
+    const box = fold("audit", false);
     box.className = "su-layer su-audit";
     const head = document.createElement("summary");
     const asking = rows.filter((r) => r.stands === "asking").length;
-    head.innerHTML = `<h3>Every day a document changed — ${rows.length}` +
+    head.innerHTML = `<h3>Calendar changes to your normal week — ${rows.length}` +
       `${asking ? `, ${asking} still to answer` : ", all answered"}</h3>`;
     box.appendChild(head);
     box.insertAdjacentHTML("beforeend",
@@ -5487,9 +5520,8 @@
     const gaps = S().gapsInWeek(schedule, cfg);
     // The boundary is asked for even when there are no gaps left: it is the
     // other half of the same question and it is not a block — see leaveAt.
-    const box = document.createElement("details");
+    const box = fold("gaps", gaps.length > 0);
     box.className = "su-layer su-gaps";
-    box.open = gaps.length > 0;
     const head = document.createElement("summary");
     head.innerHTML = gaps.length
       ? `<h3>What the rest of your week is — ${gaps.length} stretch${gaps.length === 1 ? "" : "es"} unaccounted for</h3>`
@@ -5615,9 +5647,8 @@
 
     // TWO: WHAT OVERRIDES IT. Ranges, not days — see spansOf.
     if (g.overrides.length) {
-      const box = document.createElement("details");
+      const box = fold("overrides", g.overrides.length <= 6);
       box.className = "su-layer";
-      box.open = g.overrides.length <= 6;
       const head = document.createElement("summary");
       head.innerHTML = `<h3>What changes it — ${g.overrides.length} calendar ` +
         `rule${g.overrides.length === 1 ? "" : "s"}</h3>`;
@@ -5631,12 +5662,49 @@
 
     // THREE: ONE-OFFS. Folded, because they are a long tail by nature.
     if (g.oneOffs.length) {
-      const box = document.createElement("details");
+      const box = fold("oneOffs", g.oneOffs.length <= 6);
       box.className = "su-layer";
-      box.open = g.oneOffs.length <= 6;
       const head = document.createElement("summary");
       head.innerHTML = `<h3>One-off events — ${g.oneOffs.length}</h3>`;
       box.appendChild(head);
+      // AND THE COPIES OF YOUR OWN TIMETABLE AMONG THEM, offered at any time.
+      //
+      // The import offers this too, while it is running. That is no help at all
+      // once the import is over — and it left eight of these behind on a real
+      // file, which then had to be deleted one at a time. The offer belongs
+      // where the rows are, not only in the flow that happened to create them.
+      const stray = S().strayCopies(schedule);
+      if (stray.length) {
+        const warn = document.createElement("div");
+        warn.className = "su-old su-stray";
+        const days = new Set(stray.map((b) => b.date)).size;
+        warn.innerHTML =
+          `<p><strong>${stray.length} of these look like dated copies of your own
+           timetable</strong>, across ${days} day${days === 1 ? "" : "s"} — same hours, same
+           weekday, from a document. An earlier read of your timetable that came out as
+           one-off events instead of a week. Left in, the day shows both.</p>`;
+        const list = document.createElement("p");
+        list.className = "muted";
+        const D = window.OrganiserDates;
+        list.textContent = stray.slice(0, 8)
+          .map((b) => `${D ? D.dayWords(b.date, { year: false, relative: false }) : b.date} ${b.label}`)
+          .join(" · ") + (stray.length > 8 ? ` · and ${stray.length - 8} more` : "");
+        warn.appendChild(list);
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = "p-opt su-chip";
+        go.textContent = `remove ${stray.length === 1 ? "it" : "all " + stray.length}`;
+        go.addEventListener("click", () => {
+          const ids = new Set(stray.map((b) => b.id));
+          schedule = S().normalise(schedule).filter((b) => !ids.has(b.id));
+          persist();
+          renderSetup();
+          render();
+          setSuStatus(`${ids.size} dated cop${ids.size === 1 ? "y" : "ies"} of your timetable removed.`);
+        });
+        warn.appendChild(go);
+        box.appendChild(warn);
+      }
       g.oneOffs.forEach((b) => { const form = blockRowEl(b, box); if (form) box.appendChild(form); });
       el.appendChild(box);
     }

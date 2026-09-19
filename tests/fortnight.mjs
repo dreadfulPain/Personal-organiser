@@ -43,6 +43,7 @@ vm.createContext(sb);
 ["dates.js", "schedule.js", "dayshape.js", "calplan.js", "timetable.js"]
   .forEach((f) => vm.runInContext(fs.readFileSync(path.join(PUB, f), "utf8"), sb, { filename: f }));
 const T = sb.OrganiserTimetable, S = sb.OrganiserSchedule, D = sb.OrganiserDayShape;
+const C = sb.OrganiserCalPlan;
 
 // ---------------------------------------------------------------------------
 // THE PAGE, AS A PDF ACTUALLY LAYS ONE OUT.
@@ -976,6 +977,120 @@ console.log("\nAnd a fortnight nobody anchored is a fortnight that never resolve
     { ...SAID[1], id: "c3", date: "2026-10-10", parity: "odd" }]);
   ok("  and two that contradict each other are called what they are",
      S.paritySays(clash).sure === "muddled", JSON.stringify(S.paritySays(clash)));
+
+  // ---- AND THE ANCHOR HAS TO COME OUT OF THE REAL DOCUMENT ----------------
+  //
+  // Everything above was true of hand-written blocks and false of a real file,
+  // because the CALENDAR READER never carried the word. "Sep. 20 is a working
+  // day, even week Tuesday schedule" is two facts; it read the weekday and
+  // dropped EVEN on the floor — and that word is the only thing in the whole
+  // document that says which weeks are which. weekIn existed for exactly this,
+  // with a comment saying so, and nothing called it.
+  //
+  // Proved through the real reader on the real line, not through a fixture
+  // somebody wrote the answer into.
+  const LINE = "• National Day: Oct. 1-Oct. 7 (Sep. 20 is a working day, even week Tuesday " +
+    "schedule; Oct. 10 is a working day, even week Wednesday schedule)";
+  const read = C.read(LINE, { year: 2026 });
+  const made = (read.rows || []).filter((r) => r.runsAsDay !== undefined);
+  ok("the calendar reader keeps the half of the fortnight a make-up day names",
+     made.length === 2 && made.every((r) => r.parity === "even"),
+     JSON.stringify((read.rows || []).map((r) => `${r.date}:${r.runsAsDay}/${r.parity || "—"}`)));
+  // AND IT REACHES THE BLOCK. A row that knows and a block that doesn't is the
+  // same as not knowing.
+  const asked = (read.rows || []).map((r) =>
+    ({ ...r, kind: r.runsAsDay === undefined ? "noLessons" : "runsAs" }));
+  const blocks = C.toBlocks(asked) || [];
+  const marks = blocks.filter((b) => b.runsAs !== undefined && b.runsAs !== null);
+  ok("  and it survives the trip into a stored block",
+     marks.length === 2 && marks.every((b) => b.parity === "even"),
+     JSON.stringify(marks.map((b) => `${b.date}:${b.parity || "—"}`)));
+  // AND THAT IS ENOUGH, ON ITS OWN, TO PUT ONE LESSON IN THE SLOT.
+  const real = FN.concat(marks);
+  ok("  so a real file resolves the fortnight with nothing else added",
+     S.paritySays(real).sure === "said" &&
+       S.blocksOn(real, "2026-09-15").map((b) => b.label).join() === "Writing" &&
+       S.blocksOn(real, "2026-09-22").map((b) => b.label).join() === "Show & Tell",
+     JSON.stringify({ says: S.paritySays(real).sure,
+       tue: S.blocksOn(real, "2026-09-15").map((b) => b.label) }));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd dated copies of your own timetable can be cleared at any time");
+
+// THE IMPORT OFFERS THIS WHILE IT IS RUNNING, which is no help at all once the
+// import is over — and a real file kept eight of them afterwards, to be deleted
+// one at a time. The offer belongs where the rows are.
+{
+  const WEEK2 = [
+    { id: "w1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching" },
+    { id: "w2", label: "Homework", start: "15:10", end: "15:50", days: [1, 2, 3, 4], kind: "teaching" },
+  ];
+  const COPIES = [
+    // Same hours, same weekday, from a document: Mon 7 Sep 2026 is a Monday.
+    { id: "c1", label: "English(G1", date: "2026-09-07", start: "08:40", end: "09:25",
+      days: [], source: "paste" },
+    { id: "c2", label: "Homework(G", date: "2026-09-07", start: "15:10", end: "15:50",
+      days: [], source: "paste" },
+  ];
+  const SAFE = [
+    // THE ONES THAT MUST SURVIVE, each failing exactly one condition:
+    // an hour no lesson runs to;
+    { id: "s1", label: "Lesson observation", date: "2026-09-07", start: "08:40", end: "09:40",
+      days: [], source: "paste" },
+    // a weekday that period is not taught on (Sat 12 Sep);
+    { id: "s2", label: "English(G1", date: "2026-09-12", start: "08:40", end: "09:25",
+      days: [], source: "paste" },
+    // and one you typed yourself.
+    { id: "s3", label: "Cover for a colleague", date: "2026-09-09", start: "08:40", end: "09:25",
+      days: [], source: "hand" },
+  ];
+  const all = WEEK2.concat(COPIES, SAFE);
+  const stray = S.strayCopies(all);
+  ok("a dated entry at one of your week's own periods is offered as a copy",
+     stray.length === 2 && stray.map((b) => b.id).sort().join() === "c1,c2",
+     JSON.stringify(stray.map((b) => `${b.id}:${b.label}`)));
+  ok("  while an hour no lesson runs to is not one",
+     !stray.some((b) => b.id === "s1"), "an observation was offered for deletion");
+  ok("  nor a day that period is not taught on",
+     !stray.some((b) => b.id === "s2"), "a Saturday copy was offered");
+  ok("  nor anything you typed yourself",
+     !stray.some((b) => b.id === "s3"), "something hand-entered was offered for deletion");
+  // AND DURING AN IMPORT the periods about to be saved count too, because they
+  // are not in the week yet — and a row with no source recorded is fair game
+  // there, because you have just said which document this is.
+  const OLDER = [{ id: "o", label: "Writing(E)(E", date: "2026-09-08", start: "10:30",
+    end: "11:05", days: [] }];
+  const about = [{ start: "10:30", end: "11:05", days: [2] }];
+  ok("and a period about to be saved counts while the import is running",
+     S.strayCopies(WEEK2.concat(OLDER), about).map((b) => b.id).join() === "o",
+     JSON.stringify(S.strayCopies(WEEK2.concat(OLDER), about).map((b) => b.id)));
+  ok("  though not once the import is over and nothing has said which document",
+     S.strayCopies(WEEK2.concat(OLDER)).length === 0,
+     JSON.stringify(S.strayCopies(WEEK2.concat(OLDER)).map((b) => b.id)));
+
+  // AND IT HAS TO BE ON THE SCREEN WHERE THE ROWS ARE. Knowing which rows are
+  // copies is no use at all if the only place that says so is a flow that
+  // finished last week.
+  const { open, deep } = await import("./_dom.mjs");
+  const r = await open("timeline.html", { schedule: all, scheduleConfig: {}, items: [], goals: [] });
+  r.get("#setupToggle").fire("click", { target: r.get("#setupToggle") });
+  await r.settle();
+  const offer = () => deep(r.get("#blockList"))
+    .find((c) => String(c.className || "").split(/\s+/).includes("su-stray"));
+  ok("and the offer is on the one-off list itself, not only inside an import",
+     !!offer() && /2 of these look like dated copies/.test(String(offer().innerHTML || "")),
+     String(offer() && offer().innerHTML || "(nothing)").slice(0, 160));
+  const press = deep(offer()).find((c) => String(c.tagName) === "BUTTON");
+  ok("  with one press for all of them", !!press && /^remove all 2$/.test(String(press.textContent)),
+     String(press && press.textContent));
+  press.click();
+  await r.settle();
+  const after = (r.state.schedule || []).map((b) => b.id);
+  ok("  and pressing it takes the copies out and nothing else",
+     !after.includes("c1") && !after.includes("c2") &&
+       ["w1", "w2", "s1", "s2", "s3"].every((id) => after.includes(id)),
+     JSON.stringify(after));
 }
 
 finish();

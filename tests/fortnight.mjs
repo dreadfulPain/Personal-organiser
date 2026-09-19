@@ -809,4 +809,173 @@ console.log("\nAnd the wreckage of the last attempt at the same document");
      JSON.stringify(after));
 }
 
+// ---------------------------------------------------------------------------
+console.log("\nAnd a lesson already in your week is brought up to date, not skipped");
+
+// SKIPPING ALONE IS QUIETLY WRONG. Reading the same timetable in twice must not
+// put a second copy of every lesson in the week — that part was right. But the
+// copy that wins is the one already stored, which is the OLDER one: it does not
+// have the term dates just answered for on this import, and it does not have
+// the half of the fortnight the document just said it runs in.
+//
+// So pressing Save on a timetable that ends in January would have left the
+// lessons you already had running for ever, and Writing showing every Tuesday —
+// and the only thing on screen would have said they were "already in your week".
+{
+  const { open, deep, saveBlocks } = await import("./_dom.mjs");
+  const HAVE = [
+    // Already there, with no end date and no fortnight — as a week set up
+    // before any of this existed looks. AND CARRYING THINGS YOU SAID: two weeks
+    // this lesson doesn't run, and a note. The import matches this block, so
+    // this is the one that proves the merge only takes what it is entitled to.
+    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching",
+      skip: ["2026-10-08", "2026-11-05"], protected: true, note: "in the hall" },
+    { id: "wr", label: "Writing", start: "10:30", end: "11:05", days: [2], kind: "teaching" },
+    // And one the import does not mention at all.
+    { id: "mine", label: "Prep", start: "15:10", end: "15:50", days: [4],
+      workable: true, protected: false, skip: ["2026-10-08"] },
+  ];
+  const r = await open("timeline.html", { schedule: HAVE, scheduleConfig: {}, items: [], goals: [] });
+  r.get("#setupToggle").fire("click", { target: r.get("#setupToggle") });
+  await r.settle();
+  r.get("#ttText").value =
+    "Period\tMonday\tTuesday\tWednesday\n" +
+    "08:40-09:25\tEnglish\t\tEnglish\n" +
+    "10:30-11:05\t\tWriting odd week / Show & Tell even week\t\n";
+  r.get("#ttRead").fire("click", { target: r.get("#ttRead") });
+  await r.settle();
+  // AND THE ROW SAYS WHICH HALF IT RUNS IN, BEFORE ANYTHING IS SAVED.
+  //
+  // The grid above showed the two lessons stacked in one Tuesday cell and the
+  // rows underneath — the things actually about to be saved — said nothing at
+  // all about odd and even. So the one fact that keeps you out of the wrong
+  // room was the one fact you could not check before pressing Save.
+  const halves = deep(r.get("#ttReview"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("su-half"))
+    .map((c) => String(c.textContent || ""));
+  ok("the rows about to be saved say which half of the fortnight each runs in",
+     halves.filter((w) => w === "odd weeks").length === 1 &&
+       halves.filter((w) => w === "even weeks").length === 1 &&
+       halves.filter((w) => w === "every week").length === 1,
+     JSON.stringify(halves));
+  saveBlocks(r, { from: "2026-09-01", to: "2027-01-22" });
+  await r.settle();
+  const week = (r.state.schedule || []).filter((b) => (b.days || []).length);
+  const one = (name) => week.filter((b) => b.label === name);
+  ok("reading the same lesson in again leaves one of it, not two",
+     one("English").length === 1 && one("Writing").length === 1,
+     JSON.stringify(week.map((b) => `${b.label}:${JSON.stringify(b.days)}`)));
+  ok("  and the one already there now carries the dates you just gave",
+     one("English")[0].from === "2026-09-01" && one("English")[0].to === "2027-01-22",
+     JSON.stringify({ from: one("English")[0].from, to: one("English")[0].to }));
+  // THE ONE THAT MATTERS MOST. A fortnight the document states, landing on a
+  // block that was stored without one.
+  ok("  and the half of the fortnight the document just said it runs in",
+     one("Writing")[0].parity === "odd", JSON.stringify(one("Writing")[0].parity));
+  ok("  while the other half goes in as a block of its own",
+     one("Show & Tell").length === 1 && one("Show & Tell")[0].parity === "even",
+     JSON.stringify(one("Show & Tell").map((b) => b.parity)));
+  // AND NOTHING THIS IMPORT HAS NO BUSINESS WITH IS TOUCHED — on the block it
+  // MATCHED, which is the one where it could do damage. The weeks you crossed
+  // off, the protection you set and the note you wrote are yours; a timetable
+  // read out of a PDF has no view on any of them.
+  const eng = one("English")[0];
+  ok("  and what you set yourself on it is left exactly as it was",
+     (eng.skip || []).join() === "2026-10-08,2026-11-05" && eng.protected === true &&
+       eng.note === "in the hall",
+     JSON.stringify({ skip: eng.skip, protected: eng.protected, note: eng.note }));
+  const mine = week.find((b) => b.label === "Prep");
+  ok("  and a block the import never mentioned is untouched",
+     mine && mine.workable === true && (mine.skip || []).join() === "2026-10-08" &&
+       mine.from === "" && mine.to === "",
+     JSON.stringify(mine && { workable: mine.workable, skip: mine.skip, from: mine.from }));
+  // AND IT IS SAID, rather than reported as "already in your week" and left.
+  ok("and the screen says what was brought up to date",
+     /brought up to date/.test(String(r.get("#ttStatus").textContent || "")),
+     String(r.get("#ttStatus").textContent || ""));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd a fortnight nobody anchored is a fortnight that never resolves");
+
+// THE FAULT THIS IS HERE TO STOP, AND IT WAS LIVE. The anchor had to be a block
+// marked weekOne, and NOTHING IN THE APP EVER SET ONE — no importer, no screen,
+// no button. So parity never resolved on a real file, and appliesOn's rule that
+// an unknown fortnight shows both halves meant Writing and Show & Tell appeared
+// together every single Tuesday. The timetable was read correctly, stored
+// correctly, and then both lessons were put in the same slot for ever.
+//
+// The document had already said it, twice, in its own words.
+{
+  const FN = [
+    { id: "w", label: "Writing", start: "10:30", end: "11:05", days: [2], parity: "odd" },
+    { id: "s", label: "Show & Tell", start: "10:30", end: "11:05", days: [2], parity: "even" },
+  ];
+  // "Sep. 20 is a working day, even week Tuesday schedule" — and the same for
+  // Oct. 10, a Wednesday schedule. Two dates, each saying which half it is in.
+  const SAID = [
+    { id: "c1", label: "is a working day, even week Tuesday schedule", date: "2026-09-20",
+      start: "00:00", end: "00:01", days: [], runsAs: 2, parity: "even" },
+    { id: "c2", label: "is a working day, even week Wednesday schedule", date: "2026-10-10",
+      start: "00:00", end: "00:01", days: [], runsAs: 3, parity: "even" },
+  ];
+  ok("with no anchor at all, both halves are on and the app says it doesn't know",
+     S.parityOn(FN, "2026-09-15") === "" && S.blocksOn(FN, "2026-09-15").length === 2,
+     JSON.stringify(S.blocksOn(FN, "2026-09-15").map((b) => b.label)));
+  ok("  and nothing in the app quietly invents one",
+     S.paritySays(FN).known === false && S.paritySays(FN).sure === "nothing",
+     JSON.stringify(S.paritySays(FN)));
+
+  // A DATE THAT SAYS WHICH HALF IT IS IN *IS* AN ANCHOR, whatever else it is
+  // doing. It did not used to count unless it also carried weekOne, which
+  // nothing sets.
+  const both = FN.concat(SAID);
+  ok("a date the calendar said was an even week anchors the fortnight",
+     S.parityOn(both, "2026-09-22") === "even" && S.parityOn(both, "2026-09-15") === "odd",
+     JSON.stringify([S.parityOn(both, "2026-09-15"), S.parityOn(both, "2026-09-22")]));
+  ok("  so a Tuesday carries one of the two, not both",
+     S.blocksOn(both, "2026-09-15").map((b) => b.label).join() === "Writing" &&
+       S.blocksOn(both, "2026-09-22").map((b) => b.label).join() === "Show & Tell",
+     JSON.stringify([S.blocksOn(both, "2026-09-15").map((b) => b.label),
+       S.blocksOn(both, "2026-09-22").map((b) => b.label)]));
+
+  // AND THE DAY THE WEEK TURNS OVER ON IS WORKED OUT, NOT ASSUMED.
+  //
+  // This was Monday, written in. On a school whose weeks run Sunday to Saturday
+  // that puts every date in the wrong half — the fortnight resolving perfectly
+  // and being wrong by exactly one week, which is the hardest kind of wrong to
+  // see. Two dates that each say which half they are in constrain it, and on
+  // this calendar exactly one weekday survives: the document settles its own
+  // school's week without the app knowing a thing about any school.
+  const says = S.paritySays(both);
+  ok("two dates that both say so settle which day the week turns over on",
+     says.sure === "said" && says.turn === 0, JSON.stringify(says));
+  // Checked against the school calendar's OWN week numbers: week 3 begins Sun 13
+  // Sep and week 4 begins Sun 20 Sep, so Tue 15 Sep is week 3 and Tue 22 Sep is
+  // week 4. Under a Monday week they come out one week apart from that.
+  ok("  and the halves then line up with the week numbers the calendar prints",
+     ["2026-09-08", "2026-09-15", "2026-09-22", "2026-09-29", "2026-10-06"]
+       .map((d) => S.parityOn(both, d)).join() === "even,odd,even,odd,even",
+     JSON.stringify(["2026-09-08", "2026-09-15", "2026-09-22", "2026-09-29", "2026-10-06"]
+       .map((d) => `${d}:${S.parityOn(both, d)}`)));
+  // AND THE COUNT STARTS FROM THE ANCHOR'S OWN HALF. The old one read
+  // "weeks % 2 === 0 ? odd : even", which is only right if every anchor is an
+  // odd week — and the one this calendar gives is an even one.
+  ok("  counting from what the anchor actually said, not from assuming it is odd",
+     S.parityOn(both, "2026-09-20") === "even",
+     S.parityOn(both, "2026-09-20"));
+
+  // ONE DATE IS ENOUGH TO RESOLVE THE FORTNIGHT AND NOT ENOUGH TO SETTLE THE
+  // WEEK. Said, rather than presented as the same kind of answer.
+  const one = FN.concat([SAID[0]]);
+  ok("one date resolves the fortnight but says the turn-over is only assumed",
+     S.paritySays(one).known === true && S.paritySays(one).sure === "assumed",
+     JSON.stringify(S.paritySays(one)));
+  // AND TWO THAT CANNOT BOTH BE TRUE SAY SO rather than picking one.
+  const clash = FN.concat([SAID[0],
+    { ...SAID[1], id: "c3", date: "2026-10-10", parity: "odd" }]);
+  ok("  and two that contradict each other are called what they are",
+     S.paritySays(clash).sure === "muddled", JSON.stringify(S.paritySays(clash)));
+}
+
 finish();

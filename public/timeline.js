@@ -4892,6 +4892,28 @@
         renderSetup();
       });
       row.appendChild(there);
+      // AND WHICH HALF OF THE FORTNIGHT IT RUNS IN, ON THE ROW.
+      //
+      // The matrix above showed the two lessons stacked in one Tuesday cell,
+      // and the rows underneath — the things actually about to be saved — said
+      // nothing at all about odd and even. So the one fact that keeps you out
+      // of the wrong room was the one fact you could not check before pressing
+      // Save. Shown, and changeable: a fortnight read out of a document is
+      // exactly the sort of thing to want to correct.
+      if (!dated) {
+        const half = document.createElement("button");
+        half.type = "button";
+        const word = (p) => (p === "odd" ? "odd weeks" : p === "even" ? "even weeks" : "every week");
+        half.className = "p-opt su-half" + (b.parity ? " on" : "");
+        half.textContent = word(b.parity);
+        half.title = "Which half of the fortnight this runs in. Press to change it.";
+        half.addEventListener("click", () => {
+          const next = { "": "odd", odd: "even", even: "" };
+          pastedBlocks[i].parity = next[pastedBlocks[i].parity || ""];
+          renderSetup();
+        });
+        row.appendChild(half);
+      }
       if (b.note) {
         const note = document.createElement("span");
         note.className = "su-tnote";
@@ -4959,10 +4981,40 @@
       //
       // The same name at the same time on ANOTHER DAY is not a duplicate — that
       // is simply a timetable — so the days are part of what makes it one.
-      const already = new Set(S().normalise(schedule).map(sameAs));
+      // AND ONE ALREADY IN YOUR WEEK IS BROUGHT UP TO DATE RATHER THAN SKIPPED.
+      //
+      // Skipping alone is quietly wrong. The blocks this matches are the same
+      // lesson at the same time on the same days — so the copy already stored
+      // wins, and the copy already stored is the older one. It does not have the
+      // term dates just answered for on this import, and it does not have the
+      // half of the fortnight the document just said it runs in. Pressing Save
+      // on a timetable that ends in January would have left three lessons
+      // running for ever and Writing showing every Tuesday, and the only thing
+      // on screen would have said they were "already in your week".
+      //
+      // ONLY WHAT THIS IMPORT IS ENTITLED TO SAY. The dates, because you have
+      // just answered that question for these blocks, and the fortnight,
+      // because the document says which half it is. Everything you have set
+      // yourself — what a stretch is for, whether it is protected, the weeks you
+      // have crossed it off — is untouched, and what changed is said out loud.
+      const mine = S().normalise(schedule);
+      const already = new Map(mine.map((b) => [sameAs(b), b]));
       const fresh = kept.filter((b) => !already.has(sameAs(b)));
+      const met = kept.filter((b) => already.has(sameAs(b)));
+      let brought = 0;
+      const merged = mine.map((b) => {
+        const now = met.find((x) => sameAs(x) === sameAs(b));
+        if (!now) return b;
+        const to = { ...b };
+        if (now.from !== b.from) to.from = now.from;
+        if (now.to !== b.to) to.to = now.to;
+        if (now.parity && now.parity !== b.parity) to.parity = now.parity;
+        const moved = to.from !== b.from || to.to !== b.to || to.parity !== b.parity;
+        if (moved) brought++;
+        return moved ? to : b;
+      });
       const dupes = kept.length - fresh.length;
-      schedule = S().normalise(schedule).concat(fresh);
+      schedule = S().normalise(merged).concat(fresh);
       const linked = fresh.filter((b) => b.about.length).length;
       const jobs = applyJobs();
       pastedBlocks = null;
@@ -4980,7 +5032,8 @@
         // SAID, NOT SWALLOWED. "Saved 32" when you were looking at 40 is the
         // failure you cannot see, and the eight that went are the eight you
         // would want to know about.
-        (dupes ? ` ${dupes} ${dupes === 1 ? "was" : "were"} already in your week, so ${dupes === 1 ? "it wasn't" : "they weren't"} added again.` : "") +
+        (dupes ? ` ${dupes} ${dupes === 1 ? "was" : "were"} already in your week, so ${dupes === 1 ? "it wasn't" : "they weren't"} added again` +
+          (brought ? ` — ${brought === dupes ? (brought === 1 ? "it has" : "they have") : `${brought} of them ${brought === 1 ? "has" : "have"}`} been brought up to date with these dates.` : ".") : "") +
         (linked ? ` ${linked} of them say who's running it.` : "") +
         (jobs ? ` ${jobs} job${jobs === 1 ? "" : "s"} added.` : "") +
         // A DATED BLOCK DOES NOT REPEAT, AND SAYING IT DOES IS ALARMING. An
@@ -5519,6 +5572,40 @@
         week.insertAdjacentHTML("beforeend",
           `<p class="muted su-listnote">Anything marked guess is a soft block — it never silences a
            reminder and the planner may move work through it. The rest are treated as facts.</p>`);
+      // AND IF ANY OF IT RUNS EVERY OTHER WEEK, WHAT THE APP THINKS THIS WEEK IS.
+      //
+      // A fortnight that does not resolve shows BOTH halves in the slot, which
+      // is deliberate — half a timetable quietly missing is far worse than two
+      // lessons and a note. But it is only not-a-lie if the note exists, and it
+      // did not: the week simply listed both, for ever, with nothing to say
+      // why. And a fortnight resolved from an assumption is still an
+      // assumption, so which of the three this is gets said.
+      if (g.week.some((b) => b.parity)) {
+        const says = S().paritySays(schedule);
+        const D = window.OrganiserDates;
+        const today = (D && D.today && D.today()) || new Date().toISOString().slice(0, 10);
+        const now = says.known ? S().parityOn(schedule, today) : "";
+        const from = (says.anchors[0] || {});
+        const turnWord = (D && D.DAY_NAMES && D.DAY_NAMES[says.turn]) || "Monday";
+        week.insertAdjacentHTML("beforeend",
+          `<p class="muted su-listnote su-parity">` + (
+            !says.known
+              ? `Some of these run every other week, and <strong>nothing has said which week is ` +
+                `which</strong> — so both halves show on the day, every week. Say which half one ` +
+                `date is in and the rest follow.`
+              : says.sure === "muddled"
+                ? `Some of these run every other week, and the dates that say which week is which ` +
+                  `<strong>don't agree with each other</strong>. Taking the week to turn over on ` +
+                  `${escapeHtml(turnWord)}; this week reads ${escapeHtml(now)}.`
+                : `This is ${escapeHtml(now ? `an ${now} week` : "—")}` +
+                  (says.sure === "said"
+                    ? `, worked out from ${says.anchors.length} dates the calendar named — and from ` +
+                      `those, your week turns over on ${escapeHtml(turnWord)}.`
+                    : `, counted from “${escapeHtml(from.label || from.date || "")}”. Only one date ` +
+                      `says which week is which, so the week is taken to turn over on ` +
+                      `${escapeHtml(turnWord)}.`)
+          ) + `</p>`);
+      }
       g.week
         .slice()
         .sort((a, b) => (a.days[0] ?? 9) - (b.days[0] ?? 9) || S().toMin(a.start) - S().toMin(b.start))

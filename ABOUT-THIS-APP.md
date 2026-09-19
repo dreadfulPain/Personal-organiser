@@ -121,12 +121,73 @@ read the same. Before anything is saved the week is drawn as a week, with the
 count of filled squares, so a missing lesson is visible without reading a row.
 
 **Parity is data, not a note in a name.** `parity` on a block says which half of
-the fortnight it runs in; `weekOne` on one date says which weeks are odd, and
-everything counts from there. Until somebody says, parity is **unknown — which
-is not "neither"**: both halves of a slot are shown, because half a timetable
-quietly missing is far worse than two lessons in one slot. And a make-up day
-carries its own parity, because *"even week Tuesday schedule"* is two facts and
-the week is the half you have no memory to fall back on.
+the fortnight it runs in. Until something says which weeks are which, parity is
+**unknown — which is not "neither"**: both halves of a slot are shown, because
+half a timetable quietly missing is far worse than two lessons in one slot and a
+note saying why. And a make-up day carries its own parity, because *"even week
+Tuesday schedule"* is two facts and the week is the half you have no memory to
+fall back on.
+
+#### And the anchor that nothing ever set
+
+That "until something says" was doing a great deal of work, because **nothing in
+the app ever said**. The anchor had to be a block carrying `weekOne`, and no
+importer, screen or button ever wrote one. So on a real file parity never
+resolved, and the rule above meant Writing and Show & Tell appeared **together,
+every single Tuesday, for ever**. The timetable was read correctly, stored
+correctly, and then both lessons were put in the same slot.
+
+The document had already said it, twice, in its own words: *"Sep. 20 is a working
+day, even week Tuesday schedule"*, and the same for Oct. 10. **A date that says
+which half of the fortnight it is in is an anchor**, whatever else it is doing.
+
+**And the day the week turns over on is worked out, not assumed.** It used to be
+Monday, written in. On a school whose weeks run Sunday to Saturday that puts
+every date in the wrong half — the fortnight resolving perfectly and being wrong
+by exactly one week, which is the hardest kind of wrong to see. Two dates that
+each state their half constrain it, and on the calendar this was built against
+exactly one weekday survives the constraint: the document settles its own
+school's week without the app knowing a thing about any school. Checked against
+the week numbers that calendar prints in its own first column, all five
+consecutive Tuesdays agree.
+
+What the app believes, and how sure it is, is said on the screen rather than left
+to be inferred:
+
+| | |
+| --- | --- |
+| **said** | two or more dates agree, and settle which day the week turns on |
+| **assumed** | one date gives the half; the turn-over is taken to be Monday because nothing says otherwise |
+| **muddled** | the dates cannot all be true together |
+| **nothing** | no date says, so both halves show |
+
+And the count runs from the anchor's **own** half. The old one read `weeks % 2 ===
+0 ? "odd" : "even"`, which is right only if every anchor is an odd week — and the
+one this calendar gives is an even one.
+
+**Parity is on the review rows.** The grid above them showed the two lessons
+stacked in one Tuesday cell; the rows underneath — the things actually about to
+be saved — said nothing at all about odd and even. So the one fact that keeps you
+out of the wrong room was the one fact you could not check before pressing Save.
+It is now a chip on every row, and pressing it cycles every week → odd → even.
+
+#### And a lesson already in your week is brought up to date, not skipped
+
+Reading the same timetable in twice must not put a second copy of every lesson in
+the week — that part was already right, matched on name, hours and days. But the
+copy that wins is the one already stored, which is the **older** one: it does not
+have the term dates just answered for on this import, and it does not have the
+half of the fortnight the document just said it runs in. Pressing Save on a
+timetable that ends in January would have left the lessons you already had
+running for ever and Writing showing every Tuesday — and the only thing on screen
+would have said they were *"already in your week"*.
+
+Only what the import is entitled to say gets taken: the dates, because you have
+just answered that question for these blocks, and the fortnight, because the
+document states it. The weeks you have crossed off, whether a block is protected,
+what you have written on it — untouched. And what changed is said out loud:
+*"3 were already in your week, so they weren't added again — they have been
+brought up to date with these dates."*
 
 ### And a PDF has no rows, no columns and no words
 

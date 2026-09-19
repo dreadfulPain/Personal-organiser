@@ -820,11 +820,75 @@
   //
   // Asked in two places and answered here once, because the day it is asked
   // twice is the day a Tuesday shows one lesson and the week shows the other.
-  const mondayOf = (iso) => {
+  // A WEEK DOES NOT TURN OVER ON A MONDAY EVERYWHERE, and which weekday it
+  // turns on decides which half of the fortnight a date is in. This used to be
+  // Monday, written in, and on a school whose weeks run Sunday to Saturday it
+  // puts every date in the wrong half — the fortnight resolving perfectly and
+  // being wrong by exactly one week, which is the hardest kind of wrong to see.
+  const weekStartOf = (iso, turn) => {
     const d = new Date(iso + "T12:00:00");
-    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    d.setDate(d.getDate() - (((d.getDay() - turn) % 7 + 7) % 7));
     return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   };
+  const weeksBetween = (a, b, turn) =>
+    Math.round((weekStartOf(a, turn) - weekStartOf(b, turn)) / 604800000);
+
+  // EVERY DATE IN THE FILE THAT SAYS WHICH HALF OF THE FORTNIGHT IT IS IN.
+  //
+  // The anchor used to be one block marked weekOne, and NOTHING IN THE APP EVER
+  // SET ONE — so parity never resolved, and appliesOn's rule that an unknown
+  // fortnight shows both halves meant Writing and Show & Tell appeared together
+  // every single Tuesday. The timetable was read correctly, stored correctly,
+  // and then both lessons were put in the same slot for ever.
+  //
+  // The document had already said it twice: "Sep. 20 is a working day, even week
+  // Tuesday schedule" and the same for Oct. 10. A date that says which half it
+  // is in IS an anchor, whatever else it is doing.
+  const anchorsOfParity = (all) => all
+    .filter((b) => b.date && !b.soft && (b.parity || b.weekOne))
+    .map((b) => ({ date: b.date, parity: b.parity || "odd", label: b.label || b.date }));
+
+  // AND THE DAY THE WEEK TURNS OVER ON, WORKED OUT RATHER THAN ASSUMED.
+  //
+  // Two dates that each say which half they are in constrain it: only some
+  // weekdays can be the turn-over and still have both statements be true. On
+  // the calendar this was built against exactly one survives — the document
+  // settles its own school's week without the app knowing a thing about any
+  // school. Where the evidence does not settle it, that is said rather than
+  // guessed at quietly; see paritySays.
+  const DEFAULT_TURN = 1;   // Monday, where there is nothing to work it out from
+  function turnOf(anchors) {
+    if (anchors.length < 2) return null;
+    const base = anchors[0];
+    const fits = [];
+    for (let t = 0; t < 7; t++) {
+      if (anchors.every((a) =>
+        (weeksBetween(a.date, base.date, t) % 2 === 0) === (a.parity === base.parity)))
+        fits.push(t);
+    }
+    return fits.length === 1 ? fits[0] : null;
+  }
+
+  // WHAT THE APP BELIEVES ABOUT THE FORTNIGHT AND WHY, for saying on screen.
+  // A fortnight resolved from a guess is still a guess, and the whole point of
+  // the fortnight is being in the right room.
+  function paritySays(schedule) {
+    const anchors = anchorsOfParity(normalise(schedule));
+    if (!anchors.length)
+      return { known: false, sure: "nothing", turn: DEFAULT_TURN, anchors };
+    const turn = turnOf(anchors);
+    return {
+      known: true,
+      // said    — two or more dates agree and settle which day the week turns on
+      // assumed — one date says which half it is; the week's turn-over is taken
+      //           to be Monday because nothing says otherwise
+      // muddled — the dates cannot all be true together
+      sure: turn !== null ? "said" : anchors.length < 2 ? "assumed" : "muddled",
+      turn: turn === null ? DEFAULT_TURN : turn,
+      anchors,
+    };
+  }
+
   function parityOn(schedule, iso) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return "";
     const all = normalise(schedule);
@@ -837,16 +901,21 @@
     const said = all.find((b) => b.date === iso && !b.soft && b.parity &&
       (b.runsAs !== null || b.weekOne));
     if (said) return said.parity;
-    // Otherwise counted from the one date somebody marked as an odd week.
-    const anchor = all.find((b) => b.weekOne && b.date && !b.soft);
-    if (!anchor) return "";
+    const anchors = anchorsOfParity(all);
+    if (!anchors.length) return "";
+    const turn = turnOf(anchors);
+    const from = anchors[0];
     // Counts backwards as readily as forwards — term started before whichever
     // week somebody happened to mark, and a negative count is still even or
     // odd. (JavaScript's remainder keeps the sign, so -2 % 2 is -0, which
     // equals 0. No wrapping is needed and adding some would be a line nothing
     // could ever make fail.)
-    const weeks = Math.round((mondayOf(iso) - mondayOf(anchor.date)) / 604800000);
-    return weeks % 2 === 0 ? "odd" : "even";
+    const weeks = weeksBetween(iso, from.date, turn === null ? DEFAULT_TURN : turn);
+    // FROM THE ANCHOR'S OWN HALF, not from an assumption that an anchor is odd.
+    // The old count read "weeks % 2 === 0 ? odd : even", which is only right if
+    // every anchor is an odd week — and the one this calendar gives is an even.
+    return weeks % 2 === 0 ? from.parity
+      : from.parity === "odd" ? "even" : "odd";
   }
 
   // Every block that applies on a date, earliest first.
@@ -1556,6 +1625,8 @@
     standingIn,
     PARITIES,
     parityOn,
+    // What the app believes about the fortnight, and why — see paritySays.
+    paritySays,
     // THE TWO KINDS OF THING A CALENDAR SENDS — see isDayRule. Named here so
     // that "something is on today" and "today is not a normal day" cannot come
     // to mean the same thing by accident.

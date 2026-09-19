@@ -350,9 +350,29 @@ export const saying = (r, re) =>
 //
 // Said here once, because every suite that saves a timetable has to answer it
 // and they must all answer it the same way.
-export const saveBlocks = (r) => {
-  const noEnd = clickable(r).find((c) => /^no end date/.test(String(c.textContent || "")));
-  if (noEnd) noEnd.click();
+// Pass { from, to } to answer the term-dates question with real dates instead
+// of ticking "no end date" — which is what somebody setting up a term does, and
+// the only way to see what those dates do to blocks already in the week.
+export const saveBlocks = (r, term) => {
+  if (term && (term.from || term.to)) {
+    // WRITTEN AS innerHTML, so the boxes are not children of anything here —
+    // this harness keeps innerHTML as text and hands back a memoised element
+    // for a querySelector, which is the same one the page attached its handler
+    // to. Reached the way the page reached it, or the change never fires.
+    const holder = r.created.find((c) => /class="tm-from"/.test(String(c.innerHTML || "")));
+    const box = (cls, v) => {
+      if (!holder || !v) return;
+      const el = holder.querySelector(`.${cls}`);
+      if (!el) return;
+      el.value = v;
+      el.fire("change", { target: el });
+    };
+    box("tm-from", term.from);
+    box("tm-to", term.to);
+  } else {
+    const noEnd = clickable(r).find((c) => /^no end date/.test(String(c.textContent || "")));
+    if (noEnd) noEnd.click();
+  }
   // Found again AFTER the answer: answering rebuilds the panel, so the button
   // held from before is one that is no longer on the page.
   const save = clickable(r).find((c) => String(c.textContent || "") === "Save these blocks");

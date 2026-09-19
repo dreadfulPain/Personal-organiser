@@ -278,15 +278,21 @@
     //    same sentence three more times, and the one line that explained the
     //    day goes under the three that repeat it.
     //
-    //    A day with no lessons needs no such guard: its blocks are all still
-    //    there, they are simply not taught, so nothing is missing to list.
+    //    NOR ON A DAY THE TIMETABLE DOES NOT APPLY TO, for exactly the same
+    //    reason. This used to read "a day with no lessons needs no such guard:
+    //    its blocks are all still there, they are simply not taught" — which
+    //    was a true description of a bug. The lessons were on the day, eating
+    //    its hours, on every holiday in the calendar. Now that they are off it,
+    //    "no lessons — Professional Development Day" explains all four of them
+    //    and naming each underneath is the same sentence four more times.
     //    AND NOT THE OTHER HALF OF A FORTNIGHT. A slot that carries Writing in
     //    odd weeks and Show & Tell in even ones has not LOST Writing on an even
     //    Tuesday — that is the timetable working. Said every other week it is
     //    the loudest thing on the page and it is never once news.
     const par = S.parityOn ? S.parityOn(schedule, iso) : "";
     const on = new Set(here.map((b) => b.id));
-    const gone = asDay !== dow ? [] : normalWeek(schedule)
+    const stopped = here.some((b) => !b.soft && (b.blocksDay || b.noLessons));
+    const gone = asDay !== dow || stopped ? [] : normalWeek(schedule)
       .filter((b) => b.days.includes(dow) && !on.has(b.id) &&
         !(b.parity && par && b.parity !== par));
     // ONLY EVER A SWAP WHEN BOTH HALVES ARE TRUE. The lesson has to be off AND

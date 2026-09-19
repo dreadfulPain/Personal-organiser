@@ -91,10 +91,58 @@ console.log("\nA rule about the day");
     start: "00:00", end: "23:59", days: [], noLessons: true }];
   // A DAY OFF TEACHING IS NOT A DAY OFF. The lessons stop; the work does not,
   // and it is very often the best chance there is to get ahead.
+  // AND THE LESSONS REALLY ARE OFF IT. These two assertions used to compare a
+  // no-lessons day against an ORDINARY one and call it a pass — "busy exactly
+  // as much as a normal Tuesday", which is the timetable still running through
+  // a holiday. The name above them said the right thing and the comparison
+  // underneath said the opposite, and it went unread until a real week showed
+  // Friday's lessons inside the Mid-Autumn Festival.
   ok("a day with no lessons is not busy at all — you are still working",
-     busy(none).join() === PLAIN.busy.join(), JSON.stringify(busy(none)));
-  ok("  and the whole day is yours to plan into",
-     minutes(none) === PLAIN.minutes, `${minutes(none)} vs ${PLAIN.minutes}`);
+     busy(none).length === 0, JSON.stringify(busy(none)));
+  ok("  and the WHOLE day is yours to plan into, not what the timetable left over",
+     minutes(none) === 600 && minutes(none) > PLAIN.minutes,
+     `${minutes(none)} with no lessons vs ${PLAIN.minutes} on an ordinary day`);
+  ok("  because the timetable is not on a day the timetable does not apply to",
+     S.blocksOn(WEEK.concat(none), DAY).filter((b) => b.days.length).length === 0 &&
+       S.blocksOn(WEEK, DAY).filter((b) => b.days.length).length === 2,
+     JSON.stringify(S.blocksOn(WEEK.concat(none), DAY).map((b) => b.label)));
+  // THOUGH WHAT YOU PUT ON THAT DATE YOURSELF STAYS. A closure turns the
+  // TIMETABLE off. It does not delete a thing you deliberately dated.
+  ok("  while something you put on that date yourself is still there",
+     S.blocksOn(WEEK.concat(none, [{ id: "x", label: "Marking", date: DAY,
+       start: "10:00", end: "11:00", days: [] }]), DAY).some((b) => b.label === "Marking"),
+     "a dated entry went with the timetable");
+
+  // THE THREE SIDE BY SIDE, because the difference between them is the whole
+  // point and it is only legible together. Printed as well as checked: this is
+  // the table somebody asked to see before trusting any of it.
+  const over = [{ id: "v", label: "Professional Development", date: DAY,
+    start: "00:00", end: "23:59", days: [], timing: "sometime" }];
+  const lessonsOn = (x) => S.blocksOn(WEEK.concat(x), DAY).filter((b) => b.days.length).length;
+  const mins = (x) => minutes(x);
+  const row = (name, x) =>
+    `    ${name.padEnd(30)} lessons ${lessonsOn(x)} · busy ${
+      S.busyOn(WEEK.concat(x), DAY).reduce((n, g) => n + (g.end - g.start), 0)
+    }m · ${mins(x)}m to work in`;
+  console.log("\n  A Tuesday with two lessons on it, 07:30–17:30:");
+  console.log(row("an ordinary Tuesday", []));
+  console.log(row("I'm away", off));
+  console.log(row("no timetable, day still yours", none));
+  console.log(row("something on an ordinary day", over));
+  ok("  and the three are three different days, not two",
+     mins(off) === 0 && mins(none) === 600 && mins(over) === PLAIN.minutes &&
+       lessonsOn(off) === 0 && lessonsOn(none) === 0 && lessonsOn(over) === 2,
+     JSON.stringify({ away: mins(off), noTimetable: mins(none), overlay: mins(over) }));
+  // THE ONE THE WHOLE ARGUMENT WAS ABOUT. "The day is still yours" must not
+  // quietly mean the same as "I'm away".
+  ok("  and a day that is still yours is not a day with nothing in it",
+     mins(none) > 0 && !S.dayIsBlocked(WEEK.concat(none), DAY) &&
+       S.hoursOn(WEEK.concat(none), CFG, DAY).every((h) => h.use !== "protected"),
+     JSON.stringify(S.hoursOn(WEEK.concat(none), CFG, DAY).map((h) => h.use)));
+  ok("  while a day you are away from is protected, all of it",
+     S.dayIsBlocked(WEEK.concat(off), DAY) &&
+       S.hoursOn(WEEK.concat(off), CFG, DAY).every((h) => h.use === "protected"),
+     JSON.stringify(S.hoursOn(WEEK.concat(off), CFG, DAY).map((h) => h.use)));
   // AND IT IS NOT DRAWN AS THE LONGEST MEETING IN THE WORLD. A rule runs the
   // length of the day because that is its SCOPE, not because anybody is
   // occupied from midnight.
@@ -705,6 +753,43 @@ console.log("\nAnd answers given under a meaning that has since moved");
      S.normalise(kept).filter((b) => /Winter/.test(b.label)).every((b) => b.blocksDay) &&
        !S.staleRules(kept, keptM).away.some((g) => /Winter/.test(g.label)),
      JSON.stringify(S.staleRules(kept, keptM).away.map((g) => g.label)));
+
+  // ---- AND AN ANSWER IS NOT A ONE-WAY DOOR --------------------------------
+  //
+  // The first version of this was: six presses, six questions gone, no way
+  // back. A press aimed at one row of a list that re-flows under your cursor
+  // and landing on the row below it was then permanent, silent, and
+  // indistinguishable from having meant it — which is a bad thing to do to
+  // anybody and a worse thing to do to somebody who reads carefully.
+  //
+  // Three states, any of them sayable at any time, from the accounting.
+  const wasAway = S.settle(saved, winter.blocks.map((b) => b.id), "away");
+  const nowMine = S.settle(wasAway, winter.blocks.map((b) => b.id), "noTimetable");
+  const w = (list) => S.normalise(list).find((b) => /Winter/.test(b.label));
+  ok("a day recorded as one thing can be said again as another",
+     w(wasAway).blocksDay === true && w(nowMine).blocksDay === false &&
+       w(nowMine).noLessons === true,
+     JSON.stringify({ away: w(wasAway).blocksDay, then: w(nowMine).noLessons }));
+  // AND IT STAYS ON THE LIST THAT CAN CHANGE IT. An entry converted to an
+  // overlay stops being a day rule, so nothing else would hold it there — and
+  // it would leave the only screen that could change it back at the moment it
+  // was changed.
+  const asOver = S.settle(saved, winter.blocks.map((b) => b.id), "overlay");
+  const overM = S.answered({ wrote: S.SEMANTICS, ask: [], done: [] },
+    winter.blocks.map((b) => b.id));
+  const still = S.ruleAudit(asOver, overM).find((r) => /Winter/.test(r.label));
+  ok("  and a rule turned into an overlay stays on the list that can change it",
+     !!still && still.is === "overlay" && still.stands === "yours",
+     JSON.stringify(S.ruleAudit(asOver, overM).map((r) => `${r.label}:${r.is}`)));
+  ok("  without that putting it back into the questions",
+     S.staleRules(asOver, overM).away.length === 0 &&
+       S.staleRules(asOver, overM).noTimetable.length === 0,
+     JSON.stringify(S.staleRules(asOver, overM)));
+  // AND THE CLOCK IS RE-DECIDED IN BOTH DIRECTIONS. A rule lasts all day; an
+  // overlay with no hour on it is a thing to be given one.
+  ok("  with the clock on it re-decided each way",
+     w(asOver).timing === "sometime" && w(nowMine).timing === "at",
+     JSON.stringify({ overlay: w(asOver).timing, rule: w(nowMine).timing }));
 
   // ---- AND THE MIGRATION HAS TO END ---------------------------------------
   //

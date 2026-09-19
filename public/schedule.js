@@ -703,12 +703,20 @@
   // what settle does to the entries, because "what this day is" and "have you
   // been asked about it" are different facts and folding them together is how
   // one of them starts speaking for the other.
+  // AND ANYTHING YOU CHANGE JOINS THE LIST, whether or not it was ever asked
+  // about. "ask" is the set the accounting is drawn from, and a day you have
+  // taken a view on has to stay in it: convert a rule to an overlay and it is
+  // no longer a rule, so nothing else would keep it on the table — and it would
+  // leave the only screen that could change it back, the moment you changed it.
+  // Adding it to both lists at once makes it accounted for and not asked about,
+  // which is exactly what it is.
   function answered(meaning, ids) {
     const had = meaning && typeof meaning === "object" ? meaning : {};
+    const ask = [...new Set((had.ask || []).concat(ids || []))];
     const done = new Set((had.done || []).concat(ids || []));
     return { wrote: Number(had.wrote) || SEMANTICS,
-      ask: (had.ask || []).slice(),
-      done: (had.ask || []).filter((id) => done.has(id)) };
+      ask,
+      done: ask.filter((id) => done.has(id)) };
   }
 
   // EVERY DAY RULE A DOCUMENT PUT IN THE FILE, and where each one stands.
@@ -750,29 +758,40 @@
 
   // The answer, applied to every block of one group. "mine" is what makes it
   // stop being a question: it is no longer the document's reading, it is yours.
+  // THE THREE THINGS A DATED ENTRY CAN BE, and you may say so at any time.
+  //
+  // Not only while a migration is asking. The first version of this was a
+  // one-way door: six presses answered six questions, the questions went away,
+  // and there was no way back — so a press aimed at one row and landing on
+  // another was permanent and silent. That is not a thing to do to anybody, and
+  // it is a worse thing to do to somebody who has to read carefully. See
+  // ruleAudit, which lists every one of these and lets you change it.
+  const AS = {
+    away:        { blocksDay: true,  noLessons: false },
+    noTimetable: { blocksDay: false, noLessons: true },
+    overlay:     { blocksDay: false, noLessons: false },
+  };
   function settle(schedule, ids, how) {
     const want = new Set(ids || []);
+    const to = AS[how] || null;
     return normalise(schedule).map((b) => {
       if (!want.has(b.id)) return b;
       const said = { ...b, source: "hand" };
-      if (how === "noTimetable") return { ...said, blocksDay: false, noLessons: true };
-      // AN OVERLAY IS NOT A RULE AT ALL. Both flags come off and what is left is
-      // a thing on the day — which, with no hour on it, is a thing to be given
-      // one. See TIMINGS.
+      // "keep": the reading was right, and now you have said so.
+      if (!to) return said;
+      // AND THE CLOCK ON IT IS ASKED AGAIN, WHICHEVER WAY IT GOES.
       //
-      // AND THE CLOCK ON IT HAS TO BE ASKED AGAIN. Midnight to midnight was an
-      // honest answer while this was a rule: a rule really does last all day.
-      // The moment it stops being one, that span is the importer's mark for "no
-      // time given" and nothing else, and a block still carrying timing "at"
-      // would sit on the day as a twenty-four-hour appointment. Dropping the
-      // field hands the question back to normaliseBlock, which re-decides it
-      // from what the block now is — so a whole-day one becomes "sometime" and
-      // lands in Needs a time, while one that came with real hours keeps them.
-      if (how === "overlay") {
-        const { timing, ...rest } = said;   // eslint-disable-line no-unused-vars
-        return normaliseBlock({ ...rest, blocksDay: false, noLessons: false });
-      }
-      return said;   // "keep": the reading was right, and now you have said so.
+      // Midnight to a minute to midnight is an honest answer while a block is a
+      // RULE: a rule really does last all day. It means something else entirely
+      // on a block that is not one — there it is the importer's mark for "no
+      // time was given", and left alone it sits on the day as a twenty-four-hour
+      // appointment. Dropping the field hands the question back to
+      // normaliseBlock, which re-decides it from what the block now IS: a
+      // whole-day overlay becomes "sometime" and lands in Needs a time, a rule
+      // goes back to lasting all day, and anything that came with real hours
+      // keeps them.
+      const { timing, ...rest } = said;   // eslint-disable-line no-unused-vars
+      return normaliseBlock({ ...rest, ...to });
     });
   }
 
@@ -845,8 +864,35 @@
   function blocksOn(schedule, iso) {
     const asDay = runsAsOn(schedule, iso);
     const asParity = parityOn(schedule, iso);
-    return normalise(schedule)
-      .filter((b) => b.runsAs === null && appliesOn(b, iso, asDay, asParity))
+    const here = normalise(schedule)
+      .filter((b) => b.runsAs === null && appliesOn(b, iso, asDay, asParity));
+    // AND IF THE TIMETABLE DOES NOT APPLY TODAY, IT IS NOT ON THE DAY.
+    //
+    // "No timetable" said the timetable was off and then left every lesson
+    // sitting on the day anyway. teachingOn knew — it returned nothing — but
+    // busyOn, gapsOn, hoursOn and the Day screen all went on counting Friday's
+    // lessons through a holiday, because each of them asked blocksOn and
+    // blocksOn had never been told. One question, "does the timetable apply
+    // today", answered in two places, and the two disagreed.
+    //
+    // It survived every test because every fixture that turned the timetable
+    // off happened to have no lessons on that weekday. It took a real week, a
+    // real calendar and somebody looking at the screen.
+    //
+    // WHAT GOES, AND WHAT STAYS: the repeating entries go, because they are the
+    // timetable. Anything dated stays — whatever you put on that date, because
+    // a development day, a dentist appointment or a lesson you deliberately
+    // added to a holiday are not the timetable and were never what the rule
+    // turned off.
+    //
+    // AND A RULE STAYS WHETHER OR NOT IT REPEATS. "Every day from the 16th of
+    // November to the 13th of December" is how a holiday is written when it is
+    // a run of days rather than a list of them, and that is a rule wearing a
+    // week's clothes. Filtered out for having days on it, it took itself off
+    // the day and the holiday stopped being a holiday.
+    const stops = here.some((b) => (b.blocksDay || b.noLessons) && !b.soft);
+    const timetable = (b) => b.days.length && !b.blocksDay && !b.noLessons;
+    return (stops ? here.filter((b) => !timetable(b)) : here)
       .sort((a, b) => toMin(a.start) - toMin(b.start) || toMin(a.end) - toMin(b.end));
   }
   // Did you mark this day off? Nothing is planned into it.
@@ -872,12 +918,17 @@
   // are left out of all three, the same way they are left out of busy time.
   const kindOn = (schedule, iso, kind) =>
     blocksOn(schedule, iso).filter((b) => !b.soft && b.kind === kind);
+  // ASKED ONCE, IN blocksOn. These used to check for themselves whether the day
+  // was off, which is the same question in a second place — and it was the
+  // second place that was right while the first went on counting lessons
+  // through a holiday. A dated one-off on such a day is still returned, on
+  // purpose: a lesson you deliberately put on a closure day is not the
+  // timetable and nothing turned it off.
   function teachingOn(schedule, iso) {
-    return dayIsBlocked(schedule, iso) || noTeachingOn(schedule, iso)
-      ? [] : kindOn(schedule, iso, "teaching");
+    return kindOn(schedule, iso, "teaching");
   }
   function dutyOn(schedule, iso) {
-    return dayIsBlocked(schedule, iso) ? [] : kindOn(schedule, iso, "duty");
+    return kindOn(schedule, iso, "duty");
   }
   // AND FREE TIME IS gapsOn, WHICH ALREADY LEAVES PROTECTED TIME OUT — see
   // busyOn. There is no second function for it: "when am I free" and "where can

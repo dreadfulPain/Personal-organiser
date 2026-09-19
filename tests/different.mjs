@@ -842,6 +842,45 @@ console.log("\nAnd the answers that were saved under the old meaning");
   ok("a calendar imported afterwards is not put back on the list",
      !back.trim() && !!before && before.wrote >= 1,
      JSON.stringify({ asking: back.slice(0, 120), wrote: before && before.wrote }));
+
+  // AND THE ANSWER CAN BE CHANGED AFTERWARDS, from the accounting.
+  //
+  // Answering used to be a one-way door — six presses, the questions gone, no
+  // way back — so a press that landed on the wrong row of a list re-flowing
+  // under the cursor was permanent and silent. Every row now carries all three
+  // answers, with the current one showing, for as long as the row exists.
+  // The row's own words are written as innerHTML, which this harness keeps as
+  // text rather than parsing into elements — see tests/_dom.mjs. Its buttons
+  // are real children, because they carry handlers.
+  const auditRows = (r) => deep(r.get("#oldMeanings"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("su-auditrow"));
+  const rowFor = (name) => auditRows(again)
+    .find((c) => new RegExp(name).test(String(c.innerHTML || "")));
+  const springRow = rowFor("Spring Break");
+  const chip = (row, word) => deep(row).find((c) =>
+    String(c.tagName) === "BUTTON" && String(c.textContent) === word);
+  ok("every row in the accounting offers all three answers",
+     !!springRow && ["I'm away", "no timetable — the day is still yours",
+       "something on an ordinary day"].every((w) => !!chip(springRow, w)),
+     JSON.stringify(deep(springRow || { }).filter((c) => String(c.tagName) === "BUTTON")
+       .map((c) => c.textContent)));
+  ok("  with the one it is now already showing as chosen",
+     !!chip(springRow, "no timetable — the day is still yours") &&
+       String(chip(springRow, "no timetable — the day is still yours").className).includes("on") &&
+       !String(chip(springRow, "I'm away").className).includes("on"),
+     JSON.stringify([chip(springRow, "no timetable — the day is still yours").className,
+       chip(springRow, "I'm away").className]));
+
+  // AND PRESSING ANOTHER ONE CHANGES THE WHOLE GROUP BACK.
+  chip(springRow, "I'm away").click();
+  await again.settle();
+  const back2 = (again.state.schedule || []).filter((x) => /Spring Break/.test(x.label));
+  ok("changing your mind changes every day of it, in one press",
+     back2.length === 12 && back2.every((x) => x.blocksDay && !x.noLessons),
+     JSON.stringify(back2.map((x) => `${x.blocksDay}/${x.noLessons}`).slice(0, 3)));
+  ok("  and it is still on the list, so it can be changed again",
+     !!rowFor("Spring Break"),
+     "the row left the accounting the moment it was changed");
 }
 
 finish();

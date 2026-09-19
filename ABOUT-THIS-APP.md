@@ -281,6 +281,61 @@ It is also the same mechanism as *"you have done enough"*: once the day's budget
 is met and nothing ahead is at risk, the remaining usable time simply **is** rest.
 Not a silence where the list ran out — a budget that has been satisfied.
 
+### And "no timetable" has to actually take the timetable off
+
+It didn't. `noTeachingOn` said the teaching was off and `teachingOn` returned
+nothing — but `blocksOn` had never been told, so `busyOn`, `gapsOn`, `hoursOn`
+and the Day screen all went on counting Friday's lessons straight through the
+Mid-Autumn Festival. One question, *"does the timetable apply today"*, answered in
+two places, and the two disagreed for months.
+
+It survived every test because every fixture that turned the timetable off
+happened to have no lessons on that weekday. Two assertions in the resolution
+table even pinned it: the heading said *"a day with no lessons is not busy at
+all"* and the comparison underneath asserted it was busy **exactly as much as an
+ordinary Tuesday**. It took a real calendar, a real week and somebody looking at
+the screen.
+
+A Tuesday with two lessons on it, 07:30–17:30:
+
+| | timetable | busy | to work in |
+| --- | --- | --- | --- |
+| an ordinary Tuesday | Read Aloud, English | 100m | 500m |
+| **I'm away** | none | 1439m | **0m** — all of it protected |
+| **no timetable, the day is still yours** | none | 0m | **600m** — the whole day |
+| **something on an ordinary day** | Read Aloud, English | 100m | 500m |
+
+Three different days, not two. What goes when the timetable stops is the
+*repeating* entries, because those are the timetable. Anything **dated** stays —
+a development day, a dentist appointment, a lesson you deliberately put on a
+closure day are not the timetable and were never what the rule turned off. And a
+rule stays whether or not it repeats: "every day from 16 November to 13 December"
+is how a holiday is written when it is a run of days rather than a list of them,
+and a first version of this fix filtered that out for having days on it, so the
+holiday stopped being a holiday.
+
+The Day screen follows: `no lessons — Mid-Autumn Festival` explains all four
+lessons that are off, and naming each underneath it is the same sentence four
+more times.
+
+### And an answer is not a one-way door
+
+The migration was: six presses, six questions gone, no way back. A press aimed at
+one row of a list that **re-flows under the cursor after every press**, landing on
+the row below it, was then permanent, silent and indistinguishable from having
+meant it. That is a bad thing to do to anybody and a worse thing to do to somebody
+who has to read carefully.
+
+So the answering does not live in the questions. It lives in the accounting,
+where the whole list is, where nothing ever leaves, and where what a day is now
+sits next to what you can change it to — `I'm away` · `no timetable — the day is
+still yours` · `something on an ordinary day`, with the current one showing.
+
+An entry converted to an overlay stops being a day rule, so nothing else would
+keep it on that table — and it would leave the only screen that could change it
+back at the moment it was changed. Anything you take a view on therefore joins
+the accounting's list permanently, marked answered, which is exactly what it is.
+
 ### And the answers already saved under the old meaning
 
 Changing the code does not repair data already written. Two of the meanings above

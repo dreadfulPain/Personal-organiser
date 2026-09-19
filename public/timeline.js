@@ -5354,6 +5354,22 @@
     runsAs: "runs another day's timetable",
     overlay: "something on an ordinary day",
   };
+  // THE THREE THINGS ONE OF THESE DAYS CAN BE, offered on every row, for ever.
+  //
+  // The migration was a one-way door: six presses answered six questions, the
+  // questions went away, and there was no way back. A press aimed at one row
+  // and landing on another — which is what a list that re-flows under your
+  // cursor after every press invites — was then permanent, silent, and
+  // indistinguishable from having meant it.
+  //
+  // So the answering does not live in the questions. It lives here, where the
+  // whole list is, where nothing ever leaves, and where what a day is now is
+  // written next to what you can change it to.
+  const SAYS = [
+    ["away", "I'm away", "no usable time at all"],
+    ["noTimetable", "no timetable — the day is still yours", "no timetable, and the day is yours"],
+    ["overlay", "something on an ordinary day", "the normal day, with this added to it"],
+  ];
   function renderRuleAudit() {
     const el = $("#oldMeanings");
     if (!el) return;
@@ -5367,8 +5383,9 @@
       `${asking ? `, ${asking} still to answer` : ", all answered"}</h3>`;
     box.appendChild(head);
     box.insertAdjacentHTML("beforeend",
-      `<p class="muted">Each one, and what it does to that day. Nothing here is a ` +
-      `question — it is so you can check the list above against the calendar you imported.</p>`);
+      `<p class="muted">Each one, what it does to that day, and what you can change it ` +
+      `to. Nothing leaves this list, so anything you answered — or answered by ` +
+      `accident — can be said again.</p>`);
     rows.forEach((r) => {
       const [word, why] = STANDS[r.stands] || ["", ""];
       const row = document.createElement("div");
@@ -5378,6 +5395,32 @@
         `<span class="su-blabel">${escapeHtml(r.label)}</span>` +
         `<span class="su-adoes">${escapeHtml(DOES[r.is] || r.is)}</span>` +
         `<span class="su-astands">${escapeHtml(word)} <span class="muted">· ${escapeHtml(why)}</span></span>`;
+      // A DAY RUNNING ANOTHER DAY'S TIMETABLE IS NOT ONE OF THE THREE. It is a
+      // different answer to a different question and it is edited where the
+      // other calendar rules are.
+      if (r.is !== "runsAs") {
+        const pair = document.createElement("div");
+        pair.className = "su-moveans";
+        row.appendChild(pair);
+        SAYS.forEach(([how, word2, said]) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = `p-opt su-chip${r.is === how ? " on" : ""}`;
+          b.textContent = word2;
+          if (r.is === how) b.setAttribute("aria-pressed", "true");
+          b.addEventListener("click", () => {
+            if (r.is === how) return;
+            const ids = r.blocks.map((x) => x.id);
+            schedule = S().settle(schedule, ids, how);
+            meaning = S().answered(meaning, ids);
+            persist();
+            renderSetup();
+            render();
+            setSuStatus(`“${r.label}” — ${said}. ${r.days} day${r.days === 1 ? "" : "s"}.`);
+          });
+          pair.appendChild(b);
+        });
+      }
       box.appendChild(row);
     });
     el.appendChild(box);

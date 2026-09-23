@@ -1938,7 +1938,7 @@ function cohort(about, words) {
 function verify(doc, said, row) {
   const { date, endsOn, label } = row || {};
   const span = evidence(doc, said);
-  if (span === null) return { checked: "line not in the document", source: "" };
+  if (span === null) return { checked: "line not in the document", grounded: false, source: "" };
   // WITH NO DATE ON IT, THE NAME IS THE ANCHOR.
   //
   // THE HOLE THIS CLOSES. The date was the only thing tying a quote to the entry
@@ -1957,13 +1957,13 @@ function verify(doc, said, row) {
     const flat = (x) => String(x || "").replace(/\s+/g, " ").trim().toLowerCase();
     if (!label) return { checked: "", source: span };
     return flat(span).indexOf(flat(label)) < 0
-      ? { checked: "that isn't the line this came off", source: span }
+      ? { checked: "that isn't the line this came off", grounded: false, source: span }
       : { checked: "", source: span };
   }
   const has = (iso) => !iso || writtenIn(span, iso);
-  if (!has(date)) return { checked: "that day isn't written near that line", source: span };
+  if (!has(date)) return { checked: "that day isn't written near that line", grounded: false, source: span };
   if (!has(endsOn))
-    return { checked: "the day it ends isn't written near that line", source: span };
+    return { checked: "the day it ends isn't written near that line", grounded: false, source: span };
   return { checked: "", source: span };
 }
 
@@ -2858,6 +2858,16 @@ async function handleCalendar(res, body, req) {
         // looking answered because a model quoted a document.
         fromLine: said,
         checked: seen.checked || fits,
+        // AND WHETHER THE PROBLEM IS THAT NOBODY CAN SHOW WHERE THIS CAME FROM.
+        //
+        // "checked" holds two different sorts of doubt and they have been read
+        // as one. "something that runs for days isn't due on one of them" is
+        // the app unable to decide what an entry MEANS, which is a fair
+        // question to put to somebody. "line not in the document" is the app
+        // unable to show where the entry came from at all — and this whole
+        // panel is built on being able to check it, so that is not a question,
+        // it is a row with nothing behind it.
+        grounded: seen.grounded !== false,
         // THE DOCUMENT'S OWN WORDS THAT BACK IT — the span the check was made
         // against, not the reader's quote of it. Kept so the page can show what
         // a reading actually rests on: a conclusion you cannot see the grounds

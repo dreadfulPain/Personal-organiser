@@ -143,8 +143,37 @@
   // proposed, and every one of them came back as an unanswered question with
   // the answer sitting on it. See pileOf: the two are different answers.
   const triagedRows = (rows) => (rows || []).some((x) => x && (x.means || x.mine));
+  // A DATE THAT IS NOT A DATE, WHICH READS AS ONE EVERYWHERE ELSE.
+  //
+  // "Invalid Date — Midterm, due by 16:00" reached a real screen, ticked, in a
+  // list headed "ready to go in" — because the string was the right shape and
+  // nothing ever asked whether the day existed. The reader no longer makes
+  // them; this is so that nothing which ever does can get past here either.
+  // ASKED OF THE FILE THAT MAKES DATES — see realDay in calplan.js. A second
+  // copy of "is this a day" would be a second answer to drift from the first.
+  const realDate = (d) => {
+    const CP = window.OrganiserCalPlan;
+    return CP && CP.realDay ? CP.realDay(d) : /^\d{4}-\d{2}-\d{2}$/.test(String(d || ""));
+  };
+  // AND A ROW NOBODY CAN SHOW THE ORIGIN OF IS NOT A QUESTION EITHER.
+  //
+  // "Tue, 1 Dec 2026 — 14 29 30 2 3 4 Ý 5 Parents' Meeting", with the app's own
+  // note underneath reading "asking because line not in the document". If the
+  // reader says the line is not in the document then there is nothing to
+  // adjudicate: a name made of grid numbers and a legend glyph is not an entry
+  // somebody should have to rule on, and putting it among the questions spends
+  // attention that the real questions need.
+  //
+  // Set aside rather than thrown away, said in its own group with its own
+  // reason, because a reader that silently drops things is a reader you cannot
+  // check.
+  const sound = (r) =>
+    (r.grounded !== false) && (!r.date || realDate(r.date)) &&
+    (!r.endsOn || realDate(r.endsOn));
+
   const pileOf = (r) =>
-    r.found === "model" ? "maybe"
+    !sound(r) ? "aside"
+      : r.found === "model" ? "maybe"
       // AND A ROW THAT MIGHT BE ANOTHER ROW IS NOT READY, WHATEVER IT MEANS.
       //
       // The reader can be perfectly sure "Semester Assessment Paper Upload" is
@@ -666,6 +695,10 @@
         ...(a.whyMine ? { whyMine: a.whyMine } : {}),
         fromLine: a.fromLine || "",
         checked: a.checked || "",
+        // AND WHETHER ANYBODY CAN SHOW WHERE IT CAME FROM — see grounded on the
+        // server. Different from "checked", which also holds honest questions
+        // about what an entry means.
+        grounded: a.grounded !== false,
         source: a.source || "",
         // AND THE WORDS IT SAYS PUT YOU UNDER A DEADLINE — see owed. Kept
         // because it goes on the row: a deadline nobody set is pressure the
@@ -679,6 +712,7 @@
       const a = got.get(rows.length + j + 1);
       if (!a) return;
       const as = { ...m, means: a.means, sure: a.sure, mine: a.mine, checked: a.checked,
+        grounded: a.grounded !== false,
         why: a.why, whyMine: a.whyMine, source: a.source };
       // ONE TEST, THE SAME ONE. A mark is trusted on exactly the terms a row is:
       // see trusted.
@@ -1342,10 +1376,11 @@
     // when the reading arrived, so that nothing moves while you are working
     // down it. See calShow. With no reader proposing anything there is nothing
     // to sort and every row is a question, which is the panel as it was: §0.1.
-    const piles = { ready: [], ask: [], not: [], maybe: [], same: [] };
+    const piles = { ready: [], ask: [], not: [], maybe: [], same: [], aside: [] };
     calRows.forEach((r, i) => piles[r.pile || "ask"].push([r, i]));
     const some = triaged &&
-      piles.ready.length + piles.not.length + piles.maybe.length + piles.same.length > 0;
+      piles.ready.length + piles.not.length + piles.maybe.length + piles.same.length +
+        piles.aside.length > 0;
     // HOW TO ANSWER THEM, ONLY WHERE ANSWERING THEM IS THE JOB. With most of
     // the reading already proposed, a paragraph about which row to mark as
     // "lessons start" is instructions for work somebody else has done.
@@ -1368,6 +1403,11 @@
       if (repeats) bits.push(`${repeats} that may already be in the list twice`);
       if (piles.not.length) bits.push(`${piles.not.length} that don't look like yours`);
       if (piles.maybe.length) bits.push(`${piles.maybe.length} the model thinks this missed`);
+      // AND THE ONES SET ASIDE, COUNTED SEPARATELY AND NOT AS QUESTIONS.
+      // "Ready" has to mean a row that is sound, grounded and settled — not
+      // merely one the reader produced an object for.
+      if (piles.aside.length)
+        bits.push(`${piles.aside.length} set aside as unreadable`);
       head.textContent = bits.join(", ") + ".";
       box.appendChild(head);
     }
@@ -1415,6 +1455,36 @@
       box.appendChild(p);
       piles.maybe.forEach(([r, i]) => drawCalRow(r, i, marks, box));
     }
+    // AND THE ONES SET ASIDE, SAID AND NOT SWALLOWED.
+    //
+    // A row whose date is not a real day, or whose origin the app cannot show.
+    // Neither is a question anybody should be asked, and neither may be ticked
+    // — but a reader that silently drops things is a reader you cannot check,
+    // so they are named, with the reason, folded away.
+    if (piles.aside.length) {
+      const d = fold("calAside", false);
+      d.className = "su-layer cal-aside";
+      const h = document.createElement("summary");
+      h.innerHTML = `<h3>Set aside — ${piles.aside.length} the app can't stand behind</h3>`;
+      d.appendChild(h);
+      d.insertAdjacentHTML("beforeend",
+        `<p class="muted">These are not questions and nothing here goes in. Either the day
+         isn't a real date, or the app can't show you where in the document it came from —
+         and this panel is only worth anything if you can check it.</p>`);
+      piles.aside.forEach(([r]) => {
+        const p = document.createElement("p");
+        p.className = "muted cal-asiderow";
+        const when = r.date && /^\d{4}-\d{2}-\d{2}$/.test(String(r.date)) && realDate(r.date)
+          ? OrganiserDates.dayWords(r.date, { year: true, relative: false })
+          : "no real date";
+        p.textContent = `${when} — ${r.label || "(no name)"} · ` +
+          (r.grounded === false
+            ? (r.checked || "the app can't show where this came from")
+            : "that day doesn't exist");
+        d.appendChild(p);
+      });
+      box.appendChild(d);
+    }
     renderCalTerm();
   }
 
@@ -1459,10 +1529,32 @@
       // said. The second half of that is not in any document; it is the reader
       // thinking, and a conclusion wearing the clothes of evidence is the one
       // thing this panel cannot allow, because checking it is the whole point.
+      // AND WHERE THE ANSWER CAME FROM, WHICH ON A READY ROW WAS NOT SAID AT
+      // ALL — see drawCalRow, which says it, four hundred lines from here.
+      //
+      // A row this app has seen the words of before comes back carrying YOUR
+      // last answer, not a reading. Drawn with the reader's evidence under it
+      // and nothing else, six holidays came back saying "you're away — nothing
+      // planned" above the line "the document says so, in as many words:
+      // holidays" — which reads as the app having decided that, today, from
+      // that word. It had decided nothing; it was showing an answer given
+      // before the meaning of it changed. Indistinguishable, which is the one
+      // thing this panel promises never to be.
+      if (r.saidBefore) {
+        const recall = document.createElement("span");
+        recall.className = "muted cal-hint cal-recall";
+        recall.textContent = "what you said last time — change it if it's different";
+        row.appendChild(recall);
+      }
       if (r.why) {
         const w = document.createElement("span");
         w.className = "muted cal-hint cal-thinks";
-        w.textContent = `the reader thinks: ${r.why}`;
+        // Named for what it is. Under a remembered answer the reader's opinion
+        // is not the reason this row says what it says, and putting it there
+        // unlabelled is how it came to look like one.
+        w.textContent = r.saidBefore
+          ? `(the reader, for what it's worth: ${r.why})`
+          : `the reader thinks: ${r.why}`;
         row.appendChild(w);
       }
       // AND ON A READY ROW TOO — see drawCalRow. Five identical lines in a row
@@ -5499,6 +5591,17 @@
             const ids = r.blocks.map((x) => x.id);
             schedule = S().settle(schedule, ids, how);
             meaning = S().answered(meaning, ids);
+            // AND WHAT THE APP REMEMBERS YOU SAYING ABOUT THAT LINE, which is a
+            // second copy of the same fact and was drifting from the first.
+            //
+            // Six holidays were changed here to "no timetable, the day is still
+            // yours", and the next reading of the same calendar offered them
+            // all back as "you're away" — because that is what had been said
+            // the first time and nothing had told the remembering otherwise.
+            // Changing your mind here IS you saying so.
+            const asKind = { away: "off", noTimetable: "noLessons", overlay: "week" }[how];
+            if (asKind && r.label)
+              calSaid = { ...calSaid, [saidKey(r.label)]: { kind: asKind } };
             persist();
             renderSetup();
             render();
@@ -5637,6 +5740,52 @@
                       `says which week is which, so the week is taken to turn over on ` +
                       `${escapeHtml(turnWord)}.`)
           ) + `</p>`);
+        // AND IF THE ANCHOR IS SITTING IN THE FILE UNREAD, OFFER TO READ IT.
+        //
+        // A rule saved before the calendar reader kept the word has the weekday
+        // and not the half — and its own label is the sentence the document
+        // wrote, so the missing field is already there in words. Recovering it
+        // from what is stored is a small, visible, reversible thing; re-reading
+        // the whole calendar to get it, which is what I asked for first,
+        // re-opens every question in the document and can only be finished by
+        // answering all of them.
+        const TT = window.OrganiserTimetable;
+        const lost = S().lostParity(schedule, TT && TT.weekIn);
+        if (lost.length) {
+          const box2 = document.createElement("div");
+          box2.className = "su-old su-lostweek";
+          box2.innerHTML =
+            `<p><strong>${lost.length} day${lost.length === 1 ? "" : "s"} your calendar named a
+             week for ${lost.length === 1 ? "is" : "are"} stored without one.</strong> An older
+             reading kept which day they run as and dropped which half of the fortnight they are
+             in. Their own words still say it.</p>`;
+          lost.forEach((x) => {
+            const row = document.createElement("p");
+            row.className = "muted";
+            row.textContent =
+              `${D ? D.dayWords(x.block.date, { year: true, relative: false }) : x.block.date}` +
+              ` — “${x.block.label}” → ${x.parity} week`;
+            box2.appendChild(row);
+          });
+          const go = document.createElement("button");
+          go.type = "button";
+          go.className = "p-opt su-chip";
+          go.textContent = lost.length === 1 ? "put that back" : `put those ${lost.length} back`;
+          go.addEventListener("click", () => {
+            // ONE AT A TIME, each with the half its OWN words say — never one
+            // answer spread across rows that might not agree.
+            lost.forEach((x) => {
+              schedule = S().putParity(schedule, [x.block.id], x.parity);
+            });
+            persist();
+            renderSetup();
+            render();
+            setSuStatus(`${lost.length} day${lost.length === 1 ? "" : "s"} now say which half of ` +
+              `the fortnight they are in. Nothing else was changed.`);
+          });
+          box2.appendChild(go);
+          week.appendChild(box2);
+        }
       }
       g.week
         .slice()

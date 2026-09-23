@@ -1093,4 +1093,196 @@ console.log("\nAnd dated copies of your own timetable can be cleared at any time
      JSON.stringify(after));
 }
 
+// ---------------------------------------------------------------------------
+console.log("\nAnd a field an old reader dropped is recovered from the file, not from the document again");
+
+// I TOLD SOMEBODY TO IMPORT THEIR WHOLE CALENDAR AGAIN TO GET ONE FIELD BACK.
+// That was the wrong instruction and the screen it produced proved it:
+// re-reading a document re-opens every question in it, offers to reinterpret a
+// year of dates, and can only be finished by answering all of them. A field
+// dropped on the way IN is recovered from what is already stored, or not at all.
+//
+// And the evidence is sitting there: the label of one of these rules IS the
+// sentence the document wrote.
+{
+  const T2 = sb.OrganiserTimetable;
+  const SAVED = [
+    { id: "c1", label: "National Day — is a working day, even week Tuesday schedule",
+      date: "2026-09-20", start: "00:00", end: "23:59", days: [], runsAs: 2, source: "paste" },
+    { id: "c2", label: "National Day — is a working day, even week Wednesday schedule",
+      date: "2026-10-10", start: "00:00", end: "23:59", days: [], runsAs: 3, source: "paste" },
+    // NAMES NO WEEK AT ALL, and must be left exactly as it is.
+    { id: "c3", label: "Make-up day", date: "2026-11-07", start: "00:00", end: "23:59",
+      days: [], runsAs: 1, source: "paste" },
+    // AND ONE THAT ALREADY HAS ITS HALF, which is not missing anything.
+    { id: "c4", label: "Swap — odd week Friday schedule", date: "2026-12-05",
+      start: "00:00", end: "23:59", days: [], runsAs: 5, parity: "odd", source: "paste" },
+  ];
+  const lost = S.lostParity(SAVED, T2.weekIn);
+  ok("a rule whose own words name a week, and which has none, is offered",
+     lost.length === 2 && lost.every((x) => x.parity === "even"),
+     JSON.stringify(lost.map((x) => `${x.block.date}:${x.parity}`)));
+  ok("  while one that names no week is left alone",
+     !lost.some((x) => x.block.id === "c3"), "a rule with no week in its words was offered");
+  ok("  and one that already has its half is not offered again",
+     !lost.some((x) => x.block.id === "c4"), "a rule that already knew was offered");
+  // AND THE HALF COMES FROM EACH ROW'S OWN WORDS, never one answer spread over
+  // rows that might not agree.
+  const put = lost.reduce((sch, x) => S.putParity(sch, [x.block.id], x.parity), SAVED);
+  const by = (id) => S.normalise(put).find((b) => b.id === id);
+  ok("putting them back writes each one what its own line said",
+     by("c1").parity === "even" && by("c2").parity === "even",
+     JSON.stringify([by("c1").parity, by("c2").parity]));
+  ok("  and touches nothing else at all",
+     by("c3").parity === "" && by("c4").parity === "odd" &&
+       JSON.stringify(S.normalise(put).map((b) => [b.id, b.date, b.runsAs, b.label])) ===
+       JSON.stringify(S.normalise(SAVED).map((b) => [b.id, b.date, b.runsAs, b.label])),
+     JSON.stringify({ c3: by("c3").parity, c4: by("c4").parity }));
+  // AND THAT IS THE WHOLE OF WHAT WAS NEEDED: the fortnight resolves.
+  const FN2 = [
+    { id: "w", label: "Writing", start: "10:30", end: "11:05", days: [2], parity: "odd" },
+    { id: "s", label: "Show & Tell", start: "10:30", end: "11:05", days: [2], parity: "even" },
+  ];
+  // Measured on the two make-up rows and the unnamed one — c4 is left out of
+  // this half because a rule that already carries a half is already an anchor,
+  // and the question here is what the two RECOVERED ones do on their own.
+  const two = SAVED.filter((b) => b.id !== "c4");
+  const back = S.lostParity(two, T2.weekIn)
+    .reduce((sch, x) => S.putParity(sch, [x.block.id], x.parity), two);
+  ok("and with them back the fortnight resolves, with nothing re-read",
+     S.paritySays(FN2.concat(back)).sure === "said" &&
+       S.blocksOn(FN2.concat(back), "2026-09-22").map((b) => b.label).join() === "Show & Tell",
+     JSON.stringify({ sure: S.paritySays(FN2.concat(back)).sure,
+       tue: S.blocksOn(FN2.concat(back), "2026-09-22").map((b) => b.label) }));
+  // AND IT WAS NOT AVAILABLE BEFORE, which is what made re-importing look like
+  // the only way.
+  ok("  where before it did not",
+     S.paritySays(FN2.concat(two)).known === false,
+     JSON.stringify(S.paritySays(FN2.concat(two))));
+
+  // AND IT HAS TO BE ON THE SCREEN. Knowing the word is recoverable is no use
+  // if the only way to recover it is to read the whole document again.
+  const { open, deep } = await import("./_dom.mjs");
+  const r2 = await open("timeline.html",
+    { schedule: FN2.concat(two), scheduleConfig: {}, items: [], goals: [] });
+  r2.get("#setupToggle").fire("click", { target: r2.get("#setupToggle") });
+  await r2.settle();
+  const offer2 = () => deep(r2.get("#blockList"))
+    .find((c) => String(c.className || "").split(/\s+/).includes("su-lostweek"));
+  const flat2 = (x) => String(x || "").replace(/\s+/g, " ");
+  ok("the screen offers to put the fortnight back, naming every row it would change",
+     !!offer2() &&
+       /2 days your calendar named a week for/.test(flat2(offer2().innerHTML)),
+     flat2(offer2() && offer2().innerHTML || "(no offer)").slice(0, 150));
+  const saidRows = deep(offer2()).map((c) => String(c.textContent || "")).join(" | ");
+  ok("  with each one's own words and the half they say, before anything is applied",
+     /even week/.test(saidRows) && /National Day/.test(saidRows) &&
+       !/Make-up day/.test(saidRows),
+     saidRows.slice(0, 220));
+  const press2 = deep(offer2()).find((c) => String(c.tagName) === "BUTTON");
+  press2.click();
+  await r2.settle();
+  const got = (r2.state.schedule || []);
+  const at2 = (id) => got.find((b) => b.id === id) || {};
+  ok("and pressing it puts them back and changes nothing else",
+     at2("c1").parity === "even" && at2("c2").parity === "even" &&
+       !at2("c3").parity && at2("w").parity === "odd" && at2("s").parity === "even" &&
+       got.length === FN2.concat(two).length,
+     JSON.stringify(got.map((b) => `${b.id}:${b.parity || "—"}`)));
+  ok("  and then stops offering, because there is nothing left to put back",
+     !offer2(), "the offer is still there after it was taken");
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd a date that is not a date never becomes anything");
+
+// "Invalid Date — Midterm, due by 16:00" reached a real screen, ticked, in a
+// list headed "ready to go in". Two faults met: the minutes of a clock time
+// were read as a day, and nothing anywhere asked whether the day existed.
+{
+  const DOC = [
+    "3. Test paper submission and score input deadlines:",
+    "Paper Submission\tScore Input & Report Confirm",
+    "Midterm\tNov. 2 16:00\tNov. 17 16:00",
+    "Final\tDec. 31 16:00\tJan. 15 16:00",
+  ].join("\n");
+  const rows = (C.read(DOC, { year: 2026 }).rows || []);
+  const real = (d) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d || ""))) return false;
+    const [y, m, day] = String(d).split("-").map(Number);
+    const at = new Date(Date.UTC(y, m - 1, day));
+    return at.getUTCMonth() === m - 1 && at.getUTCDate() === day;
+  };
+  ok("every date a deadline table gives is a day that exists",
+     rows.length === 4 && rows.every((r) => real(r.date)),
+     JSON.stringify(rows.map((r) => `${r.date} ${r.label}`)));
+  // THE FOUR MOST IMPORTANT DATES A TEACHER HAS, and they were landing ten
+  // years in the past because the hour of a clock time was read as a year.
+  ok("  and the clock time is not read as one of them",
+     rows.map((r) => r.date).sort().join() === "2026-11-02,2026-11-17,2026-12-31,2027-01-15",
+     JSON.stringify(rows.map((r) => r.date).sort()));
+  // AND THE MINUTES ARE NOT A DAY. "Nov. 2 16:00 Nov. 17" contains "00 Nov. 17",
+  // which read as day-month-year is the zeroth of November 2017.
+  ok("  nor its minutes as a day of the month",
+     !rows.some((r) => /-00$/.test(String(r.date))),
+     JSON.stringify(rows.map((r) => r.date)));
+  // AND THE NAME KEEPS ITS OWN WORDS. A label is built by cutting the matched
+  // date text OUT of the line — so if what is handed back is cut from the
+  // MASKED copy, the nulls do not match the real line, nothing is removed, and
+  // the date stays in the name. Checked on a line whose name and date share it,
+  // because on the table above the name is its own cell and never noticed.
+  const inline = (C.read("Reports out Jan. 15 16:00", { year: 2026 }).rows || []);
+  ok("  and the name is still the name, with the date cut out of it",
+     inline.length === 1 && inline[0].date === "2026-01-15" &&
+       /^Reports out$/.test(String(inline[0].label).trim()),
+     JSON.stringify(inline.map((r) => `${r.date} ${JSON.stringify(r.label)}`)));
+  // AND THE MASK NEVER LEAKS. The date handed back is hunted for in the
+  // original line, so one carrying a blanked character would be found nowhere
+  // and the line would stop giving up dates after the first. No pattern can
+  // match across a blank today; this is the check that says so if one can.
+  ok("  and nothing the masking wrote reaches a name or a date",
+     rows.concat(inline).every((r) =>
+       !/\u0000/.test(String(r.label)) && !/\u0000/.test(String(r.date))),
+     JSON.stringify(rows.concat(inline).map((r) => `${r.date} ${r.label}`)));
+  ok("  so a line with two times still gives up both its dates",
+     (C.read("Midterm\tNov. 2 16:00\tNov. 17 16:00", { year: 2026 }).rows || []).length === 2,
+     JSON.stringify((C.read("Midterm\tNov. 2 16:00\tNov. 17 16:00", { year: 2026 }).rows || [])
+       .map((r) => r.date)));
+  // AND THE ONE PLACE THEY ARE BUILT REFUSES AN IMPOSSIBLE DAY OUTRIGHT.
+  const feb = C.read("Half term: Feb. 31", { year: 2026 }).rows || [];
+  ok("and a day that does not exist is never made in the first place",
+     !feb.some((r) => r.date), JSON.stringify(feb.map((r) => `${r.date} ${r.label}`)));
+  // AND THE QUESTION IS ASKED IN ONE PLACE. The panel guards the ready list with
+  // the same predicate the maker guards itself with — two would drift.
+  ok("  by one test of what a day is, shared with the screen that shows them",
+     typeof C.realDay === "function" &&
+       C.realDay("2026-11-02") === true &&
+       C.realDay("2026-11-00") === false &&
+       C.realDay("2026-02-31") === false &&
+       C.realDay("2026-13-01") === false &&
+       C.realDay("not a date") === false && C.realDay("") === false,
+     JSON.stringify(["2026-11-02", "2026-11-00", "2026-02-31", "2026-13-01"]
+       .map((d) => `${d}:${C.realDay && C.realDay(d)}`)));
+  const uses = fs.readFileSync(path.join(PUB, "timeline.js"), "utf8");
+  ok("  and the panel asks it rather than keeping a copy",
+     /CP\.realDay\(d\)/.test(uses),
+     "the page works out for itself whether a day exists");
+
+  // AND THE SORTING ASKS BEFORE ANYTHING ELSE.
+  //
+  // Read as source rather than driven, because the piles are worked out inside
+  // the page and a row of the shape being guarded against is one a model hands
+  // back — which needs a server and a stand-in to produce. The behaviour of the
+  // flag itself is driven, in tests/e2e.mjs; this is that the page acts on it,
+  // and acts on it FIRST. A remembered answer walks straight past the reader's
+  // own trust test, so "ready" being decided before soundness is exactly how a
+  // row with nothing behind it arrives ticked.
+  const first = (/const pileOf = \(r\) =>\s*([^\n]*)/.exec(uses) || [])[1] || "";
+  ok("and the panel decides soundness before it decides anything else",
+     /^!sound\(r\) \? "aside"/.test(first.trim()), JSON.stringify(first.trim()));
+  ok("  where soundness is both a real day and something it can point at",
+     /const sound = \(r\) =>[\s\S]{0,200}grounded !== false[\s\S]{0,200}realDate\(r\.date\)/.test(uses),
+     "the soundness test stopped asking one of the two");
+}
+
 finish();

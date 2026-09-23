@@ -36,8 +36,30 @@
   // numeric or ISO date needs none of this and always works.
   const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
-  const iso = (y, m, d) =>
-    `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  // A DATE THAT IS NOT A DATE IS NOT A DATE. This built whatever it was handed
+  // — the zeroth of November, the thirty-first of February — and every caller
+  // then treated the string as a day, because it is the right shape. One of
+  // them reached a screen as "Invalid Date — Midterm, due by 16:00", ticked, in
+  // a list headed "ready to go in".
+  //
+  // Refused here, at the one place they are made, rather than checked at the
+  // six places they are read. Empty means no date, which every caller already
+  // knows how to handle — it is what a line with no date in it gives.
+  // IS THIS A DAY THAT EXISTS? Exported, because the panel needs the same
+  // question answered and two answers to it would be two answers to drift. The
+  // 31st of February is a real-looking string; the zeroth of November is what a
+  // clock time's minutes came out as.
+  function realDay(d) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d || ""))) return false;
+    const [y, m, day] = String(d).split("-").map(Number);
+    const at = new Date(Date.UTC(y, m - 1, day));
+    return at.getUTCFullYear() === y && at.getUTCMonth() === m - 1 && at.getUTCDate() === day;
+  }
+  const iso = (y, m, d) => {
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return "";
+    const made = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    return realDay(made) ? made : "";
+  };
 
   // Is this a date anybody would recognise as one? Returns ISO, or "".
   //
@@ -94,7 +116,31 @@
   // The date, and the exact words it was read off — so the label can take out
   // that and nothing else. See labelOf.
   function findDate(text, defaultYear, order) {
-    const s = String(text || "");
+    const raw = String(text || "");
+    // AND A CLOCK TIME IS NOT A DATE AT EITHER END OF IT.
+    //
+    // The year was already protected from being the FRONT of a time — see
+    // NOT_A_TIME below, and the comment there, which was written for this same
+    // table. Nothing protected the day from being the BACK of one. "Midterm
+    // Nov. 2 16:00 Nov. 17 16:00" contains the string "00 Nov. 17", and read as
+    // "day month year" that is the zeroth of November 2017: a date that does not
+    // exist, on a row that then says "Invalid Date — Midterm, due by 16:00" and
+    // walks into the ready-to-save list looking like the other seventeen.
+    //
+    // Blanked here rather than guarded pattern by pattern, because there are
+    // five patterns and the next one added will not know.
+    //
+    // AND THE TEXT HANDED BACK IS STILL THE MATCH ITSELF. Callers hunt for it in
+    // the ORIGINAL line — indexOf, to cut the date out of a name and to carry on
+    // looking for the next one — so a match carrying nulls would be found
+    // nowhere and the line would stop giving up dates after the first. It cannot
+    // carry one: nothing in these patterns matches a null, so no match can span
+    // a blanked region. Written down because it is the reason this is safe, and
+    // a pattern added later that CAN cross one would break it silently.
+    //
+    // ONLY A COLON. "24.08.2026" is a date in half of Europe and its middle
+    // would mask perfectly as a time.
+    const s = raw.replace(/\b\d{1,2}:\d{2}\b/g, (whole) => "\u0000".repeat(whole.length));
     const at = (m, isoDate) => ({ iso: isoDate, text: m[0] });
     // 2026-08-24 / 2026/8/24
     let m = s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
@@ -2626,7 +2672,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, labelOf, alsoOn, underStem, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
+    dateIn, realDay, labelOf, alsoOn, underStem, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
     weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };

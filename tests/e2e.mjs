@@ -709,6 +709,28 @@ const askCal = async (body) => {
   ok("a line the document doesn't have is a question too",
      (made.rows || [])[0] && /not in the document/.test(made.rows[0].checked || ""),
      JSON.stringify(made.rows));
+
+  // AND IT IS NOT THE SAME SORT OF DOUBT AS THE OTHERS, WHICH MATTERS ON SCREEN.
+  //
+  // "checked" holds two things that were being read as one. "something that
+  // runs for days isn't due on one of them" is the app unable to decide what an
+  // entry MEANS — a fair question to put to somebody. "line not in the
+  // document" is the app unable to show where the entry came from at all, and
+  // this whole panel is built on being able to check it. The second is not a
+  // question, it is a row with nothing behind it, and a real screen offered one
+  // called "14 29 30 2 3 4 Y 5 Parents' Meeting" to be adjudicated like the
+  // rest. So the two are told apart here, where the doubt is decided.
+  ok("  and says that nobody can show where it came from, not merely that it asked",
+     (made.rows || [])[0] && made.rows[0].grounded === false,
+     JSON.stringify((made.rows || [])[0]));
+  ok("  while a date the document really does carry is grounded",
+     by("Mid-Autumn Festival") && by("Mid-Autumn Festival").grounded !== false,
+     JSON.stringify(by("Mid-Autumn Festival")));
+  // AND A ROW WHOSE QUOTE IS REAL BUT WHOSE DAY IS NOT WRITTEN THERE is the
+  // same kind of failure: the evidence does not reach the entry.
+  ok("  as is one whose day is not written where it says it came from",
+     by("PD Days") && by("PD Days").grounded === false,
+     JSON.stringify(by("PD Days")));
 }
 
 {

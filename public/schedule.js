@@ -719,6 +719,44 @@
       done: ask.filter((id) => done.has(id)) };
   }
 
+  // A FIELD AN OLD VERSION DROPPED, PUT BACK FROM WHAT IS ALREADY IN THE FILE.
+  //
+  // The calendar reader used to read the weekday out of "even week Tuesday
+  // schedule" and throw the word EVEN away. Rules saved before that was fixed
+  // have the day and not the half, so the fortnight has no anchor and a slot
+  // that takes turns shows both its lessons every week.
+  //
+  // I asked for the whole calendar to be imported again to get one field back.
+  // That was the wrong instruction: re-reading a document re-opens every
+  // question in it, offers to reinterpret a year of dates, and can only be
+  // finished by answering all of them. A field that was dropped on the way in is
+  // recovered from what is already stored, or not at all.
+  //
+  // AND FROM THE ROW'S OWN WORDS. The label of one of these IS the sentence the
+  // document wrote — "National Day — is a working day, even week Tuesday
+  // schedule" — so the evidence is sitting in the file. Nothing is inferred,
+  // nothing is re-read, and a rule whose words do not say it is left alone.
+  // THE WORDS ARE READ BY WHOEVER HAS THE READER. This file is loaded by six
+  // pages and timetable.js by two of them, so reaching for it from here would
+  // be a feature that silently does nothing on four screens — which the suite
+  // says out loud, and which is how it was caught. The caller that owns the
+  // vocabulary passes it in; nothing here learns a second copy of it.
+  function lostParity(schedule, readWeek) {
+    if (typeof readWeek !== "function") return [];
+    return normalise(schedule)
+      .filter((b) => b.date && b.runsAs !== null && !b.parity && !b.soft)
+      .map((b) => ({ block: b, parity: readWeek(`${b.label} ${b.note || ""}`) }))
+      .filter((x) => PARITIES.indexOf(x.parity) >= 0);
+  }
+
+  // Applied to the ids you say, and to nothing else.
+  function putParity(schedule, ids, parity) {
+    const want = new Set(ids || []);
+    if (PARITIES.indexOf(parity) < 0) return normalise(schedule);
+    return normalise(schedule).map((b) =>
+      want.has(b.id) ? { ...b, parity } : b);
+  }
+
   // DATED COPIES OF YOUR OWN TIMETABLE, which is what an earlier read of the
   // same document leaves behind when it comes out as one-off events.
   //
@@ -1696,6 +1734,9 @@
     ruleAudit,
     // Dated copies of your own timetable, left by an earlier read of it.
     strayCopies,
+    // A fortnight an old reader dropped, recovered from the row's own words.
+    lostParity,
+    putParity,
     settle,
     fixedBlockAt,
     nextFreeMoment,

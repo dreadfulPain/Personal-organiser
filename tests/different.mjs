@@ -910,6 +910,30 @@ console.log("\nAnd the answers that were saved under the old meaning");
      /Calendar changes to your normal week/.test(named) &&
        !/Every day a document changed/.test(named),
      named.slice(0, 140));
+
+  // AND CHANGING YOUR MIND HERE IS YOU SAYING SO, so the next reading of the
+  // same calendar does not offer the old answer back.
+  //
+  // Six holidays were changed here to "no timetable, the day is still yours",
+  // and re-reading the same document offered all six back as "you're away" —
+  // because that is what had been said the first time and nothing told the
+  // remembering otherwise. Two copies of one fact, drifting.
+  const remembered = again.state.calendarSaid || {};
+  ok("changing a day here changes what the app remembers you saying about it",
+     remembered["spring break"] && remembered["spring break"].kind === "off",
+     JSON.stringify(remembered));
+  const other = deep(again.get("#oldMeanings"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("su-auditrow"))
+    .find((c) => /Staff Development/.test(String(c.innerHTML || "")));
+  const toNo = deep(other).find((c) =>
+    String(c.tagName) === "BUTTON" &&
+    String(c.textContent) === "no timetable — the day is still yours");
+  toNo.click();
+  await again.settle();
+  ok("  in the app's own words for that answer, not this screen's",
+     (again.state.calendarSaid || {})["staff development"] &&
+       (again.state.calendarSaid || {})["staff development"].kind === "noLessons",
+     JSON.stringify(again.state.calendarSaid));
 }
 
 finish();

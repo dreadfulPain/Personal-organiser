@@ -151,6 +151,70 @@ had existed for exactly this, with a comment saying so, and nothing called it.
 The lesson is narrower than "test end to end": **a fixture you wrote the answer
 into tests your belief about the format, not the format.**
 
+**And then I told somebody to import their whole calendar again to recover it.**
+That was the wrong instruction, and the screen it produced said so: re-reading a
+document re-opens every question in it, offers to reinterpret a year of dates,
+and can only be finished by answering all of them. A field dropped on the way
+*in* is recovered from what is already stored, or not at all — and the evidence
+was sitting in the file, because the label of one of these rules **is** the
+sentence the document wrote. `lostParity` finds the rules whose own words name a
+week and which have none; the screen lists each one with the half its words say,
+before anything is applied; one press writes each row what its own line said and
+touches nothing else. A rule that names no week is left alone.
+
+### And "ready" has to mean something
+
+`Invalid Date — Midterm, due by 16:00` reached a real screen, ticked, under a
+heading reading *"18 ready to go in"*. Two faults met.
+
+The **minutes of a clock time were being read as a day.** The year was already
+protected from being the front of a time — there is a comment about it, written
+for this same table — and nothing protected the day from being the back of one.
+`Midterm  Nov. 2 16:00  Nov. 17 16:00` contains the string `00 Nov. 17`, which
+read as day-month-year is the zeroth of November 2017. The four most important
+dates on a school calendar — when papers go in, when marks go in — were landing
+on days that do not exist or ten years in the past. Clock times are now blanked
+before any date pattern is tried, once, rather than guarded pattern by pattern:
+there are five patterns and the next one added would not know.
+
+And **nothing anywhere asked whether a date was a day.** `iso()` built whatever
+it was handed — the zeroth of November, the thirty-first of February — and every
+caller then treated the string as a date, because it is the right shape. It is
+refused at the one place dates are made, and the same predicate (`realDay`) is
+what the panel uses, so the two cannot drift.
+
+**And two different sorts of doubt were being read as one.** `checked` held both
+*"something that runs for days isn't due on one of them"* — the app unable to
+decide what an entry means, which is a fair question to put to somebody — and
+*"line not in the document"*, which is the app unable to show where the entry
+came from at all. The second is not a question. A row called `14 29 30 2 3 4 Ý 5
+Parents' Meeting`, whose own note underneath read *"asking because line not in
+the document"*, was offered for adjudication like the rest. They are told apart
+now (`grounded`), and a row nobody can show the origin of is **set aside**: named,
+with its reason, folded away, counted separately, and never ticked.
+
+So *ready* means sound, grounded and settled — not that the reader produced an
+object.
+
+### And an answer you gave once is not a reading
+
+Six holidays came back from a re-import saying *"you're away — nothing planned"*,
+with *"the document says so, in as many words: holidays"* underneath — which
+reads as the app having decided that, today, from that word. It had decided
+nothing. `calendarSaid` remembers what you said a line meant so next term's sheet
+does not ask sixty questions again, and those were answered before the meaning of
+"away" changed.
+
+Two things were wrong with that. A remembered row **said so** on an unanswered
+row and said nothing on a ready one — the code states the principle four hundred
+lines from where it forgets it: *"a row that filled itself in must say why, or it
+is indistinguishable from the app having decided"*. And changing a day in the
+accounting did not change what was remembered about it, so the two copies of that
+one fact drifted. Both fixed: the ready row says *"what you said last time —
+change it if it's different"*, the reader's opinion under it is labelled as the
+reader's rather than presented as the reason, and answering in the accounting is
+you saying so.
+
 **And the day the week turns over on is worked out, not assumed.** It used to be
 Monday, written in. On a school whose weeks run Sunday to Saturday that puts
 every date in the wrong half — the fortnight resolving perfectly and being wrong

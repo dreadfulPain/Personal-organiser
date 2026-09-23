@@ -183,6 +183,39 @@ caller then treated the string as a date, because it is the right shape. It is
 refused at the one place dates are made, and the same predicate (`realDay`) is
 what the panel uses, so the two cannot drift.
 
+#### And the dates that reader already wrote into somebody's file
+
+Fixing the reader repairs nothing that is already saved, and what it got were the
+deadlines — when papers are due, when marks are due — sitting ten years in the
+past where nothing will ever remind anybody of them:
+
+| the document said | it stored | what it should be |
+| --- | --- | --- |
+| `Midterm  Nov. 2 16:00` | `2016-11-02` | 2026-11-02 |
+| `Nov. 17 16:00` | `2017-11-00` | 2026-11-17 |
+| `Final  Dec. 31 16:00` | `2016-12-31` | 2026-12-31 |
+| `Jan. 15 16:00` | `2015-01-00` | 2027-01-15 |
+
+Both shapes leave a mark that can be read back: a day of `00` does not exist and
+nothing else in this app has ever made one, and a year ten years from everything
+else in the file whose last two digits are a clock hour is the other.
+
+**What it should have been is worked out, not guessed.** The month always
+survived. Where the day was eaten it survived inside the year (`2017-11-00` → the
+17th). The right year is the one **your own other dates** use for that month —
+a fact about your file, not about calendars, and counted per month because a
+term crosses a New Year. Where the file has no sound date in that month there is
+no proposal, only the finding.
+
+Measured against the **middle** of the file, not its edges: the first version of
+this compared each date to the earliest and latest, and the wrong dates *are* the
+earliest, so they moved the edge out to meet themselves and every one of them
+looked ordinary. A handful cannot drag the middle.
+
+It covers tasks and blocks alike, because the same reader made both — a deadline
+becomes a task, a dated event becomes a block. Listed with what each would
+become, and applied on a press.
+
 **And two different sorts of doubt were being read as one.** `checked` held both
 *"something that runs for days isn't due on one of them"* — the app unable to
 decide what an entry means, which is a fair question to put to somebody — and

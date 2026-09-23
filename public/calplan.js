@@ -61,6 +61,92 @@
     return realDay(made) ? made : "";
   };
 
+  // ---- DATES AN OLDER READER MADE OUT OF A CLOCK TIME ----------------------
+  //
+  // Fixed above; but a document read before it was fixed put its answers in
+  // somebody's file, and the code changing does not repair what is already
+  // saved. The four dates a school calendar cares most about — when papers go
+  // in, when marks go in — went in like this:
+  //
+  //   Nov. 2 16:00   → 2016-11-02   the HOUR was read as the year
+  //   Nov. 17 16:00  → 2017-11-00   the DAY was read as the year, and the
+  //                                 MINUTES as the day
+  //
+  // Both leave a mark that can be read back. A day of 00 does not exist, and
+  // no other fault in this file has ever made one. A year ten years from every
+  // other date you have, whose last two digits are a clock hour, is the other.
+  //
+  // WHAT IT SHOULD HAVE BEEN IS WORKED OUT, NOT GUESSED. The month always
+  // survived. In the first shape the day survived in the year. In both, the
+  // right year is the one YOUR OWN OTHER DATES use for that month — which is a
+  // fact about your file, not about calendars. Where the file has no sound date
+  // in that month there is nothing to work it out from, and the row is shown
+  // with no proposal rather than a made-up one.
+  //
+  // `rows` is [{ id, date, label }] from wherever they are kept — this file
+  // knows nothing about blocks or tasks, and both have this problem.
+  function clockDates(rows) {
+    const list = (Array.isArray(rows) ? rows : []).filter((r) => r && r.date);
+    const sound = list.filter((r) => realDay(r.date));
+    if (!sound.length) return [];
+    // MEASURED AGAINST THE MIDDLE OF YOUR FILE, NOT ITS EDGES.
+    //
+    // The first version of this compared each date to the earliest and latest
+    // in the file — and the wrong dates ARE the earliest, so they moved the
+    // edge out to meet themselves and every one of them looked ordinary. The
+    // middle cannot be dragged by a handful of them.
+    const yrs = sound.map((r) => Number(String(r.date).slice(0, 4))).sort((a, b) => a - b);
+    const mid = yrs[Math.floor(yrs.length / 2)];
+    const near = (y) => Math.abs(y - mid) <= 2;
+    const trusted = sound.filter((r) => near(Number(String(r.date).slice(0, 4))));
+    if (!trusted.length) return [];
+    // WHICH YEAR YOUR FILE PUTS THAT MONTH IN. A term crosses a New Year, so
+    // this is per month and not one answer for the document — and it is counted
+    // from the dates that are not themselves in doubt, or a wrong December
+    // would be half the evidence for what December is.
+    const byMonth = new Map();
+    trusted.forEach((r) => {
+      const mo = String(r.date).slice(5, 7);
+      const y = Number(String(r.date).slice(0, 4));
+      const seen = byMonth.get(mo) || new Map();
+      seen.set(y, (seen.get(y) || 0) + 1);
+      byMonth.set(mo, seen);
+    });
+    const yearFor = (mo) => {
+      const seen = byMonth.get(mo);
+      if (!seen) return 0;
+      return [...seen.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+    };
+    const out = [];
+    list.forEach((r) => {
+      const s = String(r.date);
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      if (!m) return;
+      const [, ys, mo, ds] = m;
+      const y = Number(ys);
+      // SHAPE ONE: the day is 00, and it is sitting in the year.
+      if (ds === "00") {
+        const day = y % 100;
+        const yr = yearFor(mo);
+        const should = yr && day ? iso(yr, Number(mo), day) : "";
+        out.push({ ...r, why: "the day was read as a year and a clock time's minutes as the day",
+          should });
+        return;
+      }
+      // SHAPE TWO: the year is a clock hour, and it is nowhere near the rest of
+      // your file.
+      if (!realDay(s)) return;
+      // AND IT HAS TO LOOK LIKE AN HOUR AND BE A LONG WAY OFF. A term that
+      // genuinely runs into the next year is one apart, not ten, and nothing
+      // here should disturb it.
+      if (y % 100 > 23 || Math.abs(y - mid) < 5) return;
+      const yr = yearFor(mo);
+      out.push({ ...r, why: "the hour of a clock time was read as the year",
+        should: yr ? iso(yr, Number(mo), Number(ds)) : "" });
+    });
+    return out;
+  }
+
   // Is this a date anybody would recognise as one? Returns ISO, or "".
   //
   // Deliberately narrow. A bare "24" is not a date, and a year on its own is
@@ -2672,7 +2758,7 @@
   }
 
   window.OrganiserCalPlan = {
-    dateIn, realDay, labelOf, alsoOn, underStem, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
+    dateIn, realDay, clockDates, labelOf, alsoOn, underStem, docYear, docYears, atYear, read, inOrder, plan, span, term, toBlocks, toTasks, words, addDays,
     gridIn, gridCells, gridMonths, gridRows, MONTHS,
     weekGridIn, weekGridYears, weekGridMonths, weekGridMarks,
   };

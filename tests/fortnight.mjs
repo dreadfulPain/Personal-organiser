@@ -1248,6 +1248,121 @@ console.log("\nAnd a date that is not a date never becomes anything");
      (C.read("Midterm\tNov. 2 16:00\tNov. 17 16:00", { year: 2026 }).rows || []).length === 2,
      JSON.stringify((C.read("Midterm\tNov. 2 16:00\tNov. 17 16:00", { year: 2026 }).rows || [])
        .map((r) => r.date)));
+}
+
+// ---------------------------------------------------------------------------
+console.log("\nAnd the dates that reader already wrote into somebody's file");
+
+// THE READER NO LONGER DOES THIS. But a document read before it was fixed put
+// its answers in the file, and code changing does not repair what is saved.
+// These are deadlines: when papers are due and when marks are due, sitting ten
+// years in the past where nothing will ever remind anybody of them.
+{
+  // A file shaped like a real one, with the four as the buggy reader wrote them.
+  const SOUND = [
+    ["Mid-Autumn Festival", "2026-09-25"], ["National Day", "2026-10-01"],
+    ["PD Days", "2026-10-16"], ["Midterm — Exam Time", "2026-11-10"],
+    ["Midterm — Exam Time", "2026-11-12"], ["PD Days", "2026-11-13"],
+    ["Midterm — Report Distribution", "2026-11-20"], ["Christmas Holiday", "2026-12-22"],
+    ["New Year's Day", "2027-01-01"], ["Final — Exam Time", "2027-01-11"],
+    ["Final — Report Distribution", "2027-01-20"],
+  ].map(([label, date], i) => ({ id: `s${i}`, label, date }));
+  const BAD = [
+    ["Midterm — Paper Submission", "2016-11-02"],          // the HOUR as the year
+    ["Midterm — Score Input", "2017-11-00"],               // the DAY as the year
+    ["Final — Paper Submission", "2016-12-31"],
+    ["Final — Score Input", "2015-01-00"],
+  ].map(([label, date], i) => ({ id: `b${i}`, label, date }));
+
+  const odd = C.clockDates(SOUND.concat(BAD));
+  ok("every date an older reader made out of a clock time is found",
+     odd.length === 4 && odd.map((o) => o.id).sort().join() === "b0,b1,b2,b3",
+     JSON.stringify(odd.map((o) => `${o.id}:${o.date}`)));
+  // AND WHAT IT SHOULD HAVE BEEN IS WORKED OUT, not guessed: the month always
+  // survived, the day survived inside the year where the day was eaten, and the
+  // year is the one this file's OWN other dates use for that month.
+  ok("  and each is put back to the day the document meant",
+     odd.map((o) => o.should).sort().join(", ") ===
+       "2026-11-02, 2026-11-17, 2026-12-31, 2027-01-15",
+     JSON.stringify(odd.map((o) => `${o.date} → ${o.should}`)));
+  ok("  with the two shapes told apart, because they failed differently",
+     odd.filter((o) => /minutes as the day/.test(o.why)).length === 2 &&
+       odd.filter((o) => /hour of a clock time/.test(o.why)).length === 2,
+     JSON.stringify(odd.map((o) => o.why)));
+  ok("  and nothing that was right is touched",
+     !odd.some((o) => /^s/.test(o.id)), JSON.stringify(odd.map((o) => o.id)));
+
+  // THE FAULT THE FIRST VERSION OF THIS HAD. Compared against the earliest and
+  // latest date in the file, the wrong dates ARE the earliest — so they moved
+  // the edge out to meet themselves and every one of them looked ordinary.
+  // Measured against the middle, which a handful cannot drag.
+  ok("and the wrong dates cannot make themselves look ordinary",
+     C.clockDates(SOUND.slice(0, 3).concat(BAD)).length === 4,
+     JSON.stringify(C.clockDates(SOUND.slice(0, 3).concat(BAD)).map((o) => o.date)));
+
+  // AND A TERM THAT GENUINELY CROSSES A NEW YEAR IS NOT A FAULT. One year
+  // apart is a school year; ten is a clock.
+  ok("  while a date in next year is left exactly alone",
+     !C.clockDates(SOUND).length, JSON.stringify(C.clockDates(SOUND).map((o) => o.date)));
+  // NOR IS AN OLD DATE THAT IS NOT SHAPED LIKE AN HOUR.
+  ok("  and a year that could not be an hour is not blamed on one",
+     !C.clockDates(SOUND.concat([{ id: "x", label: "Old note", date: "1999-05-04" }]))
+       .some((o) => o.id === "x"),
+     "a year that is not a clock hour was treated as one");
+  // AND A TERM THAT REALLY DOES SIT IN THOSE YEARS IS NOT A CLOCK. The
+  // hour-shaped test only means anything alongside "and a long way from
+  // everything else you have" — on a file from 2022 a 2023 date is next term.
+  const older = [
+    ["Term starts", "2022-09-01"], ["Half term", "2022-10-24"],
+    ["Exams", "2023-01-09"], ["Reports", "2023-01-20"],
+  ].map(([label, date], i) => ({ id: `o${i}`, label, date }));
+  ok("  and a year that is genuinely the next one is never mistaken for an hour",
+     !C.clockDates(older).length, JSON.stringify(C.clockDates(older).map((o) => o.date)));
+
+  // AND WHERE THERE IS NOTHING TO WORK IT OUT FROM, IT SAYS SO rather than
+  // inventing a year. Both shapes, because both have to propose a year.
+  const lonely = C.clockDates([
+    { id: "a", label: "Only", date: "2026-09-25" },
+    { id: "b", label: "Stray", date: "2016-04-02" },
+    { id: "c", label: "Eaten", date: "2017-04-00" },
+  ]);
+  ok("  and with no other date in that month there is no proposal, only the finding",
+     lonely.length === 2 && lonely.map((o) => o.id).sort().join() === "b,c" &&
+       lonely.every((o) => !o.should),
+     JSON.stringify(lonely));
+
+  // AND IT REACHES THE SCREEN, over both the things that reader made: a
+  // deadline becomes a task and a dated event becomes a block.
+  const { open, deep } = await import("./_dom.mjs");
+  const r3 = await open("timeline.html", {
+    schedule: SOUND.map((s) => ({ ...s, start: "00:00", end: "23:59", days: [] }))
+      .concat([{ id: "bb", label: "Report Distribution", date: "2016-11-20",
+        start: "00:00", end: "23:59", days: [] }]),
+    items: BAD.map((x) => ({ id: x.id, title: x.label, date: x.date, time: "16:00" })),
+    scheduleConfig: {}, goals: [],
+  });
+  r3.get("#setupToggle").fire("click", { target: r3.get("#setupToggle") });
+  await r3.settle();
+  const found = () => deep(r3.get("#oldMeanings"))
+    .find((c) => String(c.className || "").split(/\s+/).includes("su-clockdates"));
+  ok("the screen offers to put them right, over tasks and blocks alike",
+     !!found() && /5 dates here were read out of a clock time/
+       .test(String(found().innerHTML || "").replace(/\s+/g, " ")),
+     String(found() && found().innerHTML || "(nothing)").replace(/\s+/g, " ").slice(0, 150));
+  const press = deep(found()).find((c) => String(c.tagName) === "BUTTON");
+  press.click();
+  await r3.settle();
+  const tasks = (r3.state.items || []).map((t) => t.date).sort().join(", ");
+  ok("  and pressing it puts the deadlines on the days the document meant",
+     tasks === "2026-11-02, 2026-11-17, 2026-12-31, 2027-01-15", tasks);
+  ok("  and the dated event that had the same fault",
+     (r3.state.schedule || []).find((x) => x.id === "bb").date === "2026-11-20",
+     JSON.stringify((r3.state.schedule || []).find((x) => x.id === "bb")));
+  ok("  while every date that was already right stays where it was",
+     SOUND.every((s) => (r3.state.schedule || []).find((x) => x.id === s.id).date === s.date),
+     "a date that was right was moved");
+  ok("  and then there is nothing left to offer",
+     !found(), "the offer is still there after it was taken");
   // AND THE ONE PLACE THEY ARE BUILT REFUSES AN IMPOSSIBLE DAY OUTRIGHT.
   const feb = C.read("Half term: Feb. 31", { year: 2026 }).rows || [];
   ok("and a day that does not exist is never made in the first place",

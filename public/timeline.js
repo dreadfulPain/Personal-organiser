@@ -5507,6 +5507,74 @@
     });
     // AND THE WHOLE OF IT UNDERNEATH, questions or no questions.
     renderRuleAudit();
+    renderClockDates();
+  }
+
+  // ---- DATES AN OLDER READER MADE OUT OF A CLOCK TIME ----------------------
+  //
+  // The reader no longer does this — see findDate — but a document read before
+  // it was fixed put its answers in the file, and code changing does not repair
+  // what is already saved. It is the deadlines it got: "Nov. 2 16:00" landed on
+  // the second of November 2016, and "Nov. 17 16:00" on a day that does not
+  // exist at all. Those are when papers are due and when marks are due, sitting
+  // ten years in the past where nothing will ever remind anybody of them.
+  //
+  // BOTH KINDS OF THING IT WROTE. A deadline becomes a task and a dated event
+  // becomes a block, and the same reader made both, so both are looked at.
+  // Proposed, listed, and pressed — never applied on opening a page.
+  function renderClockDates() {
+    const el = $("#oldMeanings");
+    const CP = window.OrganiserCalPlan;
+    if (!el || !CP || !CP.clockDates) return;
+    const S2 = S();
+    const asRows = []
+      .concat(S2.normalise(schedule).filter((b) => b.date)
+        .map((b) => ({ id: b.id, date: b.date, label: b.label, from: "week" })))
+      .concat((items || []).filter((t) => t && t.date)
+        .map((t) => ({ id: t.id, date: t.date, label: t.title || "(no name)", from: "task" })));
+    const odd = CP.clockDates(asRows);
+    if (!odd.length) return;
+    const box = document.createElement("div");
+    box.className = "su-old su-clockdates";
+    const fixable = odd.filter((o) => o.should);
+    box.innerHTML =
+      `<p><strong>${odd.length} date${odd.length === 1 ? "" : "s"} here ${odd.length === 1
+        ? "was" : "were"} read out of a clock time.</strong> An older reading took the hour of
+       “16:00” for a year, and on some lines the day for a year and the minutes for a day —
+       so a deadline at four in the afternoon became a day ten years ago, or a day that does
+       not exist. What each should have been is worked out from the month it kept and from the
+       years your own other dates use.</p>`;
+    odd.forEach((o) => {
+      const p = document.createElement("p");
+      p.className = "muted";
+      const D = window.OrganiserDates;
+      const say = (d) => (D && CP.realDay(d)
+        ? D.dayWords(d, { year: true, relative: false }) : d);
+      p.textContent = `${o.label} — stored as ${say(o.date)}` +
+        (o.should ? ` → ${say(o.should)}` : " — and there is nothing in your file to work out what it should be") +
+        ` · ${o.why}`;
+      box.appendChild(p);
+    });
+    if (fixable.length) {
+      const go = document.createElement("button");
+      go.type = "button";
+      go.className = "p-opt su-chip";
+      go.textContent = fixable.length === 1 ? "put that date right" : `put those ${fixable.length} right`;
+      go.addEventListener("click", () => {
+        const want = new Map(fixable.map((o) => [`${o.from}:${o.id}`, o.should]));
+        schedule = S2.normalise(schedule).map((b) =>
+          want.has(`week:${b.id}`) ? { ...b, date: want.get(`week:${b.id}`) } : b);
+        items = (items || []).map((t) =>
+          t && want.has(`task:${t.id}`) ? { ...t, date: want.get(`task:${t.id}`) } : t);
+        persist();
+        renderSetup();
+        render();
+        setSuStatus(`${fixable.length} date${fixable.length === 1 ? "" : "s"} put right. ` +
+          `Nothing else was changed.`);
+      });
+      box.appendChild(go);
+    }
+    el.appendChild(box);
   }
 
   // ---- AND THE WHOLE OF IT, so nothing has to be taken on trust --------------

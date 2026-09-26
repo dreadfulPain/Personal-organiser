@@ -580,10 +580,13 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
   // The bells are already in the file: a lesson starting at 09:35 on Tuesday
   // says there is a bell at 09:35 on every day. The gap on the days you are
   // free is bounded by the periods on the days you are not.
+  // AS THE TIMETABLE IMPORTER WRITES THEM — marked as periods of the school
+  // day, because a timetable is the one document that knows where the bells
+  // are. See isPeriod.
   const REAL = [
-    { id: "ra", label: "Read Aloud", start: "08:15", end: "08:35", days: [1, 2, 3, 4, 5], kind: "teaching" },
-    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching" },
-    { id: "e2", label: "English", start: "09:35", end: "10:15", days: [2], kind: "teaching" },
+    { id: "ra", label: "Read Aloud", start: "08:15", end: "08:35", days: [1, 2, 3, 4, 5], kind: "teaching", period: true },
+    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching", period: true },
+    { id: "e2", label: "English", start: "09:35", end: "10:15", days: [2], kind: "teaching", period: true },
   ];
   const CFG2 = { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" };
   const real = S.gapsInWeek(REAL, CFG2)
@@ -658,7 +661,7 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
   // counting as a period it would become one, and the day would reshuffle
   // under somebody halfway down it.
   const ISO = [
-    { id: "p1", label: "Lesson", start: "10:30", end: "11:30", days: [1], kind: "teaching" },
+    { id: "p1", label: "Lesson", start: "10:30", end: "11:30", days: [1], kind: "teaching", period: true },
   ];
   const DUTIED = ISO.concat([{ id: "d", label: "Gate duty", start: "09:00",
     end: "09:10", days: [1], kind: "duty" }]);
@@ -684,6 +687,51 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
      bare.every((b) => !b.kind) && !!bareSlot && !!bareSlot.slot &&
        bareSlot.slot.from.join() === "English",
      JSON.stringify({ kinds: bare.map((b) => b.kind), slot: bareSlot && bareSlot.slot }));
+
+  // ---- AND WHAT MAY PROVE A PERIOD IS WHERE IT CAME FROM ------------------
+  //
+  // This was "anything that is not one of the four answers this panel makes",
+  // which is a definition by exclusion and far too wide: a standing meeting, a
+  // duty typed in by hand, an early start somebody set for themselves — every
+  // recurring block anybody ever added became evidence for where a school
+  // rings its bells. A block of prep at half seven is not a period because it
+  // repeats.
+  const MINE_OWN = REAL.concat([
+    // Typed in by hand, every weekday, an hour long. Not a period.
+    { id: "prep", label: "Prep time", start: "07:15", end: "08:15",
+      days: [1, 2, 3, 4, 5], source: "hand" },
+    // And a standing meeting, which is a commitment and not a bell.
+    { id: "mtg", label: "Team meeting", start: "16:10", end: "16:40",
+      days: [2], source: "hand" },
+  ]);
+  const proven = S.gapsInWeek(MINE_OWN, { dayStart: "07:00", dayEnd: "17:30" });
+  ok("a block you typed in yourself does not prove where the school's bells are",
+     !proven.some((g) => g.slot &&
+       g.slot.from.some((l) => /Prep time|Team meeting/.test(l))),
+     JSON.stringify(proven.filter((g) => g.slot).map((g) => g.slot.from.join())));
+  ok("  and the hour beside it is not called an interval on its account",
+     !proven.some((g) => g.from === S.toMin("08:15") && g.between),
+     JSON.stringify(proven.filter((g) => g.between)
+       .map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}`)));
+  // WHILE THE TIMETABLE'S OWN BLOCKS STILL DO.
+  ok("  while the timetable's own blocks still do",
+     proven.some((g) => g.slot && g.slot.from.join() === "English"),
+     JSON.stringify(proven.filter((g) => g.slot).map((g) => g.slot.from.join())));
+
+  // AND A FILE WRITTEN BEFORE THE MARK EXISTED STILL WORKS. Its timetable
+  // blocks say nothing either way, so where they came from stands in for the
+  // mark — which already excludes everything hand-added.
+  const legacy = REAL.map(({ period, ...rest }) => ({ ...rest, source: "paste" }));
+  const old2 = S.gapsInWeek(legacy, CFG2).find((g) => g.from === S.toMin("08:40"));
+  ok("and a timetable saved before the mark existed still marks its periods",
+     legacy.every((b) => b.period === undefined) && !!old2 && !!old2.slot,
+     JSON.stringify(old2 && old2.slot));
+  ok("  though a hand-typed block in the same old file still does not",
+     !S.gapsInWeek(legacy.concat([{ id: "p", label: "Prep", start: "07:15",
+       end: "08:15", days: [1, 2, 3, 4, 5], source: "hand" }]),
+     { dayStart: "07:00", dayEnd: "17:30" })
+       .some((g) => g.slot && g.slot.from.join() === "Prep"),
+     "a hand block in a legacy file proved a period");
 
   // AND THE BELLS ARE THE WEEK'S OWN, WITH NOTHING ADDED.
   const rung = S.bellsOf(REAL, CFG2).map(S.toHM);

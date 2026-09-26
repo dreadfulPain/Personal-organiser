@@ -5088,6 +5088,10 @@
           // Blank stays blank, and blank means for ever.
           from: termFrom || b.from || "",
           to: termTo || b.to || "",
+          // AND THIS CAME OUT OF A TIMETABLE, which is the one document that
+          // knows where a school's bells are — see isPeriod. A repeating row
+          // with no day on it is not in the school's grid, whatever else it is.
+          period: (b.days || []).length > 0,
         }))
         .filter(Boolean);
       // A ROW THAT WOULDN'T SAVE IS SAID OUT LOUD. "Saved 14" when you were
@@ -5130,7 +5134,15 @@
         if (now.from !== b.from) to.from = now.from;
         if (now.to !== b.to) to.to = now.to;
         if (now.parity && now.parity !== b.parity) to.parity = now.parity;
-        const moved = to.from !== b.from || to.to !== b.to || to.parity !== b.parity;
+        // AND THAT IT IS A PERIOD OF THE SCHOOL DAY, which a timetable is the
+        // one document entitled to say — see isPeriod. Without this, a lesson
+        // already in your week comes through a re-import still unmarked, and
+        // the grid goes on inferring the bells from whatever else is lying
+        // about. The import is the authority here in a way it is not about
+        // anything else on the block.
+        if (now.period === true && b.period !== true) to.period = true;
+        const moved = to.from !== b.from || to.to !== b.to ||
+          to.parity !== b.parity || to.period !== b.period;
         if (moved) brought++;
         return moved ? to : b;
       });

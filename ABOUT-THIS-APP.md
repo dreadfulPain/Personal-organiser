@@ -787,13 +787,34 @@ will make it on the app's behalf:
 > your week says about it — not that it is a break, and not whether anybody is
 > supervising it.*
 
-**What counts as a period** is not "the teaching blocks": the timetable reader
-sets no `kind` at all, so every lesson comes in with `kind: ""` and a rule
-looking for `kind === "teaching"` would find no periods whatever in a real file.
-What separates a period from the rest is that the rest are **the four answers you
-gave to this panel** — a stretch you called duty, or work, or kept. Which also
-means answering one stretch cannot change what counts as a period and reshuffle
-the day under somebody halfway down it.
+**What counts as a period is where the block came from.** Two wrong answers were
+tried first. It is not "the teaching blocks": the timetable reader sets no `kind`
+at all, so every lesson comes in with `kind: ""` and that rule would find no
+periods whatever in a real file. And it is not "anything that is not one of the
+four answers this panel makes" — that is a definition by exclusion and far too
+wide. A standing meeting, a duty typed in by hand, an early start somebody set
+for themselves: every recurring block anybody ever added became evidence for
+where a school rings its bells. **A block of prep at half seven is not a period
+because it repeats.**
+
+A timetable is the one document that knows where the bells are. So the timetable
+importer marks what it writes — `period: true` — and nothing else counts unless
+it is marked too. Nothing reads a subject name or knows what any of them mean; it
+reads provenance. Which also means answering a stretch cannot change what counts
+as a period and reshuffle the day under somebody halfway down it, because an
+answer is written by hand.
+
+The mark is three-valued on purpose: `true` is "the timetable put this here",
+`false` is "it does not mark a period", and `null` is **nobody has said** — which
+is what every block saved before the field existed is, and is not the same answer
+as `false`. For those, a document source stands in for the mark, which already
+excludes everything hand-added. It is a stand-in, and it goes when the school-day
+skeleton becomes a thing of its own.
+
+And a lesson already in your week takes the mark through a re-import. Without
+that, a matched block comes back still unmarked and the grid goes on inferring
+the bells from whatever else is lying about — the import is the authority here in
+a way it is not about anything else on the block.
 
 **And a short piece is not a small one.** Five and ten minute pieces are where
 supervision lives, and on a proportional day they are two or three pixels — the

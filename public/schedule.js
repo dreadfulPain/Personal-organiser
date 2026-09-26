@@ -406,6 +406,18 @@
       // used for marking. Said once, on a repeating block, and every Wednesday
       // inherits it.
       workable: !!b.workable,
+      // AND WHETHER THIS BLOCK SITS IN A PERIOD OF THE SCHOOL DAY.
+      //
+      // Provenance, not a conclusion. A timetable is the one document that
+      // knows where a school's bells are, so a block that came out of one may
+      // prove a boundary; a standing meeting you typed in yourself may not,
+      // however weekly it is. See isPeriod.
+      //
+      // THREE-VALUED ON PURPOSE. true is "the timetable put this here", false
+      // is "it does not mark a period", and null is nobody has said — which is
+      // what every block saved before this field existed is, and which is not
+      // the same answer as false.
+      period: b.period === true ? true : b.period === false ? false : null,
       // AND WHETHER THE CLOCK ON IT IS A CLOCK — see TIMINGS.
       //
       // MIGRATED, not just defaulted. Blocks are already saved in people's
@@ -1321,7 +1333,27 @@
   // Stable under answering, which matters: saying "the ten minutes at 09:25 is
   // duty" must not change what counts as a period and reshuffle the day around
   // you while you are working down it.
-  const isPeriod = (b) => partOf(b) === "mine";
+  // WHAT MAY PROVE A PERIOD OF THE SCHOOL DAY — WHERE IT CAME FROM, NOT WHAT
+  // IT IS NOT.
+  //
+  // This was "anything that is not one of the four answers this panel makes",
+  // which is a definition by exclusion and far too wide: a standing meeting, a
+  // duty you typed in, an early start you set for yourself — every recurring
+  // block anybody ever added became evidence for where a school rings its
+  // bells. A block of prep at half seven is not a period because it repeats.
+  //
+  // A TIMETABLE IS THE ONE DOCUMENT THAT KNOWS. So the timetable importer marks
+  // what it writes, and nothing else counts unless it is marked too. Nothing
+  // here reads a subject name or knows what any of them mean; it reads where
+  // the block came from.
+  //
+  // AND A FILE WRITTEN BEFORE THE MARK EXISTED still has to work. Its timetable
+  // blocks say nothing either way, so a document source stands in for the mark
+  // — which already excludes everything hand-added, and is the whole of the
+  // fault being fixed. It is a stand-in and it goes when the school-day
+  // skeleton becomes a thing of its own; see the section on that.
+  const isPeriod = (b) => !!b.days.length &&
+    (b.period === true || (b.period === null && FROM_DOC.indexOf(b.source) >= 0));
   const periodsOf = (week) => new Set(week.filter(isPeriod)
     .map((b) => `${toMin(b.start)}|${toMin(b.end)}`));
 

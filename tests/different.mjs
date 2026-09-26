@@ -731,10 +731,13 @@ console.log("\nAnd the week is drawn, not listed");
 // bottom, every piece in its place and coloured by what it is.
 {
   const { open, deep } = await import("./_dom.mjs");
+  // AS THE TIMETABLE IMPORTER WRITES THEM — marked as periods of the school
+  // day. A block you typed in yourself proves nothing about where the bells
+  // are, however weekly it is; see isPeriod.
   const REAL = [
-    { id: "ra", label: "Read Aloud", start: "08:15", end: "08:35", days: [1, 2, 3, 4, 5], kind: "teaching" },
-    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching" },
-    { id: "e2", label: "English", start: "09:35", end: "10:15", days: [2], kind: "teaching" },
+    { id: "ra", label: "Read Aloud", start: "08:15", end: "08:35", days: [1, 2, 3, 4, 5], kind: "teaching", period: true },
+    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching", period: true },
+    { id: "e2", label: "English", start: "09:35", end: "10:15", days: [2], kind: "teaching", period: true },
   ];
   const r2 = await open("timeline.html", { schedule: REAL, items: [], goals: [],
     scheduleConfig: { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" } });

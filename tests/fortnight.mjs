@@ -894,6 +894,21 @@ console.log("\nAnd a lesson already in your week is brought up to date, not skip
   ok("and the screen says what was brought up to date",
      /brought up to date/.test(String(r.get("#ttStatus").textContent || "")),
      String(r.get("#ttStatus").textContent || ""));
+
+  // AND WHAT CAME OUT OF THE TIMETABLE IS MARKED AS COMING OUT OF IT.
+  //
+  // A timetable is the one document that knows where a school's bells are, so
+  // what it writes may prove a period of the school day and nothing else may —
+  // see isPeriod. Without the mark that rule has nothing to stand on, and the
+  // grid falls back to calling every recurring block anybody ever added
+  // evidence for the bell structure.
+  ok("every lesson the timetable saved is marked as a period of the school day",
+     week.filter((b) => b.label !== "Prep").every((b) => b.period === true),
+     JSON.stringify(week.map((b) => `${b.label}:${b.period}`)));
+  // AND WHAT YOU ADDED YOURSELF IS NOT, even though it sits in the same week.
+  ok("  while the block you set yourself is not",
+     (week.find((b) => b.label === "Prep") || {}).period !== true,
+     JSON.stringify((week.find((b) => b.label === "Prep") || {}).period));
 }
 
 // ---------------------------------------------------------------------------

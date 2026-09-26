@@ -763,6 +763,50 @@ break are the same clock and not always the same duty, and offering only "all
 five days" is the merging this whole change undoes. The list is still there,
 folded, as the thing to check the grid against.
 
+#### And three kinds of "nobody has said"
+
+An hour of a period you do not teach, the ten minutes between two periods, and
+the time before the school day begins were all the same grey — so the day could
+still be read only by checking the clock on every piece, which is the decoding
+the grid exists to remove. Each is a different fact, each is one the week
+actually supports, and none of them says what you *do* then:
+
+| | |
+| --- | --- |
+| **a period, not yours** | some block of yours occupies exactly this span on another day |
+| **between periods** | a period ends where this starts and another begins where it ends |
+| **nobody has said** | neither — before the first period, after the last |
+
+"Between two periods" is **not** "a break". Nothing here knows whether you
+supervise it, whether the children go outside, or whether it is the walk between
+two rooms, and saying so would be the app inventing the world again. So it says
+what it knows and then refuses the inference out loud, because otherwise somebody
+will make it on the app's behalf:
+
+> *A period ends where this starts and another begins where it ends. That is all
+> your week says about it — not that it is a break, and not whether anybody is
+> supervising it.*
+
+**What counts as a period** is not "the teaching blocks": the timetable reader
+sets no `kind` at all, so every lesson comes in with `kind: ""` and a rule
+looking for `kind === "teaching"` would find no periods whatever in a real file.
+What separates a period from the rest is that the rest are **the four answers you
+gave to this panel** — a stretch you called duty, or work, or kept. Which also
+means answering one stretch cannot change what counts as a period and reshuffle
+the day under somebody halfway down it.
+
+**And a short piece is not a small one.** Five and ten minute pieces are where
+supervision lives, and on a proportional day they are two or three pixels — the
+most important things to press and the hardest to hit. They keep their true
+length in the data and are given a floor to be seen and clicked at, plus a mark
+so the eye finds them. The floor is borrowed from whatever is underneath, so the
+lesson beside them wins the overlap: `English` half-hidden behind the five
+minutes before it was the first attempt, and `tests/hidden.mjs` now pins the
+stacking order.
+
+A key sits above the grid, because a colour nobody explained is a colour you have
+to learn by pressing something.
+
 ### Nothing scheduled is not the same as free
 
 This was the mistake, and the Day screen is what exposed it. A real Wednesday —

@@ -5790,6 +5790,21 @@
     }
     const span = Math.max(1, shape.shut - shape.open);
     const D = window.OrganiserDates;
+    // A KEY, BECAUSE A COLOUR NOBODY EXPLAINED IS A COLOUR YOU HAVE TO LEARN.
+    // Seven words above the thing they describe is cheaper than working out
+    // what pale green means by pressing something.
+    const key = document.createElement("p");
+    key.className = "wk-key";
+    [["mine", "your lesson"], ["period", "a period, not yours"],
+     ["tween", "between periods"], ["work", "yours to work in"],
+     ["duty", "on duty"], ["kept", "spoken for"], ["unknown", "nobody has said"]]
+      .forEach(([k, word]) => {
+        const chip = document.createElement("span");
+        chip.className = `wk-keybit wk-key-${k}`;
+        chip.textContent = word;
+        key.appendChild(chip);
+      });
+    wrap.appendChild(key);
     // THE HOURS DOWN THE SIDE, so the height means something.
     const ruler = document.createElement("div");
     ruler.className = "wk-ruler";
@@ -5827,7 +5842,25 @@
         const at = share.indexOf(p);
         const seg = document.createElement(p.is === "unknown" ? "button" : "div");
         if (p.is === "unknown") seg.type = "button";
-        seg.className = `wk-seg wk-${p.is}`;
+        // THREE KINDS OF "NOBODY HAS SAID", AND THEY ARE DIFFERENT QUESTIONS.
+        //
+        // An hour of a period you do not teach, the ten minutes between two
+        // periods, and the time before the school day begins were all the same
+        // grey — so the day could be worked out only by reading the clock on
+        // every piece, which is the decoding this grid exists to remove. Each
+        // is a fact the week actually supports, and none of them says what you
+        // DO then: that is still the question being asked.
+        //
+        // AND A SHORT ONE IS NOT A SMALL ONE. Five and ten minute pieces are
+        // where supervision lives, and on a proportional day they are two or
+        // three pixels — the most important things to press and the hardest to
+        // hit. They keep their true length and are given a floor to be seen
+        // and clicked at, and a mark so the eye finds them.
+        const mins0 = Math.min(p.to, shape.shut) - Math.max(p.from, shape.open);
+        seg.className = `wk-seg wk-${p.is}` +
+          (p.is === "unknown" && p.slot ? " wk-period" : "") +
+          (p.is === "unknown" && p.between ? " wk-tween" : "") +
+          (mins0 <= 12 ? " wk-thin" : "");
         seg.style.top = `${((from - shape.open) / span) * 100}%`;
         seg.style.height = `${((to - from) / span) * 100}%`;
         if (share.length > 1) {
@@ -5852,7 +5885,8 @@
           : "";
         seg.title = `${S2.fmtSpan(S2.toHM(from), S2.toHM(to))} · ${S2.durationWords(mins)}` +
           (p.label ? ` · ${p.label}${p.parity ? ` (${p.parity} weeks)` : ""}`
-            : slot ? ` · a period, not one of yours — ${came}` : "") +
+            : slot ? ` · a period, not one of yours — ${came}`
+              : p.between ? " · between two periods" : "") +
           (p.is === "unknown" ? " · nobody has said what this is" : "");
         // ONLY WHAT FITS. A five-minute changeover is a sliver; writing into it
         // makes a wall of overlapping text out of the one thing that was
@@ -5864,7 +5898,12 @@
           // the same face on a grey block and a green one reads as two lessons,
           // one of which you are somehow not at.
           t.className = p.label ? "wk-name" : "wk-name wk-slot";
-          t.textContent = p.label || (slot ? "period" : "");
+          // SHORT ENOUGH TO SURVIVE THE COLUMN. "period — not yours" came out
+          // as "period — not yo…" in every one of them, which is worse than
+          // the two words that fit: the key above says what the colour means
+          // and the tooltip carries the whole sentence.
+          t.textContent = p.label || (slot ? "not yours"
+            : p.between ? "between" : "");
           seg.appendChild(t);
         } else if (mins >= 14 && p.label) {
           const t = document.createElement("span");
@@ -5879,7 +5918,7 @@
           seg.setAttribute("aria-label",
             `${((D && D.DAY_NAMES[d.day]) || "")} ${S2.fmtSpan(S2.toHM(from), S2.toHM(to))}` +
             ` — nobody has said what this is. Press to say.`);
-          seg.addEventListener("click", () => askAbout(d.day, from, to, slot));
+          seg.addEventListener("click", () => askAbout(d.day, from, to, slot, p.between));
         }
         lane.appendChild(seg);
       });
@@ -5896,7 +5935,7 @@
   // the same clock and not always the same duty; offering only "all five days"
   // is the merging this whole change is undoing. Both are there — the wider one
   // second, and counted, so it is a choice rather than a default.
-  function askAbout(day, from, to, slot) {
+  function askAbout(day, from, to, slot, between) {
     const S2 = S();
     const gaps = S2.gapsInWeek(schedule, cfg);
     const same = gaps.find((g) => g.from === from && g.to === to) || { days: [day] };
@@ -5914,13 +5953,18 @@
     ask.innerHTML =
       `<p><strong>${escapeHtml(dayName(day))} ${escapeHtml(S2.fmtSpan(S2.toHM(from), S2.toHM(to)))}</strong>` +
       ` · ${escapeHtml(S2.durationWords(to - from))}` +
-      (slot ? ` — a period, not one of yours` : "") + `. What is it?</p>` +
+      (slot ? ` — a period, not one of yours`
+        : between ? ` — between two periods` : "") + `. What is it?</p>` +
       (slot
         ? `<p class="muted">The boundary comes from your ` +
           `${escapeHtml(slot.days.map((n) => dayName(n).slice(0, 3)).join(", "))} ` +
           `${escapeHtml(slot.from.join(" / "))} — which says there is a period here, ` +
           `not what anybody is doing in it.</p>`
-        : "");
+        : between
+          ? `<p class="muted">A period ends where this starts and another begins where it ` +
+            `ends. That is all your week says about it — not that it is a break, and not ` +
+            `whether anybody is supervising it.</p>`
+          : "");
     const put = (days, word, made) => {
       schedule = S2.normalise(schedule).concat([S2.normaliseBlock({
         ...made, id: uid(), start: S2.toHM(from), end: S2.toHM(to),

@@ -1295,6 +1295,36 @@
   // every Wednesday. So they are found once, across the repeating timetable
   // only, and IDENTICAL STRETCHES ARE ONE QUESTION — a gap that falls at half
   // twelve on all five days is one thing to answer, not five.
+  // WHICH OF THE APP'S FOUR THINGS A BLOCK IS.
+  //
+  // Defined once, above everything that asks, because two of them ask: what
+  // colour to draw a piece, and what counts as a PERIOD of the school day.
+  //   mine — a block of yours that you have to be at. A period.
+  //   duty — a stretch you said you are on duty for.
+  //   work — a stretch you said is yours to work in.
+  //   kept — a stretch you said is spoken for.
+  const partOf = (b) =>
+    b.workable && !b.protected ? "work"
+      : b.kind === "duty" ? "duty"
+        : b.protected || b.kind === "break" ? "kept"
+          : "mine";
+
+  // THE PERIODS OF THE SCHOOL DAY, AS YOUR OWN WEEK SHOWS THEM.
+  //
+  // NOT "the teaching blocks": the timetable reader sets no kind at all, so
+  // every lesson you have comes in with kind "" and a rule that looked for
+  // kind === "teaching" would find no periods whatever in a real file. What
+  // actually separates a period from the rest is that the rest are the four
+  // answers you gave to this very panel — a stretch you called duty, or work,
+  // or kept. Anything else on your week is a thing the school put there.
+  //
+  // Stable under answering, which matters: saying "the ten minutes at 09:25 is
+  // duty" must not change what counts as a period and reshuffle the day around
+  // you while you are working down it.
+  const isPeriod = (b) => partOf(b) === "mine";
+  const periodsOf = (week) => new Set(week.filter(isPeriod)
+    .map((b) => `${toMin(b.start)}|${toMin(b.end)}`));
+
   // THE SCHOOL'S BELLS, READ OFF YOUR OWN TIMETABLE.
   //
   // A school day has a shape — periods, a break, lunch — and the app was told
@@ -1382,8 +1412,28 @@
     // yours — and WHERE THAT WAS WORKED OUT FROM is carried separately, as
     // provenance. "The boundary comes from your Monday and Wednesday English"
     // is a fact about your own week; "English is on" is not.
+    // AND WHETHER IT SITS BETWEEN TWO OF THEM, which is a different fact again.
+    //
+    // A span with a period ending exactly where it starts and another beginning
+    // exactly where it ends is an INTERVAL of the school day. That is all it
+    // says. It is not "a break" — nothing here knows whether you are supervising
+    // it, whether the children go outside, or whether it is simply the walk
+    // between two rooms — and calling it one would be the app inventing the
+    // world again. What it does do is tell an interval apart from an hour of a
+    // period, and from the time before the day starts, which are three
+    // different questions wearing the same grey.
+    const ends = new Set(), begins = new Set();
+    periodsOf(week).forEach((k) => {
+      const [a, b] = k.split("|").map(Number);
+      begins.add(a);
+      ends.add(b);
+    });
     return [...by.values()].map((g) => {
-      const proves = week.filter((b) => toMin(b.start) === g.from && toMin(b.end) === g.to &&
+      // THE SAME TEST AS periodsOf, from the same place. "Is this span a
+      // period" and "does a period end here" are the same question asked twice,
+      // and two spellings of it would drift.
+      const proves = week.filter((b) => isPeriod(b) &&
+        toMin(b.start) === g.from && toMin(b.end) === g.to &&
         !b.days.some((d) => g.days.includes(d)));
       return {
         ...g,
@@ -1395,6 +1445,7 @@
             from: [...new Set(proves.map((b) => b.label))],
           }
           : null,
+        between: !proves.length && ends.has(g.from) && begins.has(g.to),
       };
     }).sort((a, b) => a.from - b.from || a.days[0] - b.days[0]);
   }
@@ -1416,12 +1467,6 @@
   //   work      — a stretch you said is yours to work in.
   //   kept      — a stretch you said is spoken for.
   //   unknown   — nobody has said. Never counted as time you could work in.
-  const partOf = (b) =>
-    b.workable && !b.protected ? "work"
-      : b.kind === "duty" ? "duty"
-        : b.protected || b.kind === "break" ? "kept"
-          : "mine";
-
   function weekShape(schedule, cfg) {
     const c = normaliseConfig(cfg);
     const open = toMin(c.dayStart);
@@ -1440,9 +1485,10 @@
             label: b.label, id: b.id, parity: b.parity }))
           .concat(gaps.filter((g) => g.days.includes(d))
             .map((g) => ({ from: g.from, to: g.to, is: "unknown", label: "",
-              // A period-shaped slot that is not one of yours — see gapsInWeek
-              // on what a block on another day does and does not prove.
-              slot: g.slot || null })))
+              // A period-shaped slot that is not one of yours, or an interval
+              // between two periods — see gapsInWeek on what each does and does
+              // not prove.
+              slot: g.slot || null, between: !!g.between })))
           .filter((p) => p.to > open && p.from < shut)
           .sort((a, b) => a.from - b.from || a.to - b.to),
       })),

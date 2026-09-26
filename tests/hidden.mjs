@@ -145,5 +145,28 @@ console.log(`\n  (${offenders.length} classes set a display and rely on the glob
      [...lost].map(([id, where]) => `#${id} filled by ${[...where].join(", ")}`).join("; "));
 }
 
+// ---------------------------------------------------------------------------
+// AND A SLIVER DOES NOT COVER THE LESSON BESIDE IT.
+//
+// Five and ten minute pieces are where supervision lives, and on a proportional
+// day they are three pixels — so they are given a floor to be seen and clicked
+// at. That floor is borrowed from whatever is underneath, and what was
+// underneath was the name of a lesson: "English" half hidden behind the five
+// minutes before it. The lesson has to win the overlap, which is a stacking
+// order and nothing else.
+{
+  const zOf = (sel) => {
+    const m = new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`).exec(css);
+    const z = m && /z-index\s*:\s*(-?\d+)/.exec(m[1]);
+    return z ? Number(z[1]) : 0;
+  };
+  ok("a lesson is drawn over the sliver that borrows space from it",
+     zOf(".wk-mine") > zOf(".wk-thin") && zOf(".wk-thin") > 0,
+     JSON.stringify({ mine: zOf(".wk-mine"), thin: zOf(".wk-thin") }));
+  ok("  and a sliver is still drawn over the ordinary pieces around it",
+     zOf(".wk-thin") > 0 && /\.wk-thin\s*\{[^}]*min-height/.test(css),
+     JSON.stringify({ thin: zOf(".wk-thin") }));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

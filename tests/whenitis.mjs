@@ -619,6 +619,72 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
      (S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("09:25")) || {})
        .slot === null, "a changeover was called a period");
 
+  // ---- THREE KINDS OF "NOBODY HAS SAID" -----------------------------------
+  //
+  // An hour of a period you do not teach, the ten minutes between two periods,
+  // and the time before the school day starts were all the same grey — so the
+  // day could be read only by checking the clock on every piece, which is the
+  // decoding the grid exists to remove. Each is a fact the week supports.
+  //
+  // AND NONE OF THEM SAYS WHAT YOU DO THEN. "Between two periods" is not "a
+  // break": nothing here knows whether you supervise it, whether the children
+  // go outside, or whether it is the walk between two rooms. Saying so would be
+  // the app inventing the world again. What it does is tell three different
+  // questions apart.
+  const tween = S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("09:25"));
+  ok("an interval between two periods says so, and says nothing more",
+     tween && tween.between === true && tween.slot === null,
+     JSON.stringify(tween));
+  ok("  while a period you do not teach is not called an interval",
+     named.between === false && !!named.slot, JSON.stringify({ between: named.between }));
+  ok("  and the time before the day's first period is neither",
+     (() => {
+       const early = S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("07:30"));
+       return early && early.between === false && early.slot === null;
+     })(), JSON.stringify(S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("07:30"))));
+
+  // AND WHAT COUNTS AS A PERIOD SURVIVES YOU ANSWERING.
+  //
+  // Not "the teaching blocks": the timetable reader sets no kind at all, so
+  // every lesson comes in with kind "" and a rule looking for kind ===
+  // "teaching" would find no periods whatever in a real file. What separates a
+  // period from the rest is that the rest are the four answers given to this
+  // panel. Which also means saying "09:25 is duty" must not change what counts
+  // as a period and reshuffle the day while somebody is working down it.
+  //
+  // Built so the question is isolated. A stretch that starts where a DUTY
+  // block ends and finishes where a real period begins, and which is not
+  // itself a period span. Without the rule it is not an interval; with duty
+  // counting as a period it would become one, and the day would reshuffle
+  // under somebody halfway down it.
+  const ISO = [
+    { id: "p1", label: "Lesson", start: "10:30", end: "11:30", days: [1], kind: "teaching" },
+  ];
+  const DUTIED = ISO.concat([{ id: "d", label: "Gate duty", start: "09:00",
+    end: "09:10", days: [1], kind: "duty" }]);
+  const isTween = (list) => {
+    const g = S.gapsInWeek(list, CFG2).find((x) => x.from === S.toMin("09:10"));
+    return g ? g.between : null;
+  };
+  ok("  and answering one stretch does not change what counts as a period",
+     isTween(DUTIED) === false,
+     JSON.stringify(S.gapsInWeek(DUTIED, CFG2)
+       .map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}:${g.between}`)));
+  const withDuty = REAL.concat([{ id: "d", label: "Break duty", start: "09:25",
+    end: "09:35", days: [1, 2, 3, 4, 5], kind: "duty" }]);
+  const after = S.gapsInWeek(withDuty, CFG2).find((g) => g.from === S.toMin("08:40"));
+  ok("  nor what a period-shaped stretch is",
+     after && !!after.slot && after.slot.from.join() === "English",
+     JSON.stringify(after && after.slot));
+  // AND WITH NO KIND ON THEM AT ALL, which is how the timetable reader leaves
+  // every lesson it has ever read.
+  const bare = REAL.map(({ kind, ...rest }) => rest);   // eslint-disable-line no-unused-vars
+  const bareSlot = S.gapsInWeek(bare, CFG2).find((g) => g.from === S.toMin("08:40"));
+  ok("  even with no kind on any lesson, which is how the importer leaves them",
+     bare.every((b) => !b.kind) && !!bareSlot && !!bareSlot.slot &&
+       bareSlot.slot.from.join() === "English",
+     JSON.stringify({ kinds: bare.map((b) => b.kind), slot: bareSlot && bareSlot.slot }));
+
   // AND THE BELLS ARE THE WEEK'S OWN, WITH NOTHING ADDED.
   const rung = S.bellsOf(REAL, CFG2).map(S.toHM);
   ok("the bells are read off your timetable and nowhere else",

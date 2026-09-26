@@ -833,6 +833,74 @@ console.log("\nAnd the week is drawn, not listed");
      deep(r2.get("#weekGaps"))
        .some((c) => String(c.className || "").split(/\s+/).includes("su-gaplist")),
      "the list went away");
+
+  // ---- AND THE THREE KINDS OF GREY ARE THREE KINDS ON SCREEN --------------
+  //
+  // An hour of a period you do not teach, the ten minutes between two periods,
+  // and the time before the day starts were drawn identically — so the day
+  // could be read only by checking the clock on every piece, which is the
+  // decoding this grid exists to remove.
+  const r3 = await open("timeline.html", { schedule: REAL, items: [], goals: [],
+    scheduleConfig: { dayStart: "07:30", dayEnd: "16:00", leaveAt: "16:00" } });
+  r3.get("#setupToggle").fire("click", { target: r3.get("#setupToggle") });
+  await r3.settle();
+  const col3 = deep(r3.get("#weekGaps"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-day"))
+    .find((c) => deep(c).some((x) => String(x.tagName) === "H4" &&
+      String(x.textContent) === "Tue"));
+  const seg3 = deep(col3)
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-seg"));
+  const classOf = (t) => {
+    const hit = seg3.find((c) => new RegExp(t).test(String(c.title || "")));
+    return hit ? String(hit.className) : "(not drawn)";
+  };
+  ok("a period you do not teach is drawn as its own kind of thing",
+     /wk-period/.test(classOf("8:40 AM–9:25 AM")) &&
+       !/wk-tween/.test(classOf("8:40 AM–9:25 AM")),
+     classOf("8:40 AM–9:25 AM"));
+  ok("  an interval between two periods as another",
+     /wk-tween/.test(classOf("9:25 AM–9:35 AM")) &&
+       !/wk-period/.test(classOf("9:25 AM–9:35 AM")),
+     classOf("9:25 AM–9:35 AM"));
+  ok("  and the time before the day's first period as neither",
+     /wk-unknown/.test(classOf("7:30 AM–8:15 AM")) &&
+       !/wk-period|wk-tween/.test(classOf("7:30 AM–8:15 AM")),
+     classOf("7:30 AM–8:15 AM"));
+  // AND A SHORT PIECE IS MARKED, because five and ten minute pieces are where
+  // supervision lives and on a proportional day they are three pixels.
+  ok("and a piece too short to press is marked as one, keeping its real length",
+     /wk-thin/.test(classOf("9:25 AM–9:35 AM")) &&
+       !/wk-thin/.test(classOf("8:40 AM–9:25 AM")) &&
+       /9:25 AM–9:35 AM · 10 min/.test(String(seg3
+         .find((c) => /9:25 AM–9:35 AM/.test(String(c.title || ""))).title)),
+     classOf("9:25 AM–9:35 AM"));
+  // AND THE COLOURS ARE EXPLAINED WHERE THEY ARE USED.
+  const key = deep(r3.get("#weekGaps"))
+    .find((c) => String(c.className || "").split(/\s+/).includes("wk-key"));
+  ok("and the key says what each colour means, above the thing it describes",
+     !!key && ["your lesson", "a period, not yours", "between periods",
+       "nobody has said"].every((w) =>
+       deep(key).some((c) => String(c.textContent) === w)),
+     JSON.stringify(key ? deep(key).map((c) => c.textContent) : "(no key)"));
+  // AND PRESSING AN INTERVAL SAYS WHAT IS KNOWN AND NO MORE. Not "a break":
+  // nothing here knows whether anybody supervises it.
+  const gapSeg = seg3.find((c) => /9:25 AM–9:35 AM/.test(String(c.title || "")));
+  gapSeg.click();
+  await r3.settle();
+  const said3 = deep(r3.get("#weekGaps"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-ask"))
+    .map((c) => deep(c).map((x) => String(x.textContent || "")).join(" ") +
+      String(c.innerHTML || "")).join(" ");
+  ok("  and pressing an interval says only that it lies between two periods",
+     /between two periods/.test(said3) &&
+       /A period ends where this starts and another begins where it ends/.test(said3),
+     said3.slice(0, 240));
+  // AND SAYS OUT LOUD THAT IT IS NOT CLAIMING IT IS A BREAK, because that is
+  // the inference somebody would otherwise make for it.
+  ok("  and refuses the inference rather than leaving it to be made",
+     /not that it is a break/.test(said3) &&
+       /not whether anybody is supervising it/.test(said3),
+     said3.slice(0, 300));
 }
 
 // ---------------------------------------------------------------------------

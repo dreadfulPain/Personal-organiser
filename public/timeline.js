@@ -5719,6 +5719,19 @@
       render();
     });
     box.appendChild(bound);
+    box.appendChild(weekGrid());
+
+    // AND THE SAME THING AS A LIST, kept and folded.
+    //
+    // The grid is where this is done now; the list is where it is checked. A
+    // stretch across five days is one row here and five bars up there, and
+    // "did I answer the Tuesday one" is a question the list answers faster.
+    const rows = fold("gapList", false);
+    rows.className = "su-layer su-gaplist";
+    const rhead = document.createElement("summary");
+    rhead.innerHTML = `<h3>The same thing as a list — ${gaps.length} still to say</h3>`;
+    rows.appendChild(rhead);
+    if (gaps.length) box.appendChild(rows);
 
     gaps.forEach((g) => {
       const row = document.createElement("div");
@@ -5746,9 +5759,186 @@
         });
         row.appendChild(b);
       });
-      box.appendChild(row);
+      rows.appendChild(row);
     });
     el.appendChild(box);
+  }
+
+  // ---- THE WEEK, DRAWN ------------------------------------------------------
+  //
+  // A list of clock ranges makes you hold a school day in your head and decode
+  // against it — "Tue, Thu, Fri 08:35–09:35" is four facts and a subtraction
+  // before you know what is being asked. For somebody who finds reading numbers
+  // expensive that is exactly the work this app exists to take off them.
+  //
+  // So: five columns, top of the day to the bottom, every piece of it in its
+  // place and coloured by what it is. The shape of a Tuesday is then visible
+  // without reading a single time, and the piece nobody has said anything about
+  // is the grey one.
+  //
+  // THE SAME FOUR ANSWERS AS THE LIST, from the same table — see GAP_KINDS. A
+  // second set of words for the same four things is how two screens come to
+  // disagree about what "kept" means.
+  function weekGrid() {
+    const S2 = S();
+    const shape = S2.weekShape(schedule, cfg);
+    const wrap = document.createElement("div");
+    wrap.className = "wk-grid";
+    if (!shape.days.length) {
+      wrap.innerHTML = `<p class="empty">Nothing repeating yet — read a timetable in first.</p>`;
+      return wrap;
+    }
+    const span = Math.max(1, shape.shut - shape.open);
+    const D = window.OrganiserDates;
+    // THE HOURS DOWN THE SIDE, so the height means something.
+    const ruler = document.createElement("div");
+    ruler.className = "wk-ruler";
+    for (let m = Math.ceil(shape.open / 60) * 60; m < shape.shut; m += 60) {
+      const t = document.createElement("span");
+      t.className = "wk-hour";
+      t.style.top = `${((m - shape.open) / span) * 100}%`;
+      t.textContent = S2.fmtTime(S2.toHM(m));
+      ruler.appendChild(t);
+    }
+    wrap.appendChild(ruler);
+
+    shape.days.forEach((d) => {
+      const col = document.createElement("div");
+      col.className = "wk-day";
+      const name = document.createElement("h4");
+      name.textContent = ((D && D.DAY_NAMES[d.day]) || "?").slice(0, 3);
+      col.appendChild(name);
+      const lane = document.createElement("div");
+      lane.className = "wk-lane";
+      // A SLOT THAT TAKES TURNS IS TWO LESSONS IN ONE SPAN, and drawn one on
+      // top of the other only the second is visible — so a fortnight looked
+      // like a week with Show & Tell every Tuesday. Side by side, each saying
+      // which half it is.
+      const together = new Map();
+      d.parts.forEach((p) => {
+        const key = `${p.from}|${p.to}`;
+        together.set(key, (together.get(key) || []).concat([p]));
+      });
+      d.parts.forEach((p) => {
+        const from = Math.max(p.from, shape.open);
+        const to = Math.min(p.to, shape.shut);
+        if (to <= from) return;
+        const share = together.get(`${p.from}|${p.to}`) || [p];
+        const at = share.indexOf(p);
+        const seg = document.createElement(p.is === "unknown" ? "button" : "div");
+        if (p.is === "unknown") seg.type = "button";
+        seg.className = `wk-seg wk-${p.is}`;
+        seg.style.top = `${((from - shape.open) / span) * 100}%`;
+        seg.style.height = `${((to - from) / span) * 100}%`;
+        if (share.length > 1) {
+          seg.style.left = `${(at / share.length) * 100}%`;
+          seg.style.right = `${((share.length - at - 1) / share.length) * 100}%`;
+        }
+        const mins = to - from;
+        // WHAT IT IS, AND WHAT IT IS ON THE DAYS IT IS NOT YOURS. A blank
+        // forty-five minutes is nothing; "English, on Mon and Wed" is the thing
+        // you recognise it by — and it is read off your own week.
+        const also = (p.elsewhere || []).join(" / ");
+        seg.title = `${S2.fmtSpan(S2.toHM(from), S2.toHM(to))} · ${S2.durationWords(mins)}` +
+          (p.label ? ` · ${p.label}${p.parity ? ` (${p.parity} weeks)` : ""}`
+            : also ? ` · ${also} on other days` : "") +
+          (p.is === "unknown" ? " · nobody has said what this is" : "");
+        // ONLY WHAT FITS. A five-minute changeover is a sliver; writing into it
+        // makes a wall of overlapping text out of the one thing that was
+        // supposed to be readable at a glance. Twenty minutes of Read Aloud is
+        // not a sliver, and leaving it blank was hiding a lesson.
+        if (mins >= 14 && share.length === 1) {
+          const t = document.createElement("span");
+          // AND A NAME THAT IS NOT YOURS TODAY IS NOT WRITTEN LIKE ONE. "English"
+          // in the same face on a grey block and on a green one reads as two
+          // Englishes, one of which you are not at.
+          t.className = p.label ? "wk-name" : "wk-name wk-else";
+          t.textContent = p.label || (also ? `${also} elsewhere` : "");
+          seg.appendChild(t);
+        } else if (mins >= 14 && p.label) {
+          const t = document.createElement("span");
+          t.className = "wk-name wk-half";
+          // THE HALF FIRST, because at the width two lessons share there is
+          // room for about seven characters and the one that must survive
+          // truncation is which week it is.
+          t.textContent = p.parity ? `${p.parity}: ${p.label}` : p.label;
+          seg.appendChild(t);
+        }
+        if (p.is === "unknown") {
+          seg.setAttribute("aria-label",
+            `${((D && D.DAY_NAMES[d.day]) || "")} ${S2.fmtSpan(S2.toHM(from), S2.toHM(to))}` +
+            ` — nobody has said what this is. Press to say.`);
+          seg.addEventListener("click", () => askAbout(d.day, from, to, also));
+        }
+        lane.appendChild(seg);
+      });
+      col.appendChild(lane);
+      wrap.appendChild(col);
+    });
+    return wrap;
+  }
+
+  // WHICH OF THE FOUR IT IS, ASKED WHERE YOU PRESSED.
+  //
+  // And asked about the piece you pressed ON ITS OWN DAY, not about every day
+  // that happens to share those minutes. A Tuesday break and a Friday break are
+  // the same clock and not always the same duty; offering only "all five days"
+  // is the merging this whole change is undoing. Both are there — the wider one
+  // second, and counted, so it is a choice rather than a default.
+  function askAbout(day, from, to, also) {
+    const S2 = S();
+    const gaps = S2.gapsInWeek(schedule, cfg);
+    const same = gaps.find((g) => g.from === from && g.to === to) || { days: [day] };
+    const box = $("#weekGaps");
+    const old = box && box.querySelector(".wk-ask");
+    if (old && old.remove) old.remove();
+    const ask = document.createElement("div");
+    ask.className = "su-old wk-ask";
+    const D = window.OrganiserDates;
+    const dayName = (n) => ((D && D.DAY_NAMES[n]) || "?");
+    ask.innerHTML =
+      `<p><strong>${escapeHtml(dayName(day))} ${escapeHtml(S2.fmtSpan(S2.toHM(from), S2.toHM(to)))}</strong>` +
+      ` · ${escapeHtml(S2.durationWords(to - from))}` +
+      (also ? ` — ${escapeHtml(also)} on other days` : "") + `. What is it?</p>`;
+    const put = (days, word, made) => {
+      schedule = S2.normalise(schedule).concat([S2.normaliseBlock({
+        ...made, id: uid(), start: S2.toHM(from), end: S2.toHM(to),
+        days: days.slice(), source: "hand",
+      })]).filter(Boolean);
+      persist();
+      renderSetup();
+      render();
+      setSuStatus(`${S2.fmtSpan(S2.toHM(from), S2.toHM(to))} is ${word} — on ` +
+        `${days.length} day${days.length === 1 ? "" : "s"} a week.`);
+    };
+    [[ [day], `just ${dayName(day).slice(0, 3)}` ],
+     ...(same.days.length > 1
+       ? [[ same.days, `all ${same.days.length} days this falls on` ]] : [])
+    ].forEach(([days, which], i) => {
+      const line = document.createElement("div");
+      line.className = "su-brow wk-askrow";
+      line.innerHTML = `<span class="su-blabel">${escapeHtml(which)}</span>`;
+      const pair = document.createElement("div");
+      pair.className = "su-moveans";
+      line.appendChild(pair);
+      GAP_KINDS.forEach(([, word, made]) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "p-opt su-chip";
+        b.textContent = word;
+        b.addEventListener("click", () => put(days, word, made));
+        pair.appendChild(b);
+      });
+      if (i === 0 && same.days.length > 1) {
+        const note = document.createElement("span");
+        note.className = "muted";
+        note.textContent = `— it falls on ${same.days.map((n) => dayName(n).slice(0, 3)).join(", ")}`;
+        line.appendChild(note);
+      }
+      ask.appendChild(line);
+    });
+    if (box) box.appendChild(ask);
+    if (ask.scrollIntoView) ask.scrollIntoView({ block: "nearest" });
   }
 
   function renderBlockList() {

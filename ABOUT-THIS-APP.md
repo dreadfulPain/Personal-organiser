@@ -646,6 +646,71 @@ calendar instead of answering: without the stamp they come back to a longer list
 There is now a check that the file records what it is owed **before anything is
 pressed**.
 
+### And an hour is not one kind of time
+
+The panel asking what the rest of your week is offered `Tue, Thu, Fri 08:35–09:35
+· 1 hour · say what this is`. That hour is not one thing. Read Aloud finishes at
+08:35 on all five days; on Monday and Wednesday a lesson runs 08:40–09:25. So on
+Tuesday it is **fifty minutes of a period somebody else teaches and ten minutes
+of the corridor**, and no single answer is true of both. Asked as one question it
+could only be answered wrongly — and there were thirteen of them.
+
+**The school day's shape was already in the file.** Nothing here may be told when
+your school's break is — §0.2 — and nothing needs to be: your own timetable is
+full of the bells. A lesson that starts at 09:35 on Tuesday says there is a bell
+at 09:35, on every day. *The gap on the days you are free is bounded by the
+periods on the days you are not.* Every start and end of every repeating block,
+on any day, plus the edges of the working day, and nothing else invented.
+
+Cut at those, that hour becomes three pieces, and the week's real rhythm falls
+out of it — a five-minute changeover, a ten-minute break, lunch at 11:05:
+
+```
+08:35–08:40    5m  Mon Tue Wed Thu Fri
+08:40–09:25   45m  Tue Thu Fri          ← English on other days
+09:25–09:35   10m  Mon Tue Wed Thu Fri
+```
+
+The sliver is kept on purpose. `minGapMinutes` was a floor on how small a stretch
+is worth offering, and the ten minutes between two periods is exactly the piece
+that had been hiding inside an hour and being answered wrongly. **It is short
+because it is a break**; dropping it for being short throws away the one the
+splitting was for.
+
+And each piece says what it is on the days it is not yours. "Forty-five minutes,
+Tuesday" is nothing to recognise; "the hour English runs in on Monday and
+Wednesday" is the same stretch and a thing you know — read off your own week.
+
+#### And the week is drawn
+
+A list of clock ranges is work: `Tue, Thu, Fri 08:35–09:35 · 1 hour` is four
+facts and a subtraction before you know what is being asked, decoded against a
+school day you are holding in your head. For somebody who finds reading numbers
+expensive that is precisely the work this app exists to take off them.
+
+So `weekShape` hands over the day itself — every piece of it in order, what each
+piece is, nothing missing in between — and the panel draws it: five columns, top
+of the day to the bottom, coloured by the app's own four answers and no others.
+
+| | |
+| --- | --- |
+| **dark** | somewhere you have to be |
+| **green** | yours to work in |
+| **amber** | on duty |
+| **blue** | spoken for |
+| **grey, dashed** | nobody has said — and the only one you can press |
+
+Told apart by lightness as well as hue, because a scheme that only works if you
+can tell green from amber is not one. A slot that takes turns is drawn as two
+lessons side by side with which half each is, rather than one on top of the other
+— which had a fortnight looking like a week.
+
+Pressing a piece asks about **that piece, on its own day**, and offers the days it
+falls on as a second choice rather than a default: a Tuesday break and a Friday
+break are the same clock and not always the same duty, and offering only "all
+five days" is the merging this whole change undoes. The list is still there,
+folded, as the thing to check the grid against.
+
 ### Nothing scheduled is not the same as free
 
 This was the mistake, and the Day screen is what exposed it. A real Wednesday —

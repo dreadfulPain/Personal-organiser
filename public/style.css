@@ -4745,3 +4745,116 @@ a.btn {
 .su-auditrow .su-blabel { min-width: 12em; }
 .su-adoes { min-width: 15em; }
 .su-auditrow.su-asking { border-color: var(--warn, #c06a00); }
+
+/* ---- THE WEEK, DRAWN ------------------------------------------------------
+   Five columns, top of the day to the bottom, every piece in its place and
+   coloured by what it is. A list of clock ranges makes you hold a school day in
+   your head and decode against it; this is the same information as a shape.
+
+   The four colours are the app's four answers and no others — see GAP_KINDS.
+   Told apart by lightness as well as hue, because a colour scheme that only
+   works if you can tell green from amber is not one. */
+:root {
+  --wk-mine: #4a6f63;        /* somewhere you have to be */
+  --wk-work: #cfe4d6;        /* yours to work in */
+  --wk-duty: #f0dcc0;        /* on duty */
+  --wk-kept: #dfe6f0;        /* spoken for */
+  --wk-unknown: #efeae1;     /* nobody has said */
+  --wk-unknown-line: #d6ccbc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wk-mine: #7fae9e;
+    --wk-work: #2f4a3d;
+    --wk-duty: #4c3f2c;
+    --wk-kept: #2e3950;
+    --wk-unknown: #2a2823;
+    --wk-unknown-line: #4a4439;
+  }
+}
+.wk-grid {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  margin: 10px 0 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.wk-ruler {
+  position: relative;
+  width: 4.6em;
+  flex: 0 0 auto;
+  min-height: 420px;
+  /* The hours line up with the lanes, which start below the day name. */
+  margin-top: 1.7em;
+}
+.wk-hour {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.wk-day { flex: 1 1 0; min-width: 4.2em; display: flex; flex-direction: column; }
+.wk-day h4 {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink-soft);
+}
+.wk-lane {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 420px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.wk-seg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border: 0;
+  border-radius: 3px;
+  padding: 1px 3px;
+  font: inherit;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  text-align: left;
+  overflow: hidden;
+  color: var(--ink);
+}
+.wk-mine { background: var(--wk-mine); color: #fff; }
+.wk-work { background: var(--wk-work); }
+.wk-duty { background: var(--wk-duty); }
+.wk-kept { background: var(--wk-kept); }
+/* The one that is a question. Dashed, because an outline you can see through
+   reads as "not filled in" rather than as another kind of thing. */
+.wk-unknown {
+  background: var(--wk-unknown);
+  border: 1px dashed var(--wk-unknown-line);
+  cursor: pointer;
+  width: 100%;
+}
+.wk-unknown:hover, .wk-unknown:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.wk-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A lesson somebody else teaches in that hour is not your lesson, and must not
+   be written as though it were. */
+.wk-else { font-style: italic; opacity: 0.7; }
+.wk-half { font-size: 0.62rem; }
+/* What one press is about, opened under the grid rather than over it. */
+.wk-ask { margin-top: 10px; }
+.wk-askrow { margin-top: 6px; }
+.wk-askrow .su-blabel { min-width: 12em; }
+/* A phone gets a wider column and scrolls sideways rather than five unreadable
+   slivers. */
+@media (max-width: 620px) {
+  .wk-day { min-width: 5.6em; }
+  .wk-lane, .wk-ruler { min-height: 520px; }
+}

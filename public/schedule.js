@@ -1295,6 +1295,36 @@
   // every Wednesday. So they are found once, across the repeating timetable
   // only, and IDENTICAL STRETCHES ARE ONE QUESTION — a gap that falls at half
   // twelve on all five days is one thing to answer, not five.
+  // THE SCHOOL'S BELLS, READ OFF YOUR OWN TIMETABLE.
+  //
+  // A school day has a shape — periods, a break, lunch — and the app was told
+  // none of it. It knew only which hours are YOURS, so everything else was one
+  // undivided lump: "Tue, Thu, Fri 08:35–09:35, 1 hour, say what this is". That
+  // hour is not one thing. It is fifty minutes of a period somebody else
+  // teaches and ten minutes of the corridor, and no single answer is true of
+  // both. Asked as one question it can only be answered wrongly.
+  //
+  // AND THE SHAPE IS ALREADY IN THE FILE. Nothing here needs telling when your
+  // school's break is, which it must never be told — see §0.2 — because your
+  // own timetable is full of the bells: a lesson that starts at 09:35 on Tuesday
+  // says there is a bell at 09:35, on Tuesday and on Thursday and on Friday. The
+  // gap on the days you are free is bounded by the periods on the days you are
+  // not. Every start and end of every repeating block, on any day, is a line
+  // the day can be cut at.
+  //
+  // THE EDGES OF THE WORKING DAY COUNT TOO, and nothing else is added: the app
+  // invents no bell of its own.
+  function bellsOf(schedule, cfg) {
+    const c = normaliseConfig(cfg);
+    const at = new Set([toMin(c.dayStart), toMin(c.dayEnd)]);
+    const leave = toMin(c.leaveAt);
+    if (leave !== null) at.add(leave);
+    normalise(schedule)
+      .filter((b) => b.days.length && b.runsAs === null && !b.blocksDay && !b.noLessons && !b.soft)
+      .forEach((b) => { at.add(toMin(b.start)); at.add(toMin(b.end)); });
+    return [...at].filter((m) => Number.isFinite(m)).sort((a, b) => a - b);
+  }
+
   function gapsInWeek(schedule, cfg) {
     const c = normaliseConfig(cfg);
     const open = toMin(c.dayStart);
@@ -1302,25 +1332,101 @@
     const week = normalise(schedule).filter((b) =>
       b.days.length && b.runsAs === null && !b.blocksDay && !b.noLessons && !b.soft);
     if (!week.length) return [];
+    const bells = bellsOf(schedule, cfg);
     const found = [];
+    // CUT AT EVERY BELL INSIDE IT, so a stretch is never two kinds of time.
+    const add = (day, from, to) => {
+      let at = from;
+      bells.filter((m) => m > from && m < to).forEach((m) => {
+        found.push({ day, from: at, to: m });
+        at = m;
+      });
+      if (at < to) found.push({ day, from: at, to });
+    };
     [...new Set(week.flatMap((b) => b.days))].sort((a, b) => a - b).forEach((d) => {
       let at = open;
       week.filter((b) => b.days.includes(d))
         .map((b) => ({ from: toMin(b.start), to: toMin(b.end) }))
         .sort((a, b) => a.from - b.from)
         .forEach((x) => {
-          if (x.from > at) found.push({ day: d, from: at, to: Math.min(x.from, shut) });
+          if (x.from > at) add(d, at, Math.min(x.from, shut));
           at = Math.max(at, x.to);
         });
-      if (at < shut) found.push({ day: d, from: at, to: shut });
+      if (at < shut) add(d, at, shut);
     });
     const by = new Map();
-    found.filter((g) => g.to - g.from >= c.minGapMinutes).forEach((g) => {
+    // A SLIVER IS STILL A PIECE OF THE DAY. minGapMinutes was a floor on how
+    // small a stretch is worth offering at all, and with the day cut at its
+    // bells the ten minutes between two periods is exactly the piece that had
+    // been hiding inside an hour and being answered wrongly. It is short
+    // BECAUSE it is a break; dropping it for being short throws away the one
+    // the splitting was for.
+    found.filter((g) => g.to > g.from).forEach((g) => {
       const key = `${g.from}|${g.to}`;
       if (!by.has(key)) by.set(key, { from: g.from, to: g.to, days: [] });
       by.get(key).days.push(g.day);
     });
-    return [...by.values()].sort((a, b) => a.from - b.from || a.days[0] - b.days[0]);
+    // AND WHAT EACH PIECE IS ON THE DAYS IT IS NOT YOURS.
+    //
+    // "Fifty minutes, Tuesday" means nothing on its own. "Fifty minutes — the
+    // hour you teach English on Monday and Wednesday" is the same stretch with
+    // the thing you needed to recognise it by, and it is read off your own week
+    // rather than guessed at.
+    return [...by.values()].map((g) => ({
+      ...g,
+      elsewhere: [...new Set(week
+        .filter((b) => toMin(b.start) === g.from && toMin(b.end) === g.to &&
+          !b.days.some((d) => g.days.includes(d)))
+        .map((b) => b.label))],
+    })).sort((a, b) => a.from - b.from || a.days[0] - b.days[0]);
+  }
+
+  // THE WHOLE WEEK AS SHAPES ON A DAY, not a list of the holes in it.
+  //
+  // The panel asking about unaccounted time was a list of clock ranges —
+  // "Tue, Thu, Fri 08:35–09:35 · 1 hour" — and reading it means holding a school
+  // day in your head and decoding against it. For somebody who finds reading
+  // numbers expensive that is the work the app was supposed to take away.
+  //
+  // So the model hands over the day itself: every piece of it in order, what
+  // each piece IS, and nothing missing in between. A page can draw that as a
+  // column and the shape of a Tuesday is visible without reading a single time.
+  //
+  // WHAT EACH PIECE IS, in the app's own four words and no others:
+  //   mine      — a block of yours that you have to be at.
+  //   duty      — a stretch you said you are on duty for.
+  //   work      — a stretch you said is yours to work in.
+  //   kept      — a stretch you said is spoken for.
+  //   unknown   — nobody has said. Never counted as time you could work in.
+  const partOf = (b) =>
+    b.workable && !b.protected ? "work"
+      : b.kind === "duty" ? "duty"
+        : b.protected || b.kind === "break" ? "kept"
+          : "mine";
+
+  function weekShape(schedule, cfg) {
+    const c = normaliseConfig(cfg);
+    const open = toMin(c.dayStart);
+    const leave = toMin(c.leaveAt);
+    const shut = Math.min(toMin(c.dayEnd), leave === null ? Infinity : leave);
+    const week = normalise(schedule).filter((b) =>
+      b.days.length && b.runsAs === null && !b.blocksDay && !b.noLessons && !b.soft);
+    const gaps = gapsInWeek(schedule, cfg);
+    const days = [...new Set(week.flatMap((b) => b.days))].sort((a, b) => a - b);
+    return {
+      open, shut, leaveAt: leave,
+      days: days.map((d) => ({
+        day: d,
+        parts: week.filter((b) => b.days.includes(d))
+          .map((b) => ({ from: toMin(b.start), to: toMin(b.end), is: partOf(b),
+            label: b.label, id: b.id, parity: b.parity }))
+          .concat(gaps.filter((g) => g.days.includes(d))
+            .map((g) => ({ from: g.from, to: g.to, is: "unknown", label: "",
+              elsewhere: g.elsewhere || [] })))
+          .filter((p) => p.to > open && p.from < shut)
+          .sort((a, b) => a.from - b.from || a.to - b.to),
+      })),
+    };
   }
 
   // The fixed block covering a moment, if any — this is what holds a reminder.
@@ -1708,6 +1814,10 @@
     USES,
     hoursOn,
     gapsInWeek,
+    // The school bells, read off your own timetable — see bellsOf.
+    bellsOf,
+    // The week as shapes on a day, for drawing rather than reading — see weekShape.
+    weekShape,
     dayIsBlocked,
     noTeachingOn,
     runsAsOn,

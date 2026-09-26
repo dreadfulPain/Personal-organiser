@@ -721,6 +721,113 @@ console.log("\nAnd saying what the rest of the week is, once");
 }
 
 // ---------------------------------------------------------------------------
+console.log("\nAnd the week is drawn, not listed");
+
+// A LIST OF CLOCK RANGES IS WORK. "Tue, Thu, Fri 08:35–09:35 · 1 hour" is four
+// facts and a subtraction before you know what is being asked, and it has to be
+// decoded against a school day you are holding in your head. For somebody who
+// finds reading numbers expensive that is precisely the work this app exists to
+// take off them — so the week is drawn: five columns, top of the day to the
+// bottom, every piece in its place and coloured by what it is.
+{
+  const { open, deep } = await import("./_dom.mjs");
+  const REAL = [
+    { id: "ra", label: "Read Aloud", start: "08:15", end: "08:35", days: [1, 2, 3, 4, 5], kind: "teaching" },
+    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching" },
+    { id: "e2", label: "English", start: "09:35", end: "10:15", days: [2], kind: "teaching" },
+  ];
+  const r2 = await open("timeline.html", { schedule: REAL, items: [], goals: [],
+    scheduleConfig: { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" } });
+  r2.get("#setupToggle").fire("click", { target: r2.get("#setupToggle") });
+  await r2.settle();
+  const segs = () => deep(r2.get("#weekGaps"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-seg"));
+  const unknown = () => segs()
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-unknown"));
+  ok("the week is drawn as pieces of a day rather than a list of times",
+     segs().length > 20 && deep(r2.get("#weekGaps"))
+       .some((c) => String(c.className || "").split(/\s+/).includes("wk-lane")),
+     `${segs().length} segments`);
+  ok("  with your own lessons among them, not only the holes",
+     segs().some((c) => String(c.className || "").includes("wk-mine")),
+     JSON.stringify([...new Set(segs().map((c) => String(c.className)))].slice(0, 6)));
+  // EVERY PIECE IS ONE KIND OF TIME. The hour that was two is now the period
+  // and the changeover, and each is its own question.
+  //
+  // Found by column and by what the piece says of itself, because this harness
+  // keeps no attributes but id — see tests/_dom.mjs.
+  const column = (name) => deep(r2.get("#weekGaps"))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-day"))
+    .find((c) => deep(c).some((x) => String(x.tagName) === "H4" &&
+      String(x.textContent) === name));
+  const inDay = (name) => deep(column(name))
+    .filter((c) => String(c.className || "").split(/\s+/).includes("wk-seg"));
+  const tueSays = inDay("Tue").map((c) => String(c.title || ""));
+  ok("  and the hour that was two kinds of time is two pieces",
+     tueSays.some((t) => /8:40 AM–9:25 AM/.test(t)) &&
+       tueSays.some((t) => /9:25 AM–9:35 AM/.test(t)) &&
+       !tueSays.some((t) => /8:35 AM–9:35 AM/.test(t)),
+     JSON.stringify(tueSays));
+  // AND THE ONE THAT IS SOMEBODY ELSE'S PERIOD SAYS SO, which is the thing you
+  // recognise a blank forty-five minutes by.
+  ok("  with the period one naming the lesson it is on the days it is not yours",
+     tueSays.some((t) => /8:40 AM–9:25 AM.*English on other days/.test(t)),
+     JSON.stringify(tueSays.filter((t) => /8:40/.test(t))));
+  // AND A PIECE NOBODY HAS SAID ANYTHING ABOUT IS THE ONE YOU CAN PRESS.
+  ok("  and the piece nobody has answered is the one that is a button",
+     unknown().length > 0 && unknown().every((c) => String(c.tagName) === "BUTTON") &&
+       segs().filter((c) => String(c.className).includes("wk-mine"))
+         .every((c) => String(c.tagName) !== "BUTTON"),
+     `${unknown().length} of ${segs().length}`);
+
+  // PRESSING ONE ASKS ABOUT THAT PIECE, ON ITS OWN DAY AND ON ALL THE DAYS IT
+  // FALLS ON — both offered, neither assumed. A Tuesday break and a Friday
+  // break are the same clock and not always the same duty.
+  const tueWork = inDay("Tue").find((c) =>
+    /8:40 AM–9:25 AM/.test(String(c.title || "")) &&
+    String(c.className || "").split(/\s+/).includes("wk-unknown"));
+  tueWork.click();
+  await r2.settle();
+  const ask = deep(r2.get("#weekGaps"))
+    .find((c) => String(c.className || "").split(/\s+/).includes("wk-ask"));
+  const asked = ask ? deep(ask).map((c) => `${c.textContent || ""} ${c.innerHTML || ""}`)
+    .join(" ") + String(ask.innerHTML || "") : "";
+  ok("pressing a piece asks about that piece, on that day",
+     !!ask && /Tuesday/.test(asked) && /just Tue/.test(asked), asked.slice(0, 200));
+  ok("  and offers the days it falls on as a choice rather than a default",
+     /all 3 days this falls on/.test(asked), asked.slice(0, 300));
+  ok("  with the same four answers the list uses",
+     ["on duty", "mine to work in", "kept"].every((w) =>
+       deep(ask).some((c) => String(c.textContent) === w)),
+     JSON.stringify(deep(ask).map((c) => c.textContent).filter(Boolean).slice(0, 10)));
+
+  // AND ANSWERING IT COLOURS THAT PIECE IN, on the days you said and no others.
+  const rows = deep(ask).filter((c) =>
+    String(c.className || "").split(/\s+/).includes("wk-askrow"));
+  const justTue = deep(rows[0]).find((c) => String(c.textContent) === "mine to work in");
+  justTue.click();
+  await r2.settle();
+  const made = (r2.state.schedule || []).filter((b) => b.workable);
+  ok("answering one piece writes it for the day you said, and only that day",
+     made.length === 1 && made[0].days.join() === "2" &&
+       made[0].start === "08:40" && made[0].end === "09:25",
+     JSON.stringify(made.map((b) => `${b.start}-${b.end}:${b.days}`)));
+  ok("  and it is drawn as time you may work in, not as a hole",
+     inDay("Tue").some((c) => /8:40 AM–9:25 AM/.test(String(c.title || "")) &&
+       String(c.className || "").includes("wk-work")) &&
+       !inDay("Tue").some((c) => /8:40 AM–9:25 AM/.test(String(c.title || "")) &&
+         String(c.className || "").includes("wk-unknown")),
+     JSON.stringify(inDay("Tue").map((c) => `${c.title}|${c.className}`)
+       .filter((x) => /8:40/.test(x))));
+
+  // AND THE LIST IS STILL THERE, as the thing to check against.
+  ok("and the same thing is still available as a list",
+     deep(r2.get("#weekGaps"))
+       .some((c) => String(c.className || "").split(/\s+/).includes("su-gaplist")),
+     "the list went away");
+}
+
+// ---------------------------------------------------------------------------
 console.log("\nAnd the answers that were saved under the old meaning");
 
 // A MIGRATION YOU CAN READ. Two of the answers this app stores meant something

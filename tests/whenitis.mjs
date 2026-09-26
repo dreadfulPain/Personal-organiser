@@ -545,8 +545,100 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
   const shown = gaps.map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}:${g.days.join("")}`);
   ok("a gap that falls on all five days is one question, not five",
      shown.includes("07:30-08:40:12345"), JSON.stringify(shown));
-  ok("  and a gap only one day has is its own question",
-     shown.includes("09:25-10:30:3"), JSON.stringify(shown));
+  // AND A STRETCH IS CUT AT THE BELLS YOUR OWN WEEK USES.
+  //
+  // This used to expect "09:25-10:30" on WEDNESDAY ALONE — because Wednesday
+  // had a lesson at half ten and the other four days had one undivided lump
+  // from 09:25 to ten to four containing the same minutes. That is the fault
+  // being fixed: the same hour was one question on one day and buried inside a
+  // six-hour question on the rest. Cut at the bells, it is one question on all
+  // five, and half ten to five past eleven is a question only on the days it
+  // is not a lesson.
+  ok("  and the same minutes on every day are one question, not one per day",
+     shown.includes("09:25-10:30:12345"), JSON.stringify(shown));
+  ok("  while an hour that is a lesson on one day is asked about only on the others",
+     shown.includes("10:30-11:05:1245"), JSON.stringify(shown));
+  // AND NO STRETCH SPANS A BELL. The whole point: a stretch that crosses the
+  // start of a period somewhere in your week is two kinds of time, and one
+  // answer cannot be true of both.
+  const bells = S.bellsOf(week, { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" });
+  ok("  and no stretch runs through a bell of your own timetable",
+     gaps.every((g) => !bells.some((m) => m > g.from && m < g.to)),
+     JSON.stringify(gaps.filter((g) => bells.some((m) => m > g.from && m < g.to))
+       .map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}`)));
+
+  // ---- THE HOUR THAT WAS TWO THINGS --------------------------------------
+  //
+  // The real one, off a real week. Read Aloud finishes at 08:35 on all five
+  // days; on Monday and Wednesday a lesson runs 08:40–09:25. So on Tuesday the
+  // app saw nothing until 09:35 and offered ONE HOUR, 08:35–09:35, as a single
+  // question — and that hour is fifty minutes of somebody else's period and ten
+  // minutes of the corridor. No answer is true of both. It cannot be asked as
+  // one question, and it was.
+  //
+  // NOTHING HERE KNOWS WHEN A SCHOOL'S BREAK IS, and it must not — see §0.2.
+  // The bells are already in the file: a lesson starting at 09:35 on Tuesday
+  // says there is a bell at 09:35 on every day. The gap on the days you are
+  // free is bounded by the periods on the days you are not.
+  const REAL = [
+    { id: "ra", label: "Read Aloud", start: "08:15", end: "08:35", days: [1, 2, 3, 4, 5], kind: "teaching" },
+    { id: "e1", label: "English", start: "08:40", end: "09:25", days: [1, 3], kind: "teaching" },
+    { id: "e2", label: "English", start: "09:35", end: "10:15", days: [2], kind: "teaching" },
+  ];
+  const CFG2 = { dayStart: "07:30", dayEnd: "17:30", leaveAt: "15:50" };
+  const real = S.gapsInWeek(REAL, CFG2)
+    .map((g) => `${S.toHM(g.from)}-${S.toHM(g.to)}:${g.days.join("")}`);
+  ok("the hour that was two kinds of time is no longer one question",
+     !real.includes("08:35-09:35:245"), JSON.stringify(real));
+  ok("  it is the period somebody else teaches",
+     real.includes("08:40-09:25:245"), JSON.stringify(real));
+  ok("  and the ten minutes between periods, on every day",
+     real.includes("09:25-09:35:12345"), JSON.stringify(real));
+  // AND THE CHANGEOVER BETWEEN THEM IS NOT SWALLOWED EITHER.
+  ok("  and the changeover before it",
+     real.includes("08:35-08:40:12345"), JSON.stringify(real));
+  // AND THE PIECE SAYS WHAT IT IS ON THE DAYS IT IS NOT YOURS. "Forty-five
+  // minutes, Tuesday" is nothing to recognise; "the hour English runs in on
+  // Monday and Wednesday" is the same stretch and a thing you know.
+  const named = S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("08:40"));
+  ok("  and it says what it is on the days it is not yours",
+     named && named.elsewhere.join() === "English", JSON.stringify(named && named.elsewhere));
+  ok("  while a stretch that is nobody's lesson claims nothing",
+     (S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("09:25")) || {})
+       .elsewhere.length === 0, "a changeover was given somebody's lesson name");
+
+  // AND THE BELLS ARE THE WEEK'S OWN, WITH NOTHING ADDED.
+  const rung = S.bellsOf(REAL, CFG2).map(S.toHM);
+  ok("the bells are read off your timetable and nowhere else",
+     rung.join() === "07:30,08:15,08:35,08:40,09:25,09:35,10:15,15:50,17:30",
+     JSON.stringify(rung));
+
+  // ---- AND THE WEEK COMES BACK AS A WEEK, not as the holes in one ----------
+  //
+  // A list of clock ranges makes you hold a school day in your head and decode
+  // against it. The model hands over the day itself so a page can draw it.
+  const shape = S.weekShape(REAL, CFG2);
+  const tue = shape.days.find((d) => d.day === 2);
+  ok("the week comes back as whole days rather than as the holes in them",
+     shape.days.length === 5 && !!tue && tue.parts.length > 0,
+     JSON.stringify(shape.days.map((d) => `${d.day}:${d.parts.length}`)));
+  ok("  with nothing missing between one piece and the next",
+     tue.parts.every((p, i) => i === 0 || p.from === tue.parts[i - 1].to) &&
+       tue.parts[0].from === shape.open &&
+       tue.parts[tue.parts.length - 1].to === shape.shut,
+     JSON.stringify(tue.parts.map((p) => `${S.toHM(p.from)}-${S.toHM(p.to)}`)));
+  ok("  and each piece saying which of the app's own answers it is",
+     tue.parts.every((p) => ["mine", "work", "duty", "kept", "unknown"].indexOf(p.is) >= 0),
+     JSON.stringify([...new Set(tue.parts.map((p) => p.is))]));
+  // AND AN ANSWERED STRETCH IS NOT A HOLE ANY MORE — it is the colour it was
+  // answered as, in its place, which is the whole point of drawing it.
+  const said = REAL.concat([{ id: "d", label: "Break duty", start: "09:25", end: "09:35",
+    days: [1, 2, 3, 4, 5], kind: "duty" }]);
+  const tue2 = S.weekShape(said, CFG2).days.find((d) => d.day === 2);
+  const at925 = tue2.parts.find((p) => p.from === S.toMin("09:25"));
+  ok("  and a stretch you have answered stops being unknown and says what it is",
+     at925 && at925.is === "duty" && at925.label === "Break duty",
+     JSON.stringify(at925));
   ok("and nothing is looked for past the time you leave",
      gaps.every((g) => g.to <= S.toMin("15:50")), JSON.stringify(shown));
   // AND A STRETCH THAT HAS BEEN ANSWERED STOPS BEING A QUESTION.

@@ -5835,13 +5835,24 @@
           seg.style.right = `${((share.length - at - 1) / share.length) * 100}%`;
         }
         const mins = to - from;
-        // WHAT IT IS, AND WHAT IT IS ON THE DAYS IT IS NOT YOURS. A blank
-        // forty-five minutes is nothing; "English, on Mon and Wed" is the thing
-        // you recognise it by — and it is read off your own week.
-        const also = (p.elsewhere || []).join(" / ");
+        // WHAT IT IS — AND FOR A PIECE THAT IS NOT YOURS, THE ONLY THING KNOWN
+        // ABOUT IT IS THAT IT IS A PERIOD.
+        //
+        // Your English on Monday proves there is a period at 08:40. It proves
+        // nothing about what happens then on Tuesday. So the piece is named
+        // "period", and where the boundary was worked out from is said as
+        // provenance — a fact about your own week — rather than as a claim
+        // about the day being asked about. See gapsInWeek.
+        const D2 = window.OrganiserDates;
+        const short = (n) => ((D2 && D2.DAY_NAMES[n]) || "?").slice(0, 3);
+        const slot = p.slot || null;
+        const came = slot
+          ? `the boundary comes from your ${slot.days.map(short).join(", ")} ` +
+            `${slot.from.join(" / ")}`
+          : "";
         seg.title = `${S2.fmtSpan(S2.toHM(from), S2.toHM(to))} · ${S2.durationWords(mins)}` +
           (p.label ? ` · ${p.label}${p.parity ? ` (${p.parity} weeks)` : ""}`
-            : also ? ` · ${also} on other days` : "") +
+            : slot ? ` · a period, not one of yours — ${came}` : "") +
           (p.is === "unknown" ? " · nobody has said what this is" : "");
         // ONLY WHAT FITS. A five-minute changeover is a sliver; writing into it
         // makes a wall of overlapping text out of the one thing that was
@@ -5849,11 +5860,11 @@
         // not a sliver, and leaving it blank was hiding a lesson.
         if (mins >= 14 && share.length === 1) {
           const t = document.createElement("span");
-          // AND A NAME THAT IS NOT YOURS TODAY IS NOT WRITTEN LIKE ONE. "English"
-          // in the same face on a grey block and on a green one reads as two
-          // Englishes, one of which you are not at.
-          t.className = p.label ? "wk-name" : "wk-name wk-else";
-          t.textContent = p.label || (also ? `${also} elsewhere` : "");
+          // AND IT IS NOT WRITTEN LIKE ONE OF YOUR LESSONS. A subject name in
+          // the same face on a grey block and a green one reads as two lessons,
+          // one of which you are somehow not at.
+          t.className = p.label ? "wk-name" : "wk-name wk-slot";
+          t.textContent = p.label || (slot ? "period" : "");
           seg.appendChild(t);
         } else if (mins >= 14 && p.label) {
           const t = document.createElement("span");
@@ -5868,7 +5879,7 @@
           seg.setAttribute("aria-label",
             `${((D && D.DAY_NAMES[d.day]) || "")} ${S2.fmtSpan(S2.toHM(from), S2.toHM(to))}` +
             ` — nobody has said what this is. Press to say.`);
-          seg.addEventListener("click", () => askAbout(d.day, from, to, also));
+          seg.addEventListener("click", () => askAbout(d.day, from, to, slot));
         }
         lane.appendChild(seg);
       });
@@ -5885,7 +5896,7 @@
   // the same clock and not always the same duty; offering only "all five days"
   // is the merging this whole change is undoing. Both are there — the wider one
   // second, and counted, so it is a choice rather than a default.
-  function askAbout(day, from, to, also) {
+  function askAbout(day, from, to, slot) {
     const S2 = S();
     const gaps = S2.gapsInWeek(schedule, cfg);
     const same = gaps.find((g) => g.from === from && g.to === to) || { days: [day] };
@@ -5896,10 +5907,20 @@
     ask.className = "su-old wk-ask";
     const D = window.OrganiserDates;
     const dayName = (n) => ((D && D.DAY_NAMES[n]) || "?");
+    // NAMED FOR WHAT IS KNOWN, WITH THE WORKING SHOWN. "A period, not one of
+    // yours" is what the week proves. Which of your own lessons proved it is
+    // said underneath so the inference can be checked — and so that it reads as
+    // provenance rather than as a claim about this day.
     ask.innerHTML =
       `<p><strong>${escapeHtml(dayName(day))} ${escapeHtml(S2.fmtSpan(S2.toHM(from), S2.toHM(to)))}</strong>` +
       ` · ${escapeHtml(S2.durationWords(to - from))}` +
-      (also ? ` — ${escapeHtml(also)} on other days` : "") + `. What is it?</p>`;
+      (slot ? ` — a period, not one of yours` : "") + `. What is it?</p>` +
+      (slot
+        ? `<p class="muted">The boundary comes from your ` +
+          `${escapeHtml(slot.days.map((n) => dayName(n).slice(0, 3)).join(", "))} ` +
+          `${escapeHtml(slot.from.join(" / "))} — which says there is a period here, ` +
+          `not what anybody is doing in it.</p>`
+        : "");
     const put = (days, word, made) => {
       schedule = S2.normalise(schedule).concat([S2.normaliseBlock({
         ...made, id: uid(), start: S2.toHM(from), end: S2.toHM(to),

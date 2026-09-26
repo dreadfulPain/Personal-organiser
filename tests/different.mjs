@@ -768,10 +768,18 @@ console.log("\nAnd the week is drawn, not listed");
        tueSays.some((t) => /9:25 AM–9:35 AM/.test(t)) &&
        !tueSays.some((t) => /8:35 AM–9:35 AM/.test(t)),
      JSON.stringify(tueSays));
-  // AND THE ONE THAT IS SOMEBODY ELSE'S PERIOD SAYS SO, which is the thing you
-  // recognise a blank forty-five minutes by.
-  ok("  with the period one naming the lesson it is on the days it is not yours",
-     tueSays.some((t) => /8:40 AM–9:25 AM.*English on other days/.test(t)),
+  // AND THE PERIOD-SHAPED ONE SAYS IT IS A PERIOD — which is all that is
+  // known. A block on Monday proves there is a boundary at 08:40; it proves
+  // nothing about what is happening at 08:40 on Tuesday, and saying "English
+  // elsewhere" was a claim about somebody else's day.
+  ok("  with the period-shaped one saying it is a period, not what is in it",
+     tueSays.some((t) => /8:40 AM–9:25 AM.*a period, not one of yours/.test(t)) &&
+       !tueSays.some((t) => /English on other days|English elsewhere/.test(t)),
+     JSON.stringify(tueSays.filter((t) => /8:40/.test(t))));
+  // AND YOUR OWN LESSON IS NAMED ONLY AS WHERE THE BOUNDARY CAME FROM, so the
+  // inference can be checked.
+  ok("  and says which of your own lessons the boundary came from",
+     tueSays.some((t) => /boundary comes from your Mon, Wed English/.test(t)),
      JSON.stringify(tueSays.filter((t) => /8:40/.test(t))));
   // AND A PIECE NOBODY HAS SAID ANYTHING ABOUT IS THE ONE YOU CAN PRESS.
   ok("  and the piece nobody has answered is the one that is a button",

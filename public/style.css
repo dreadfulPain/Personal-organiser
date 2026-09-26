@@ -4844,9 +4844,10 @@ a.btn {
   background: var(--accent-soft);
 }
 .wk-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A lesson somebody else teaches in that hour is not your lesson, and must not
-   be written as though it were. */
-.wk-else { font-style: italic; opacity: 0.7; }
+/* A period that is not one of yours is named for what is known about it — that
+   it is a period — and never for whatever you teach in that slot on another
+   day, which is not a fact about this one. */
+.wk-slot { font-style: italic; opacity: 0.7; }
 .wk-half { font-size: 0.62rem; }
 /* What one press is about, opened under the grid rather than over it. */
 .wk-ask { margin-top: 10px; }

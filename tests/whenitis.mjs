@@ -597,15 +597,27 @@ console.log("\nAnd the week's own gaps are one question each, not one per day");
   // AND THE CHANGEOVER BETWEEN THEM IS NOT SWALLOWED EITHER.
   ok("  and the changeover before it",
      real.includes("08:35-08:40:12345"), JSON.stringify(real));
-  // AND THE PIECE SAYS WHAT IT IS ON THE DAYS IT IS NOT YOURS. "Forty-five
-  // minutes, Tuesday" is nothing to recognise; "the hour English runs in on
-  // Monday and Wednesday" is the same stretch and a thing you know.
+  // AND WHAT A BLOCK ON ANOTHER DAY PROVES, WHICH IS LESS THAN IT LOOKS.
+  //
+  // Your English on Monday and Wednesday at 08:40 proves there is a PERIOD in
+  // that span. It proves nothing about what happens in that span on Tuesday —
+  // somebody else's class, an empty room, an assembly; the document never said.
+  // This was labelled "English elsewhere", which reads as a claim that English
+  // is being taught then, and that is the line §0.2 draws: the app may know
+  // what its own answers mean and may not know what the world is doing.
   const named = S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("08:40"));
-  ok("  and it says what it is on the days it is not yours",
-     named && named.elsewhere.join() === "English", JSON.stringify(named && named.elsewhere));
-  ok("  while a stretch that is nobody's lesson claims nothing",
+  ok("  and a period-shaped span says it is a period, not what is happening in it",
+     named && named.slot && named.slot.days.join() === "1,3",
+     JSON.stringify(named && named.slot));
+  // THE SUBJECT IS KEPT ONLY AS PROVENANCE — which of YOUR OWN lessons proved
+  // the boundary, so the inference can be checked. It is never the answer to
+  // "what is on then".
+  ok("  with your own lesson named as where the boundary came from, and nowhere else",
+     named.slot.from.join() === "English" && !("elsewhere" in named),
+     JSON.stringify(named.slot));
+  ok("  while a changeover nobody teaches in claims nothing at all",
      (S.gapsInWeek(REAL, CFG2).find((g) => g.from === S.toMin("09:25")) || {})
-       .elsewhere.length === 0, "a changeover was given somebody's lesson name");
+       .slot === null, "a changeover was called a period");
 
   // AND THE BELLS ARE THE WEEK'S OWN, WITH NOTHING ADDED.
   const rung = S.bellsOf(REAL, CFG2).map(S.toHM);

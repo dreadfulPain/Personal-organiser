@@ -1366,19 +1366,37 @@
       if (!by.has(key)) by.set(key, { from: g.from, to: g.to, days: [] });
       by.get(key).days.push(g.day);
     });
-    // AND WHAT EACH PIECE IS ON THE DAYS IT IS NOT YOURS.
+    // AND WHETHER THIS SPAN IS A PERIOD AT ALL.
     //
-    // "Fifty minutes, Tuesday" means nothing on its own. "Fifty minutes — the
-    // hour you teach English on Monday and Wednesday" is the same stretch with
-    // the thing you needed to recognise it by, and it is read off your own week
-    // rather than guessed at.
-    return [...by.values()].map((g) => ({
-      ...g,
-      elsewhere: [...new Set(week
-        .filter((b) => toMin(b.start) === g.from && toMin(b.end) === g.to &&
-          !b.days.some((d) => g.days.includes(d)))
-        .map((b) => b.label))],
-    })).sort((a, b) => a.from - b.from || a.days[0] - b.days[0]);
+    // WHAT A BLOCK ON ANOTHER DAY PROVES, AND WHAT IT DOES NOT. Your English on
+    // Monday and Wednesday at 08:40 proves there is a period in that span — a
+    // boundary in the school's day. It proves nothing whatever about what
+    // happens in that span on Tuesday. Somebody else's class, a free room, an
+    // assembly: the document never said and this app cannot know.
+    //
+    // The first version of this labelled the Tuesday piece "English elsewhere",
+    // which reads as a claim that English is being taught then. It is exactly
+    // the line §0.2 draws: the app may know what its own answers mean, and may
+    // not know what the world is doing. So the piece is named for the only
+    // thing that is known — that it is a period-shaped slot and not one of
+    // yours — and WHERE THAT WAS WORKED OUT FROM is carried separately, as
+    // provenance. "The boundary comes from your Monday and Wednesday English"
+    // is a fact about your own week; "English is on" is not.
+    return [...by.values()].map((g) => {
+      const proves = week.filter((b) => toMin(b.start) === g.from && toMin(b.end) === g.to &&
+        !b.days.some((d) => g.days.includes(d)));
+      return {
+        ...g,
+        slot: proves.length
+          ? {
+            days: [...new Set(proves.flatMap((b) => b.days))].sort((a, b) => a - b),
+            // YOUR OWN blocks, named so the inference can be checked. Never
+            // shown as what is happening on the day being asked about.
+            from: [...new Set(proves.map((b) => b.label))],
+          }
+          : null,
+      };
+    }).sort((a, b) => a.from - b.from || a.days[0] - b.days[0]);
   }
 
   // THE WHOLE WEEK AS SHAPES ON A DAY, not a list of the holes in it.
@@ -1422,7 +1440,9 @@
             label: b.label, id: b.id, parity: b.parity }))
           .concat(gaps.filter((g) => g.days.includes(d))
             .map((g) => ({ from: g.from, to: g.to, is: "unknown", label: "",
-              elsewhere: g.elsewhere || [] })))
+              // A period-shaped slot that is not one of yours — see gapsInWeek
+              // on what a block on another day does and does not prove.
+              slot: g.slot || null })))
           .filter((p) => p.to > open && p.from < shut)
           .sort((a, b) => a.from - b.from || a.to - b.to),
       })),

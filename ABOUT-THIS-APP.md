@@ -677,9 +677,61 @@ that had been hiding inside an hour and being answered wrongly. **It is short
 because it is a break**; dropping it for being short throws away the one the
 splitting was for.
 
-And each piece says what it is on the days it is not yours. "Forty-five minutes,
-Tuesday" is nothing to recognise; "the hour English runs in on Monday and
-Wednesday" is the same stretch and a thing you know — read off your own week.
+#### What a block on another day proves, and what it does not
+
+Your English on Monday and Wednesday at 08:40 proves there is a **period** in
+that span — a boundary in the school's day. It proves **nothing whatever** about
+what happens in that span on Tuesday: somebody else's class, an empty room, an
+assembly. The document never said and this app cannot know.
+
+The first version of this labelled the Tuesday piece *"English elsewhere"*, which
+reads as a claim that English is being taught then. That is exactly the line §0.2 draws — the app may
+know what its own answers mean, and may not know what the world is doing.
+
+So a derived piece is named for the only thing that is known, and where it was
+worked out from is carried separately as **provenance**:
+
+> Tuesday 8:40 AM–9:25 AM · 45 min — **a period, not one of yours**. What is it?
+> *The boundary comes from your Mon, Wed English — which says there is a period
+> here, not what anybody is doing in it.*
+
+"The boundary comes from your Monday and Wednesday English" is a fact about your
+own week, and it lets you check the inference. "English is on" would be a guess
+about somebody else's day.
+
+### The school week has a hierarchy — the setup flow after this one
+
+**Not built, and the current inference is deliberately not being promoted to it
+yet.** Deriving the day's boundaries from your own blocks is enough for a week
+that already exists, and it is how the skeleton should be *discovered*. It is not
+what the skeleton should *be*.
+
+```
+school-day skeleton          period slots, and the breaks between them
+  → which periods you teach
+    → what you are responsible for in the rest
+      → calendar and one-off overlays
+```
+
+That is a much stronger model than "here are my lessons, everything between them
+is a gap", and it is the one that survives moving school. A new timetable would
+be read, the skeleton inferred from its recurring boundaries, shown for
+confirmation — *"I think your school day has these periods and these intervals.
+Is that right?"* — and only then would the questions about responsibility follow:
+which periods you teach, whether the ones you don't are yours to work in, what
+happens at break, which time is lunch, when your day ends.
+
+**And once confirmed it should be persisted as its own object.** Recalculating it
+for ever from whichever lessons happen to exist means that dropping a class
+silently changes the school's bell structure — and the bell does not stop
+existing because you no longer teach Period 2. A period should carry a neutral
+identity (`Period 1 · 08:40–09:25`) rather than inheriting a subject name from
+whichever weekday exposed the boundary.
+
+Recorded here rather than built, because the grid above is useful now and a third
+redesign mid-setup would cost more than it bought. The promotion belongs with the
+work that needs it: a second school, or a timetable changing under a skeleton
+somebody has already answered for.
 
 #### And the week is drawn
 
